@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 
@@ -519,7 +519,7 @@ describe("Work Queue interactions", () => {
       { id: "tag-proof", label: "Proof listen", slug: "proof-listen", category: "workflow", projectId: "project-1", isActive: true },
     ] };
     const { rerender } = render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
-    expect(screen.queryByRole("heading", { name: "Nest vocabulary" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Shared tags" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage 1 tag" })).toHaveAttribute("href", "/work?manage=tags");
 
     rerender(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
@@ -577,6 +577,26 @@ describe("Work Queue interactions", () => {
     expect(replaceWorkTags).toHaveBeenCalledWith({ entityKind: "task", entityId: "task-1", tagIds: ["tag-proof", "tag-episode"], expectedUpdatedAt: snapshot.tasks[0].updatedAt });
     expect(await screen.findByRole("status")).toHaveTextContent("Tags saved.");
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("previews tag color, saves once, and resets without an approval workflow", async () => {
+    const user = userEvent.setup();
+    const tag = { id: "tag-proof", label: "Proof listen", slug: "proof-listen", category: "workflow", projectId: "project-1", isActive: true, archivedAt: null, hexColor: "#aabbcc", updatedAt: "2026-07-18T18:00:00.000Z", aliases: [] };
+    const project = { id: "project-1", name: "High Ground Odyssey", slug: "high-ground", role: "EDITOR", canWrite: true, tags: [tag] };
+    jest.mocked(changeWorkTagTaxonomy).mockResolvedValue({ ok: true, operation: "COLOR", projectId: project.id, tag, aliases: [], revision: 1, receiptId: "color-receipt" });
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
+    await user.click(screen.getByRole("button", { name: "Manage Proof listen" }));
+    expect(screen.getByRole("button", { name: "Save color" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Color for Proof listen"), { target: { value: "#506b46" } });
+    expect(changeWorkTagTaxonomy).not.toHaveBeenCalled();
+    expect(screen.getAllByText("#Proof listen").some(element => element.style.backgroundColor === "rgb(80, 107, 70)")).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Save color" }));
+    expect(changeWorkTagTaxonomy).toHaveBeenLastCalledWith({ tagId: tag.id, operation: "COLOR", label: undefined, hexColor: "#506b46", expectedUpdatedAt: tag.updatedAt });
+    expect(await screen.findByRole("status")).toHaveTextContent("Color saved for #Proof listen.");
+    expect(refresh).toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Use theme color" }));
+    await user.click(screen.getByRole("button", { name: "Save color" }));
+    expect(changeWorkTagTaxonomy).toHaveBeenLastCalledWith(expect.objectContaining({ operation: "COLOR", hexColor: null }));
   });
 
   it("renames canonical vocabulary while explaining preserved aliases", async () => {
@@ -642,7 +662,7 @@ describe("Work Queue interactions", () => {
       projectId: "project-1",
       label: "Media clip QA",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("no record was tagged automatically");
+    expect(await screen.findByRole("status")).toHaveTextContent("Created #Media clip QA for High Ground Odyssey.");
     expect(screen.getByRole("textbox", { name: "New reusable tag" })).toHaveValue("");
     expect(refresh).toHaveBeenCalled();
   });
@@ -754,7 +774,7 @@ describe("Work Queue interactions", () => {
     });
     render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
     await user.click(screen.getByRole("button", { name: "Manage Rough cut" }));
-    const sourceRow = screen.getByText("#Rough cut").closest("li");
+    const sourceRow = screen.getByRole("button", { name: "Close Rough cut controls" }).closest("li");
     expect(sourceRow).not.toBeNull();
     await user.click(within(sourceRow!).getByText("Merge into another tag"));
     await user.selectOptions(within(sourceRow!).getByRole("combobox", { name: "Canonical target" }), "tag-edit");

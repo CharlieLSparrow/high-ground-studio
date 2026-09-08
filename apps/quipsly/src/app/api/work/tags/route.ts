@@ -214,7 +214,8 @@ export async function PATCH(request: Request) {
   const expectedUpdatedAt = new Date(text(body.expectedUpdatedAt, 80));
   if (
     !tagId
-    || !["RENAME", "ARCHIVE", "RESTORE"].includes(operation)
+    || !["RENAME", "ARCHIVE", "RESTORE", "COLOR"].includes(operation)
+    || (operation === "COLOR" && body.hexColor !== null && typeof body.hexColor !== "string")
     || (operation === "RENAME" && !label)
     || !Number.isFinite(expectedUpdatedAt.getTime())
   ) {
@@ -236,6 +237,7 @@ export async function PATCH(request: Request) {
       tagId,
       operation,
       label: operation === "RENAME" ? label : undefined,
+      ...(operation === "COLOR" ? { hexColor: body.hexColor as string | null } : {}),
       expectedUpdatedAt,
     });
     if (!result.ok) {

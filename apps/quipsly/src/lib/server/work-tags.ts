@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { normalizeTagColor } from "../tag-color";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 
@@ -45,7 +46,7 @@ export type CreateAndAssignWorkTagResult =
     }
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED"; error: string };
 
-export type WorkTagTaxonomyOperation = "RENAME" | "ARCHIVE" | "RESTORE";
+export type WorkTagTaxonomyOperation = "RENAME" | "ARCHIVE" | "RESTORE" | "COLOR";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type CreateWorkTagTaxonomyResult =
@@ -1180,6 +1181,7 @@ export async function mutateWorkTagTaxonomy(input: {
   tagId: string;
   operation: WorkTagTaxonomyOperation;
   label?: string;
+  hexColor?: string | null;
   expectedUpdatedAt: Date;
 }): Promise<MutateWorkTagTaxonomyResult> {
   const actorUserId = cleanId(input.actorUserId);
@@ -1187,7 +1189,9 @@ export async function mutateWorkTagTaxonomy(input: {
   const tagId = cleanId(input.tagId);
   const operation = input.operation;
   const label = operation === "RENAME" ? normalizeWorkTagLabel(input.label) : "";
-  if (!actorUserId || !actorEmail || !tagId || !["RENAME", "ARCHIVE", "RESTORE"].includes(operation)
+  const hexColor = input.hexColor === null ? null : normalizeTagColor(input.hexColor);
+  if (!actorUserId || !actorEmail || !tagId || !["RENAME", "ARCHIVE", "RESTORE", "COLOR"].includes(operation)
+    || (operation === "COLOR" && hexColor === undefined)
     || (operation === "RENAME" && !label) || !Number.isFinite(input.expectedUpdatedAt?.getTime())) {
     return { ok: false, code: "INVALID_INPUT", error: "The vocabulary change is incomplete or invalid." };
   }
@@ -1195,7 +1199,7 @@ export async function mutateWorkTagTaxonomy(input: {
   const prisma = input.prisma as any;
   const current = await prisma.studioTag.findUnique({
     where: { id: tagId },
-    select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
+    select: { id: true, projectId: true, label: true, slug: true, hexColor: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
   });
   if (!current) return { ok: false, code: "NOT_FOUND", error: "That tag no longer exists." };
   const writableProjects = await writableProjectIds(input.prisma, actorEmail);
@@ -1216,7 +1220,7 @@ export async function mutateWorkTagTaxonomy(input: {
     if (!activeGrant) return { kind: "forbidden" as const };
     const fresh = await tx.studioTag.findFirst({
       where: { id: tagId, projectId: current.projectId, updatedAt: input.expectedUpdatedAt },
-      select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
+      select: { id: true, projectId: true, label: true, slug: true, hexColor: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
     });
     if (!fresh) return { kind: "conflict" as const };
 
@@ -1240,12 +1244,13 @@ export async function mutateWorkTagTaxonomy(input: {
     const nextActive = operation === "ARCHIVE" ? false : operation === "RESTORE" ? true : fresh.isActive;
     const nextArchivedAt = operation === "ARCHIVE" ? now : operation === "RESTORE" ? null : fresh.archivedAt;
     const nextLabel = operation === "RENAME" ? label : fresh.label;
-    const before = { label: fresh.label, slug: fresh.slug, isActive: fresh.isActive, archivedAt: fresh.archivedAt?.toISOString() ?? null };
-    const after = { label: nextLabel, slug: nextSlug, isActive: nextActive, archivedAt: nextArchivedAt?.toISOString() ?? null };
+    const nextColor = operation === "COLOR" ? hexColor : fresh.hexColor;
+    const before = { label: fresh.label, slug: fresh.slug, hexColor: fresh.hexColor ?? null, isActive: fresh.isActive, archivedAt: fresh.archivedAt?.toISOString() ?? null };
+    const after = { label: nextLabel, slug: nextSlug, hexColor: nextColor ?? null, isActive: nextActive, archivedAt: nextArchivedAt?.toISOString() ?? null };
 
     const update = await tx.studioTag.updateMany({
       where: { id: tagId, projectId: current.projectId, updatedAt: input.expectedUpdatedAt },
-      data: { label: nextLabel, slug: nextSlug, isActive: nextActive, archivedAt: nextArchivedAt },
+      data: { label: nextLabel, slug: nextSlug, hexColor: nextColor, isActive: nextActive, archivedAt: nextArchivedAt },
     });
     if (update.count !== 1) return { kind: "conflict" as const };
 
@@ -1275,7 +1280,7 @@ export async function mutateWorkTagTaxonomy(input: {
     const saved = await tx.studioTag.findUnique({
       where: { id: tagId },
       select: {
-        id: true, label: true, slug: true, isActive: true, archivedAt: true, updatedAt: true,
+        id: true, label: true, slug: true, hexColor: true, isActive: true, archivedAt: true, updatedAt: true,
         aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
       },
     });

@@ -1,8 +1,13 @@
 /** Canonical tag colors are opaque RGB, never arbitrary CSS. An absent/legacy
  * value uses the normal theme rather than inventing a different tag color. */
-export function tagChipColors(value: string | null | undefined) {
+export function normalizeTagColor(value: unknown): string | undefined {
   if (typeof value !== "string" || !/^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(value)) return undefined;
-  const hex = value.length === 4 ? `#${[...value.slice(1)].map(char => char + char).join("")}` : value;
+  return (value.length === 4 ? `#${[...value.slice(1)].map(char => char + char).join("")}` : value).toLowerCase();
+}
+
+export function tagChipColors(value: string | null | undefined) {
+  const hex = normalizeTagColor(value);
+  if (!hex) return undefined;
   const channels = [1, 3, 5].map(offset => {
     const component = parseInt(hex.slice(offset, offset + 2), 16) / 255;
     return component <= 0.04045 ? component / 12.92 : ((component + 0.055) / 1.055) ** 2.4;

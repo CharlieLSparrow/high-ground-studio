@@ -1288,13 +1288,14 @@ export async function changeWorkTagTaxonomy(input: {
   tagId: string;
   operation: WorkTagTaxonomyOperation;
   label?: string;
+  hexColor?: string | null;
   expectedUpdatedAt: string;
 }): Promise<MutateWorkTagTaxonomyActionResult> {
   const session = await getQuipslySession();
   const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
   if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before managing private vocabulary." };
   const expectedUpdatedAt = expectedRevision(input?.expectedUpdatedAt);
-  if (!expectedUpdatedAt || !["RENAME", "ARCHIVE", "RESTORE"].includes(input?.operation)) {
+  if (!expectedUpdatedAt || !["RENAME", "ARCHIVE", "RESTORE", "COLOR"].includes(input?.operation)) {
     return { ok: false, code: "INVALID_INPUT", error: "The vocabulary change is incomplete or invalid." };
   }
   try {
@@ -1305,6 +1306,7 @@ export async function changeWorkTagTaxonomy(input: {
       tagId: input.tagId,
       operation: input.operation,
       label: input.label,
+      hexColor: input.hexColor,
       expectedUpdatedAt,
     });
     if (!result.ok) return result;

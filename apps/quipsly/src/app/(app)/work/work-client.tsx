@@ -10,6 +10,7 @@ import LocalDateTime from "@/components/LocalDateTime";
 import { TagSearchChips } from "@/components/tag-search-chips";
 import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
 import { transcriptSourceHref } from "@/lib/session-work-source-link";
+import { normalizeTagColor, tagChipColors } from "@/lib/tag-color";
 import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, createWorkVocabularyTag, editTaskRecurrence, editWorkGoal, editWorkTask, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTagCandidate, WorkTask, WorkTaskStatus } from "./work-model";
 
@@ -330,6 +331,22 @@ function ImportedKeywordReview({ project, onRefresh }: { project: WorkProjectOpt
   </section>;
 }
 
+function TagColorControl({ tag, pending, onSave }: { tag: WorkTag; pending: boolean; onSave: (color: string | null) => void }) {
+  const savedColor = normalizeTagColor(tag.hexColor) ?? null;
+  const [color, setColor] = useState<string | null>(savedColor);
+  return <form action={() => onSave(color)} className="mt-3 rounded-xl border border-sky-100 p-3">
+    <div className="flex flex-wrap items-center gap-3">
+      <label className="flex min-h-11 items-center gap-2 text-sm font-semibold">Color for {tag.label}
+        <input type="color" value={color ?? "#506b46"} onChange={(event) => setColor(event.target.value)} disabled={pending} className="h-11 w-12 cursor-pointer rounded border border-slate-300" />
+      </label>
+      <span style={tagChipColors(color)} className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-sm font-bold">#{tag.label}</span>
+      <button type="button" disabled={pending || color === null} onClick={() => setColor(null)} className="min-h-11 rounded-full border border-slate-300 px-3 text-xs font-bold disabled:opacity-50">Use theme color</button>
+      <button type="submit" disabled={pending || color === savedColor} className="min-h-11 rounded-full bg-sky-800 px-4 text-xs font-bold text-white disabled:opacity-50">Save color</button>
+    </div>
+    <p className="mt-2 text-xs text-sky-950">Shared everywhere this tag is used. Text contrast adjusts automatically.</p>
+  </form>;
+}
+
 function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId = null }: { projects: WorkProjectOption[]; onRefresh: () => void; expanded?: boolean; initialProjectId?: string | null }) {
   const writableProjects = projects.filter((project) => project.canWrite);
   const [pending, startTransition] = useTransition();
@@ -362,20 +379,22 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
     0,
   );
 
-  function change(tag: WorkTag, operation: "RENAME" | "ARCHIVE" | "RESTORE", label?: string) {
+  function change(tag: WorkTag, operation: "RENAME" | "ARCHIVE" | "RESTORE" | "COLOR", label?: string, hexColor?: string | null) {
     if (!tag.updatedAt) {
       setMessage("Refresh Work before changing this tag.");
       return;
     }
     setMessage(null);
     startTransition(async () => {
-      const result = await changeWorkTagTaxonomy({ tagId: tag.id, operation, label, expectedUpdatedAt: tag.updatedAt! });
+      const result = await changeWorkTagTaxonomy({ tagId: tag.id, operation, label, ...(operation === "COLOR" ? { hexColor } : {}), expectedUpdatedAt: tag.updatedAt! });
       if (!result.ok) {
         setMessage(result.error);
         if (result.code === "CONFLICT") onRefresh();
         return;
       }
-      setMessage(operation === "RENAME"
+      setMessage(operation === "COLOR"
+        ? `Color saved for #${result.tag.label}.`
+        : operation === "RENAME"
         ? `Renamed to #${result.tag.label}. The former name remains a reusable alias.`
         : operation === "ARCHIVE"
           ? `#${result.tag.label} is archived. Existing records keep it; new assignments hide it.`
@@ -404,14 +423,14 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
       setQuery("");
       setShowArchived(false);
       setMessage(result.created
-        ? `Created #${result.tag.label} for ${selectedProject.name}. It is ready to assign; no record was tagged automatically.`
+        ? `Created #${result.tag.label} for ${selectedProject.name}.`
         : `#${result.tag.label} already exists in ${selectedProject.name}. No duplicate was created.`);
       onRefresh();
     });
   }
 
   return <section aria-labelledby="tag-vocabulary-heading" className="rounded-3xl border border-sky-200 bg-[linear-gradient(145deg,#f7fcff,#eef8ff)] p-5 shadow-sm md:p-6">
-    <div className="flex items-start gap-3"><span className="rounded-xl bg-sky-100 p-2 text-sky-900"><Tags aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Shared organizing language</p><h2 id="tag-vocabulary-heading" className="font-serif text-2xl font-black">Nest vocabulary</h2><p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Rename without breaking older iPhone captures: Quipsly keeps the former name as an alias. Archive hides a tag from new choices while preserving every existing link.</p></div></div>
+    <div className="flex items-start gap-3"><span className="rounded-xl bg-sky-100 p-2 text-sky-900"><Tags aria-hidden="true" /></span><div><h2 id="tag-vocabulary-heading" className="font-serif text-2xl font-black">Shared tags</h2><p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Choose names and colors that make sense to your team.</p></div></div>
     <details open={expanded || undefined} className="mt-5 rounded-2xl border border-sky-200 bg-white/80 p-4">
       <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-900">Manage vocabulary · {activeTagCount} active across {writableProjects.length} Nest{writableProjects.length === 1 ? "" : "s"}</summary>
       <form action={createTag} className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
@@ -421,7 +440,7 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
           </label>
           <button type="submit" disabled={creating} className="min-h-11 rounded-full bg-sky-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">{creating ? "Creating…" : "Create tag"}</button>
         </div>
-        <p className="mt-2 text-xs font-semibold leading-5 text-sky-950">Adds shared vocabulary to the selected Nest. It does not tag a task, goal, note, document, session, or clip by itself.</p>
+        <p className="mt-2 text-xs font-semibold leading-5 text-sky-950">Create in {selectedProject.name}.</p>
       </form>
       <div className="mt-4 grid gap-3 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:grid-cols-[minmax(13rem,1fr)_minmax(15rem,2fr)_auto] md:items-end">
         <label className="text-[10px] font-black uppercase tracking-wide text-sky-900">Nest
@@ -443,7 +462,7 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
           const isExpanded = expandedTagId === tag.id;
           return <li key={tag.id} className={`rounded-xl border p-3 ${tag.isActive === false ? "border-slate-200 bg-slate-50" : "border-sky-100 bg-sky-50/40"}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div>
+              <div><p style={tagChipColors(tag.hexColor)} className="w-fit rounded-full px-3 py-1 text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div>
               <div className="flex items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span>
                 <button type="button" aria-label={isExpanded ? `Close ${tag.label} controls` : `Manage ${tag.label}`} aria-expanded={isExpanded} onClick={() => setExpandedTagId(isExpanded ? null : tag.id)} className="min-h-11 shrink-0 rounded-full border border-sky-200 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-sky-900">{isExpanded ? "Close" : "Manage"}</button>
@@ -454,6 +473,7 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
                 <form action={(formData) => change(tag, "RENAME", String(formData.get("label") || ""))} className="flex min-w-0 flex-1 gap-2"><label htmlFor={`rename-tag-${tag.id}`} className="sr-only">Rename {tag.label}</label><input id={`rename-tag-${tag.id}`} name="label" required maxLength={80} defaultValue={tag.label} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold" /><button type="submit" disabled={pending} className="min-h-11 rounded-full bg-sky-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Rename</button></form>
                 <button type="button" disabled={pending} onClick={() => change(tag, "ARCHIVE")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50"><Archive size={14} aria-hidden="true" />Archive</button>
               </div>}
+              {!tag.mergedInto && <TagColorControl key={`${tag.id}:${tag.updatedAt}`} tag={tag} pending={pending} onSave={(color) => change(tag, "COLOR", undefined, color)} />}
               {!tag.mergedInto && <TagMergeControl source={tag} project={selectedProject} onRefresh={onRefresh} />}
             </div>}
           </li>;
@@ -1160,9 +1180,8 @@ export function WorkClient({
         <section className="rounded-[2rem] border border-sky-200 bg-[linear-gradient(145deg,#f7fcff,#eef8ff)] p-6 shadow-sm md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-sky-800">One vocabulary per Nest</p>
               <h1 className="mt-2 font-serif text-4xl font-black tracking-tight md:text-5xl">Tags</h1>
-              <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Find, rename, archive, merge, and restore reusable organizing language without crowding the task queue. Existing work keeps its canonical tag identity and historical names.</p>
+              <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Organize related work with shared tags and colors.</p>
             </div>
             <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-sky-900">Back to Work</Link>
           </div>

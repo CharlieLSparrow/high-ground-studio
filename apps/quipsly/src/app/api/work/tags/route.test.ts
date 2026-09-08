@@ -235,6 +235,22 @@ describe("authenticated shared work tags route", () => {
     await expect(response.json()).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
   });
 
+  it.each(["#506b46", null])("routes a color change or theme reset through the canonical service: %s", async (hexColor) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({} as any);
+    jest.mocked(mutateWorkTagTaxonomy).mockResolvedValue({ ok: false, code: "FORBIDDEN", error: "Editor access required" });
+    const response = await PATCH(patchRequest({ tagId: "tag-1", operation: "COLOR", hexColor, expectedUpdatedAt: "2026-07-30T12:00:00.000Z" }));
+    expect(response.status).toBe(403);
+    expect(mutateWorkTagTaxonomy).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "user-1", actorEmail: "person@example.test", operation: "COLOR", hexColor }));
+  });
+
+  it("does not interpret a missing color as a theme reset", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
+    const response = await PATCH(patchRequest({ tagId: "tag-1", operation: "COLOR", expectedUpdatedAt: "2026-07-30T12:00:00.000Z" }));
+    expect(response.status).toBe(400);
+    expect(mutateWorkTagTaxonomy).not.toHaveBeenCalled();
+  });
+
   it("rejects an incomplete rename before calling the taxonomy service", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "user-1", primaryEmail: "person@example.test" },

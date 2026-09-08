@@ -762,6 +762,30 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     await expect(prisma.actionItemTagLink.findMany({ where: { actionItemId: taskId, tagId: archived.id } })).resolves.toEqual([]);
   });
 
+  it("persists shared color and reset without changing task links, rejecting stale and cross-Nest edits", async () => {
+    const tag = await prisma.studioTag.create({ data: { projectId, slug: `shared-color-${nonce}`, label: "Chapter planning" } });
+    await prisma.actionItemTagLink.create({ data: { actionItemId: taskId, tagId: tag.id } });
+    const command = { prisma, actorUserId, actorEmail, tagId: tag.id, operation: "COLOR" as const, expectedUpdatedAt: tag.updatedAt };
+    for (const hexColor of [undefined, "red", "#1234", "#12345678", "url(secret)"]) {
+      await expect(mutateWorkTagTaxonomy({ ...command, hexColor })).resolves.toMatchObject({ ok: false, code: "INVALID_INPUT" });
+    }
+    const colored = await mutateWorkTagTaxonomy({ ...command, hexColor: "#AbC" });
+    expect(colored).toMatchObject({ ok: true, tag: { id: tag.id, label: "Chapter planning", hexColor: "#aabbcc" }, revision: 1 });
+    if (!colored.ok) throw new Error("color setup failed");
+    await expect(mutateWorkTagTaxonomy({ ...command, hexColor: "#000000" })).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    await expect(mutateWorkTagTaxonomy({ ...command, tagId: otherTagId, hexColor: "#000000" })).resolves.toMatchObject({ ok: false, code: "FORBIDDEN" });
+    await expect(mutateWorkTagTaxonomy({ ...command, actorUserId: otherUserId, actorEmail: `work-tags-other-${nonce}@example.test`, hexColor: "#000000", expectedUpdatedAt: colored.tag.updatedAt })).resolves.toMatchObject({ ok: false, code: "FORBIDDEN" });
+    const linked = await prisma.actionItemTagLink.findMany({ where: { actionItemId: taskId, tagId: tag.id }, include: { tag: true } });
+    expect(linked).toHaveLength(1);
+    expect(linked[0].tag.hexColor).toBe("#aabbcc");
+    await expect(mutateWorkTagTaxonomy({ ...command, hexColor: null, expectedUpdatedAt: colored.tag.updatedAt })).resolves.toMatchObject({ ok: true, tag: { id: tag.id, hexColor: null }, revision: 2 });
+    const revisions = await prisma.studioTagRevision.findMany({ where: { tagId: tag.id }, orderBy: { revision: "asc" } });
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({ operation: "color", snapshotJson: { before: { hexColor: null }, after: { hexColor: "#aabbcc" } } });
+    expect(revisions[1]).toMatchObject({ operation: "color", snapshotJson: { before: { hexColor: "#aabbcc" }, after: { hexColor: null } } });
+    expect(await prisma.actionItemTagLink.count({ where: { actionItemId: taskId, tagId: tag.id } })).toBe(1);
+  });
+
   it("retains old names as aliases across rename, archive, restore, and Capture-style reuse", async () => {
     const originalLabel = `Editorial focus ${nonce}`;
     const renamedLabel = `Episode craft ${nonce}`;
