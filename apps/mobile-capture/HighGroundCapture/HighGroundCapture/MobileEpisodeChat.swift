@@ -1179,6 +1179,7 @@ struct MobileEpisodeChatThread: View {
                 Text(Self.formattedTime(message.createdAt))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureConversationMessageTime_\(message.id)")
             }
             if !message.body.isEmpty {
                 Text(message.body)
@@ -1289,8 +1290,11 @@ struct MobileEpisodeChatThread: View {
     }
 
     nonisolated private static func formattedTime(_ value: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: value) else {
-            return value
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = fractional.date(from: value)
+            ?? ISO8601DateFormatter().date(from: value) else {
+            return "Time unavailable"
         }
         return date.formatted(date: .abbreviated, time: .shortened)
     }

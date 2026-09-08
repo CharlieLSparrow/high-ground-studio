@@ -189,6 +189,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  session-picker)
+    TEST_CASE="testSessionPickerKeepsSearchAndExactSelectionAcrossLaunches"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Session picker mode requires an exact Session ID and title." >&2
+      exit 2
+    fi
+    ;;
   conversation-task)
     TEST_CASE="testConversationCreatesCanonicalTaskAndEditsItAfterRelaunch"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" ]]; then

@@ -2865,6 +2865,39 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRuntimeScreenshot(app, name: "One shared task after two lost save replies")
     }
 
+    func testSessionPickerKeepsSearchAndExactSelectionAcrossLaunches() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let sessionID = try XCTUnwrap(credentials.sessionID)
+        let sessionTitle = try XCTUnwrap(credentials.sessionTitle)
+
+        for attempt in 1...3 {
+            let app = try launchSignedInCaptureApp(initialTab: "record")
+            let chooser = app.buttons["CaptureSessionChooser"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(chooser, in: app, timeout: 15, swipeAttempts: 8))
+            XCTAssertTrue(chooser.isEnabled)
+            chooser.tap()
+            let search = app.searchFields["Search sessions"].firstMatch
+            let appeared = search.waitForExistence(timeout: 8)
+            attachRuntimeScreenshot(app, name: "Session picker after launch \(attempt)")
+            if !appeared {
+                let hierarchy = XCTAttachment(string: app.debugDescription)
+                hierarchy.name = "Missing Session picker search after launch \(attempt)"
+                hierarchy.lifetime = .keepAlways
+                add(hierarchy)
+            }
+            XCTAssertTrue(appeared, "A fresh launch must leave the ordinary Session chooser usable.")
+            search.tap()
+            search.typeText(sessionTitle)
+            let session = app.descendants(matching: .any)["CaptureSessionPicker_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitUntilHittable(session, timeout: 15))
+            session.tap()
+            XCTAssertTrue(app.navigationBars["Choose session"].waitForNonExistence(timeout: 8))
+            XCTAssertTrue(app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.scrollViews["CaptureRecorderView"].firstMatch.exists)
+            app.terminate()
+        }
+    }
+
     func testConversationCreatesCanonicalTaskAndEditsItAfterRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         let idea = try XCTUnwrap(credentials.taskEditSourceTitle)
@@ -2907,6 +2940,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(message.waitForExistence(timeout: 30), "The idea must be saved before becoming task source material.")
         let messageID = String(message.identifier.dropFirst("CaptureCoachingConversationMessage_".count))
         XCTAssertFalse(messageID.isEmpty)
+        let messageTime = app.staticTexts["CaptureConversationMessageTime_\(messageID)"].firstMatch
+        XCTAssertTrue(messageTime.exists)
+        XCTAssertFalse(messageTime.label.isEmpty)
+        XCTAssertNotEqual(messageTime.label, "Time unavailable", "Canonical message timestamps must parse successfully.")
+        XCTAssertNil(messageTime.label.range(of: #"^\d{4}-\d{2}-\d{2}T"#, options: .regularExpression),
+                     "Conversation time should be localized, not a raw ISO timestamp.")
         let create = app.buttons["CaptureConversationCreateTask_\(messageID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(create, in: app, timeout: 10, swipeAttempts: 8))
         create.tap()
