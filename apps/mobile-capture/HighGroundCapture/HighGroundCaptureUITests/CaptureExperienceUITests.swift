@@ -4745,8 +4745,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse((words.value as? String ?? "").isEmpty)
         XCTAssertFalse(confidence.exists, "Correcting words must not require opening source diagnostics.")
         let keepDraft = app.buttons["Keep draft"].firstMatch
-        reveal(keepDraft)
+        XCTAssertTrue(keepDraft.waitForExistence(timeout: 5))
+        // This editor is already materialized. Let XCTest scroll its button
+        // into view for the tap instead of searching the lazy transcript with
+        // 32 gestures while the text field owns focus (minutes on hosted CI).
         keepDraft.tap()
+        XCTAssertFalse(words.exists, "Keep draft should close the correction editor and return to the passage.")
 
         for kind in ["Note", "Task", "Goal"] {
             openTranscriptPassageCreationMenu()
