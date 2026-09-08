@@ -7,6 +7,7 @@ import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement"
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
+import { conversationWorkSourceHref } from "@/lib/conversation-work-source";
 import { coachingWorkPage } from "@/lib/server/coaching-work-page";
 import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
 
@@ -105,7 +106,7 @@ function notePayload(row: any, actorUserId: string, canWrite = true) {
     kind: "NOTE" as const,
     title: row.title,
     body: row.body,
-    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
+    sourceHref: conversationWorkSourceHref(row.engagementId, row.sourceJson) ?? sessionWorkSourceHref(row.roomId, row.sourceJson),
     status: null,
     owner: row.authorUser
       ? {
@@ -128,7 +129,7 @@ function taskPayload(row: any, canWrite = true) {
     kind: "TASK" as const,
     title: row.title,
     body: row.detail,
-    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
+    sourceHref: conversationWorkSourceHref(row.engagementId, row.sourceJson) ?? sessionWorkSourceHref(row.roomId, row.sourceJson),
     status: String(row.status),
     owner: row.assignedUser
       ? {
@@ -150,7 +151,7 @@ function goalPayload(row: any, canWrite = true) {
     kind: "GOAL" as const,
     title: row.title,
     body: row.description,
-    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
+    sourceHref: conversationWorkSourceHref(row.engagementId, row.sourceJson) ?? sessionWorkSourceHref(row.roomId, row.sourceJson),
     status: String(row.status),
     owner: {
       id: row.ownerUserId,
@@ -165,6 +166,7 @@ function goalPayload(row: any, canWrite = true) {
 }
 
 const NOTE_SELECT = {
+  engagementId: true,
   id: true,
   roomId: true,
   authorUserId: true,
@@ -178,6 +180,7 @@ const NOTE_SELECT = {
 } as const;
 
 const TASK_SELECT = {
+  engagementId: true,
   id: true,
   roomId: true,
   assignedUserId: true,
@@ -192,6 +195,7 @@ const TASK_SELECT = {
 } as const;
 
 const GOAL_SELECT = {
+  engagementId: true,
   id: true,
   roomId: true,
   ownerUserId: true,
@@ -359,6 +363,10 @@ export async function POST(
   const input = record(await request.json().catch(() => ({})));
   const workKind = kind(input.kind);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+  const sourceMessageId = input.sourceMessageId == null ? null : input.sourceMessageId;
+  if (sourceMessageId !== null && (typeof sourceMessageId !== "string" || !/^[a-zA-Z0-9_-]{1,240}$/.test(sourceMessageId))) {
+    return NextResponse.json({ ok: false, error: "This conversation message is not available." }, { status: 400 });
+  }
   const title = text(input.title, 500);
   const detail = text(input.body, 20_000, true);
   const ownerUserId = text(input.ownerUserId, 240) || session.user.id;
@@ -396,6 +404,7 @@ export async function POST(
         ownerUserId,
         targetAt: targetAt?.toISOString() ?? null,
         noteVisibility,
+        ...(sourceMessageId ? { sourceMessageId } : {}),
       }),
     )
     .digest("hex");
@@ -419,6 +428,12 @@ export async function POST(
           },
         });
         if (!engagement) return { kind: "unavailable" as const };
+        const sourceMessage = sourceMessageId ? await tx.studioNestChatMessage.findFirst({
+          where: { id: sourceMessageId, projectId: engagement.projectId,
+            thread: { projectId: engagement.projectId, key: `engagement:${engagementId}` } },
+          select: { id: true, threadId: true, body: true, updatedAt: true },
+        }) : null;
+        if (sourceMessageId && !sourceMessage) return { kind: "unavailable" as const };
         const memberIds = new Set(
           engagement.members.map((member: { userId: string }) => member.userId),
         );
@@ -432,7 +447,12 @@ export async function POST(
           clientRequestId,
           requestFingerprint: fingerprint,
           createdByUserId: session.user.id,
-          origin: "in-product-create",
+          origin: sourceMessage ? "conversation" : "in-product-create",
+          ...(sourceMessage ? { conversationSource: {
+            schema: "quipsly-conversation-work-v1", engagementId, messageId: sourceMessage.id,
+            threadId: sourceMessage.threadId, excerpt: sourceMessage.body,
+            messageUpdatedAt: sourceMessage.updatedAt.toISOString(),
+          } } : {}),
           visibility:
             workKind === "NOTE" && noteVisibility === "AUTHOR_PRIVATE"
               ? "author-private"

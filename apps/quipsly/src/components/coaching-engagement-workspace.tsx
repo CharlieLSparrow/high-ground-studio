@@ -282,11 +282,16 @@ function CoachingEngagementWorkspaceContent({
       }
     };
     const interval = window.setInterval(refreshWhenVisible, 15_000);
+    const workChanged = (event: Event) => {
+      if ((event as CustomEvent).detail?.engagementId === engagementId) void refreshEntries();
+    };
+    window.addEventListener("quipsly-coaching-work-changed", workChanged);
     window.addEventListener("focus", refreshWhenVisible);
     window.addEventListener("online", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearInterval(interval);
+      window.removeEventListener("quipsly-coaching-work-changed", workChanged);
       window.removeEventListener("focus", refreshWhenVisible);
       window.removeEventListener("online", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
@@ -294,7 +299,7 @@ function CoachingEngagementWorkspaceContent({
       refreshController.current = null;
       controller?.abort();
     };
-  }, [refreshEntries]);
+  }, [refreshEntries, engagementId]);
 
   function replaceEntry(entry: CoachingEngagementWorkEntry) {
     history.current.ids.add(entry.id);

@@ -1,5 +1,7 @@
 /** @jest-environment node */
 import { randomUUID } from "node:crypto";
+import { NextRequest } from "next/server";
+import { GET as readChat } from "@/app/api/nest-chat/route";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadSessionWork } from "@/lib/server/session-work";
@@ -94,6 +96,37 @@ if (enabled) {
     for (const actor of [observer!, guest!, outsider!]) {
       expect((await act("POST", command, actor)).status).toBe(404);
     }
+  });
+
+  it("turns a scoped conversation into shared editable work, retains its source, and reads it back in older chat history", async () => {
+    const thread = await prisma.studioNestChatThread.create({ data: { projectId, key: `engagement:${engagementId}`, title: "Shared conversation" } });
+    const message = await prisma.studioNestChatMessage.create({ data: { projectId, threadId: thread.id, body: "Practice the introduction before our next call." } });
+    const foreignThread = await prisma.studioNestChatThread.create({ data: { projectId, key: "engagement:another-private-client", title: "Other client" } });
+    const foreignMessage = await prisma.studioNestChatMessage.create({ data: { projectId, threadId: foreignThread.id, body: "Private other conversation" } });
+    const command = { kind: "TASK", title: "Practice my introduction", body: message.body, sourceMessageId: message.id, clientRequestId: randomUUID() };
+    const first = await act("POST", command);
+    expect(first).toMatchObject({ status: 200, body: { ok: true, entry: { kind: "TASK", visibility: "SHARED",
+      sourceHref: `/coaching/engagements/${engagementId}?message=${message.id}#relationship-conversation` } } });
+    const retry = await act("POST", command);
+    expect(retry.body.entry.id).toBe(first.body.entry.id);
+    const persisted = await prisma.actionItem.findUniqueOrThrow({ where: { id: first.body.entry.id } });
+    expect(persisted.sourceJson).toMatchObject({ conversationSource: { messageId: message.id, threadId: thread.id, engagementId, excerpt: message.body } });
+    const coachRead = await act("GET", {}, coach!);
+    expect(coachRead.body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ canEdit: true, title: command.title });
+    expect((await act("POST", { ...command, sourceMessageId: foreignMessage.id, clientRequestId: randomUUID() })).status).toBe(404);
+    for (const actor of [observer!, guest!, outsider!]) expect((await act("POST", { ...command, clientRequestId: randomUUID() }, actor)).status).toBe(404);
+    await prisma.studioNestChatMessage.createMany({ data: Array.from({ length: 52 }, (_, index) => ({ projectId, threadId: thread.id, body: `Later message ${index}`, createdAt: new Date(Date.now() + 1000 + index) })) });
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: client! } as never);
+    const chatResponse = await readChat(new NextRequest(`http://localhost/api/nest-chat?projectSlug=${projectId}&threadKey=engagement:${engagementId}&message=${message.id}`));
+    const chat = await chatResponse.json();
+    expect(chatResponse.status).toBe(200);
+    expect(chat.messages.find((entry: {id: string}) => entry.id === message.id)).toMatchObject({ linkedTasks: [{ id: persisted.id, title: command.title, status: "OPEN" }] });
+    expect(chat.nextCursor).toBeTruthy();
+    const foreignRead = await readChat(new NextRequest(`http://localhost/api/nest-chat?projectSlug=${projectId}&threadKey=engagement:${engagementId}&message=${foreignMessage.id}`));
+    expect((await foreignRead.json()).messages.some((entry: {id: string}) => entry.id === foreignMessage.id)).toBe(false);
+    const edited = await act("PATCH", { kind: "TASK", id: persisted.id, expectedUpdatedAt: persisted.updatedAt.toISOString(), title: "Introduction practiced together", body: message.body, ownerUserId: client!.id, status: "DONE" }, coach!);
+    expect(edited.status).toBe(200);
+    expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ status: "DONE", title: "Introduction practiced together" });
   });
 
   it.each(["TASK", "GOAL"] as const)("cannot change, remove, or restore a known private %s ID", async (kind) => {

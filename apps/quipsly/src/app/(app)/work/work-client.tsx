@@ -777,6 +777,7 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
           <TaskEditor task={task} onRefresh={onConflict} />
           <TaskReminderEditor task={task} onRefresh={onConflict} />
           {task.detail && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}
+          {task.conversationSourceHref && <Link href={task.conversationSourceHref} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-primary underline">View conversation</Link>}
           <TagEditor entityKind="task" entityId={task.id} project={projectOptions.find((project) => project.id === task.project?.id) ?? null} tags={task.tags} updatedAt={task.updatedAt} canManage={task.canManageTags} onRefresh={onConflict} />
           {task.sourceCardAnchor && sourceCardHref && (
             <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3">

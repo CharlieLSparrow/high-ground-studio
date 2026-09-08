@@ -1,4 +1,5 @@
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
+import { conversationWorkSourceHref } from "@/lib/conversation-work-source";
 import {
   readTranscriptDerivedGoalSource,
   readTranscriptDerivedTaskSource,
@@ -189,6 +190,7 @@ export type RawWorkPlanBlock = {
 };
 
 export type WorkTask = {
+  conversationSourceHref?: string | null;
   id: string;
   title: string;
   detail: string | null;
@@ -479,6 +481,7 @@ export function buildWorkSnapshot(input: {
         historicalLocked,
         attentionReason,
         assigneeLabel: personLabel(task.assignedUser),
+        conversationSourceHref: conversationWorkSourceHref(task.engagement?.id, task.sourceJson),
         provenance,
         roomId: room?.id ?? null,
         sessionTitle: sessionTitle(task),

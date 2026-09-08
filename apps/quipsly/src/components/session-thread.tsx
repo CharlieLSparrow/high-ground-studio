@@ -4,6 +4,7 @@ import { LoaderCircle, MessageCircle, Send } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import LocalDateTime from "@/components/LocalDateTime";
+import { ConversationTaskAction, type ConversationLinkedTask } from "./conversation-task-action";
 import {
   CHAT_PERSISTED_INCOMING_EVENT,
   chatPersistedLiveHint,
@@ -18,6 +19,7 @@ type SessionMessage = {
   body: string;
   gifUrl: string | null;
   createdAt: string;
+  linkedTasks?: ConversationLinkedTask[];
 };
 
 type ThreadResponse = {
@@ -85,6 +87,8 @@ function ScopedCollaborationThread({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const seenLiveHintIdsRef = useRef(new Set<string>());
   const headingId = `collaboration-thread-${threadKey.replace(/[^a-z0-9_-]/gi, "-")}`;
+  const engagementId = threadKey.startsWith("engagement:") ? threadKey.slice("engagement:".length) : null;
+  const focusedMessageRef = useRef<string | null>(null);
 
   const refresh = useCallback(async (quiet = false) => {
     if (refreshingRef.current) return;
@@ -92,6 +96,8 @@ function ScopedCollaborationThread({
     if (!quiet) setLoading(true);
     try {
       const params = new URLSearchParams({ projectSlug, threadKey });
+      const requestedMessage = new URL(window.location.href).searchParams.get("message");
+      if (requestedMessage) params.set("message", requestedMessage);
       const response = await fetch(`/api/nest-chat?${params}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as ThreadResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Session thread could not load.");
@@ -146,6 +152,17 @@ function ScopedCollaborationThread({
 
   useEffect(() => {
     const thread = scrollRef.current;
+    const requestedMessage = new URL(window.location.href).searchParams.get("message");
+    if (requestedMessage && focusedMessageRef.current !== requestedMessage && messages.some(message => message.id === requestedMessage)) {
+      const target = document.getElementById(`conversation-message-${requestedMessage}`);
+      if (target && !target.closest("[hidden]")) {
+        target.scrollIntoView({ block: "nearest" });
+        target.focus({ preventScroll: true });
+        followLatestRef.current = false;
+        focusedMessageRef.current = requestedMessage;
+        return;
+      }
+    }
     if (thread && previousScrollRef.current) {
       thread.scrollTop = previousScrollRef.current.top + thread.scrollHeight - previousScrollRef.current.height;
       previousScrollRef.current = null;
@@ -232,10 +249,11 @@ function ScopedCollaborationThread({
         {nextCursor ? <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="min-h-11 w-full rounded-xl border border-border px-3 text-sm">{loadingOlder ? "Loading…" : "Earlier messages"}</button> : null}
         {loading ? <p className="flex items-center gap-2 text-sm font-semibold text-muted-foreground"><LoaderCircle size={16} className="animate-spin" /> Loading conversation…</p> : null}
         {!loading && !loadError && messages.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Start the conversation when you're ready.</p> : null}
-        {messages.map((message) => <article key={message.id} className="rounded-2xl border border-border bg-background p-3">
+        {messages.map((message) => <article key={message.id} id={`conversation-message-${message.id}`} tabIndex={-1} className="rounded-2xl border border-border bg-background p-3 focus:outline focus:outline-2 focus:outline-ring">
           <div className="flex items-center justify-between gap-3"><p className="text-xs font-black text-foreground">{author(message)}</p><LocalDateTime value={message.createdAt} mode="time" className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground" /></div>
           {message.body ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{message.body}</p> : null}
           {message.gifUrl ? <img src={message.gifUrl} alt="Shared GIF" className="mt-3 max-h-48 w-full rounded-xl object-contain" /> : null}
+          {engagementId && <ConversationTaskAction engagementId={engagementId} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
         </article>)}
       </div>
       {loadError ? <div role="alert" className="px-4 py-2 text-sm text-destructive">{loadError} <button type="button" onClick={() => void refresh()} className="min-h-11 underline">Retry loading</button></div> : null}
