@@ -1137,7 +1137,7 @@ for (const needle of [
 }
 for (const needle of [
   "after(async () =>",
-  "reconcileCaptureTranscriptFollowThrough(input)",
+  "reconcileCaptureTranscriptFollowThrough({ ...input, runAnalysis: true })",
   "Immediate dispatch remains retryable",
 ]) {
   requireIncludes(

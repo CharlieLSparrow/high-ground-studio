@@ -403,7 +403,9 @@ check(
 );
 check(
   "leaving Record stops playback and releases the shared audio lease",
-  shell.includes(".onDisappear { episodeWatch.stop() }")
+  /\.onDisappear\s*\{\s*episodeWatch\.stop\(\)/.test(shell)
+    && /\.task\(id: activeEpisodeWatchContextID\)\s*\{[\s\S]*?episodeWatch\.stop\(\)\s*guard let session = activeEpisodeWatchSession else \{ return \}/.test(shell)
+    && shell.includes("guard visibleTab == .record,")
     && watch.includes("func stop()")
     && watch.includes("endSharedAudioLease()"),
 );
