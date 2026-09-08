@@ -15,7 +15,10 @@ on:
 
 concurrency:
   group: capture-apple-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Cold simulator startup is expensive. Finish one run while GitHub replaces
+  # the single pending run with the newest push; do not queue every revision.
+  # Fast Linux PR validation remains independently cancelable.
+  cancel-in-progress: false
 
 permissions:
   contents: read

@@ -176,6 +176,15 @@ tests and fails if required planning or testing failed, was cancelled, or was
 unexpectedly skipped. Use this stable check when configuring branch protection;
 workflow files alone do not enable protection. Pushes alone do not run this lane.
 
+New pushes to an open PR do not cancel its active Apple run. GitHub keeps one
+active run and, by default, replaces the single pending run as new revisions
+arrive. This avoids repeatedly paying for cold simulator startup without ever
+reaching the tests, while development continues. Do not opt into queueing every
+intermediate commit. Fast web PR checks still cancel superseded runs. An older
+Apple result proves only that older SHA, never the latest release candidate;
+the final candidate must finish its own checks. See GitHub's
+[concurrency behavior](https://docs.github.com/en/actions/concepts/workflows-and-actions/concurrency).
+
 The routing regression test executes the workflow's actual shell steps against
 a disposable Git repository, including multi-commit PRs, web-only changes,
 previously omitted release tools, invalid comparison refs, and failed jobs:

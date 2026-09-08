@@ -37,6 +37,19 @@ test("Capture evaluates every PR and only starts Mac jobs for affected inputs", 
   assert.match(workflow, /name: Capture validation\n    needs: \[changes, deterministic-ui\]\n    if: always\(\)/);
 });
 
+test("new pushes do not starve Apple tests or queue every intermediate revision", () => {
+  // Check our policy, not a simulated implementation of GitHub's scheduler.
+  // Its default is one running and one replaceable pending run per group.
+  const concurrency = workflow.split("\nconcurrency:\n")[1]?.split("\npermissions:")[0];
+  assert.ok(concurrency);
+  assert.match(concurrency, /group: capture-apple-tests-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}/);
+  assert.match(concurrency, /^  cancel-in-progress: false$/m);
+  assert.doesNotMatch(concurrency, /^  queue:/m, "Do not accumulate every development push on paid Mac runners");
+  const web = readFileSync(path.join(root, ".github/workflows/pr-tests.yml"), "utf8");
+  assert.match(web.split("\nconcurrency:\n")[1]?.split("\npermissions:")[0],
+    /^  cancel-in-progress: true$/m, "Cheap web validation should still replace obsolete runs");
+});
+
 test("both Capture jobs select the repository Node toolchain before running Node commands", () => {
   for (const job of ["changes", "deterministic-ui"]) {
     const source = workflow.split(`\n  ${job}:\n`)[1]?.split(/\n  [a-z][a-z-]+:\n/)[0];
