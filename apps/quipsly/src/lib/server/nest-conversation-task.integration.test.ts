@@ -9,6 +9,7 @@ import { conversationWorkSourceHref } from "../conversation-work-source";
 import { createWorkTagTaxonomy, readNewNestTaskTagContext, readTaskTagContext, replaceWorkEntityTags } from "./work-tags";
 import { editCanonicalTaskInTransaction } from "./canonical-task-edit";
 import { ensureStudioProjectOwnerGrant } from "./studio-project-access";
+import { readNestProjectFollowThrough } from "./nest-project-follow-through";
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
 if (enabled) {
@@ -65,6 +66,16 @@ if (enabled) {
     const owner = await ensureStudioProjectOwnerGrant({ prisma, projectId: id("project"), ownerEmail: email("owner") });
     expect(owner?.memberUserId).toBe(id("owner"));
     expect(await prisma.studioProjectAccessGrant.count({ where: { projectId: id("project") } })).toBe(before);
+  });
+  it("projects shared tasks, color, sources, and current edit capability into the Nest work view", async () => {
+    const { entry } = await createNestConversationTask(command());
+    for (const actor of ["owner", "editor", "viewer", "outsider"]) {
+      const result = await readNestProjectFollowThrough(prisma, { projectId: id("project"), projectSlug: id("project"), actorUserId: id(actor) });
+      const task = result.tasks.find(row => row.id === entry.id);
+      if (actor === "outsider") { expect(task).toBeUndefined(); continue; }
+      expect(task).toMatchObject({ canEdit: actor !== "viewer", tags: [expect.objectContaining({ id: id("tag"), hexColor: "#506b46" })],
+        conversationSourceHref: `/nests/${id("project")}/workspace?message=${id("message")}` });
+    }
   });
   it("creates colored shared vocabulary inline and reuses it without recoloring on retry", async () => {
     const input = { prisma, actorUserId: id("owner"), actorEmail: email("owner"), projectId: id("project"), label: "Chapter ideas", hexColor: "#ABC" };

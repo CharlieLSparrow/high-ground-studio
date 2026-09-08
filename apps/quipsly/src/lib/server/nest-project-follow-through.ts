@@ -3,6 +3,8 @@ import { readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/tra
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
+import { readEditableWorkQueueTaskIds } from "./work-queue-task-access";
+import { conversationWorkSourceHref } from "../conversation-work-source";
 
 export function nestProjectGoalWhere(projectId: string, actorUserId: string): Prisma.GoalWhereInput {
   return { projectId, ownerUserId: actorUserId };
@@ -48,20 +50,31 @@ export async function readNestProjectFollowThrough(
       select: {
         id: true,
         title: true,
+        detail: true,
         status: true,
         dueAt: true,
+        updatedAt: true,
+        engagementId: true,
+        isNestShared: true,
+        project: { select: { id: true, slug: true } },
+        recurrenceOccurrence: { select: { id: true } },
+        tagLinks: { where: { tag: { projectId: input.projectId } }, orderBy: { createdAt: "asc" },
+          select: { tag: { select: { id: true, label: true, hexColor: true, isActive: true } } } },
         sourceJson: true,
         room: { select: { id: true, title: true } },
       },
     }),
   ]);
 
+  const editableIds = await readEditableWorkQueueTaskIds(prisma, input.actorUserId, taskRows.map(task => task.id));
   const tasks = taskRows
     .filter((task) => !isUnreviewedTranscriptActionItemSource(task.sourceJson))
     .slice(0, 32)
     .map((task) => {
       const parsedSource = readTranscriptDerivedTaskSource(task.sourceJson);
-      return { ...task, sourceAnchor: parsedSource?.roomId === task.room?.id ? parsedSource : null };
+      return { ...task, canEdit: editableIds.has(task.id), tags: task.tagLinks.map(link => link.tag),
+        conversationSourceHref: conversationWorkSourceHref(task.engagementId, task.sourceJson, task.project),
+        sourceAnchor: parsedSource?.roomId === task.room?.id ? parsedSource : null };
     });
 
   return {

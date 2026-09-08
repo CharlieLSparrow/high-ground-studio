@@ -119,6 +119,20 @@
   --color-quipsly-muted: #66513f;
   --color-quipsly-divider: #d8c8aa;
 
+  /* Shared component vocabulary must resolve to the same room materials. */
+  --color-background: var(--color-quipsly-canvas);
+  --color-foreground: var(--color-quipsly-ink);
+  --color-card: var(--color-quipsly-surface);
+  --color-card-foreground: var(--color-quipsly-ink);
+  --color-muted: var(--color-quipsly-surface-muted);
+  --color-muted-foreground: var(--color-quipsly-muted);
+  --color-border: var(--color-quipsly-divider);
+  --color-input: var(--color-quipsly-divider);
+  --color-primary: var(--color-quipsly-peacock-800);
+  --color-primary-foreground: var(--color-quipsly-surface);
+  --color-ring: var(--color-quipsly-peacock-600);
+  --color-destructive: var(--color-quipsly-rosewood-700);
+
   --color-violet-50: var(--color-quipsly-peacock-50);
   --color-violet-100: var(--color-quipsly-peacock-100);
   --color-violet-200: var(--color-quipsly-peacock-200);

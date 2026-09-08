@@ -216,7 +216,7 @@ describe("Work Queue interactions", () => {
       timezone: expect.any(String),
       expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("reminder, repeat, status, tags, goal links, and external calendars were left unchanged");
+    expect(await screen.findByRole("status")).toHaveTextContent("Task saved.");
     expect(refresh).toHaveBeenCalled();
   });
 

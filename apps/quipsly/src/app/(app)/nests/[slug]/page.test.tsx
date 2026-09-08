@@ -12,6 +12,7 @@ import {
 import NestDashboardPage from "./page";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }), notFound: jest.fn(), redirect: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/studio-project-access", () => ({
   findStudioProjectForAccess: jest.fn(),
@@ -22,6 +23,7 @@ jest.mock("@/lib/server/studio-project-access", () => ({
 }));
 jest.mock("./CreateDocumentButton", () => ({ CreateDocumentButton: () => <button type="button">Create document</button> }));
 jest.mock("./NestQuickCapture", () => ({ NestQuickCapture: () => <div>Quick capture</div> }));
+jest.mock("@/app/(app)/work/actions", () => ({ editWorkTask: jest.fn(), updateWorkTaskStatus: jest.fn() }));
 
 describe("Nest project follow-through", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -61,8 +63,8 @@ describe("Nest project follow-through", () => {
 
     const goalFindMany = jest.fn().mockResolvedValue([{ id: "goal-1", title: "Ship a trustworthy episode", status: "ACTIVE", targetAt: null, progressReceipts: [{ progressPercent: 75 }] }]);
     const taskFindMany = jest.fn().mockResolvedValue([
-      { id: "task-1", title: "Proof-listen the recap", status: "OPEN", dueAt: null, sourceJson: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: null, recordingAssetId: "asset-1", playbackSourceId: "source-1" }, room: { id: "room-1", title: "Episode review" } },
-      { id: "candidate", title: "Maybe follow up", status: "OPEN", dueAt: null, sourceJson: { source: "transcript-packet-builder", candidate: true }, room: { id: "room-1", title: "Episode review" } },
+      { id: "task-1", title: "Proof-listen the recap", status: "OPEN", dueAt: null, detail: null, updatedAt: new Date("2026-09-08T00:00:00Z"), tagLinks: [], sourceJson: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: null, recordingAssetId: "asset-1", playbackSourceId: "source-1" }, room: { id: "room-1", title: "Episode review" } },
+      { id: "candidate", title: "Maybe follow up", status: "OPEN", dueAt: null, detail: null, updatedAt: new Date("2026-09-08T00:00:00Z"), tagLinks: [], sourceJson: { source: "transcript-packet-builder", candidate: true }, room: { id: "room-1", title: "Episode review" } },
     ]);
     jest.mocked(getPrismaClient).mockReturnValue({
       studioDocument: { findMany: jest.fn().mockResolvedValue([]) },
@@ -80,7 +82,7 @@ describe("Nest project follow-through", () => {
       searchParams: Promise.resolve({ view: "work" }),
     }));
 
-    expect(screen.getByRole("heading", { name: "Project follow-through" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tasks and goals" })).toBeInTheDocument();
     expect(screen.getByText("OWNER")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ship a trustworthy episode active · 75% progress" })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByRole("link", { name: "Proof-listen the recap" })).toHaveAttribute("href", "/work?task=task-1");
