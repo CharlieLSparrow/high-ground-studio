@@ -44,7 +44,8 @@ const settingsOutput = (settings = resolvedSettings) => JSON.stringify([{ target
 
 test("Xcode readiness verifies the resolved app target and locks the same simulator identity for testing", () => {
   assert.equal(resolvedSimulatorDestination(settingsOutput(), exactPhone), exactPhone);
-  assert.equal(resolvedSimulatorDestination(settingsOutput(), "platform=iOS Simulator,name=iPhone test,OS=26.2,arch=arm64"), exactPhone);
+  assert.equal(resolvedSimulatorDestination(settingsOutput(), "platform=iOS Simulator,name=iPhone test,OS=26.2,arch=arm64"), `${exactPhone},arch=arm64`);
+  assert.equal(resolvedSimulatorDestination(settingsOutput({ ...resolvedSettings, ARCHS: "x86_64" }), `${exactPhone},arch=x86_64`), `${exactPhone},arch=x86_64`);
   for (const changed of [
     { TARGET_DEVICE_IDENTIFIER: "placeholder" },
     { TARGET_DEVICE_IDENTIFIER: "22222222-2222-2222-2222-222222222222" },
@@ -369,18 +370,19 @@ const destination = args[args.indexOf("-destination") + 1];
 const platform = destination.includes("iPad") || destination.includes("22222222-") ? "iPad" : "iPhone";
 if (args.includes("-showBuildSettings")) {
   if (!args.includes("-json") || args[args.indexOf("-destination-timeout") + 1] !== "30") process.exit(98);
+  if (!destination.endsWith(',arch=arm64')) process.exit(96);
   if (platform === 'iPhone' && process.env.CAPTURE_FAILURE === 'iPhone-resolution-exit') process.exit(64);
   if (platform === 'iPhone' && process.env.CAPTURE_FAILURE === 'iPhone-ambiguous') console.error('Using the first of multiple matching destinations');
   const id = platform === 'iPhone' ? '${phoneID}' : '22222222-2222-2222-2222-222222222222';
   console.log(JSON.stringify(platform === 'iPhone' && process.env.CAPTURE_FAILURE === 'iPhone-resolution-missing' ? [] : [{
     target: 'HighGroundCapture', buildSettings: {
-      TARGET_DEVICE_IDENTIFIER: id, PLATFORM_NAME: 'iphonesimulator', TARGET_DEVICE_PLATFORM_NAME: 'iphonesimulator',
+      TARGET_DEVICE_IDENTIFIER: id, PLATFORM_NAME: 'iphonesimulator', TARGET_DEVICE_PLATFORM_NAME: 'iphonesimulator', ARCHS: 'arm64',
       INHERITED_SECRET: 'synthetic-settings-must-not-appear-in-logs',
     },
   }]));
   process.exit(0);
 }
-if (destination !== 'platform=iOS Simulator,id=' + (platform === 'iPhone' ? '${phoneID}' : '22222222-2222-2222-2222-222222222222')) process.exit(97);
+if (destination !== 'platform=iOS Simulator,id=' + (platform === 'iPhone' ? '${phoneID}' : '22222222-2222-2222-2222-222222222222') + ',arch=arm64') process.exit(97);
 const result = args[args.indexOf("-resultBundlePath") + 1];
 const selectors = args.filter(arg => arg.startsWith("-only-testing:")).map(arg => arg.slice(14));
 fs.appendFileSync(process.env.CAPTURE_CALL_LOG, platform + "\\n");
@@ -408,8 +410,8 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     const result = spawnSync(process.execPath, [
       path.join(root, "scripts/release/quipsly-capture-ui-test-runner.mjs"),
       "--suite=critical", `--evidence-root=${evidence}`,
-      "--destination=platform=iOS Simulator,name=iPhone test",
-      "--ipad-destination=platform=iOS Simulator,name=iPad test",
+      "--destination=platform=iOS Simulator,name=iPhone test,arch=arm64",
+      "--ipad-destination=platform=iOS Simulator,name=iPad test,arch=arm64",
       `--derived-data=${path.join(fixture, "derived")}`,
     ], { encoding: "utf8", timeout: 30_000, env: {
       ...process.env, PATH: `${fixture}${path.delimiter}${process.env.PATH}`,

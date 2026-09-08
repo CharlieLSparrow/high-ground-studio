@@ -127,6 +127,32 @@ for (const failureDevice of ["none", "iPhone 17 Pro", "iPad Air 13-inch (M3)"]) 
   });
 }
 
+for (const arch of ["arm64", "x86_64", "unsupported"]) {
+  test(`actual simulator preparation pins device and ${arch} architecture`, (t) => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-architecture-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const id = "11111111-1111-1111-1111-111111111111";
+    const environmentFile = path.join(directory, "github-env");
+    writeFileSync(environmentFile, "");
+    writeFileSync(path.join(directory, "uname"), `#!/bin/sh\nprintf '%s\\n' '${arch}'\n`, {mode: 0o700});
+    writeFileSync(path.join(directory, "xcrun"), `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.join(' ') === 'simctl list devices available --json') {
+  console.log(JSON.stringify({devices: {'com.apple.CoreSimulator.SimRuntime.iOS-26-2': [{name: 'iPhone test', udid: '${id}', isAvailable: true}]}}));
+} else if (args[0] !== 'simctl' || args[2] !== '${id}' || !['boot', 'bootstatus', 'launch'].includes(args[1])) process.exit(99);
+`, {mode: 0o700});
+    const result = spawnSync("bash", ["apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh", "iPhone test", "26.2"], {
+      cwd: root, encoding: "utf8", env: {...process.env,
+        PATH: `${directory}${path.delimiter}${process.env.PATH}`,
+        CAPTURE_SIMULATOR_DESTINATION_VARIABLE: "CAPTURE_DESTINATION", GITHUB_ENV: environmentFile,
+      },
+    });
+    assert.equal(result.status, arch === "unsupported" ? 1 : 0, result.stdout + result.stderr);
+    assert.equal(readFileSync(environmentFile, "utf8"), arch === "unsupported" ? ""
+      : `CAPTURE_DESTINATION=platform=iOS Simulator,id=${id},arch=${arch}\n`);
+  });
+}
+
 for (const shard of [0, 3]) {
   for (const exitCode of [0, 17, 143]) {
     test(`native CI shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {

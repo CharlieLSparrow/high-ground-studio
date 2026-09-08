@@ -4,6 +4,11 @@ set -euo pipefail
 device_name="${1:-iPhone 17 Pro}"
 os_version="${2:-26.2}"
 destination_variable="${CAPTURE_SIMULATOR_DESTINATION_VARIABLE:-}"
+simulator_arch="$(uname -m)"
+case "${simulator_arch}" in
+  arm64|x86_64) ;;
+  *) echo "FAIL Unsupported simulator host architecture: ${simulator_arch}." >&2; exit 1 ;;
+esac
 if [[ -n "${destination_variable}" ]]; then
   if [[ "${destination_variable}" != "CAPTURE_DESTINATION" && "${destination_variable}" != "CAPTURE_IPAD_DESTINATION" ]] \
     || [[ -z "${GITHUB_ENV:-}" ]]; then
@@ -56,7 +61,9 @@ xcrun simctl launch "${simulator_udid}" com.apple.mobilesafari >/dev/null
 # example a patch runtime). Use the exact device already selected and booted,
 # not a second name/OS lookup in the next GitHub Actions step.
 if [[ -n "${destination_variable}" ]]; then
-  printf '%s=platform=iOS Simulator,id=%s\n' "${destination_variable}" "${simulator_udid}" >> "${GITHUB_ENV}"
+  # A UUID can still match ARM and Intel variants on a hosted Apple Silicon
+  # runner. Keep the native architecture explicit through resolution and test.
+  printf '%s=platform=iOS Simulator,id=%s,arch=%s\n' "${destination_variable}" "${simulator_udid}" "${simulator_arch}" >> "${GITHUB_ENV}"
 fi
 
 echo "PASS Prewarmed Safari on ${device_name} iOS ${os_version} (${simulator_udid})."

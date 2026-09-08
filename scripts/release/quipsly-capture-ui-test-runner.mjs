@@ -129,7 +129,7 @@ export function resolvedSimulatorDestination(output, destination) {
   }
   // A name/OS request has now been resolved by Xcode. Use that same identity
   // for testing instead of doing a second potentially different lookup.
-  return `platform=iOS Simulator,id=${id}`;
+  return `platform=iOS Simulator,id=${id}${requested.arch ? `,arch=${requested.arch}` : ""}`;
 }
 
 export async function ensureXcodeDestination(options, {
