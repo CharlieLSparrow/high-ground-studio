@@ -881,10 +881,16 @@ describe("Work Queue interactions", () => {
     expect(task).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("heading", { name: "Focused task" })).toBeInTheDocument();
     expect(screen.queryByText("Unrelated queue noise")).not.toBeInTheDocument();
+    for (const name of ["Weekly review", "Weekly commitments", "Add a personal task", "Goals"]) {
+      expect(screen.queryByRole("region", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("region", { name: "Work overview" })).not.toBeInTheDocument();
     await waitFor(() => expect(task).toHaveFocus());
     await user.click(screen.getByRole("button", { name: "Show full task queue" }));
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Unrelated queue noise")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Weekly commitments" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Add a personal task" })).toBeInTheDocument();
   });
 
   it("opens one focused goal without making the user cross the task wall", async () => {
@@ -903,9 +909,12 @@ describe("Work Queue interactions", () => {
     expect(screen.getByRole("heading", { name: "Focused goal" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Tasks" })).not.toBeInTheDocument();
     expect(screen.queryByText("Unrelated durable direction")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Weekly review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Add a personal task" })).not.toBeInTheDocument();
     await waitFor(() => expect(goalCard).toHaveFocus());
     await user.click(screen.getByRole("button", { name: "Show all goals" }));
     expect(screen.getByText("Unrelated durable direction")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Weekly review" })).toBeInTheDocument();
   });
 
   it.each(["task", "goal"] as const)(

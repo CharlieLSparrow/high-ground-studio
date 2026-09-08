@@ -760,7 +760,7 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${task.status === "DONE" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : task.status === "CANCELED" ? "border-stone-200 bg-stone-100 text-stone-600" : task.isOverdue ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{task.isOverdue ? "Overdue" : humanize(task.status)}</span>
-            <span className="text-[10px] font-black uppercase tracking-wide text-[#92754f]">{task.provenance}</span>
+            {task.provenance !== "Manual or legacy task" && <span className="text-[10px] font-black uppercase tracking-wide text-[#92754f]">{task.provenance}</span>}
           </div>
           <h3 className={`mt-2 text-lg font-black text-[#3d3122] ${task.status !== "OPEN" ? "line-through decoration-[#bca98d]" : ""}`}>{task.title}</h3>
           {task.attentionReason && <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-800"><BellRing size={13} aria-hidden="true" />{task.attentionReason}</p>}
@@ -1173,7 +1173,7 @@ export function WorkClient({
 
   return (
     <main className="mx-auto max-w-[1280px] space-y-8 px-2 py-2 text-[#3d3122]">
-      <section className="overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#f4d799,_transparent_40%),linear-gradient(135deg,#fffaf0,#f8edda)] p-6 shadow-sm md:p-8">
+      {focusTaskOnly || focusGoalOnly ? <h1 className="sr-only">{focusTaskOnly ? "Task" : "Goal"}</h1> : <section className="overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#f4d799,_transparent_40%),linear-gradient(135deg,#fffaf0,#f8edda)] p-6 shadow-sm md:p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9a6b2f]">Follow-through, in one place</p>
         <h1 className="mt-2 font-serif text-4xl font-black tracking-tight md:text-5xl">Work Queue</h1>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
@@ -1183,7 +1183,7 @@ export function WorkClient({
         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Work overview">
           {overview.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm"><Icon className="h-5 w-5 text-[#9a6b2f]" aria-hidden="true" /><p className="mt-3 text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}
         </div>
-      </section>
+      </section>}
 
       {unavailableFocusKind && (
         <section
@@ -1203,13 +1203,13 @@ export function WorkClient({
         </section>
       )}
 
-      <section aria-labelledby="weekly-review-heading">
+      {!focusTaskOnly && !focusGoalOnly && <section aria-labelledby="weekly-review-heading">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">Review what actually happened</p>
         <h2 id="weekly-review-heading" className="mt-1 font-serif text-3xl font-black">Weekly review</h2>
         <div className="mt-4 grid gap-4">{snapshot.weeklyReviews.map((review) => <WeeklyReviewCard key={`${review.subjectUserId}:${review.weekStartsAt}`} review={review} />)}</div>
-      </section>
+      </section>}
 
-      <section aria-labelledby="new-task-heading" className="rounded-3xl border border-[#dfcba6] bg-white p-5 shadow-sm md:p-6">
+      {!focusTaskOnly && !focusGoalOnly && <section aria-labelledby="new-task-heading" className="rounded-3xl border border-[#dfcba6] bg-white p-5 shadow-sm md:p-6">
         <div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-2 text-amber-800"><ListChecks aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quick capture</p><h2 id="new-task-heading" className="font-serif text-2xl font-black">Add a personal task</h2><p className="mt-1 text-sm font-semibold text-[#765f40]">This explicitly assigns the new task to your signed-in account.</p></div></div>
         <form ref={createFormRef} action={submitNewTask} className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-6 xl:items-end">
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Task title<input name="title" required maxLength={500} placeholder="The next concrete thing" className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
@@ -1226,7 +1226,7 @@ export function WorkClient({
         </form>
         <p className="mt-3 text-[11px] font-semibold text-[#927b5b]">Fixed schedule keeps independent dates; after completion schedules the next occurrence from when you finish. Neither mode sends a message, schedules a reminder, creates a provider calendar event, or publishes anything.</p>
         {createMessage && <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{createMessage}</p>}
-      </section>
+      </section>}
 
       {!focusGoalOnly && <section aria-labelledby="tasks-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -1239,7 +1239,7 @@ export function WorkClient({
         {visibleTasks.length ? <div className={focusTaskOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleTasks.map((task) => <TaskCard key={task.id} task={task} focused={task.id === focusTaskId} managesRecurrence={recurrenceManagerTaskIds.has(task.id)} projectOptions={projectOptions} onSaved={onTaskSaved} onConflict={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">{filter === "ATTENTION" ? "Nothing currently needs attention. Quipsly has not invented an unread notification state." : `No ${filter === "ALL" ? "committed" : filter.toLowerCase()} tasks are in your scoped queue.`}</div>}
       </section>}
 
-      <section aria-labelledby="goals-heading">
+      {!focusTaskOnly && <section aria-labelledby="goals-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">{focusGoalOnly ? "Opened from its source" : "Durable direction"}</p><h2 id="goals-heading" className="mt-1 font-serif text-3xl font-black">{focusGoalOnly ? "Focused goal" : "Goals"}</h2></div>
           {focusGoalOnly && <button type="button" onClick={() => setFocusGoalOnly(false)} className="min-h-11 rounded-full border border-[#dcc8a5] bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#765f40]">Show all goals</button>}
@@ -1248,14 +1248,14 @@ export function WorkClient({
         {!focusGoalOnly && <form ref={goalFormRef} action={submitNewGoal} className="mt-4 grid gap-3 rounded-2xl border border-violet-200 bg-violet-50/40 p-4 lg:grid-cols-[1.1fr_1.5fr_auto_auto_auto] lg:items-end"><label className="text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input name="goalTitle" required maxLength={500} placeholder="What does better look like?" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Why or definition of success<input name="goalDescription" maxLength={5000} placeholder="Enough context to recognize meaningful progress" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Target (optional)<input name="targetAt" type="date" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Nest (optional)<select name="goalProjectId" defaultValue="" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal"><option value="">Personal / unfiled</option>{projectOptions.filter((project) => project.canWrite).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><button type="submit" disabled={creatingGoal} className="rounded-xl bg-violet-700 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{creatingGoal ? "Saving…" : "Add goal"}</button></form>}
         {goalMessage && <p role="status" className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-900">{goalMessage}</p>}
         {visibleGoals.length ? <div className={focusGoalOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleGoals.map((goal) => <GoalCard key={goal.id} goal={goal} focused={goal.id === focusGoalId} availableTasks={snapshot.tasks} projectOptions={projectOptions} onRefresh={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">No canonical or legacy Session Plan goals are available to this account.</div>}
-      </section>
+      </section>}
 
-      <section aria-labelledby="commitments-heading">
+      {!focusTaskOnly && !focusGoalOnly && <section aria-labelledby="commitments-heading">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Coaching cadence</p>
         <h2 id="commitments-heading" className="mt-1 font-serif text-3xl font-black">Weekly commitments</h2>
         <WeeklyCommitmentEditor commitments={snapshot.commitments} onRefresh={() => router.refresh()} />
         {snapshot.commitments.length ? <div className="mt-4 grid gap-4 lg:grid-cols-2">{snapshot.commitments.map((commitment) => <article key={commitment.id} className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-black uppercase tracking-wide text-emerald-800">Week of <LocalDateTime value={commitment.weekStartsAt} mode="date" /></p><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">{humanize(commitment.status)}</span></div><ol className="mt-4 space-y-3">{commitment.commitments.map((item, index) => <li key={`${commitment.id}-${index}`} className="flex gap-3 text-sm font-bold leading-6"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-50 text-xs text-emerald-800">{index + 1}</span>{item}</li>)}</ol>{commitment.supportNeeded && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900"><strong>Support needed:</strong> {commitment.supportNeeded}</p>}{commitment.progressNotes && <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]"><strong>Progress:</strong> {commitment.progressNotes}</p>}{commitment.clientReviewedAt && <p className="mt-3 text-xs font-black text-emerald-800">Client reflection recorded <LocalDateTime value={commitment.clientReviewedAt} /></p>}{commitment.coachNotes && <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]"><strong>Coach note:</strong> {commitment.coachNotes}</p>}<p className="mt-4 text-[11px] font-bold text-[#927b5b]">{commitment.clientLabel ? `Client: ${commitment.clientLabel}` : "Private weekly record"}{commitment.reviewerLabel ? ` · Reviewed by ${commitment.reviewerLabel}` : ""}</p></article>)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">No persisted weekly commitments are available to this account.</div>}
-      </section>
+      </section>}
 
       {snapshot.tasks.length >= snapshot.boundaries.taskLimit && <p role="status" className="text-sm text-[#765f40]">Showing up to {snapshot.boundaries.taskLimit} tasks. Choose a Nest to narrow your view.</p>}
     </main>
