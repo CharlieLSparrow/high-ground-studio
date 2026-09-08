@@ -2935,6 +2935,7 @@ struct MobileCapturePacketReviewLane: Codable, Hashable, Identifiable {
 
 struct MobileCapturePacketBuildResponse: Codable {
     let ok: Bool
+    let analysisQueued: Bool?
     let error: String?
     let packetKind: String?
     let generatedAt: String?

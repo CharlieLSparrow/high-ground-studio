@@ -105,6 +105,9 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         #endif
         app.launchArguments = ["--capture-ui-preview"]
+        if name.contains("testBackgroundFollowThroughKeepsExistingWorkEditable") {
+            app.launchArguments.append("--capture-follow-through-processing-preview")
+        }
         if name.contains("testLibraryOffersPrivateKeyboardWritingBesideVoiceWriting")
             || name.contains("testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture") {
             app.launchArguments.append("--capture-share-owner-ui-preview=\(writingPreviewOwner)")
@@ -5019,6 +5022,25 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["Cancel"].firstMatch.tap()
             XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].firstMatch.waitForExistence(timeout: 8))
         }
+    }
+
+    func testBackgroundFollowThroughKeepsExistingWorkEditable() {
+        openPreviewTranscriptReview()
+        let progress = app.descendants(matching: .any)["CaptureFollowThroughProgress"].firstMatch
+        reveal(progress, searchAboveFirst: true)
+        XCTAssertTrue(progress.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["CaptureFollowThroughRetry"].exists,
+            "Background work must not ask the person to restart an in-flight job.")
+        let edit = app.buttons["CaptureTranscriptEditWork_TASK_preview-task"].firstMatch
+        reveal(edit, searchAboveFirst: false)
+        XCTAssertTrue(edit.waitForExistence(timeout: 8))
+        edit.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        XCTAssertEqual(title.value as? String, "Block 30 minutes for the first step")
+        title.tap()
+        title.typeText(" after lunch")
+        XCTAssertTrue((title.value as? String ?? "").contains("after lunch"))
     }
 
     func testTranscriptFollowUpExpandsAllNotesTasksAndGoals() {

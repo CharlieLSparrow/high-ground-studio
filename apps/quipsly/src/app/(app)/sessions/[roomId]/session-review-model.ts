@@ -181,6 +181,7 @@ export type SessionReviewPacket = {
   } | null;
   transcriptProcessingGate?: { allowed: boolean; errorCode?: string; error?: string; explicitReleaseRequired?: boolean };
   packet?: {
+    generation?: import("@/lib/session-follow-through-progress").SessionFollowThroughProgress | null;
     reviewAccess?: {
       canReviewPrivatePacket: boolean;
       role: "CANONICAL_REVIEWER" | "SESSION_PARTICIPANT";

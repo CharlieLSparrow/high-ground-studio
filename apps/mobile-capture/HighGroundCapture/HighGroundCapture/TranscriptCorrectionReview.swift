@@ -949,6 +949,13 @@ private struct CapturePacketGoalReviewContext: Equatable {
     let packetBuildId: String
 }
 
+struct CaptureFollowThroughGeneration: Codable, Equatable {
+    let state: String
+    let message: String
+    let canRetry: Bool
+    var isPending: Bool { state == "PROCESSING" || state == "RETRYING" }
+}
+
 private struct CapturePacketGoalReviewEnvelope: Codable {
     struct Packet: Codable {
         struct ReviewAccess: Codable {
@@ -974,6 +981,7 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
             let boundary: String
         }
         let build: Build?
+        let generation: CaptureFollowThroughGeneration?
         let reviewAccess: ReviewAccess?
         let status: String?
         let transcriptReview: TranscriptReview?
@@ -1020,6 +1028,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetProviderOnlySegmentCount = 0
     @Published private(set) var packetSnapshotStale = false
     @Published private(set) var followUpPreparationFailed = false
+    @Published private(set) var followThroughGeneration: CaptureFollowThroughGeneration?
     @Published private(set) var pendingTranscriptDecisionCount = 0
     @Published private(set) var heldTranscriptDecisionCount = 0
     @Published private(set) var pendingSpeakerAttributionCount = 0
@@ -1240,6 +1249,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
             packetStatus = "RESULTS_READY"
+            followThroughGeneration = ProcessInfo.processInfo.arguments.contains("--capture-follow-through-processing-preview")
+                ? .init(state: "PROCESSING", message: "Preparing notes, tasks, and goals. You can keep working or leave this page.", canRetry: false)
+                : nil
             canReviewPrivatePacket = true
             privatePacketBoundary = nil
             packetSegmentCount = 0
@@ -2101,6 +2113,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     }
 
     private func loadPacketCandidates(roomID: String, preserveOnFailure: Bool = false) async {
+        let requestedOwnerID = AuthManager.currentStoredOwnerID()
         guard AuthManager.shared.networkActionsAllowed,
               var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
             packetGoalCandidates = []
@@ -2130,6 +2143,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 throw captureTranscriptError(data: data, fallback: "Packet goal candidates could not load.")
             }
             let payload = try JSONDecoder().decode(CapturePacketGoalReviewEnvelope.self, from: data)
+            guard activeRoomID == roomID, AuthManager.currentStoredOwnerID() == requestedOwnerID else { return }
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: payload.error ?? "Packet goal candidates could not load.") }
             packetGoalCandidates = payload.packet?.goalCandidates ?? []
             packetGoalMergeTargets = payload.packet?.goalMergeTargets ?? []
@@ -2141,6 +2155,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
             packetResults = payload.packet?.results
             packetStatus = payload.packet?.status
+            followThroughGeneration = payload.packet?.generation
             canReviewPrivatePacket = payload.packet?.reviewAccess?.canReviewPrivatePacket
                 ?? (payload.packet?.status?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() != "PRIVATE_REVIEWER_ONLY")
             privatePacketBoundary = payload.packet?.reviewAccess?.boundary
@@ -2163,6 +2178,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 followUpPreparationFailed = false
             }
         } catch {
+            guard activeRoomID == roomID, AuthManager.currentStoredOwnerID() == requestedOwnerID else { return }
             if preserveOnFailure, ![401, 403, 404].contains(responseStatus ?? 0) {
                 packetReviewError = "Updates paused. Your loaded work is still here; refresh when you're connected."
                 return
@@ -2202,6 +2218,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private func prepareFollowUpIfNeeded(roomID: String) async {
         let status = packetStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
         guard canReviewPrivatePacket,
+              followThroughGeneration == nil || followThroughGeneration?.state == "READY",
               status == "PACKET_READY_TO_BUILD" || packetNeedsRebuild,
               let transcriptJobID = desk?.transcriptJobId?.nonemptyTranscriptValue else {
             return
@@ -2230,6 +2247,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "transcriptJobId": transcriptJobID,
                 "force": false,
+                "retryAnalysis": !automatic,
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileCapturePacketBuildResponse.self, from: data)
@@ -2238,7 +2256,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             await loadPacketCandidates(roomID: roomID)
             followUpPreparationFailed = false
-            message = payload.reusedExistingPacket == true
+            message = payload.analysisQueued == true
+                ? "Automatic notes are being prepared. Your saved work stays available."
+                : payload.reusedExistingPacket == true
                 ? "Your Session results are ready."
                 : "Quipsly created editable notes, tasks, and goals from this Session."
             return true
@@ -2253,6 +2273,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private func resetPacketReviewState() {
         packetStatus = nil
+        followThroughGeneration = nil
         canReviewPrivatePacket = true
         privatePacketBoundary = nil
         packetSegmentCount = 0
@@ -3468,6 +3489,9 @@ struct CaptureTranscriptReviewView: View {
                         ProgressView("Loading protected transcript…")
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
+                        if let generation = client.followThroughGeneration, generation.state != "READY" {
+                            followThroughProgress(generation)
+                        }
                         transcriptSegments(desk, scrollProxy: scrollProxy)
                         if let results = client.packetResults {
                             sessionFollowUpResults(
@@ -3715,6 +3739,14 @@ struct CaptureTranscriptReviewView: View {
                 guard client.packetResults != nil, !previewOnly else { return }
                 _ = await followUpSessions.load(authoritativeSessionID: roomID)
             }
+            .task(id: client.followThroughGeneration?.isPending == true) {
+                guard !previewOnly, !client.isUsingProtectedCache else { return }
+                while client.followThroughGeneration?.isPending == true && !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(3)) } catch { return }
+                    guard !Task.isCancelled else { return }
+                    await client.refreshFollowUp(roomID: roomID)
+                }
+            }
             .task {
                 await client.load(
                     roomID: roomID,
@@ -3751,6 +3783,24 @@ struct CaptureTranscriptReviewView: View {
             }
             .onDisappear { playback.pause(resetPosition: true) }
         }
+    }
+
+    private func followThroughProgress(_ generation: CaptureFollowThroughGeneration) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(generation.message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            if generation.canRetry && client.canReviewPrivatePacket {
+                Button("Retry automatic notes") {
+                    Task { _ = await client.buildCurrentPacket(roomID: roomID, previewOnly: previewOnly) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(previewOnly || client.isMutating || client.isUsingProtectedCache)
+                .accessibilityIdentifier("CaptureFollowThroughRetry")
+            }
+        }
+        .reviewCard()
+        .accessibilityIdentifier("CaptureFollowThroughProgress")
     }
 
     @ViewBuilder

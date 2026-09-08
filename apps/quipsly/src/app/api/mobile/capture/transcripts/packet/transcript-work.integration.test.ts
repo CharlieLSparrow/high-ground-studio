@@ -6,7 +6,7 @@ import { transcriptPacketNoteCandidateId } from "@high-ground/quipsly-domain/coa
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { buildCoachingPacketFromTranscriptJob, transcriptPacketSnapshot, loadSessionFollowThroughSource, sessionFollowThroughAnalysisSource } from "@/lib/server/coaching-packets";
-import { analyzeSessionTranscript } from "@/lib/server/session-transcript-analysis";
+import { analyzeSessionTranscript, SESSION_ANALYSIS_VERSION, sessionAnalysisSourceFingerprint } from "@/lib/server/session-transcript-analysis";
 import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { loadSessionWork } from "@/lib/server/session-work";
@@ -23,6 +23,7 @@ import { POST as createDraft } from "../drafts/route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/capture-transcript-follow-through-dispatch", () => ({ dispatchCaptureTranscriptFollowThrough: jest.fn() }));
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
 if (enabled) {
@@ -452,6 +453,54 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(await tx.transcriptSegment.findMany({ where: { transcriptJobId: f.job.id }, orderBy: { startSeconds: "asc" } })).toEqual(session.segments);
       expect(await tx.transcriptSegmentVerification.count({ where: { roomId: f.room.id } })).toBe(0);
       expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
+    });
+  });
+
+  it("persists analysis retry intent before responding without resetting attempts on an automatic build", async () => {
+    await withFixture(async (tx, f) => {
+      await automaticSession(tx, f);
+      expect(await reconcileCaptureTranscriptFollowThrough({ prisma: getPrismaClient(), transcriptJobId: f.job.id, analysisProvider: null }))
+        .toMatchObject({ packetStatus: "ready" });
+      const loaded = await loadSessionFollowThroughSource({ prisma: tx, transcriptJobId: f.job.id });
+      if (!loaded.ok) throw new Error(loaded.error);
+      const source = sessionFollowThroughAnalysisSource(loaded.job, loaded.resolvedTranscript);
+      await tx.sessionFollowThroughAnalysis.create({ data: {
+        roomId: f.room.id, sourceFingerprint: sessionAnalysisSourceFingerprint(source),
+        version: SESSION_ANALYSIS_VERSION, provider: "synthetic", model: "retry-test",
+        status: "failed", attemptCount: 3, errorCode: "PROVIDER_UNAVAILABLE",
+      } });
+      const beforeFlag = process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED;
+      process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED = "true";
+      try {
+        for (const retryAnalysis of [false, true]) {
+          const response = await buildPacket(new Request("http://localhost/api/mobile/capture/transcripts/packet", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ transcriptJobId: f.job.id, retryAnalysis }),
+          }));
+          expect(response.status).toBe(200);
+          expect(await response.json()).toMatchObject({ ok: true, analysisQueued: true });
+          expect(await tx.sessionFollowThroughAnalysis.findUniqueOrThrow({ where: { roomId: f.room.id } }))
+            .toMatchObject({ status: "failed", attemptCount: retryAnalysis ? 0 : 3 });
+          const job = await tx.transcriptJob.findUniqueOrThrow({ where: { id: f.job.id } });
+          expect(job.resultJson).toMatchObject({ followThrough: { packetStatus: "waiting" },
+            processingControl: { routing: { sourceTopology: "participant-isolated" } } });
+        }
+      } finally {
+        if (beforeFlag === undefined) delete process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED;
+        else process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED = beforeFlag;
+      }
+      // No after-response callback ran. A normal recovery pass can consume the
+      // durable request and its explicitly reset attempt allowance instead.
+      const generate = jest.fn(async () => JSON.stringify({ goals: [], notes: [], tasks: [{
+        sourceId: source.segments.find(segment => segment.text.includes("Tomorrow I will draft one page."))!.id,
+        title: "Draft one page", excerpt: "Tomorrow I will draft one page.",
+      }] }));
+      expect(await reconcileCaptureTranscriptFollowThrough({ prisma: getPrismaClient(), transcriptJobId: f.job.id,
+        analysisProvider: { name: "synthetic", model: "retry-test", generate }, runAnalysis: true,
+      })).toMatchObject({ packetStatus: "ready" });
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(await tx.sessionFollowThroughAnalysis.findUniqueOrThrow({ where: { roomId: f.room.id } }))
+        .toMatchObject({ status: "materialized", attemptCount: 1 });
     });
   });
 

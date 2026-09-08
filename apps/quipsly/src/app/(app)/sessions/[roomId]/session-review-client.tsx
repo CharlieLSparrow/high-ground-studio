@@ -3831,11 +3831,21 @@ export function SessionReviewClient({
   const [buildingPacket, setBuildingPacket] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const automaticPacketAttempts = useRef(new Set<string>());
+  const activeRead = useRef<AbortController | null>(null);
+  const readGeneration = useRef(0);
+  const readScope = `${roomId}:${focusedRecordingAssetId || ""}`;
+  const currentReadScope = useRef(readScope);
+  currentReadScope.current = readScope;
   const liveDock = useLiveSessionDock();
 
   const load = useCallback(
     async (options?: { background?: boolean }) => {
       const background = options?.background === true;
+      if (currentReadScope.current !== readScope || (background && activeRead.current)) return;
+      activeRead.current?.abort();
+      const controller = new AbortController();
+      const generation = ++readGeneration.current;
+      activeRead.current = controller;
       if (!background) {
         setLoading(true);
         setMessage(null);
@@ -3846,15 +3856,17 @@ export function SessionReviewClient({
           packetParams.set("recordingAssetId", focusedRecordingAssetId);
         const response = await fetch(
           `/api/mobile/capture/transcripts/packet?${packetParams.toString()}`,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
         );
         const body = (await response.json()) as SessionReviewPacket;
+        if (generation !== readGeneration.current || currentReadScope.current !== readScope) return;
         if (!response.ok || !body.ok)
           throw new Error(
             body.error || "Quipsly could not read this session packet.",
           );
         setPacket(body);
       } catch (error) {
+        if (controller.signal.aborted || generation !== readGeneration.current || currentReadScope.current !== readScope) return;
         if (!background) setPacket(null);
         setMessage(
           error instanceof Error
@@ -3862,11 +3874,23 @@ export function SessionReviewClient({
             : "Quipsly could not read this session packet.",
         );
       } finally {
-        if (!background) setLoading(false);
+        if (generation === readGeneration.current) {
+          activeRead.current = null;
+          if (!background) setLoading(false);
+        }
       }
     },
-    [focusedRecordingAssetId, roomId],
+    [focusedRecordingAssetId, roomId, readScope],
   );
+
+  useEffect(() => {
+    setPacket(null);
+    return () => {
+      ++readGeneration.current;
+      activeRead.current?.abort();
+      activeRead.current = null;
+    };
+  }, [readScope]);
 
   useEffect(() => {
     if (mode !== "transcript") {
@@ -3877,10 +3901,12 @@ export function SessionReviewClient({
   }, [load, mode]);
 
   const transcriptJobStatus = packet?.transcriptJob?.status || "";
+  const generation = packet?.packet?.generation;
+  const generatingWork = generation?.state === "PROCESSING" || generation?.state === "RETRYING";
   useEffect(() => {
     if (
       mode !== "transcript" ||
-      !["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptJobStatus)
+      (!generatingWork && !["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptJobStatus))
     ) {
       return;
     }
@@ -3888,7 +3914,7 @@ export function SessionReviewClient({
       void load({ background: true });
     }, 2_500);
     return () => window.clearInterval(interval);
-  }, [load, mode, transcriptJobStatus]);
+  }, [load, mode, transcriptJobStatus, generatingWork]);
 
   const buildPacket = useCallback(
     async (options?: { automatic?: boolean }) => {
@@ -3900,18 +3926,21 @@ export function SessionReviewClient({
         const response = await fetch("/api/mobile/capture/transcripts/packet", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ transcriptJobId, force: false }),
+          body: JSON.stringify({ transcriptJobId, force: false, retryAnalysis: options?.automatic !== true }),
         });
         const body = (await response.json()) as {
           ok?: boolean;
           error?: string;
           idempotentReplay?: boolean;
+          analysisQueued?: boolean;
         };
         if (!response.ok || !body.ok)
           throw new Error(body.error || "Session follow-through was not created.");
         await load();
         setMessage(
-          options?.automatic
+          body.analysisQueued
+            ? "Automatic notes are being prepared. Your saved work stays available."
+            : options?.automatic
             ? "Your Session recap, notes, tasks, and goals are ready. Everything stays editable and linked to the recording."
             : body.idempotentReplay
               ? "Your current Session follow-through is already up to date."
@@ -4034,7 +4063,7 @@ export function SessionReviewClient({
         : "Not shared yet"
     : followUpReadyForReview
       ? "Ready to use"
-      : buildingPacket && canPrepareReviewMaterial
+      : generatingWork || (buildingPacket && canPrepareReviewMaterial)
         ? "Preparing"
         : packetStale
           ? "Refreshing"
@@ -4043,6 +4072,7 @@ export function SessionReviewClient({
   useEffect(() => {
     if (
       !canPrepareReviewMaterial ||
+      (generation && generation.state !== "READY") ||
       !packetAttemptKey ||
       buildingPacket ||
       automaticPacketAttempts.current.has(packetAttemptKey)
@@ -4051,7 +4081,7 @@ export function SessionReviewClient({
     }
     automaticPacketAttempts.current.add(packetAttemptKey);
     void buildPacket({ automatic: true });
-  }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey]);
+  }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey, generation]);
 
   const reviewLanes = packet?.packet?.reviewLanes ?? [];
   const actionableReviewLanes = reviewLanes.filter(
@@ -4570,7 +4600,7 @@ export function SessionReviewClient({
                   reviewMaterialReady={Boolean(packet.packet?.summary)}
                   packetStale={packetStale}
                   preparingReviewMaterial={
-                    buildingPacket && canPrepareReviewMaterial
+                    generatingWork || (buildingPacket && canPrepareReviewMaterial)
                   }
                   held={held}
                   followUpReady={clientFollowUpReady}
@@ -4678,8 +4708,8 @@ export function SessionReviewClient({
                           : "Start transcription"}
                     </button>
                     <p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">
-                      Uses this recording to create timed text. It does not
-                      create or send notes, tasks, goals, or messages.
+                      Creates timed text and editable Session notes, tasks, and goals.
+                      Nothing is emailed or published automatically.
                     </p>
                   </div>
                 ) : null}
@@ -4706,7 +4736,7 @@ export function SessionReviewClient({
                         : "Nothing has been shared yet. Your transcript and shared Session tools remain available."
                     : followUpReadyForReview
                       ? "Your recap, notes, tasks, and goals are ready to use."
-                      : buildingPacket && canPrepareReviewMaterial
+                      : generatingWork || (buildingPacket && canPrepareReviewMaterial)
                         ? "Quipsly is organizing the transcript into editable Session work."
                         : "Quipsly will organize the transcript into editable Session work when it is ready."}
                 </p>
@@ -4720,6 +4750,16 @@ export function SessionReviewClient({
                   aria-labelledby="summary-heading"
                   className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
                 >
+                  {generation && generation.state !== "READY" ? (
+                    <div role="status" className="mb-4 rounded-xl border border-border bg-muted/40 p-3 text-sm text-foreground">
+                      <p>{generation.message}</p>
+                      {generation.canRetry ? <button type="button" disabled={buildingPacket}
+                        onClick={() => void buildPacket()}
+                        className="mt-2 min-h-11 rounded-lg bg-primary px-3 font-semibold text-primary-foreground disabled:opacity-50">
+                        {buildingPacket ? "Retrying…" : "Retry automatic notes"}
+                      </button> : null}
+                    </div>
+                  ) : null}
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
                     Session recap
                   </p>
@@ -4746,7 +4786,7 @@ export function SessionReviewClient({
                             Your existing work remains editable while the
                             refreshed version is prepared.
                           </p>
-                          <button
+                          {!generation || generation.state === "READY" ? <button
                             type="button"
                             onClick={() => void buildPacket()}
                             disabled={buildingPacket || loading}
@@ -4764,7 +4804,7 @@ export function SessionReviewClient({
                             {buildingPacket
                               ? "Refreshing results…"
                               : "Try again"}
-                          </button>
+                          </button> : null}
                         </div>
                       ) : null}
                     </>
@@ -4774,7 +4814,7 @@ export function SessionReviewClient({
                         Quipsly prepares the recap and follow-through
                         automatically from the completed transcript.
                       </p>
-                      {packetBuildAction ? (
+                      {packetBuildAction && (!generation || generation.state === "READY") ? (
                         <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
                           <button
                             type="button"
