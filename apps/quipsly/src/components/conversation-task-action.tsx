@@ -9,8 +9,10 @@ export type ConversationLinkedTask = {
   tags?: { id: string; label: string; hexColor: string | null; isActive: boolean }[];
 };
 
-export function ConversationTaskAction({ engagementId, messageId, body, canCreate, tasks = [] }: {
-  engagementId: string; messageId: string; body: string; canCreate: boolean; tasks?: ConversationLinkedTask[];
+type ConversationTaskTarget = { engagementId: string; projectSlug?: never } | { engagementId?: never; projectSlug: string };
+
+export function ConversationTaskAction({ engagementId, projectSlug, messageId, body, canCreate, tasks = [] }: ConversationTaskTarget & {
+  messageId: string; body: string; canCreate: boolean; tasks?: ConversationLinkedTask[];
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(body.replace(/\s+/g, " ").trim().slice(0, 160));
@@ -37,14 +39,15 @@ export function ConversationTaskAction({ engagementId, messageId, body, canCreat
     setError("");
     const normalized = title.trim();
     const tagIds = selectedTags.map(tag => tag.id).sort();
-    const fingerprint = JSON.stringify([normalized, tagIds]);
+    const fingerprint = JSON.stringify([engagementId, projectSlug, messageId, normalized, tagIds]);
     const intent = request.current?.fingerprint === fingerprint ? request.current : { fingerprint, id: crypto.randomUUID() };
     request.current = intent;
     try {
-      const response = await fetch(`/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`, {
+      const endpoint = engagementId ? `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work` : "/api/nest-chat/tasks";
+      const response = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: "TASK", title: normalized, body, sourceMessageId: messageId, clientRequestId: intent.id,
-          ...(tagIds.length ? { tags: { tagIds } } : {}) }),
+          ...(projectSlug ? { projectSlug } : {}), ...(tagIds.length ? { tags: { tagIds } } : {}) }),
       });
       const result = await response.json();
       if (!response.ok || !result.ok || !result.entry?.id) throw new Error(result.error || "Could not create the task. Try again.");
@@ -81,7 +84,7 @@ export function ConversationTaskAction({ engagementId, messageId, body, canCreat
     {open && <form onSubmit={create} className="space-y-2 rounded-xl border border-border bg-card p-3">
       <label className="block text-sm font-semibold">Task title<input aria-label="Task title from message" value={title} onChange={event => setTitle(event.target.value)} maxLength={500} required disabled={pending}
         className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-background px-3 text-foreground" autoFocus /></label>
-      <ConversationTaskTags engagementId={engagementId} selected={selectedTags} onChange={setSelectedTags} disabled={pending} />
+      <ConversationTaskTags engagementId={engagementId} projectSlug={projectSlug} selected={selectedTags} onChange={setSelectedTags} disabled={pending} />
       <p className="text-xs text-muted-foreground">Shared in this space and linked to this message. You can change the task anytime.</p>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2"><button type="submit" disabled={pending || !title.trim() || !canCreate} className="min-h-11 rounded-lg bg-primary px-3 font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Creating…" : "Add task"}</button>
@@ -90,8 +93,9 @@ export function ConversationTaskAction({ engagementId, messageId, body, canCreat
   </div>;
 }
 
-function ConversationTaskTags({ engagementId, selected, onChange, disabled }: {
-  engagementId: string;
+function ConversationTaskTags({ engagementId, projectSlug, selected, onChange, disabled }: {
+  engagementId?: string;
+  projectSlug?: string;
   selected: NonNullable<ConversationLinkedTask["tags"]>;
   onChange: (tags: NonNullable<ConversationLinkedTask["tags"]>) => void;
   disabled: boolean;
@@ -109,7 +113,7 @@ function ConversationTaskTags({ engagementId, selected, onChange, disabled }: {
     setLoading(true);
     setError("");
     setTags([]);
-    const params = new URLSearchParams({ entityKind: "task", engagementId });
+    const params = new URLSearchParams({ entityKind: "task", ...(engagementId ? { engagementId } : { projectSlug: projectSlug! }) });
     void (async () => {
       try {
         const response = await fetch(`/api/work/tags?${params}`, { cache: "no-store", signal: controller.signal });
@@ -124,7 +128,7 @@ function ConversationTaskTags({ engagementId, selected, onChange, disabled }: {
       }
     })();
     return () => controller.abort();
-  }, [expanded, engagementId, attempt]);
+  }, [expanded, engagementId, projectSlug, attempt]);
 
   const visible = tags.filter(tag => tag.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <div className="min-w-0 space-y-2">

@@ -158,9 +158,13 @@ export async function GET(request: Request) {
         take: 200,
         select: {
           id: true, title: true, detail: true, status: true, dueAt: true, updatedAt: true, sourceJson: true, assignedUserId: true,
+          isNestShared: true,
           evidenceReceipts: { where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1, select: { evidenceJson: true } },
           reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
-          project: { select: { id: true, name: true, slug: true } },
+          project: { select: { id: true, name: true, slug: true, accessGrants: {
+            where: { memberUserId: userId, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
+            take: 1, select: { id: true },
+          } } },
           tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
           room: { select: { id: true, title: true } },
           booking: { select: { clientUserId: true, coachUserId: true } },
@@ -279,6 +283,7 @@ export async function GET(request: Request) {
       prisma.actionItem.findMany({
         where: {
           assignedUserId: userId,
+          AND: [{ OR: personalOrSharedSessionTaskAccessWhere(userId) }],
           OR: [
             { status: "OPEN" },
             { completedAt: { gte: reviewWindowStartsAt, lt: reviewWindowEndsAt } },
@@ -337,12 +342,12 @@ export async function GET(request: Request) {
         updatedAt: task.updatedAt.toISOString(),
         roomId: task.room?.id ?? null,
         sessionTitle: task.room?.title ?? null,
-        project: projectVisible ? task.project : null,
-        canEdit: task.assignedUserId === userId
+        project: projectVisible ? { id: task.project.id, name: task.project.name, slug: task.project.slug } : null,
+        canEdit: task.isNestShared ? Boolean(task.project?.accessGrants?.length) : task.assignedUserId === userId
           || (!task.engagement && task.booking?.clientUserId === userId)
           || (!task.engagement && task.booking?.coachUserId === userId)
           || Boolean(task.engagement?.members?.length),
-        canEditTags: projectVisible ? writableProjectIds.has(task.project.id) : false,
+        canEditTags: projectVisible ? (task.isNestShared ? Boolean(task.project?.accessGrants?.length) : writableProjectIds.has(task.project.id)) : false,
         tagIds: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.label) : [],
         sourceAnchor,

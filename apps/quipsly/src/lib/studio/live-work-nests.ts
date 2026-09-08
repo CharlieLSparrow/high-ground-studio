@@ -179,7 +179,7 @@ async function ensureTemplateCollaboratorGrants({
     const email = normalizeAccessEmail(collaborator.email);
     if (!email || email === normalizedOwnerEmail) continue;
 
-    await ensureInvitedStudioUserByEmail({
+    const member = await ensureInvitedStudioUserByEmail({
       email,
       prisma,
     });
@@ -192,6 +192,7 @@ async function ensureTemplateCollaboratorGrants({
         },
       },
       update: {
+        memberUserId: member.id,
         role: collaborator.role,
         status: "ACTIVE",
         createdByEmail: normalizedCreatedByEmail || normalizedOwnerEmail || null,
@@ -200,6 +201,7 @@ async function ensureTemplateCollaboratorGrants({
       create: {
         projectId,
         email,
+        memberUserId: member.id,
         role: collaborator.role,
         status: "ACTIVE",
         createdByEmail: normalizedCreatedByEmail || normalizedOwnerEmail || null,

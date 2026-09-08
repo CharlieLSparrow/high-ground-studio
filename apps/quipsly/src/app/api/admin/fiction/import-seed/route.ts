@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const email = session?.user?.email?.toLowerCase();
 
     // STRICT PRIVACY GUARD
-    if (email !== "charlielsparrow@gmail.com") {
+    if (!session?.user?.id || email !== "charlielsparrow@gmail.com") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -56,10 +56,11 @@ export async function POST(req: Request) {
     // 3. Add Project Access Grant to ensure Charlie has explicit access
     await prisma.studioProjectAccessGrant.upsert({
       where: { projectId_email: { projectId: project.id, email } },
-      update: { role: "OWNER", status: "ACTIVE" },
+      update: { memberUserId: session.user.id, role: "OWNER", status: "ACTIVE" },
       create: {
         projectId: project.id,
         email,
+        memberUserId: session.user.id,
         role: "OWNER",
         status: "ACTIVE",
         createdByEmail: email,

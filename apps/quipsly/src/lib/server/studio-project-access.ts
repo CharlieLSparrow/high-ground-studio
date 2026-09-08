@@ -473,6 +473,7 @@ export async function grantStudioProjectAccessByEmail({
   return prisma.studioProjectAccessGrant.upsert({
     where: { projectId_email: { projectId: actorAccess.projectId, email: normalizedTargetEmail } },
     update: {
+      memberUserId: invitedUser.id,
       role,
       status: "ACTIVE",
       createdByUserId: null,
@@ -482,6 +483,7 @@ export async function grantStudioProjectAccessByEmail({
     create: {
       projectId: actorAccess.projectId,
       email: normalizedTargetEmail,
+      memberUserId: invitedUser.id,
       role,
       status: "ACTIVE",
       createdByUserId: null,
@@ -509,6 +511,8 @@ export async function ensureStudioProjectOwnerGrant({
     return null;
   }
 
+  const owner = await ensureInvitedStudioUserByEmail({ email: normalizedOwnerEmail, prisma });
+
   return prisma.studioProjectAccessGrant.upsert({
     where: {
       projectId_email: {
@@ -517,6 +521,7 @@ export async function ensureStudioProjectOwnerGrant({
       },
     },
     update: {
+      memberUserId: owner.id,
       role: "OWNER",
       status: "ACTIVE",
       createdByEmail: normalizedCreatedByEmail || normalizedOwnerEmail,
@@ -525,6 +530,7 @@ export async function ensureStudioProjectOwnerGrant({
     create: {
       projectId,
       email: normalizedOwnerEmail,
+      memberUserId: owner.id,
       role: "OWNER",
       status: "ACTIVE",
       createdByEmail: normalizedCreatedByEmail || normalizedOwnerEmail,

@@ -66,6 +66,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
       take: 500,
       select: {
         id: true, title: true, detail: true, status: true, dueAt: true, completedAt: true, createdAt: true, updatedAt: true, assignedUserId: true, sourceJson: true,
+        isNestShared: true,
         evidenceReceipts: { where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1, select: { evidenceJson: true, occurredAt: true } },
         reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
         project: { select: { id: true, name: true, slug: true } },

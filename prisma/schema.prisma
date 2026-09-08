@@ -1085,6 +1085,7 @@ model User {
   marketingCampaigns               MarketingCampaign[]
   organizationMemberships          OrganizationMember[]
   studioProjectAccessGrantsCreated StudioProjectAccessGrant[]   @relation("StudioProjectAccessGrantCreatedBy")
+  studioProjectMemberships         StudioProjectAccessGrant[]   @relation("StudioProjectAccessGrantMember")
   nativeAuthCodes                  StudioNativeAuthCode[]
   nativeDeviceSessions             StudioNativeDeviceSession[]
   feedbackTickets                  FeedbackTicket[]
@@ -4214,6 +4215,9 @@ model ActionItem {
   assignedUserId String?
   projectId      String?
   engagementId   String?
+  // Responsibility and sharing are independent. Existing personal and
+  // Session/client-space tasks retain their own access rules.
+  isNestShared   Boolean          @default(false)
   title          String
   detail         String?
   status         ActionItemStatus @default(OPEN)
@@ -4931,6 +4935,7 @@ model StudioProjectAccessGrant {
   id              String                    @id @default(cuid())
   projectId       String
   email           String
+  memberUserId    String?
   role            StudioProjectAccessRole   @default(VIEWER)
   status          StudioProjectAccessStatus @default(ACTIVE)
   createdByUserId String?
@@ -4941,10 +4946,12 @@ model StudioProjectAccessGrant {
 
   project   StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy User?         @relation("StudioProjectAccessGrantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  member    User?         @relation("StudioProjectAccessGrantMember", fields: [memberUserId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, email])
   @@index([email, status])
   @@index([projectId, status])
+  @@index([memberUserId, status, projectId])
 }
 
 model StudioDocument {

@@ -128,6 +128,29 @@ as an experiment.
 
 ## First complete replacement slice
 
+### Tasks created from Nest conversations
+
+Use `ActionItem` and its existing tag links, not a chat-specific task store.
+`isNestShared` separates visibility from responsibility: a shared task follows
+current Nest membership even when assigned, while existing personal and
+client-space tasks keep their own access rules. Only default Nest conversations
+use the Nest-wide creation command; private Session/client messages cannot be
+promoted into that scope by supplying their IDs.
+
+The existing `StudioProjectAccessGrant` now has a stable `memberUserId`; its
+email remains the invitation address. The migration binds unambiguous historical
+identities and materializes recognized workspace ownership without reactivating
+revoked grants. Normal invite/owner creation writes both fields. Broader legacy
+Nest resolution still uses email and must be replaced coherently; this change
+does not claim that migration is complete. Assignment never substitutes for a
+current membership when reading or editing a newly shared task.
+
+Deploy the additive migration before the application. Rolling application code
+back should disable the new creation surface, not drop task rows or membership
+bindings; before reverting task-access code, account for retained shared tasks
+so the old unassigned-task rules do not reinterpret their visibility. Tags and
+source links remain canonical, with transactional retry and private-space tests.
+
 Build one private client space: create it, invite a second account, converse,
 write shared notes, schedule/join a call, return to the same space with its
 recording/transcript/tasks, and share the intended output. A third account must

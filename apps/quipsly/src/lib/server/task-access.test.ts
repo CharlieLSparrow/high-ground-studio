@@ -3,6 +3,7 @@
 import {
   personalOrSharedSessionTaskAccessWhere,
   personalOrSharedWorkspaceTaskAccessWhere,
+  nestSharedTaskAccessWhere,
 } from "./task-access";
 import { sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
 
@@ -19,7 +20,7 @@ describe("canonical task visibility", () => {
   };
 
   it("shares assigned coaching work only through an explicit engagement or booking", () => {
-    expect(personalOrSharedSessionTaskAccessWhere("user-1")).toEqual([
+    expect(personalOrSharedSessionTaskAccessWhere("user-1")).toEqual([nestSharedTaskAccessWhere("user-1"), ...[
       { assignedUserId: "user-1" },
       { AND: [sharedCoachingWorkVisibilityWhere(), engagementAccess] },
       { AND: [sharedCoachingWorkVisibilityWhere(), bookingAccess] },
@@ -38,12 +39,12 @@ describe("canonical task visibility", () => {
         engagementId: null,
         booking: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] },
       },
-    ]);
+    ].map(where => ({ ...where, isNestShared: false }))]);
   });
 
   it("does not give an observer write controls for coaching tasks", () => {
     const where = personalOrSharedSessionTaskAccessWhere("user-1", "write");
-    expect(where).toContainEqual({ AND: [sharedCoachingWorkVisibilityWhere(), {
+    expect(where).toContainEqual({ isNestShared: false, AND: [sharedCoachingWorkVisibilityWhere(), {
       engagement: { is: {
         status: "ACTIVE",
         members: { some: {
@@ -57,7 +58,7 @@ describe("canonical task visibility", () => {
   });
 
   it("shares unassigned project work without exposing another assignee", () => {
-    expect(personalOrSharedWorkspaceTaskAccessWhere("user-1", ["project-1"])).toEqual([
+    expect(personalOrSharedWorkspaceTaskAccessWhere("user-1", ["project-1"])).toEqual([nestSharedTaskAccessWhere("user-1"), ...[
       { assignedUserId: "user-1" },
       { AND: [sharedCoachingWorkVisibilityWhere(), engagementAccess] },
       { AND: [sharedCoachingWorkVisibilityWhere(), bookingAccess] },
@@ -78,6 +79,14 @@ describe("canonical task visibility", () => {
         engagementId: null,
         booking: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] },
       },
-    ]);
+    ].map(where => ({ ...where, isNestShared: false }))]);
+  });
+
+  it("uses current stable membership for shared tasks, never assignment or an email label", () => {
+    expect(nestSharedTaskAccessWhere("user-1", "write")).toEqual({ isNestShared: true, engagementId: null,
+      project: { accessGrants: { some: { memberUserId: "user-1", status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } } } } });
+    expect(nestSharedTaskAccessWhere("user-1").project).toEqual({ accessGrants: { some: {
+      memberUserId: "user-1", status: "ACTIVE", role: { in: ["OWNER", "EDITOR", "VIEWER"] },
+    } } });
   });
 });

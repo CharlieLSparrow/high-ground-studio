@@ -548,7 +548,7 @@ describe("Work Queue task decisions", () => {
       where: expect.objectContaining({
         id: "task-1",
         OR: expect.arrayContaining([
-          { assignedUserId: "user-1" },
+          { assignedUserId: "user-1", isNestShared: false },
           expect.objectContaining({ assignedUserId: null, room: expect.any(Object) }),
           expect.objectContaining({ assignedUserId: null, booking: expect.any(Object) }),
         ]),
@@ -623,7 +623,7 @@ describe("Work Queue task decisions", () => {
       where: expect.objectContaining({
         id: "task-1",
         OR: expect.arrayContaining([
-          { assignedUserId: "user-1" },
+          { assignedUserId: "user-1", isNestShared: false },
           expect.objectContaining({ assignedUserId: null, room: expect.any(Object) }),
           expect.objectContaining({ assignedUserId: null, booking: expect.any(Object) }),
         ]),

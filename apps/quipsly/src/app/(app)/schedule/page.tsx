@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 import {
   CalendarDays,
   ChevronRight,
@@ -149,15 +150,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       prisma.actionItem.findMany({
             where: {
               status: "OPEN",
-              OR: [
-                { assignedUserId: userId },
-                { room: roomAccess },
-                {
-                  booking: {
-                    OR: [{ clientUserId: userId }, { coachUserId: userId }],
-                  },
-                },
-              ],
+              OR: personalOrSharedSessionTaskAccessWhere(userId),
             },
             orderBy: [{ status: "asc" }, { dueAt: "asc" }, { updatedAt: "desc" }],
             take: 100,

@@ -5,6 +5,22 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 const props = { engagementId: "space", messageId: "message", body: "Prepare a first chapter together", canCreate: true };
 
+test("creates a tagged task in the ordinary Nest conversation without a fake coaching space", async () => {
+  const tag = { id: "research", label: "Research", hexColor: "#506b46", isActive: true };
+  const fetchMock = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, tags: [tag] }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entry: { id: "task", title: props.body, status: "OPEN", tags: [tag] } }) });
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction projectSlug="our-book" messageId="message" body={props.body} canCreate />);
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/work/tags?entityKind=task&projectSlug=our-book");
+  fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
+  expect(fetchMock.mock.calls[1][0]).toBe("/api/nest-chat/tasks");
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ projectSlug: "our-book", sourceMessageId: "message", tags: { tagIds: ["research"] } });
+  expect(screen.getByRole("link", { name: /Prepare a first chapter.*Research/ })).toBeInTheDocument();
+});
+
 test("creates normal shared work and keeps the same request after a lost response", async () => {
   const fetchMock = jest.fn().mockRejectedValueOnce(new Error("Connection lost"))
     .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entry: { id: "task", title: "Prepare chapter one", status: "OPEN" } }) });

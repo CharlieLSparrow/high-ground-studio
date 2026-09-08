@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
+import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 
@@ -44,7 +45,7 @@ export async function editCanonicalTaskInTransaction(input: {
   const receiptId = input.receiptId ?? randomUUID();
   const accessWhere: Prisma.ActionItemWhereInput = input.accessOr?.length
     ? { OR: input.accessOr }
-    : { assignedUserId: input.actorUserId };
+    : { assignedUserId: input.actorUserId, OR: personalOrSharedSessionTaskAccessWhere(input.actorUserId, "write") };
   const current = await input.tx.actionItem.findFirst({
     where: {
       id: input.taskId,

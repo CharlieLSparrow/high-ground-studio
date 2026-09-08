@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { loadClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 import { mobileSessionScheduledTimezone } from "@/lib/server/mobile-capture-session-schedule";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 
 import { StudioAccessShell } from "../studio-access-shell";
 import { formatScheduleDateTime } from "../schedule/schedule-model";
@@ -86,11 +87,7 @@ export async function loadToday(userId: string, actorEmail: string) {
     prisma.actionItem.findMany({
       where: {
         status: "OPEN",
-        OR: [
-          { assignedUserId: userId },
-          { room: access },
-          { booking: { OR: [{ clientUserId: userId }, { coachUserId: userId }] } },
-        ],
+        OR: personalOrSharedSessionTaskAccessWhere(userId),
       },
       orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
       take: 100,

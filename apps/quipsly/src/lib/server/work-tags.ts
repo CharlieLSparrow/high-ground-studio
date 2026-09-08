@@ -5,7 +5,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
 import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
-import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
+import { personalOrSharedSessionTaskAccessWhere, nestMemberProjectWhere } from "./task-access";
 import { activeCoachingWorkWhere } from "./coaching-work-page";
 import { activeCoachingEngagementParticipantWhere, sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
 import { coachingEngagementAccessWhere } from "./coaching-engagement";
@@ -598,6 +598,18 @@ export async function readNewCoachingTaskTagContext(input: {
     select: { id: true, label: true, hexColor: true, isActive: true },
   });
   return { projectId: engagement.projectId, selectedTagIds: [], tags };
+}
+
+export async function readNewNestTaskTagContext(input: { prisma: PrismaClient; actorUserId: string; projectSlug: string }) {
+  const projects = await input.prisma.studioProject.findMany({ where: { slug: input.projectSlug }, take: 2, select: { id: true } });
+  if (projects.length !== 1) return null;
+  const project = await input.prisma.studioProject.findFirst({
+    where: { id: projects[0].id, ...nestMemberProjectWhere(input.actorUserId, "write") }, select: { id: true },
+  });
+  if (!project) return null;
+  const tags = await input.prisma.studioTag.findMany({ where: { projectId: project.id, isActive: true },
+    orderBy: [{ label: "asc" }, { id: "asc" }], select: { id: true, label: true, hexColor: true, isActive: true } });
+  return { projectId: project.id, selectedTagIds: [], tags };
 }
 
 /**

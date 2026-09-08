@@ -9,6 +9,7 @@ import {
   replaceWorkEntityTags,
   readTaskTagContext,
   readNewCoachingTaskTagContext,
+  readNewNestTaskTagContext,
   type WorkTagEntityKind,
   type WorkTagTaxonomyOperation,
 } from "@/lib/server/work-tags";
@@ -32,11 +33,13 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const entityId = text(query.get("entityId"));
   const engagementId = text(query.get("engagementId"));
-  if (query.get("entityKind") !== "task" || Boolean(entityId) === Boolean(engagementId)) return NextResponse.json({ ok: false, error: "Choose a task or client space." }, { status: 400, headers });
+  const projectSlug = text(query.get("projectSlug"));
+  if (query.get("entityKind") !== "task" || [entityId, engagementId, projectSlug].filter(Boolean).length !== 1) return NextResponse.json({ ok: false, error: "Choose a task, client space, or Nest." }, { status: 400, headers });
   try {
     const actor = { prisma: getPrismaClient(), actorUserId: session.user.id, actorEmail };
     const context = entityId ? await readTaskTagContext({ ...actor, entityId })
-      : await readNewCoachingTaskTagContext({ ...actor, engagementId });
+      : engagementId ? await readNewCoachingTaskTagContext({ ...actor, engagementId })
+        : await readNewNestTaskTagContext({ ...actor, projectSlug });
     return context ? NextResponse.json({ ok: true, ...context }, { headers })
       : NextResponse.json({ ok: false, error: "This task isn't available to edit." }, { status: 404, headers });
   } catch (error) {

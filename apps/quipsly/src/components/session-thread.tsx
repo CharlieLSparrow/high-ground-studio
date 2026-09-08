@@ -254,6 +254,7 @@ function ScopedCollaborationThread({
           {message.body ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{message.body}</p> : null}
           {message.gifUrl ? <img src={message.gifUrl} alt="Shared GIF" className="mt-3 max-h-48 w-full rounded-xl object-contain" /> : null}
           {engagementId && <ConversationTaskAction engagementId={engagementId} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
+          {threadKey === "default" && <ConversationTaskAction projectSlug={projectSlug} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
         </article>)}
       </div>
       {loadError ? <div role="alert" className="px-4 py-2 text-sm text-destructive">{loadError} <button type="button" onClick={() => void refresh()} className="min-h-11 underline">Retry loading</button></div> : null}

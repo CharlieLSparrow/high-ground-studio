@@ -87,6 +87,7 @@ export type RawWorkTask = {
   createdAt: Date | string;
   updatedAt: Date | string;
   assignedUserId?: string | null;
+  isNestShared?: boolean;
   canEditByActor?: boolean;
   sourceJson?: unknown;
   project?: WorkProject | null;
@@ -481,7 +482,7 @@ export function buildWorkSnapshot(input: {
         historicalLocked,
         attentionReason,
         assigneeLabel: personLabel(task.assignedUser),
-        conversationSourceHref: conversationWorkSourceHref(task.engagement?.id, task.sourceJson),
+        conversationSourceHref: conversationWorkSourceHref(task.engagement?.id, task.sourceJson, task.project),
         provenance,
         roomId: room?.id ?? null,
         sessionTitle: sessionTitle(task),
@@ -490,10 +491,10 @@ export function buildWorkSnapshot(input: {
         project: task.project ? { id: task.project.id, name: task.project.name, slug: task.project.slug } : null,
         tags: (task.tagLinks ?? []).map((link) => link.tag),
         canEdit: Boolean(input.actorUserId)
-          && (task.assignedUserId === input.actorUserId || task.canEditByActor === true)
+          && ((!task.isNestShared && task.assignedUserId === input.actorUserId) || task.canEditByActor === true)
           && !recurrence
           && !historicalLocked,
-        canManageTags: Boolean(input.actorUserId) && (task.assignedUserId === input.actorUserId || task.canEditByActor === true),
+        canManageTags: Boolean(input.actorUserId) && ((!task.isNestShared && task.assignedUserId === input.actorUserId) || task.canEditByActor === true),
         canManageReminder: Boolean(input.actorUserId)
           && task.assignedUserId === input.actorUserId
           && !recurrence,

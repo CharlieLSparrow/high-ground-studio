@@ -94,11 +94,13 @@ export async function consumeInviteLoginTokenForEmail(input: {
         projectId: invite.projectId,
         email,
         role: invite.role,
+        memberUserId: user.id,
         status: "ACTIVE",
         createdByEmail: invite.invitedByEmail || null,
         note: invite.note || "Accepted by invite login link",
       },
       update: {
+        memberUserId: user.id,
         role: invite.role,
         status: "ACTIVE",
         createdByEmail: invite.invitedByEmail || undefined,

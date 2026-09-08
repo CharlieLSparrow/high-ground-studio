@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/session-access";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { WORK_TAG_LINKS_SELECT } from "@/lib/server/coaching-work-projection";
+import { nestSharedTaskAccessWhere } from "@/lib/server/task-access";
 
 import {
   findStudioProjectForAccess,
@@ -574,9 +575,12 @@ export async function GET(request: NextRequest) {
       const sourceMessage = await prisma.studioNestChatMessage.findFirst({ where: { ...where, id: requestedMessageId } });
       if (sourceMessage) messagesToReturn.unshift(sourceMessage);
     }
-    const linkedTasks = loaded.engagement && messagesToReturn.length ? await prisma.actionItem.findMany({
-      where: { engagementId: loaded.engagement.id, projectId: loaded.project.id, AND: [
-        { sourceJson: { path: ["visibility"], equals: "engagement-shared" } },
+    const includesTaskLinks = Boolean(loaded.engagement || (loaded.thread.key === "default" && actor.id));
+    const linkedTasks = includesTaskLinks && messagesToReturn.length ? await prisma.actionItem.findMany({
+      where: { projectId: loaded.project.id, AND: [
+        ...(loaded.engagement ? [{ engagementId: loaded.engagement.id,
+          sourceJson: { path: ["visibility"], equals: "engagement-shared" } }]
+          : [nestSharedTaskAccessWhere(actor.id!)]),
         { sourceJson: { path: ["conversationSource", "threadId"], equals: loaded.thread.id } },
         { OR: messagesToReturn.map(message => ({ sourceJson: { path: ["conversationSource", "messageId"], equals: message.id } })) },
       ] },
@@ -608,7 +612,7 @@ export async function GET(request: NextRequest) {
         role: loaded.access.role,
       },
       messages: messagesToReturn.map(message => ({ ...serializeMessage(message),
-        ...(loaded.engagement ? { linkedTasks: linkedTasks.filter(task =>
+        ...(includesTaskLinks ? { linkedTasks: linkedTasks.filter(task =>
           objectValue(objectValue(task.sourceJson)?.conversationSource)?.messageId === message.id
           && objectValue(objectValue(task.sourceJson)?.relationshipWorkRemoval)?.active !== true)
           .map(({ id, title, status, tagLinks }) => ({ id, title, status, tags: (tagLinks ?? []).map(link => link.tag) })) } : {}),
