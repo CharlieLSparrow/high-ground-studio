@@ -107,6 +107,58 @@ describe("CoachingSessionsPage", () => {
     expect(screen.queryByText(/sign in with the invited email|ask your coach to resend/i)).not.toBeInTheDocument();
   });
 
+  it.each([
+    { status: "ENDED", bookingStatus: "CONFIRMED" },
+    { status: "ACTIVE", bookingStatus: "COMPLETED" },
+    { status: "CANCELED", bookingStatus: "CONFIRMED" },
+  ])("opens retained recordings instead of joining a finished session: %j", async (states) => {
+    const user = userEvent.setup();
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({
+      ok: true, sessions: [{ id: "finished", callRoomId: "finished", title: "Coaching with recordings", ...states,
+        providerCanJoin: true, canRecordNow: true, recordingCount: 2, latestTranscriptStatus: "COMPLETED",
+        captureReadiness: { label: "Ready to join" }, nextAction: "Join the call now.",
+      }],
+    }));
+    render(<CoachingSessionsPage />);
+    await screen.findByLabelText("View");
+    expect(screen.queryByTestId("session-index-card")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("View"), "COMPLETED");
+    expect(screen.getByRole("link", { name: "Recordings & edits" })).toHaveAttribute("href", "/sessions/finished?mode=recordings");
+    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/finished?mode=transcript");
+    expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/finished");
+    expect(screen.queryByRole("link", { name: "Join call" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Recording options" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Ready to join")).not.toBeInTheDocument();
+    expect(screen.queryByText("Join the call now.")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("View"), "READY");
+    expect(screen.queryByTestId("session-index-card")).not.toBeInTheDocument();
+  });
+
+  it("keeps an active call joinable when recordings and a transcript already exist", async () => {
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({ ok: true, sessions: [{
+      id: "ongoing", callRoomId: "ongoing", title: "Call in progress", status: "ACTIVE", bookingStatus: "CONFIRMED",
+      providerCanJoin: true, recordingCount: 1, latestTranscriptSegmentCount: 4,
+    }] }));
+    render(<CoachingSessionsPage />);
+    expect(await screen.findByRole("link", { name: "Join call" })).toHaveAttribute("href", "/sessions/ongoing?mode=live");
+    expect(screen.getByRole("link", { name: "Recordings & edits" })).toHaveAttribute("href", "/sessions/ongoing?mode=recordings");
+    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/ongoing?mode=transcript");
+  });
+
+  it("opens a transcript directly when a completed session has no recording available", async () => {
+    const user = userEvent.setup();
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({ ok: true, sessions: [{
+      id: "text", callRoomId: "text", title: "Transcript retained", status: "ENDED", recordingCount: 0,
+      latestTranscriptStatus: "COMPLETED", coachingPacketStatus: "RESULTS_READY",
+    }] }));
+    render(<CoachingSessionsPage />);
+    await screen.findByLabelText("View");
+    await user.selectOptions(screen.getByLabelText("View"), "READY");
+    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/text?mode=transcript");
+    expect(screen.queryByRole("link", { name: "Recordings & edits" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Join call" })).not.toBeInTheDocument();
+  });
+
   it("routes first-time coaching to the canonical scheduler and keeps the generic planner secondary", async () => {
     const user = userEvent.setup();
     render(<CoachingSessionsPage />);
@@ -155,6 +207,7 @@ describe("CoachingSessionsPage", () => {
         purpose: "PODCAST",
         status: "PLANNED",
         recordingConsentStatus: "REQUESTED",
+        nextAction: "Save your recorder attestation and collect consent from every signed-in participant before recording.",
       }],
     }));
 
@@ -163,6 +216,7 @@ describe("CoachingSessionsPage", () => {
     expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/room-1");
     expect(screen.getByRole("link", { name: "Recording options" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
     expect(screen.queryByLabelText("Allow audio recording of my participation.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/recorder attestation/i)).not.toBeInTheDocument();
     expect(jest.mocked(globalThis.fetch).mock.calls.some(([input, init]) => String(input) === "/api/mobile/capture/consent" && init?.method === "POST")).toBe(false);
   });
 

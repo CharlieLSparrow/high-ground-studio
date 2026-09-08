@@ -210,13 +210,12 @@ function attentionFor(session: MobileCaptureSession) {
 }
 
 function sessionIsCompleted(session: MobileCaptureSession) {
-  const state = String(session.bookingStatus || session.status || "").toUpperCase();
-  return state === "COMPLETED" || state === "ENDED" || state === "CANCELED";
+  return [session.bookingStatus, session.status].some(state =>
+    ["COMPLETED", "ENDED", "CANCELED"].includes(String(state || "").toUpperCase()));
 }
 
 function sessionIsReady(session: MobileCaptureSession) {
-  return session.canRecordNow === true
-    || session.providerCanJoin === true
+  return (!sessionIsCompleted(session) && (session.canRecordNow === true || session.providerCanJoin === true))
     || ["RESULTS_READY", "READY_FOR_REVIEW"].includes(session.coachingPacketStatus || "");
 }
 
@@ -224,6 +223,15 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
   const blockers = blockersFor(session);
   const attention = attentionFor(session);
   const workspaceHref = `/sessions/${encodeURIComponent(session.callRoomId)}`;
+  const completed = sessionIsCompleted(session);
+  const canJoin = session.providerCanJoin === true && !completed;
+  const hasRecording = (session.recordingCount ?? 0) > 0;
+  const hasTranscript = session.latestTranscriptStatus === "COMPLETED" || (session.latestTranscriptSegmentCount ?? 0) > 0;
+  const primary = canJoin
+    ? { label: "Join call", href: `${workspaceHref}?mode=live` }
+    : hasRecording ? { label: "Recordings & edits", href: `${workspaceHref}?mode=recordings` }
+    : hasTranscript ? { label: "Open transcript", href: `${workspaceHref}?mode=transcript` }
+    : { label: "Open session", href: workspaceHref };
 
   return (
     <article className="rounded-[1.6rem] border border-[#e8dcc4] bg-white/86 p-5 shadow-sm backdrop-blur" data-testid="session-index-card">
@@ -231,7 +239,7 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap gap-2">
             <Pill label={titleCase(session.purpose || "COACHING")} tone="blue" />
-            <Pill label={session.captureReadiness?.label || titleCase(session.journeySummary?.stage) || "Session"} tone={toneForSession(session)} />
+            <Pill label={completed ? ([session.status, session.bookingStatus].includes("CANCELED") ? "Canceled" : "Ended") : session.captureReadiness?.label || titleCase(session.journeySummary?.stage) || "Session"} tone={toneForSession(session)} />
             {attention.length > 0 ? <Pill label="Needs attention" tone="warn" /> : null}
           </div>
           <h2 className="text-2xl font-black leading-tight text-[#3d3122]">{session.title}</h2>
@@ -241,9 +249,9 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
           <p className="mt-1 text-sm text-[#7b5c3b]">
             Coach: <strong>{session.coachLabel || "Not assigned yet"}</strong> · Client: <strong>{session.clientLabel || "You"}</strong>
           </p>
-          <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-[#5b472f]">
-            {session.nextAction || session.actionPacket?.nextAction || session.captureReadiness?.nextAction || "Open the session to join or choose recording options."}
-          </p>
+          {hasRecording || hasTranscript ? <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-[#5b472f]">
+            {hasRecording ? "Your recordings, edits, and shared work are here." : "Your transcript and shared work are here."}
+          </p> : null}
           {attention.length > 0 ? (
             <ul className="mt-3 space-y-1 text-sm text-[#6d4b22]" aria-label="Next steps">
               {attention.map((message) => <li key={message}>{message}</li>)}
@@ -262,10 +270,12 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
             {blockers.length > 0 ? <details className="mt-3"><summary className="cursor-pointer py-2 text-xs">Technical details</summary><ul className="space-y-1 break-words text-xs">{blockers.map((code) => <li key={code}>{code}</li>)}</ul></details> : null}
           </details>
           <div className="mt-4 grid gap-2">
-            {session.providerCanJoin ? <Link href={`${workspaceHref}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#4f6f52] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#3f5c43]"><Video size={15} aria-hidden="true" /> Join call</Link> : null}
-            <Link href={workspaceHref} className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#5a472f]">
-              Open session
+            <Link href={primary.href} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#5a472f]">
+              {canJoin ? <Video size={15} aria-hidden="true" /> : null}{primary.label}
             </Link>
+            {canJoin && hasRecording ? <Link href={`${workspaceHref}?mode=recordings`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#bdd7cd] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#2c5148]">Recordings &amp; edits</Link> : null}
+            {hasTranscript && primary.label !== "Open transcript" ? <Link href={`${workspaceHref}?mode=transcript`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#bdd7cd] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#2c5148]">Open transcript</Link> : null}
+            {primary.href !== workspaceHref ? <Link href={workspaceHref} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#bdd7cd] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#2c5148]">Open session</Link> : null}
             {session.recordingConsentGranted !== true && !sessionIsCompleted(session) ? <Link href={`${workspaceHref}?mode=prepare`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#d8bb82] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#6d4b22] hover:bg-[#f7eed9]">Recording options</Link> : null}
             {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#bdd7cd] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#2c5148] hover:bg-[#eef5f1]">Shared coaching space</Link> : null}
             {session.latestCheckoutUrl && !paymentResolvedFor(session) ? <a href={session.latestCheckoutUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[#b7c9b1] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#31543a] hover:bg-[#e7efe3]"><ExternalLink size={14} aria-hidden="true" /> Open Stripe</a> : null}
