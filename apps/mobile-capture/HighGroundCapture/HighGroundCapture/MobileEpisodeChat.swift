@@ -243,6 +243,20 @@ final class MobileEpisodeChatClient: ObservableObject {
         statusMessage = "2 rehearsal messages"
     }
 
+    func loadPreview(engagement: MobileCaptureCoachingEngagement) {
+        reset()
+        currentContextKey = "preview|\(engagement.id)"
+        threadTitle = engagement.title
+        var message = NestChatMessage(id: "preview-work-idea", authorEmail: "client@example.test",
+            authorName: "Homer", body: "Outline chapter one before our next conversation.",
+            gifUrl: nil, createdAt: "2026-09-08T12:00:00Z")
+        message.linkedTasks = [NestChatLinkedTask(id: "preview-linked-task", title: "Review the final cut", status: "OPEN",
+            tags: [MobileWorkTagLabel(id: "research", label: "Research and source material", hexColor: "#23543a", isActive: true)])]
+        messages = [message]
+        canEdit = true
+        statusMessage = "1 message"
+    }
+
     func load(
         session: MobileCaptureSession,
         forceRefresh: Bool = false,
@@ -952,6 +966,7 @@ struct MobileEngagementChatCard: View {
     @ObservedObject var client: MobileEpisodeChatClient
     let engagement: MobileCaptureCoachingEngagement
     let previewOnly: Bool
+    var onWorkChanged: @MainActor () async -> Void = {}
     @State private var isPresented = false
 
     var body: some View {
@@ -1010,7 +1025,8 @@ struct MobileEngagementChatCard: View {
             MobileEpisodeChatThread(
                 client: client,
                 target: .engagement(engagement),
-                previewOnly: previewOnly
+                previewOnly: previewOnly,
+                onWorkChanged: onWorkChanged
             )
         }
     }
@@ -1048,8 +1064,10 @@ private struct MobileEpisodeChatThread: View {
     @ObservedObject var client: MobileEpisodeChatClient
     let target: MobileCollaborationChatTarget
     let previewOnly: Bool
+    var onWorkChanged: @MainActor () async -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
+    @State private var workAction: MobileConversationWorkAction?
 
     var body: some View {
         NavigationStack {
@@ -1057,7 +1075,7 @@ private struct MobileEpisodeChatThread: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
-                            boundary
+                            if client.isUsingProtectedCache { boundary }
                             ForEach(client.messages) { message in
                                 messageCard(message)
                                     .id(message.id)
@@ -1073,7 +1091,7 @@ private struct MobileEpisodeChatThread: View {
 
                 composer
             }
-            .background(MobileStudioBackground())
+            .background(CaptureCanvas())
             .navigationTitle(client.threadTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1099,6 +1117,22 @@ private struct MobileEpisodeChatThread: View {
             }
         }
         .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Thread")
+        .sheet(item: $workAction, onDismiss: {
+            guard !previewOnly else { return }
+            Task {
+                await target.load(with: client, forceRefresh: true)
+                await onWorkChanged()
+            }
+        }) { action in
+            if case let .engagement(engagement) = target {
+                switch action {
+                case let .create(message):
+                    CaptureConversationWorkEditor(engagementID: engagement.id, message: message, previewOnly: previewOnly)
+                case let .edit(task):
+                    CaptureCoachingWorkItemEditor(engagementID: engagement.id, entryID: task.id, kind: "TASK")
+                }
+            }
+        }
     }
 
     private var boundary: some View {
@@ -1142,6 +1176,38 @@ private struct MobileEpisodeChatThread: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if case .engagement = target {
+                ForEach(message.linkedTasks ?? []) { task in
+                    Button {
+                        workAction = .edit(task)
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(task.title).font(.subheadline.weight(.semibold))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let tags = task.tags, !tags.isEmpty {
+                                    CaptureWorkTags(tags: tags, workID: task.id)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Task: \(task.title), \(task.status.lowercased())")
+                    .accessibilityIdentifier("CaptureConversationTask_\(task.id)")
+                }
+                if client.canEdit, !message.suggestedTaskTitle.isEmpty {
+                    Button {
+                        workAction = .create(message)
+                    } label: {
+                        Label("Create task", systemImage: "checkmark.circle.badge.plus")
+                            .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("CaptureConversationCreateTask_\(message.id)")
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -1149,7 +1215,7 @@ private struct MobileEpisodeChatThread: View {
             Color.secondary.opacity(0.08),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Message_\(message.id)")
     }
 
@@ -1197,9 +1263,6 @@ private struct MobileEpisodeChatThread: View {
                 .accessibilityLabel("Send \(client.scope.startNoun) message")
                 .accessibilityIdentifier("\(client.scope.accessibilityPrefix)SendButton")
             }
-            Text("A failed send keeps this draft and reuses the same message identity on retry.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
         }
         .padding()
         .background(CapturePalette.locationBarBackground)

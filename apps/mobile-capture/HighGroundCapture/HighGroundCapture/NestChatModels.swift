@@ -8,6 +8,11 @@ struct NestChatMessage: Identifiable, Codable, Hashable {
     let gifUrl: String?
     let metadataJson: NestChatMessageMetadata?
     let createdAt: String
+    var linkedTasks: [NestChatLinkedTask]? = nil
+
+    var suggestedTaskTitle: String {
+        String(body.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(160))
+    }
 
     init(
         id: String,
@@ -26,6 +31,14 @@ struct NestChatMessage: Identifiable, Codable, Hashable {
         self.metadataJson = metadataJson
         self.createdAt = createdAt
     }
+}
+
+/// A conversation projects canonical tasks; the task stays in shared work.
+struct NestChatLinkedTask: Identifiable, Codable, Hashable {
+    let id: String
+    let title: String
+    let status: String
+    let tags: [MobileWorkTagLabel]?
 }
 
 struct NestChatMessageMetadata: Codable, Hashable {

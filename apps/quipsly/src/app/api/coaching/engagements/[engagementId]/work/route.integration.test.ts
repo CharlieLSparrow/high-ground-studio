@@ -116,6 +116,19 @@ if (enabled) {
     await prisma.actionItem.update({where: {id: persisted.id}, data: {tagLinks: {create: {tagId: tag.id}}}});
     const coachRead = await act("GET", {}, coach!);
     expect(coachRead.body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ canEdit: true, title: command.title });
+    // Native chat opens by canonical item ID, not by scanning the latest work page.
+    await prisma.actionItem.update({where: {id: persisted.id}, data: {updatedAt: new Date("2000-01-01T00:00:00Z")}});
+    expect((await act("GET", {}, coach!, "pageSize=1")).body.engagement.entries.some((entry: {id: string}) => entry.id === persisted.id)).toBe(false);
+    for (const actor of [coach!, client!, observer!]) {
+      const focused = await act("GET", {}, actor, `item=${persisted.id}&kind=TASK`);
+      expect(focused.status).toBe(200);
+      expect(focused.body.engagement.entries).toHaveLength(1);
+      expect(focused.body.engagement.entries[0]).toMatchObject({id: persisted.id,
+        canEdit: actor !== observer, tags: [{id: tag.id, hexColor: "#23543a"}]});
+    }
+    for (const actor of [guest!, outsider!]) {
+      expect((await act("GET", {}, actor, `item=${persisted.id}&kind=TASK`)).status).toBe(404);
+    }
     expect((await act("POST", { ...command, sourceMessageId: foreignMessage.id, clientRequestId: randomUUID() })).status).toBe(404);
     for (const actor of [observer!, guest!, outsider!]) expect((await act("POST", { ...command, clientRequestId: randomUUID() }, actor)).status).toBe(404);
     await prisma.studioNestChatMessage.createMany({ data: Array.from({ length: 52 }, (_, index) => ({ projectId, threadId: thread.id, body: `Later message ${index}`, createdAt: new Date(Date.now() + 1000 + index) })) });

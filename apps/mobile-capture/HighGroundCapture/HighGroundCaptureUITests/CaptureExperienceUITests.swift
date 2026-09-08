@@ -1782,6 +1782,55 @@ final class CaptureExperienceUITests: XCTestCase {
         exerciseCoachingWorkSourceNavigation()
     }
 
+    func testConversationIdeaOpensNativeTaskDraft() {
+        exerciseConversationTaskDraft()
+    }
+
+    func testConversationIdeaOpensNativeTaskDraftOnRegularWidthIPad() {
+        exerciseConversationTaskDraft()
+    }
+
+    private func exerciseConversationTaskDraft() {
+        relaunchCoachingPreview(role: "coach", additionalArguments: ["--capture-coaching-work-source-preview"])
+        openRootDestination("Home")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
+        reveal(relationship)
+        relationship.tap()
+        let conversation = app.buttons["CaptureCoachingConversationOpenButton"]
+        reveal(conversation, searchAboveFirst: false)
+        conversation.tap()
+        let create = app.buttons["CaptureConversationCreateTask_preview-work-idea"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertTrue(create.isHittable)
+        XCTAssertTrue(app.buttons["CaptureConversationTask_preview-linked-task"].exists,
+                      "Tasks already created on the web remain visible in the native conversation.")
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingConversationBoundary"].exists,
+                       "Online conversation should not be preceded by technical boundary explanations.")
+        let conversationImage = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        conversationImage.name = "conversation-linked-task.png"
+        conversationImage.lifetime = .keepAlways
+        add(conversationImage)
+        create.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Outline chapter one before our next conversation.")
+        XCTAssertEqual(app.textViews["CaptureCoachingWorkDetail"].value as? String,
+                       "Outline chapter one before our next conversation.")
+        XCTAssertFalse(app.segmentedControls["CaptureCoachingWorkKind"].exists,
+                       "Create task should open a task, not ask the person to choose the type again.")
+        let draftImage = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        draftImage.name = "conversation-task-draft.png"
+        draftImage.lifetime = .keepAlways
+        add(draftImage)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(create.waitForExistence(timeout: 5), "Cancel returns to the original conversation.")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
+    }
+
     private func exerciseCoachingWorkSourceNavigation() {
         relaunchCoachingPreview(
             role: "coach",
@@ -4908,7 +4957,7 @@ final class CaptureExperienceUITests: XCTestCase {
             edit.tap()
             let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
             XCTAssertTrue(editor.waitForExistence(timeout: 8), "Each result opens the existing client-space editor.")
-            let title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+            let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
             XCTAssertEqual(title.value as? String, expectedTitle)
             XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkKind"].firstMatch.exists,
                 "Editing an existing item should not present a disabled type chooser.")

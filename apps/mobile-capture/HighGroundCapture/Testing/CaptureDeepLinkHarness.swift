@@ -60,6 +60,15 @@ struct CaptureDeepLinkHarness {
             precondition(roundTrip == workspace)
         } catch { fatalError("Canonical client-space response failed to decode: \(error)") }
         precondition(CaptureTagColor(hex: "#23543a")?.usesWhiteText == true)
+        let messageJSON = ##"{"id":"message-1","body":"  Outline\n chapter one  ","createdAt":"2026-09-08T12:00:00Z","linkedTasks":[{"id":"task-1","title":"Outline chapter one","status":"DONE","tags":[{"id":"research","label":"Research","hexColor":"#23543a","isActive":true}]}]}"##
+        let message = try! JSONDecoder().decode(NestChatMessage.self, from: Data(messageJSON.utf8))
+        precondition(message.suggestedTaskTitle == "Outline chapter one")
+        precondition(message.linkedTasks?.first?.tags?.first?.hexColor == "#23543a")
+        precondition(message.linkedTasks?.first?.status == "DONE")
+        precondition(try! JSONDecoder().decode(NestChatMessage.self, from: JSONEncoder().encode(message)) == message)
+        let plainMessage = NestChatMessage(id: "plain", authorEmail: nil, authorName: nil,
+            body: String(repeating: "a", count: 500), gifUrl: nil, createdAt: "now")
+        precondition(plainMessage.suggestedTaskTitle.count == 160 && plainMessage.linkedTasks == nil)
         precondition(CaptureTagColor(hex: "#f2e4c5")?.usesWhiteText == false)
         precondition(CaptureTagColor(hex: "#aBc") == CaptureTagColor(hex: "#aabbcc"))
         for invalid: String? in [nil, "", "red", "#12345", "#12345678", "#ggg", "url(https://example.test)"] {

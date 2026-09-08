@@ -47,6 +47,8 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testCoachingWorkReturnsToItsNativeTranscriptSource",
   "CaptureExperienceUITests/testSessionOpensNativeClientSpaceAndReturnsToTheSameSession",
   "CaptureExperienceUITests/testCoachingWorkReturnsToItsNativeTranscriptSourceOnRegularWidthIPad",
+  "CaptureExperienceUITests/testConversationIdeaOpensNativeTaskDraft",
+  "CaptureExperienceUITests/testConversationIdeaOpensNativeTaskDraftOnRegularWidthIPad",
   "CaptureExperienceUITests/testTranscriptReviewShowsDeviceFirstJointAssembly",
   "CaptureExperienceUITests/testTranscriptConversationReviewOpensTheExactTimelineSegment",
   "CaptureExperienceUITests/testTranscriptPassagesKeepDetailsOptionalAndCreationReachable",

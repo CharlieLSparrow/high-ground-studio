@@ -330,13 +330,15 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     var searchKind: String { history.kind }
 
     let engagementID: String
+    private let itemID: String?
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
 
-    init(engagementID: String) {
+    init(engagementID: String, itemID: String? = nil) {
         self.engagementID = engagementID
+        self.itemID = itemID
     }
 
     func loadPreview(includeSourceWork: Bool = false) {
@@ -416,7 +418,8 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         body: String,
         visibility: String,
         ownerUserID: String,
-        targetAt: Date?
+        targetAt: Date?,
+        sourceMessageID: String? = nil
     ) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
@@ -429,10 +432,10 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             targetAt: targetAt.map(coachingISO8601String)
         )
         let attempt = createAttempts[clientRequestID]
-            ?? CaptureCoachingCreateAttempt(requestID: clientRequestID, original: draft)
+            ?? CaptureCoachingCreateAttempt(requestID: clientRequestID, original: draft, sourceMessageID: sourceMessageID)
         createAttempts[clientRequestID] = attempt
         do {
-            guard kind == attempt.original.kind else {
+            guard kind == attempt.original.kind, sourceMessageID == attempt.sourceMessageID else {
                 throw coachingClientError("Finish saving this item before changing its type.")
             }
             // Replay the original command even if the person has since edited
@@ -584,6 +587,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             throw coachingClientError("The configured Nest URL is not valid.")
         }
         var items: [URLQueryItem] = []
+        if method == "GET", let itemID { items.append(URLQueryItem(name: "item", value: itemID)) }
         if !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
         if kind != "ALL" { items.append(URLQueryItem(name: "kind", value: kind)) }
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
@@ -3350,7 +3354,8 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 MobileEngagementChatCard(
                     client: conversation,
                     engagement: engagement,
-                    previewOnly: previewOnly
+                    previewOnly: previewOnly,
+                    onWorkChanged: { if !previewOnly { await client.load(force: true) } }
                 )
 
                 sessionContinuity
@@ -3400,6 +3405,9 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         .task(id: "\(engagement.id)|\(previewOnly)") {
             if previewOnly {
                 client.loadPreview(includeSourceWork: CaptureLaunchConfiguration.usesCoachingWorkSourcePreview)
+                if CaptureLaunchConfiguration.usesCoachingWorkSourcePreview {
+                    conversation.loadPreview(engagement: engagement)
+                }
             } else {
                 async let workLoad: Void = client.load()
                 async let conversationLoad: Void = conversation.load(
@@ -3996,19 +4004,33 @@ struct CaptureCoachingWorkItemEditor: View {
         self.entryID = entryID
         self.kind = kind
         self.previewEntry = previewEntry
-        _client = StateObject(wrappedValue: MobileCoachingEngagementWorkspaceClient(engagementID: engagementID))
+        _client = StateObject(wrappedValue: MobileCoachingEngagementWorkspaceClient(engagementID: engagementID, itemID: entryID))
     }
 
     var body: some View {
         Group {
             if let workspace = client.workspace,
-               let entry = previewEntry ?? workspace.entries.first(where: { $0.id == entryID && $0.kind == kind }),
-               workspace.canWrite, entry.canEdit {
-                MobileCoachingWorkEditorSheet(
-                    client: client, workspace: workspace, entry: entry,
-                    // Removal stays beside the client-space undo banner.
-                    previewOnly: previewEntry != nil, allowsRemoval: false
-                )
+               let entry = previewEntry ?? workspace.entries.first(where: { $0.id == entryID && $0.kind == kind }) {
+                if workspace.canWrite, entry.canEdit {
+                    MobileCoachingWorkEditorSheet(
+                        client: client, workspace: workspace, entry: entry,
+                        // Removal stays beside the client-space undo banner.
+                        previewOnly: previewEntry != nil, allowsRemoval: false
+                    )
+                } else {
+                    NavigationStack {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(entry.displayTitle).font(.title2.bold())
+                                if let tags = entry.tags { CaptureWorkTags(tags: tags, workID: entry.id) }
+                                if let body = entry.body { Text(body).textSelection(.enabled) }
+                            }.frame(maxWidth: .infinity, alignment: .leading).padding()
+                        }
+                        .background(CapturePalette.canvas)
+                        .navigationTitle(entry.kindLabel)
+                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+                    }
+                }
             } else {
                 NavigationStack {
                     Group {
@@ -4044,6 +4066,7 @@ struct MobileCoachingWorkEditorSheet: View {
     let entry: MobileCoachingEngagementWorkEntry?
     let previewOnly: Bool
     let allowsRemoval: Bool
+    let sourceMessage: NestChatMessage?
 
     @State private var kind: String
     @State private var title: String
@@ -4062,16 +4085,18 @@ struct MobileCoachingWorkEditorSheet: View {
         entry: MobileCoachingEngagementWorkEntry?,
         preferredKind: String = "NOTE",
         previewOnly: Bool = false,
-        allowsRemoval: Bool = true
+        allowsRemoval: Bool = true,
+        sourceMessage: NestChatMessage? = nil
     ) {
         self.client = client
         self.workspace = workspace
         self.entry = entry
         self.previewOnly = previewOnly
         self.allowsRemoval = allowsRemoval
+        self.sourceMessage = sourceMessage
         _kind = State(initialValue: entry?.kind ?? preferredKind)
-        _title = State(initialValue: entry?.title ?? "")
-        _detail = State(initialValue: entry?.body ?? "")
+        _title = State(initialValue: entry?.title ?? sourceMessage?.suggestedTaskTitle ?? "")
+        _detail = State(initialValue: entry?.body ?? sourceMessage?.body ?? "")
         _visibility = State(initialValue: entry?.visibility ?? "SHARED")
         _ownerUserID = State(initialValue: entry?.owner?.id ?? workspace.currentUserId)
         _status = State(initialValue: entry?.status ?? "OPEN")
@@ -4093,7 +4118,7 @@ struct MobileCoachingWorkEditorSheet: View {
         NavigationStack {
             Form {
                 Section(entry == nil ? "New item" : "Details") {
-                    if entry == nil {
+                    if entry == nil, sourceMessage == nil {
                         Picker("Type", selection: $kind) {
                             Text("Note").tag("NOTE")
                             Text("Task").tag("TASK")
@@ -4104,7 +4129,8 @@ struct MobileCoachingWorkEditorSheet: View {
                         .accessibilityIdentifier("CaptureCoachingWorkKind")
                     }
 
-                    TextField(kind == "NOTE" ? "Note title" : kind == "TASK" ? "Task title" : "Goal title", text: $title)
+                    TextField(kind == "NOTE" ? "Note title" : kind == "TASK" ? "Task title" : "Goal title", text: $title, axis: .vertical)
+                        .lineLimit(1 ... 4)
                         .accessibilityIdentifier("CaptureCoachingWorkTitle")
                     TextEditor(text: $detail)
                         .frame(minHeight: 120)
@@ -4195,7 +4221,7 @@ struct MobileCoachingWorkEditorSheet: View {
             .accessibilityIdentifier("CaptureCoachingWorkEditorForm")
             .disabled(client.isSaving)
             .captureFormSurface()
-            .navigationTitle(entry == nil ? "Add coaching work" : "Edit \(entry?.kindLabel ?? "item")")
+            .navigationTitle(entry == nil ? (sourceMessage == nil ? "Add coaching work" : "New task") : "Edit \(entry?.kindLabel ?? "item")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -4224,7 +4250,8 @@ struct MobileCoachingWorkEditorSheet: View {
                                     body: detail,
                                     visibility: visibility,
                                     ownerUserID: ownerUserID,
-                                    targetAt: hasTargetDate ? targetDate : nil
+                                    targetAt: hasTargetDate ? targetDate : nil,
+                                    sourceMessageID: sourceMessage?.id
                                 )
                             }
                             if saved { dismiss() }

@@ -51,5 +51,10 @@ struct CaptureCoachingWorkDraft: Equatable {
 struct CaptureCoachingCreateAttempt {
     let requestID: String
     let original: CaptureCoachingWorkDraft
-    var body: [String: Any] { original.createBody(requestID: requestID) }
+    var sourceMessageID: String? = nil
+    var body: [String: Any] {
+        var body = original.createBody(requestID: requestID)
+        if let sourceMessageID { body["sourceMessageId"] = sourceMessageID }
+        return body
+    }
 }

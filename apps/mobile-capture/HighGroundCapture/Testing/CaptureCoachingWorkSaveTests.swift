@@ -14,6 +14,10 @@ enum CaptureCoachingWorkSaveTests {
             expect(attempt.body["title"] as? String == original.title, "retry retains submitted content")
             expect(attempt.body["clientRequestId"] as? String == "one-command", "retry identity remains stable")
             expect(attempt.body["kind"] as? String == kind, "kind remains bound to the command")
+            expect(attempt.body["sourceMessageId"] == nil, "manual work does not invent a conversation source")
+            let sourced = CaptureCoachingCreateAttempt(requestID: "message-command", original: original, sourceMessageID: "message-1")
+            expect(sourced.body["sourceMessageId"] as? String == "message-1", "retries retain their exact source message")
+            expect(sourced.body["clientRequestId"] as? String == "message-command", "sourced work uses normal idempotency")
             var latest = original
             latest.body = "A collaborator's additional context"
             let merged = edited.amendment(from: original, to: latest)
@@ -35,7 +39,7 @@ enum CaptureCoachingWorkSaveTests {
                 expect(result.body["targetAt"] is NSNull, "cleared date remains JSON null")
             }
         }
-        print("PASS 32 canonical work creation retry and amendment checks")
+        print("PASS canonical work creation retry, source binding, and amendment checks")
         testScheduleUpdates()
     }
 
