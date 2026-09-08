@@ -71,3 +71,64 @@ test("a pending save cannot be submitted twice or canceled into a second request
   expect(fetchMock).toHaveBeenCalledTimes(1);
   await act(async () => { finish({ ok: true, json: async () => ({ ok: true, entry: { id: "task", title: props.body, status: "OPEN" } }) }); });
 });
+
+test("chooses shared colored tags while creating a task from chat and retains them on retry", async () => {
+  const tag = { id: "research", label: "Research", hexColor: "#23543a", isActive: true };
+  const fetchMock = jest.fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, tags: [tag, { ...tag, id: "archived", label: "Old", isActive: false }] }) })
+    .mockRejectedValueOnce(new Error("Connection lost"))
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entry: { id: "task", title: props.body, status: "OPEN", tags: [tag] } }) });
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  expect(fetchMock).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/work/tags?entityKind=task&engagementId=space");
+  expect(screen.queryByRole("checkbox", { name: "Old" })).not.toBeInTheDocument();
+  expect(screen.getByText("Research")).toHaveStyle({ backgroundColor: "#23543a", color: "#ffffff" });
+  fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
+  expect(screen.getByRole("checkbox", { name: "Research" })).toBeChecked();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
+  const command = JSON.parse(fetchMock.mock.calls[1][1].body);
+  expect(command).toMatchObject({ sourceMessageId: "message", tags: { tagIds: ["research"] } });
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(command);
+  expect(screen.getByRole("link", { name: /Research/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Create another task" }));
+  expect(screen.getByRole("button", { name: "Add tags" })).toBeInTheDocument();
+});
+
+test("tag loading failure does not prevent task creation", async () => {
+  const fetchMock = jest.fn().mockRejectedValueOnce(new Error("Offline"))
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entry: { id: "task", title: props.body, status: "OPEN" } }) });
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
+  expect(screen.getByRole("status")).toHaveTextContent("You can still add your task");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
+  expect(screen.getByRole("link", { name: /Prepare a first chapter/ })).toBeInTheDocument();
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty("tags");
+});
+
+test("searching tags never clears a hidden selection and cancel aborts a pending tag read", async () => {
+  let finish!: (value: unknown) => void;
+  const fetchMock = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, tags: [
+    { id: "research", label: "Research", hexColor: "#23543a", isActive: true },
+    { id: "writing", label: "Writing", hexColor: null, isActive: true },
+  ] }) }).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
+  fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "writing" } });
+  expect(screen.queryByRole("checkbox", { name: "Research" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Tags (1)" }));
+  expect(screen.getByText("Research")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Tags (1)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true);
+  await act(async () => { finish({ ok: true, json: async () => ({ ok: true, tags: [] }) }); });
+  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+});
