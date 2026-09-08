@@ -9,6 +9,7 @@ import {
   replaceWorkEntityTags,
   readTaskTagContext,
   readNewCoachingTaskTagContext,
+  readNewNestTaskTagContext,
 } from "@/lib/server/work-tags";
 
 import { GET, PATCH, POST } from "./route";
@@ -22,6 +23,7 @@ jest.mock("@/lib/server/work-tags", () => ({
   replaceWorkEntityTags: jest.fn(),
   readTaskTagContext: jest.fn(),
   readNewCoachingTaskTagContext: jest.fn(),
+  readNewNestTaskTagContext: jest.fn(),
 }));
 
 function request(body: unknown) {
@@ -37,7 +39,7 @@ describe("authenticated shared work tags route", () => {
 
   it("reads the authorized task tag context without caching private vocabulary", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "Client@Example.test"}} as any);
-    const context = {entityId: "task", projectId: "nest", updatedAt: "2026-09-08T00:00:00Z", selectedTagIds: ["research"],
+    const context = {entityId: "task", projectId: "nest", canCreateTags: false, updatedAt: "2026-09-08T00:00:00Z", selectedTagIds: ["research"],
       tags: [{id: "research", label: "Research", hexColor: "#23543a", isActive: true}]};
     jest.mocked(readTaskTagContext).mockResolvedValue(context);
     const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=task"));
@@ -58,7 +60,7 @@ describe("authenticated shared work tags route", () => {
 
   it("loads a new task's client-space vocabulary without inventing a task or accepting ambiguous scopes", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "client@example.test"}} as any);
-    jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue({projectId: "nest", selectedTagIds: [], tags: []});
+    jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue({projectId: "nest", canCreateTags: false, selectedTagIds: [], tags: []});
     const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&engagementId=space"));
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -74,6 +76,22 @@ describe("authenticated shared work tags route", () => {
     const response = await POST(request({}));
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("returns Nest creation capability from the authorized catalog", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "owner", primaryEmail: "owner@example.test" } } as any);
+    jest.mocked(readNewNestTaskTagContext).mockResolvedValue({ projectId: "nest", canCreateTags: true, selectedTagIds: [], tags: [] });
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&projectSlug=our-book"));
+    expect(await response.json()).toMatchObject({ ok: true, projectId: "nest", canCreateTags: true });
+    expect(readNewNestTaskTagContext).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "owner", projectSlug: "our-book" }));
+  });
+
+  it("forwards an explicit color and maps invalid colors to a validation response", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "owner", primaryEmail: "owner@example.test" } } as any);
+    jest.mocked(createWorkTagTaxonomy).mockResolvedValue({ ok: false, code: "INVALID_INPUT", error: "Invalid color" });
+    const response = await POST(request({ operation: "CREATE", projectId: "nest", label: "Research", hexColor: "not-a-color" }));
+    expect(response.status).toBe(400);
+    expect(createWorkTagTaxonomy).toHaveBeenCalledWith(expect.objectContaining({ hexColor: "not-a-color" }));
   });
 
   it("rejects a signed-out vocabulary mutation before database access", async () => {

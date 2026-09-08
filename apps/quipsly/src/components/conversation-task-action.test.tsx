@@ -5,6 +5,67 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 const props = { engagementId: "space", messageId: "message", body: "Prepare a first chapter together", canCreate: true };
 
+test("creates and colors the first shared tag inline before saving the task", async () => {
+  let finishTag!: (value: unknown) => void;
+  const tag = { id: "research", label: "Research", hexColor: "#506b46", isActive: true };
+  const fetchMock = jest.fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, projectId: "nest", canCreateTags: true, tags: [] }) })
+    .mockImplementationOnce(() => new Promise(resolve => { finishTag = resolve; }))
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, entry: { id: "task", title: props.body, status: "OPEN", tags: [tag] } }) });
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction projectSlug="our-book" messageId="message" body={props.body} canCreate />);
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Research" } });
+  fireEvent.change(screen.getByLabelText("New tag color"), { target: { value: "#506b46" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create “Research” tag" }));
+  expect(screen.getByRole("button", { name: "Add task" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Creating tag…" })).toBeDisabled();
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ operation: "CREATE", projectId: "nest", label: "Research", hexColor: "#506b46" });
+  await act(async () => { finishTag({ ok: true, json: async () => ({ ok: true, tag }) }); });
+  expect(screen.getByRole("checkbox", { name: "Research" })).toBeChecked();
+  expect(screen.getByText("Research")).toHaveStyle({ backgroundColor: "#506b46" });
+  expect(screen.getByRole("searchbox")).toHaveValue("");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ tags: { tagIds: ["research"] } });
+  expect(screen.getByRole("link", { name: /Research/ })).toBeInTheDocument();
+});
+
+test("failed inline creation retains the name and color, and retry uses the canonical existing color", async () => {
+  const fetchMock = jest.fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, projectId: "nest", canCreateTags: true, tags: [] }) })
+    .mockRejectedValueOnce(new Error("Connection lost"))
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, created: false, tag: { id: "research", label: "Research", hexColor: "#23543a", isActive: true } }) });
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Research" } });
+  fireEvent.click(screen.getByRole("button", { name: "Use theme color" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Create “Research” tag" })); });
+  expect(screen.getByRole("alert")).toHaveTextContent("Connection lost");
+  expect(screen.getByRole("searchbox")).toHaveValue("Research");
+  expect(screen.getByRole("button", { name: "Use theme color" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Add task" })).toBeEnabled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Create “Research” tag" })); });
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(JSON.parse(fetchMock.mock.calls[1][1].body));
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body).hexColor).toBeNull();
+  expect(screen.getByRole("checkbox", { name: "Research" })).toBeChecked();
+  expect(screen.getByText("Research")).toHaveStyle({ backgroundColor: "#23543a" });
+});
+
+test("client-space access alone does not offer shared Nest vocabulary creation", async () => {
+  globalThis.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, projectId: "nest", canCreateTags: false, tags: [] }) });
+  render(<ConversationTaskAction {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Research" } });
+  expect(screen.queryByLabelText("New tag color")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Create “Research” tag" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add task" })).toBeEnabled();
+});
+
 test("creates a tagged task in the ordinary Nest conversation without a fake coaching space", async () => {
   const tag = { id: "research", label: "Research", hexColor: "#506b46", isActive: true };
   const fetchMock = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, tags: [tag] }) })

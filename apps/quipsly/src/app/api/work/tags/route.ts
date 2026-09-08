@@ -80,6 +80,7 @@ export async function POST(request: Request) {
         actorEmail,
         projectId,
         label,
+        ...(Object.prototype.hasOwnProperty.call(body, "hexColor") ? { hexColor: body.hexColor } : {}),
       });
       if (!result.ok) {
         const status = result.code === "NOT_FOUND"

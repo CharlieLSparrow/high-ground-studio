@@ -6,7 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { createNestConversationTask } from "./nest-conversation-task";
 import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
 import { conversationWorkSourceHref } from "../conversation-work-source";
-import { readNewNestTaskTagContext, readTaskTagContext, replaceWorkEntityTags } from "./work-tags";
+import { createWorkTagTaxonomy, readNewNestTaskTagContext, readTaskTagContext, replaceWorkEntityTags } from "./work-tags";
 import { editCanonicalTaskInTransaction } from "./canonical-task-edit";
 import { ensureStudioProjectOwnerGrant } from "./studio-project-access";
 
@@ -65,6 +65,26 @@ if (enabled) {
     const owner = await ensureStudioProjectOwnerGrant({ prisma, projectId: id("project"), ownerEmail: email("owner") });
     expect(owner?.memberUserId).toBe(id("owner"));
     expect(await prisma.studioProjectAccessGrant.count({ where: { projectId: id("project") } })).toBe(before);
+  });
+  it("creates colored shared vocabulary inline and reuses it without recoloring on retry", async () => {
+    const input = { prisma, actorUserId: id("owner"), actorEmail: email("owner"), projectId: id("project"), label: "Chapter ideas", hexColor: "#ABC" };
+    const created = await createWorkTagTaxonomy(input);
+    expect(created).toMatchObject({ ok: true, created: true, tag: { label: "Chapter ideas", hexColor: "#aabbcc" } });
+    if (!created.ok) throw new Error("Expected shared tag creation");
+    const reused = await createWorkTagTaxonomy({ ...input, hexColor: "#506b46" });
+    expect(reused).toMatchObject({ ok: true, created: false, tag: { id: created.tag.id, hexColor: "#aabbcc" } });
+    const revisions = await prisma.studioTagRevision.findMany({ where: { tagId: created.tag.id } });
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0].snapshotJson).toMatchObject({ after: { hexColor: "#aabbcc" } });
+    const result = await createNestConversationTask(command({ tagIds: [created.tag.id] }));
+    expect(result.entry.tags).toEqual([expect.objectContaining({ id: created.tag.id, hexColor: "#aabbcc" })]);
+    expect(await readNewNestTaskTagContext({ prisma, actorUserId: id("editor"), projectSlug: id("project") }))
+      .toMatchObject({ canCreateTags: true, tags: expect.arrayContaining([expect.objectContaining({ id: created.tag.id, hexColor: "#aabbcc" })]) });
+    expect(await createWorkTagTaxonomy({ ...input, actorUserId: id("viewer"), actorEmail: email("viewer"), label: "Forbidden tag" }))
+      .toMatchObject({ ok: false, code: "FORBIDDEN" });
+    expect(await createWorkTagTaxonomy({ ...input, hexColor: "url(https://example.test/track)" }))
+      .toMatchObject({ ok: false, code: "INVALID_INPUT" });
+    expect(await prisma.studioTag.count({ where: { projectId: id("project"), label: "Forbidden tag" } })).toBe(0);
   });
   it("lets an editor change a teammate's task and tags while viewers can only read", async () => {
     const { entry } = await createNestConversationTask(command());

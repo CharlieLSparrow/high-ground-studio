@@ -57,6 +57,7 @@ export type CreateWorkTagTaxonomyResult =
         id: string;
         label: string;
         slug: string;
+        hexColor?: string | null;
         isActive: boolean;
         archivedAt: Date | null;
         updatedAt: Date;
@@ -256,6 +257,7 @@ export async function createWorkTagTaxonomy(input: {
   actorEmail: string;
   projectId: string;
   label: unknown;
+  hexColor?: unknown;
 }): Promise<CreateWorkTagTaxonomyResult> {
   const actorUserId = cleanId(input.actorUserId);
   const actorEmail = typeof input.actorEmail === "string"
@@ -263,11 +265,12 @@ export async function createWorkTagTaxonomy(input: {
     : "";
   const projectId = cleanId(input.projectId);
   const label = normalizeWorkTagLabel(input.label);
-  if (!actorUserId || !actorEmail || !projectId || !label) {
+  const hexColor = input.hexColor == null ? null : normalizeTagColor(input.hexColor);
+  if (!actorUserId || !actorEmail || !projectId || !label || hexColor === undefined) {
     return {
       ok: false,
       code: "INVALID_INPUT",
-      error: "Enter a reusable tag name of 80 characters or fewer.",
+      error: "Enter a tag name of 80 characters or fewer and a valid color.",
     };
   }
 
@@ -316,6 +319,9 @@ export async function createWorkTagTaxonomy(input: {
         let receiptId: string | null = null;
         let revision = 0;
         if (resolved.created) {
+          if (hexColor !== null) await tx.studioTag.update({
+            where: { id: resolved.tag.id }, data: { hexColor },
+          });
           receiptId = randomUUID();
           revision = 1;
           await tx.studioTagRevision.create({
@@ -332,6 +338,7 @@ export async function createWorkTagTaxonomy(input: {
                 after: {
                   label: resolved.tag.label,
                   slug: resolved.tag.slug,
+                  hexColor,
                   isActive: true,
                   archivedAt: null,
                 },
@@ -354,6 +361,7 @@ export async function createWorkTagTaxonomy(input: {
             id: true,
             label: true,
             slug: true,
+            hexColor: true,
             isActive: true,
             archivedAt: true,
             updatedAt: true,
@@ -579,7 +587,7 @@ export async function readTaskTagContext(input: {
     input.prisma.actionItemTagLink.findMany({ where: { actionItemId: entity.id }, select: { tagId: true } }),
   ]);
   return { entityId: entity.id, projectId: entity.projectId, updatedAt: entity.updatedAt.toISOString(),
-    selectedTagIds: links.map(link => link.tagId), tags };
+    selectedTagIds: links.map(link => link.tagId), tags, canCreateTags: projectEditor };
 }
 
 export async function readNewCoachingTaskTagContext(input: {
@@ -597,7 +605,7 @@ export async function readNewCoachingTaskTagContext(input: {
     orderBy: [{ label: "asc" }, { id: "asc" }],
     select: { id: true, label: true, hexColor: true, isActive: true },
   });
-  return { projectId: engagement.projectId, selectedTagIds: [], tags };
+  return { projectId: engagement.projectId, selectedTagIds: [], tags, canCreateTags: projects.has(engagement.projectId) };
 }
 
 export async function readNewNestTaskTagContext(input: { prisma: PrismaClient; actorUserId: string; projectSlug: string }) {
@@ -609,7 +617,7 @@ export async function readNewNestTaskTagContext(input: { prisma: PrismaClient; a
   if (!project) return null;
   const tags = await input.prisma.studioTag.findMany({ where: { projectId: project.id, isActive: true },
     orderBy: [{ label: "asc" }, { id: "asc" }], select: { id: true, label: true, hexColor: true, isActive: true } });
-  return { projectId: project.id, selectedTagIds: [], tags };
+  return { projectId: project.id, selectedTagIds: [], tags, canCreateTags: true };
 }
 
 /**
