@@ -112,6 +112,8 @@ if (enabled) {
     expect(retry.body.entry.id).toBe(first.body.entry.id);
     const persisted = await prisma.actionItem.findUniqueOrThrow({ where: { id: first.body.entry.id } });
     expect(persisted.sourceJson).toMatchObject({ conversationSource: { messageId: message.id, threadId: thread.id, engagementId, excerpt: message.body } });
+    const tag = await prisma.studioTag.create({data: {projectId, slug: `conversation-${nonce}`, label: "Preparation", hexColor: "#23543a"}});
+    await prisma.actionItem.update({where: {id: persisted.id}, data: {tagLinks: {create: {tagId: tag.id}}}});
     const coachRead = await act("GET", {}, coach!);
     expect(coachRead.body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ canEdit: true, title: command.title });
     expect((await act("POST", { ...command, sourceMessageId: foreignMessage.id, clientRequestId: randomUUID() })).status).toBe(404);
@@ -121,11 +123,27 @@ if (enabled) {
     const chatResponse = await readChat(new NextRequest(`http://localhost/api/nest-chat?projectSlug=${projectId}&threadKey=engagement:${engagementId}&message=${message.id}`));
     const chat = await chatResponse.json();
     expect(chatResponse.status).toBe(200);
-    expect(chat.messages.find((entry: {id: string}) => entry.id === message.id)).toMatchObject({ linkedTasks: [{ id: persisted.id, title: command.title, status: "OPEN" }] });
+    expect(chat.messages.find((entry: {id: string}) => entry.id === message.id)).toMatchObject({ linkedTasks: [{ id: persisted.id, title: command.title, status: "OPEN",
+      tags: [{id: tag.id, label: "Preparation", hexColor: "#23543a", isActive: true}] }] });
     expect(chat.nextCursor).toBeTruthy();
     const foreignRead = await readChat(new NextRequest(`http://localhost/api/nest-chat?projectSlug=${projectId}&threadKey=engagement:${engagementId}&message=${foreignMessage.id}`));
     expect((await foreignRead.json()).messages.some((entry: {id: string}) => entry.id === foreignMessage.id)).toBe(false);
-    const edited = await act("PATCH", { kind: "TASK", id: persisted.id, expectedUpdatedAt: persisted.updatedAt.toISOString(), title: "Introduction practiced together", body: message.body, ownerUserId: client!.id, status: "DONE" }, coach!);
+    await prisma.studioTag.update({where: {id: tag.id}, data: {label: "Opening practice", hexColor: "#f2e4c5"}});
+    for (const actor of [coach!, client!, observer!]) {
+      jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: actor} as never);
+      const refreshed = await readChat(new NextRequest(`http://localhost/api/nest-chat?projectSlug=${projectId}&threadKey=engagement:${engagementId}&message=${message.id}`));
+      expect(refreshed.status).toBe(200);
+      expect((await refreshed.json()).messages.find((entry: {id: string}) => entry.id === message.id).linkedTasks[0].tags)
+        .toEqual([{id: tag.id, label: "Opening practice", hexColor: "#f2e4c5", isActive: true}]);
+    }
+    for (const actor of [guest!, outsider!]) {
+      jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: actor} as never);
+      const denied = await readChat(new NextRequest(`http://localhost/api/nest-chat?projectSlug=${projectId}&threadKey=engagement:${engagementId}&message=${message.id}`));
+      expect(denied.status).toBe(404);
+      expect(JSON.stringify(await denied.json())).not.toContain("Opening practice");
+    }
+    const current = await prisma.actionItem.findUniqueOrThrow({where: {id: persisted.id}});
+    const edited = await act("PATCH", { kind: "TASK", id: persisted.id, expectedUpdatedAt: current.updatedAt.toISOString(), title: "Introduction practiced together", body: message.body, ownerUserId: client!.id, status: "DONE" }, coach!);
     expect(edited.status).toBe(200);
     expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ status: "DONE", title: "Introduction practiced together" });
   });

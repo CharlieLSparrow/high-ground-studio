@@ -2,12 +2,14 @@ import type { Prisma } from "@prisma/client";
 import { conversationWorkSourceHref } from "@/lib/conversation-work-source";
 import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
 
+export const WORK_TAG_LINKS_SELECT = { orderBy: { tagId: "asc" }, select: {
+    tag: { select: { id: true, label: true, hexColor: true, isActive: true } },
+  } } as const;
+
 const commonSelect = {
   id: true, engagementId: true, roomId: true, title: true, sourceJson: true,
   createdAt: true, updatedAt: true,
-  tagLinks: { orderBy: { tagId: "asc" }, select: {
-    tag: { select: { id: true, label: true, hexColor: true, isActive: true } },
-  } },
+  tagLinks: WORK_TAG_LINKS_SELECT,
 } as const;
 
 export const NOTE_SELECT = {

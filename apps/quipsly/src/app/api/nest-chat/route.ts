@@ -8,6 +8,7 @@ import {
   sessionMutationAccessWhere,
 } from "@/lib/server/session-access";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
+import { WORK_TAG_LINKS_SELECT } from "@/lib/server/coaching-work-projection";
 
 import {
   findStudioProjectForAccess,
@@ -580,7 +581,7 @@ export async function GET(request: NextRequest) {
         { OR: messagesToReturn.map(message => ({ sourceJson: { path: ["conversationSource", "messageId"], equals: message.id } })) },
       ] },
       orderBy: { createdAt: "desc" }, take: 500,
-      select: { id: true, title: true, status: true, sourceJson: true },
+      select: { id: true, title: true, status: true, sourceJson: true, tagLinks: WORK_TAG_LINKS_SELECT },
     }) : [];
 
     return NextResponse.json({
@@ -610,7 +611,7 @@ export async function GET(request: NextRequest) {
         ...(loaded.engagement ? { linkedTasks: linkedTasks.filter(task =>
           objectValue(objectValue(task.sourceJson)?.conversationSource)?.messageId === message.id
           && objectValue(objectValue(task.sourceJson)?.relationshipWorkRemoval)?.active !== true)
-          .map(({ id, title, status }) => ({ id, title, status })) } : {}),
+          .map(({ id, title, status, tagLinks }) => ({ id, title, status, tags: (tagLinks ?? []).map(link => link.tag) })) } : {}),
       })),
     });
   } catch (error) {

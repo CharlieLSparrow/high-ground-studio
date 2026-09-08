@@ -2,8 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { tagChipColors } from "@/lib/tag-color";
 
-export type ConversationLinkedTask = { id: string; title: string; status: string };
+export type ConversationLinkedTask = {
+  id: string; title: string; status: string;
+  tags?: { id: string; label: string; hexColor: string | null; isActive: boolean }[];
+};
 
 export function ConversationTaskAction({ engagementId, messageId, body, canCreate, tasks = [] }: {
   engagementId: string; messageId: string; body: string; canCreate: boolean; tasks?: ConversationLinkedTask[];
@@ -54,8 +58,18 @@ export function ConversationTaskAction({ engagementId, messageId, body, canCreat
 
   return <div className="mt-2 space-y-2">
     {linked.map(task => <Link key={task.id} href={`/work?task=${encodeURIComponent(task.id)}`}
-      className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent">
-      <span aria-hidden="true">{task.status === "DONE" ? "✓" : "☐"}</span><span>{task.title}</span>
+      className="flex min-h-11 min-w-0 items-start gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent">
+      <span aria-hidden="true">{task.status === "DONE" ? "✓" : "☐"}</span>
+      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+        <span>{task.title}</span>
+        {Boolean(task.tags?.length) && <span className="mt-1 flex flex-wrap gap-1">
+          <span className="sr-only">Tags: </span>
+          {task.tags?.map(tag => <span key={tag.id} style={tagChipColors(tag.hexColor)}
+            className="max-w-full rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-semibold text-foreground">
+            {tag.label}{!tag.isActive && <span className="sr-only"> (archived tag)</span>}
+          </span>)}
+        </span>}
+      </span>
       <span className="sr-only"> — {task.status.toLowerCase()} task</span>
     </Link>)}
     {canCreate && body.trim() && !open && <button type="button" onClick={() => setOpen(true)} className="min-h-11 text-sm font-semibold text-primary underline underline-offset-4">{linked.length ? "Create another task" : "Create task"}</button>}
