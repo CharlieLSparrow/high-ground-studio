@@ -2861,6 +2861,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let credentials = try runtimeSmokeCredentials()
         let idea = try XCTUnwrap(credentials.taskEditSourceTitle)
         let revisedTitle = try XCTUnwrap(credentials.taskEditUpdatedTitle)
+        let sharedTagLabel = credentials.tagLabel.flatMap { $0.isEmpty ? nil : $0 }
 
         func openConversation(_ app: XCUIApplication) {
             selectRequestedSession(in: app, credentials: credentials)
@@ -2882,8 +2883,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "enabled == true"), object: composer
         )], timeout: 30), .completed, "The shared conversation must load the current member's writing access.")
-        replaceText(in: composer, with: idea, app: app)
-        app.buttons["CaptureCoachingConversationSendButton"].firstMatch.tap()
+        // Keep the keyboard open, as a person sending a message would. The
+        // generic replacement helper's outside tap can dismiss an iPad sheet.
+        XCTAssertTrue(composer.isHittable)
+        composer.tap()
+        composer.typeText(idea)
+        let send = app.buttons["CaptureCoachingConversationSendButton"].firstMatch
+        attachRuntimeScreenshot(app, name: "Conversation composer with keyboard and reachable Send")
+        XCTAssertTrue(send.isEnabled)
+        XCTAssertTrue(send.isHittable, "Send must remain reachable with the conversation keyboard open, including in an iPad sheet.")
+        send.tap()
         let message = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingConversationMessage_")
         ).containing(.staticText, identifier: idea).firstMatch
@@ -2900,6 +2909,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(waitForRuntimeElement(tags, in: app, timeout: 20, swipeAttempts: 5))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: tags)], timeout: 20), .completed)
         tags.tap()
+        if let sharedTagLabel {
+            let existingTag = app.buttons[sharedTagLabel].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(existingTag, in: app, timeout: 15, swipeAttempts: 8))
+            XCTAssertEqual(existingTag.value as? String, "Not selected")
+            existingTag.tap()
+            XCTAssertEqual(existingTag.value as? String, "Selected")
+        }
         let newTag = app.textFields["CaptureTaskTagNewLabel"].firstMatch
         XCTAssertTrue(newTag.waitForExistence(timeout: 10))
         replaceText(in: newTag, with: "Chapter planning", app: app)
@@ -2926,6 +2942,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let persistedTag = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
             "CaptureWorkTag_draft_", "Tag: Chapter planning")).firstMatch
         XCTAssertTrue(waitForRuntimeElement(persistedTag, in: app, timeout: 20, swipeAttempts: 5), "The tag must reload from the saved task, not the previous draft.")
+        if let sharedTagLabel {
+            let sharedTag = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+                "CaptureWorkTag_draft_", "Tag: \(sharedTagLabel)")).firstMatch
+            XCTAssertTrue(waitForRuntimeElement(sharedTag, in: app, timeout: 20, swipeAttempts: 5),
+                          "An existing shared tag must survive native creation and relaunch alongside the new tag.")
+        }
         let persistedTagID = String(persistedTag.identifier.dropFirst("CaptureWorkTag_draft_".count))
         app.buttons["CaptureCoachingWorkTags"].firstMatch.tap()
         let choice = app.buttons["CaptureTaskTagChoice_\(persistedTagID)"].firstMatch
@@ -2951,6 +2973,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "CaptureWorkTag_draft_", "Tag: Draft ready")).firstMatch
         XCTAssertTrue(waitForRuntimeElement(savedTag, in: app, timeout: 20, swipeAttempts: 5))
         XCTAssertFalse(app.staticTexts["CaptureWorkTag_draft_\(persistedTagID)"].exists)
+        if let sharedTagLabel {
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+                "CaptureWorkTag_draft_", "Tag: \(sharedTagLabel)")).firstMatch.exists,
+                          "Changing another tag and the task title must retain the shared tag.")
+        }
         attachRuntimeScreenshot(app, name: "Task text and tags saved together")
         app.buttons["CaptureCoachingWorkTags"].firstMatch.tap()
         let canceledLabel = app.textFields["CaptureTaskTagNewLabel"].firstMatch
