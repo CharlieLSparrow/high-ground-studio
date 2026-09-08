@@ -935,6 +935,7 @@ private struct CaptureTopNavigationEdgeEffect: ViewModifier {
 }
 
 private struct CaptureTodayView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var model: CaptureExperienceModel
     @Binding var showsNewSession: Bool
     @Binding var visibleTab: CaptureRootTab
@@ -1016,6 +1017,7 @@ private struct CaptureTodayView: View {
                 if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
                     Label("Preview data — no server actions", systemImage: "hammer.fill")
+                        .accessibilityValue("Text size: \(String(describing: dynamicTypeSize))")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(CapturePalette.brass)
                         .padding(.horizontal, 12)
@@ -9115,10 +9117,6 @@ private struct CaptureVoiceWritingEditor: View {
                     .pickerStyle(.segmented)
                     .accessibilityHint("Switch between editable writing and the time-linked source transcript.")
                     .accessibilityIdentifier("CaptureVoiceWritingSurfacePicker")
-                } footer: {
-                    Text(selectedSurface == .writing
-                        ? "Shape your words here. Quipsly saves as you type."
-                        : "Tap a passage to hear the exact moment in the original audio.")
                 }
             }
 
@@ -11316,6 +11314,7 @@ private struct CaptureStructuredWritingBody: View {
 
 private enum CaptureRecorderFocusedTool: String, Identifiable {
     case deviceSoundCheck
+    case episodeScript
     case episodeWatch
 
     var id: String { rawValue }
@@ -12647,34 +12646,6 @@ private struct CaptureRecorderView: View {
             .accessibilityHint(
                 "Opens the shared episode clip and its familiar play, pause, and seek controls."
             )
-            .task(
-                id:
-                    "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
-            ) {
-                guard visibleTab == .record else { return }
-                if model.usesPreviewData {
-                    episodeWatch.loadPreview(session: session)
-                } else {
-                    await episodeWatch.load(session: session)
-                    await episodeWatch.poll(session: session)
-                }
-            }
-            .onDisappear { episodeWatch.stop() }
-            .onChange(of: episodeWatch.outboundLiveHint) { _, hint in
-                guard let hint else { return }
-                Task {
-                    await model.providerRoom.publishEpisodeWatchHint(hint)
-                }
-            }
-            .onChange(of: model.providerRoom.latestEpisodeWatchHint) { _, hint in
-                guard let hint else { return }
-                Task {
-                    await episodeWatch.receiveLiveHint(
-                        hint,
-                        session: session
-                    )
-                }
-            }
         }
     }
 
@@ -12749,6 +12720,39 @@ private struct CaptureRecorderView: View {
         .toolbar {
             if let session = model.selectedSession,
                !session.isPersonalVoiceNote {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button {
+                            if model.usesPreviewData {
+                                episodeManuscript.loadPreview(session: session)
+                                episodeWatch.loadPreview(session: session)
+                            }
+                            focusedTool = .deviceSoundCheck
+                        } label: {
+                            Label("Devices and sound check", systemImage: "slider.horizontal.3")
+                        }
+                        .accessibilityIdentifier("CaptureDeviceSoundCheckToolbar")
+                        if !session.isCoachingSession,
+                           session.projectSlug?.nonempty != nil,
+                           session.episodeSlug?.nonempty != nil {
+                            Button {
+                                focusedTool = .episodeScript
+                            } label: {
+                                Label("Episode script", systemImage: "doc.richtext")
+                            }
+                            .accessibilityIdentifier("CaptureEpisodeScriptToolbar")
+                            Button {
+                                focusedTool = .episodeWatch
+                            } label: {
+                                Label("Watch together", systemImage: "play.rectangle.on.rectangle")
+                            }
+                            .accessibilityIdentifier("CaptureEpisodeWatchToolbar")
+                        }
+                    } label: {
+                        Label("Session tools", systemImage: "slider.horizontal.3")
+                    }
+                    .accessibilityIdentifier("CaptureSessionToolsMenu")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         ForEach(MobileQuickEntryKind.allCases) { kind in
@@ -12962,7 +12966,28 @@ private struct CaptureRecorderView: View {
         .task(id: personalVoiceTranscriptMonitorID) {
             await monitorPersonalVoiceTranscript()
         }
+        .task(id: activeEpisodeWatchContextID) {
+            // Shared playback belongs to the open Session, not a lazy card.
+            // Scrolling to the script must not stop the clip or its updates.
+            episodeWatch.stop()
+            guard let session = activeEpisodeWatchSession else { return }
+            if model.usesPreviewData {
+                episodeWatch.loadPreview(session: session)
+            } else {
+                await episodeWatch.load(session: session)
+                await episodeWatch.poll(session: session)
+            }
+        }
+        .onChange(of: episodeWatch.outboundLiveHint) { _, hint in
+            guard let hint, activeEpisodeWatchSession != nil else { return }
+            Task { await model.providerRoom.publishEpisodeWatchHint(hint) }
+        }
+        .onChange(of: model.providerRoom.latestEpisodeWatchHint) { _, hint in
+            guard let hint, let session = activeEpisodeWatchSession else { return }
+            Task { await episodeWatch.receiveLiveHint(hint, session: session) }
+        }
         .onDisappear {
+            episodeWatch.stop()
             soundCheck.discard()
             guard !videoCapture.state.isActive,
                   videoCapture.state != .paused,
@@ -12971,16 +12996,54 @@ private struct CaptureRecorderView: View {
         }
     }
 
+    private var activeEpisodeWatchSession: MobileCaptureSession? {
+        guard visibleTab == .record,
+              let session = model.selectedSession,
+              !session.isCoachingSession,
+              session.projectSlug?.nonempty != nil,
+              session.episodeSlug?.nonempty != nil,
+              model.providerRoom.isConnected
+                || localRecordingWorkspaceIsOpen(for: session)
+                || focusedTool == .episodeWatch else { return nil }
+        return session
+    }
+
+    private var activeEpisodeWatchContextID: String {
+        guard let session = activeEpisodeWatchSession else { return "inactive" }
+        return "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+    }
+
     @ViewBuilder
     private func focusedRecorderTool(
+        _ tool: CaptureRecorderFocusedTool,
+        session: MobileCaptureSession
+    ) -> some View {
+        if tool == .episodeScript {
+            MobileEpisodeManuscriptReader(
+                client: episodeManuscript,
+                session: session,
+                previewOnly: model.usesPreviewData
+            )
+            .task(id: session.id) {
+                if model.usesPreviewData {
+                    episodeManuscript.loadPreview(session: session)
+                } else {
+                    await episodeManuscript.load(session: session)
+                }
+            }
+        } else {
+            focusedRecorderUtility(tool, session: session)
+        }
+    }
+
+    private func focusedRecorderUtility(
         _ tool: CaptureRecorderFocusedTool,
         session: MobileCaptureSession
     ) -> some View {
         NavigationStack {
             ScrollView {
                 Group {
-                    switch tool {
-                    case .deviceSoundCheck:
+                    if tool == .deviceSoundCheck {
                         CaptureRehearsalReadinessCard(
                             audioCapture: audioCapture,
                             soundCheck: soundCheck,
@@ -13000,7 +13063,7 @@ private struct CaptureRecorderView: View {
                                 }
                             }
                         )
-                    case .episodeWatch:
+                    } else {
                         MobileEpisodeWatchCard(
                             client: episodeWatch,
                             session: session,
@@ -17523,7 +17586,7 @@ private struct CaptureLibraryPreviewWritingCard: View {
                     }
                     Spacer()
                 }
-                Text("The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters…")
+                Text("Connect the opening story to the research question.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
@@ -19681,7 +19744,7 @@ private struct VideoRecorderHero: View {
                 coordinatedAudioState == .recording
                     ? "Recording two local sources"
                     : "Camera started · preparing microphone"
-            case .podcastCamera: "Podcast camera recording"
+            case .podcastCamera: "Video-only recording"
             case .soloVideo: "Solo video recording"
             case .audio: "Video recording"
             }
@@ -21556,15 +21619,17 @@ private struct CapturePersistentRecorderDock: View {
             Text(statusTitle)
                 .font(.subheadline.weight(.bold))
                 .fixedSize(horizontal: false, vertical: true)
-            Text(statusDetail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier(
-                    latestMark == nil
-                        ? "CapturePersistentRecorderDetail"
-                        : "CaptureLatestMomentMark"
-                )
+            if !statusDetail.isEmpty {
+                Text(statusDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(
+                        latestMark == nil
+                            ? "CapturePersistentRecorderDetail"
+                            : "CaptureLatestMomentMark"
+                    )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .layoutPriority(1)
@@ -21755,7 +21820,7 @@ private struct CapturePersistentRecorderDock: View {
                 ? "Waiting for consent"
                 : "Allow recording"
         }
-        return mode == .audio ? "Ready to record" : "Ready for \(mode.title.lowercased())"
+        return "Ready to record"
     }
 
     private var statusDetail: String {
@@ -21790,7 +21855,7 @@ private struct CapturePersistentRecorderDock: View {
                     ? "Update your choice for this source"
                     : "Choose once for this Session"
         }
-        return "Primary control stays within reach"
+        return ""
     }
 
     private var sourceIsReady: Bool {
@@ -24023,13 +24088,13 @@ private struct CaptureWorkLocationBar: View {
                     Text(nestName)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(CapturePalette.primaryText)
-                        .lineLimit(1)
-                    HStack(spacing: 5) {
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .black))
                             .accessibilityHidden(true)
                         Text(spaceName)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CapturePalette.secondaryText)

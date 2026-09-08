@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class CaptureExperienceUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -1456,7 +1457,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = [
             "--capture-ui-preview",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -1470,7 +1471,7 @@ final class CaptureExperienceUITests: XCTestCase {
             library.swipeUp()
         }
         XCTAssertTrue(previewDraft.waitForExistence(timeout: 5))
-        reveal(previewDraft)
+        reveal(previewDraft, requireHittable: false)
         previewDraft.tap()
 
         XCTAssertTrue(
@@ -1480,23 +1481,32 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Writing"].isHittable)
         XCTAssertTrue(app.buttons["Transcript"].isHittable)
         XCTAssertTrue(app.textFields["CaptureVoiceWritingTitle"].isHittable)
+        let writingBody = app.descendants(matching: .any)["CaptureVoiceWritingBody"].firstMatch
+        let writingForm = app.collectionViews.firstMatch
+        for _ in 0..<8 where !writingBody.isHittable {
+            writingForm.swipeUp()
+        }
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureVoiceWritingBody"].isHittable,
+            writingBody.isHittable,
             "The spoken draft must remain directly editable at the largest accessibility text size."
         )
+        writingBody.tap()
+        writingBody.typeText(" Accessible writing check.")
+        XCTAssertTrue((writingBody.value as? String)?.contains("Accessible writing check.") == true)
         XCTAssertTrue(
             app.staticTexts["CaptureVoiceWritingWordCount"].exists,
             "A paper-writing surface should show a useful word count without adding another workflow."
         )
         XCTAssertTrue(
-            app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
-            "The persistent microphone action must not disappear when text grows."
+            app.buttons["CaptureVoiceWritingContinueToolbar"].isHittable
+                || app.buttons["CaptureVoiceWritingContinueKeyboard"].isHittable,
+            "Adding voice must remain reachable, including above the open keyboard."
         )
 
-        // Hit regions and descriptions were audited above on this same
-        // transcript surface. Defer the task row's clipped-text audit until
-        // the operated journey is complete so XCTest cannot leave the lazy
-        // accessibility hierarchy half-walked before the edit interaction.
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "largest-text-writing-edit.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     func testVoiceWritingDeletesTheDraftWithoutDeletingItsSource() {
@@ -1938,7 +1948,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-coach-booking-preview",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launchEnvironment["CAPTURE_COACHING_PREVIEW_ROLE"] = "coach"
         app.launch()
@@ -2686,6 +2696,45 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testSessionToolsOpenEpisodeSourcesFromLobbyAndStayContextualForCoaching() {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-ui-preview-session=preview-studio-group-ready",
+        ]
+        app.launch()
+        openSessionToolsMenu()
+        let script = app.buttons["CaptureEpisodeScriptToolbar"]
+        XCTAssertTrue(script.waitForExistence(timeout: 3))
+        script.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureEpisodeManuscriptReader"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["Homer"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Charlie"].exists)
+        app.buttons["CaptureEpisodeManuscriptDone"].tap()
+        openEpisodeWatchIfNeeded()
+        XCTAssertTrue(app.staticTexts["Ted Lasso · Be Curious"].waitForExistence(timeout: 5))
+        app.buttons["CaptureEpisodeWatchDone"].tap()
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        XCTAssertTrue(localOnly.waitForExistence(timeout: 5))
+        XCTAssertEqual(localOnly.label, "Record without a call", "Opening source material must not open recording or join the call.")
+
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-ui-preview-session=preview-coaching-ready",
+        ]
+        app.launch()
+        openSessionToolsMenu()
+        XCTAssertTrue(app.buttons["CaptureDeviceSoundCheckToolbar"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["CaptureEpisodeScriptToolbar"].exists)
+        XCTAssertFalse(app.buttons["CaptureEpisodeWatchToolbar"].exists)
+    }
+
     func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
         app.tabBars.buttons["Sessions"].tap()
 
@@ -3098,7 +3147,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         let coachingSpace = app.buttons[
             "CaptureSpaceSwitcherChoice_coaching:preview-engagement"
-        ]
+        ].firstMatch // The same Space can also appear in Recent Spaces.
         XCTAssertTrue(
             coachingSpace.waitForExistence(timeout: 3),
             "Repeat coaching Sessions should roll up into one durable client Space."
@@ -5821,7 +5870,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-ui-preview-tab=record",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -5829,11 +5878,20 @@ final class CaptureExperienceUITests: XCTestCase {
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("High Ground pre-show")
         let consentNeededSession = app.staticTexts["High Ground pre-show"]
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        reveal(localOnly)
         openLocalRecorderIfNeeded()
-        app.buttons["CaptureConfirmConsentButton"].tap()
+        let confirmConsent = app.buttons["CapturePersistentRecorderConsentButton"]
+        XCTAssertTrue(confirmConsent.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmConsent.isHittable, "Consent should be available directly from the persistent recording control.")
+        confirmConsent.tap()
 
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
@@ -5852,15 +5910,7 @@ final class CaptureExperienceUITests: XCTestCase {
             .hitRegion,
             .sufficientElementDescription,
             .textClipped,
-        ]) { issue in
-            guard issue.auditType == .textClipped else { return false }
-            // XCTest reports one synthetic issue without an element and also
-            // flags the fully visible, fixed-height primary button at AX3.
-            // Both are verified directly above. Keep every other element and
-            // every other audit type fatal.
-            return issue.element == nil
-                || issue.element?.identifier == "CaptureConsentSaveChoicesButton"
-        }
+        ])
     }
 
     func testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission() {
@@ -5942,12 +5992,15 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-ui-preview-tab=record",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        reveal(localOnly)
         openLocalRecorderIfNeeded()
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
+        reveal(modePicker)
         XCTAssertTrue(modePicker.waitForExistence(timeout: 12))
         modePicker.buttons["A/V"].tap()
         let qualityPicker = app.buttons["CaptureVideoQualityPicker"]
@@ -6103,14 +6156,24 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCoreShellPassesAccessibilityAuditAtLargestTextSize() throws {
+        continueAfterFailure = true
+        defer { continueAfterFailure = false }
         app.terminate()
         app.launchArguments = [
             "--capture-ui-preview",
             "--capture-ui-preview-tab=today",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
+
+        let preview = app.descendants(matching: .any)["CapturePreviewModeBadge"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 12))
+        XCTAssertEqual(
+            preview.value as? String,
+            "Text size: accessibility5",
+            "Verify the app actually renders at the largest Dynamic Type size; an ignored launch value must not produce a false pass."
+        )
 
         let destinations: [(tab: String, root: XCUIElement)] = [
             ("Home", app.staticTexts["CaptureTodayCreateHeading"]),
@@ -6131,6 +6194,10 @@ final class CaptureExperienceUITests: XCTestCase {
                 .sufficientElementDescription,
                 .textClipped,
             ])
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "largest-text-\(destination.tab.lowercased()).png"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
             if hidSidebar { restoreIPadSidebarAfterAccessibilityAudit() }
         }
     }
@@ -6142,7 +6209,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview-tab=record",
             "--capture-ui-preview-session=preview-studio-group-ready",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -6158,11 +6225,11 @@ final class CaptureExperienceUITests: XCTestCase {
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5)
         )
 
-        let start = app.buttons["CaptureStartButton"]
-        reveal(start)
+        let start = app.buttons["CapturePersistentRecorderStartButton"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
         XCTAssertTrue(
             start.isHittable,
-            "The primary recording action must remain reachable at the largest accessibility text size."
+            "The persistent recording action must remain reachable without scrolling at the largest accessibility text size."
         )
         assertAccessibleTapTarget(
             start,
@@ -6198,13 +6265,9 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         closeDeviceSoundCheckIfNeeded()
 
-        let manuscript = app.descendants(matching: .any)[
-            "CaptureEpisodeManuscriptCard"
-        ]
-        reveal(manuscript, searchAboveFirst: false)
-        XCTAssertTrue(manuscript.exists)
-        let openManuscript = app.buttons["CaptureEpisodeManuscriptOpenButton"]
-        reveal(openManuscript)
+        openSessionToolsMenu()
+        let openManuscript = app.buttons["CaptureEpisodeScriptToolbar"]
+        XCTAssertTrue(openManuscript.waitForExistence(timeout: 3))
         XCTAssertTrue(
             openManuscript.isHittable,
             "The canonical episode manuscript must remain reachable at the largest accessibility text size."
@@ -6213,6 +6276,15 @@ final class CaptureExperienceUITests: XCTestCase {
             openManuscript,
             "The canonical episode manuscript"
         )
+        openManuscript.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureEpisodeManuscriptReader"]
+                .waitForExistence(timeout: 5),
+            "The episode script should open directly without scrolling through recording setup."
+        )
+        let manuscriptDone = app.buttons["CaptureEpisodeManuscriptDone"]
+        XCTAssertTrue(manuscriptDone.isHittable)
+        manuscriptDone.tap()
 
         openEpisodeWatchIfNeeded()
         let watch = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
@@ -6394,7 +6466,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-ui-preview-tab=account",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -6685,7 +6757,11 @@ final class CaptureExperienceUITests: XCTestCase {
             app.frame.minY + 72,
             navigationBar.exists ? navigationBar.frame.maxY + 4 : app.frame.minY + 72
         )
-        let visibleBottom = app.frame.maxY - (sourceFilingForm.exists ? 12 : 96)
+        let recordingDock = app.otherElements["CapturePersistentRecorderDock"].firstMatch
+        let visibleBottom = min(
+            app.frame.maxY - (sourceFilingForm.exists ? 12 : 96),
+            recordingDock.exists ? recordingDock.frame.minY - 4 : app.frame.maxY
+        )
         let elementIsReachable = {
             element.exists && (!requireHittable || element.isHittable)
         }
@@ -6695,6 +6771,10 @@ final class CaptureExperienceUITests: XCTestCase {
         if elementIsReachable(), navigationBar.exists,
            !element.frame.isEmpty,
            navigationBar.frame.contains(element.frame) {
+            return
+        }
+        if elementIsReachable(), recordingDock.exists,
+           !element.frame.isEmpty, recordingDock.frame.contains(element.frame) {
             return
         }
         let elementHasRequiredVisibleFrame = {
@@ -6759,12 +6839,26 @@ final class CaptureExperienceUITests: XCTestCase {
                     // target, but it may occupy only 44 points. Use a finer
                     // adjustment for those targets so the helper does not
                     // alternate above and below them forever.
-                    let startY = requireHittable
-                        ? (shouldMoveContentDown ? 0.34 : 0.72)
-                        : (shouldMoveContentDown ? 0.44 : 0.56)
-                    let endY = requireHittable
-                        ? (shouldMoveContentDown ? 0.64 : 0.42)
-                        : (shouldMoveContentDown ? 0.56 : 0.44)
+                    let searchingUnmaterializedRow = !element.exists
+                    let startFraction = searchingUnmaterializedRow
+                        ? (shouldMoveContentDown ? 0.2 : 0.85)
+                        : requireHittable
+                            ? (shouldMoveContentDown ? 0.34 : 0.72)
+                            : (shouldMoveContentDown ? 0.44 : 0.56)
+                    let endFraction = searchingUnmaterializedRow
+                        ? (shouldMoveContentDown ? 0.85 : 0.2)
+                        : requireHittable
+                            ? (shouldMoveContentDown ? 0.64 : 0.42)
+                            : (shouldMoveContentDown ? 0.56 : 0.44)
+                    // A safe-area recording dock can occupy much of the
+                    // ScrollView's reported frame. Drag the exposed content,
+                    // not the stationary controls covering its lower edge.
+                    let frame = scrollSurface.frame
+                    let exposedTop = max(frame.minY, visibleTop)
+                    let exposedBottom = min(frame.maxY, visibleBottom)
+                    let exposedHeight = max(1, exposedBottom - exposedTop)
+                    let startY = (exposedTop + exposedHeight * startFraction - frame.minY) / max(1, frame.height)
+                    let endY = (exposedTop + exposedHeight * endFraction - frame.minY) / max(1, frame.height)
                     scrollSurface
                         .coordinate(
                             withNormalizedOffset: CGVector(dx: 0.5, dy: startY)
@@ -6924,8 +7018,8 @@ final class CaptureExperienceUITests: XCTestCase {
     private func openEpisodeWatchIfNeeded() {
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         guard !card.exists else { return }
-        let open = app.buttons["CaptureEpisodeWatchOpen"].firstMatch
-        reveal(open, searchAboveFirst: false)
+        openSessionToolsMenu()
+        let open = app.buttons["CaptureEpisodeWatchToolbar"].firstMatch
         XCTAssertTrue(
             open.waitForExistence(timeout: 5),
             "An episode Session should keep its focused Watch workspace directly reachable beside the recorder."
@@ -6943,8 +7037,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "CaptureRehearsalReadinessCard"
         ]
         guard !card.exists else { return }
-        let open = app.buttons["CaptureDeviceSoundCheckOpen"].firstMatch
-        reveal(open)
+        openSessionToolsMenu()
+        let open = app.buttons["CaptureDeviceSoundCheckToolbar"].firstMatch
         XCTAssertTrue(
             open.waitForExistence(timeout: 5),
             "The familiar pre-record device and sound check should remain directly reachable from the recorder."
@@ -6955,6 +7049,13 @@ final class CaptureExperienceUITests: XCTestCase {
             card.waitForExistence(timeout: 5),
             "The focused device and sound check should open without expanding the entire Session workspace."
         )
+    }
+
+    private func openSessionToolsMenu() {
+        let menu = app.buttons["CaptureSessionToolsMenu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        XCTAssertTrue(menu.isHittable, "Session tools must stay reachable without scrolling.")
+        menu.tap()
     }
 
     private func closeDeviceSoundCheckIfNeeded() {
@@ -7399,7 +7500,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
         app.launchArguments = [
             "--capture-login-ui-preview",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
         XCTAssertTrue(
@@ -7472,7 +7573,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
             app.buttons[
                 "QuipslyCaptureShareSignInSupport"
             ]
-        reveal(share)
+        reveal(share, swipingDownFirst: true)
         XCTAssertTrue(share.isHittable)
         XCTAssertEqual(
             email.value as? String,
@@ -7574,9 +7675,15 @@ final class CaptureLoginExperienceUITests: XCTestCase {
 
     private func reveal(_ element: XCUIElement, swipingDownFirst: Bool = false) {
         if element.exists, element.isHittable { return }
-        if swipingDownFirst { app.swipeDown() }
-        for _ in 0..<4 where !element.isHittable {
-            app.swipeUp()
+        for _ in 0..<8 where !element.isHittable {
+            let searchAbove = element.exists
+                ? element.frame.maxY < app.frame.minY + 120
+                : swipingDownFirst
+            if searchAbove {
+                app.swipeDown()
+            } else {
+                app.swipeUp()
+            }
         }
     }
 

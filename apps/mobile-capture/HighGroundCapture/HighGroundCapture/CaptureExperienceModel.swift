@@ -68,9 +68,9 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .audio: "Audio"
-        case .podcastAV: "Podcast audio + video"
+        case .podcastAV: "Audio + video"
         case .soloVideo: "Solo video"
-        case .podcastCamera: "Podcast camera"
+        case .podcastCamera: "Video only"
         }
     }
 
@@ -107,13 +107,13 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .audio:
-            "A high-quality local microphone source. The live room remains a separate call."
+            "Records high-quality audio on this device."
         case .podcastAV:
-            "Two local masters: the selected microphone plus a video-only camera file in one capture group. The live room remains the call."
+            "Records separate audio and video tracks on this device."
         case .soloVideo:
-            "Camera and microphone in one local movie for a solo episode, short, or YouTube recording."
+            "Records one video file with sound."
         case .podcastCamera:
-            "A video-only camera master while the LiveKit room carries conversation audio. Quipsly aligns the sources later."
+            "Records video only. Use another device to record audio."
         }
     }
 }
@@ -2070,7 +2070,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         if mode == .soloVideo, providerRoom.isConnected || providerRoom.isConnecting {
-            errorMessage = "Solo video owns the local microphone. Leave the live room first, or use Podcast camera for a video-only master beside room audio."
+            errorMessage = "Solo video needs the microphone. Leave the call first, or choose Video only and record audio on another device."
             return
         }
         guard AuthManager.shared.stableOwnerSnapshot() != nil else {
@@ -2123,7 +2123,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         if mode == .soloVideo, providerRoom.isConnected || providerRoom.isConnecting {
-            errorMessage = "Solo video includes microphone audio and cannot take over the audio session during a live room. Use Podcast camera or leave the room."
+            errorMessage = "Solo video needs the microphone. Leave the call first, or choose Video only and record audio on another device."
             return
         }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
@@ -2187,7 +2187,7 @@ final class CaptureExperienceModel: ObservableObject {
                 isChangingCapture = false
                 errorMessage = mode == .soloVideo
                     ? "Solo video includes microphone audio. Save current audio and video consent for every required participant before starting."
-                    : "Podcast audio + video creates a separate microphone master. Save current audio and video consent for every required participant before starting."
+                    : "Audio + video records both sources. Everyone being recorded needs to allow audio and video recording before you start."
                 return
             }
         }
