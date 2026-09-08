@@ -2610,6 +2610,14 @@ final class CaptureExperienceUITests: XCTestCase {
 
         localOnly.tap()
         XCTAssertTrue(consent.waitForExistence(timeout: 5))
+        // Compare adjoining sections before scrolling to later tools. A lazy
+        // stack may release the lobby's accessibility node once it is far above
+        // the viewport; reading its frame then tests caching, not layout order.
+        XCTAssertLessThan(
+            call.frame.minY,
+            consent.frame.minY,
+            "The normal call path must come before recording administration and production tools."
+        )
         let quickCapture = app.descendants(matching: .any)["CaptureQuickEntryBar"]
         reveal(
             quickCapture,
@@ -2617,11 +2625,6 @@ final class CaptureExperienceUITests: XCTestCase {
             requireHittable: false
         )
         XCTAssertTrue(quickCapture.exists)
-        XCTAssertLessThan(
-            call.frame.minY,
-            consent.frame.minY,
-            "The normal call path must come before recording administration and production tools."
-        )
         XCTAssertLessThan(
             consent.frame.minY,
             quickCapture.frame.minY,
