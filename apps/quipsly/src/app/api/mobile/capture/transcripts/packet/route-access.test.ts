@@ -32,6 +32,7 @@ const transcriptJobId = "transcript-1";
 const summaryNoteId = "summary-1";
 const actorOwnedTranscript = {
   id: transcriptJobId,
+  roomId,
   requestedBy: actor.id,
   room: { createdByUserId: actor.id, booking: null },
 };
@@ -109,6 +110,13 @@ describe("packet mutation Session access", () => {
       );
     }
     expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(acquirePrismaAdvisoryTransactionLock).mock.calls.map(call => call[1])).toEqual([
+      `capture-transcript-follow-through-room:${roomId}`,
+      `transcript-job-packet-source:${transcriptJobId}`,
+    ]);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: "ReadCommitted", maxWait: 5_000, timeout: 30_000,
+    });
   });
 
   it("does not build a packet when the active Nest grant is revoked before the transaction", async () => {

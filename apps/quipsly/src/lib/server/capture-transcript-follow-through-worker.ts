@@ -50,6 +50,21 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
     maintenanceRetryable: true,
   }));
 
+  const unfinishedPacket = { NOT: {
+    resultJson: { path: ["followThrough", "packetStatus"], equals: "ready" },
+  } };
+  const now = new Date();
+  // An explicit build can have ordinary work already available before its
+  // semantic upgrade finishes. Recover that analysis independently of the
+  // older packet's ready flag; do not backfill all historical Sessions.
+  const unfinishedAnalysis = { room: { followThroughAnalysis: { is: { OR: [
+    { status: "completed" },
+    { status: "running", leaseUntil: { lte: now } },
+    { status: "failed", attemptCount: { lt: 3 }, OR: [
+      { nextAttemptAt: null }, { nextAttemptAt: { lte: now } },
+    ] },
+  ] } } } };
+
   const [progressing, held, interruptedCompleted] = await Promise.all([
     input.prisma.transcriptJob.findMany({
       where: {
@@ -70,12 +85,8 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
       where: {
         roomId: { not: null },
         status: "COMPLETED",
-        NOT: {
-          resultJson: {
-            path: ["followThrough", "packetStatus"],
-            equals: "ready",
-          },
-        },
+        ...(process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED === "true"
+          ? { OR: [unfinishedPacket, unfinishedAnalysis] } : unfinishedPacket),
       },
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       take: limit,
@@ -87,6 +98,7 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
     reconcileCaptureTranscriptFollowThrough({
       prisma: input.prisma,
       transcriptJobId,
+      runAnalysis: true,
     })));
 
   const results = settled.map((result, index) => result.status === "fulfilled"

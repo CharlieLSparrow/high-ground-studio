@@ -5,7 +5,10 @@ import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coa
 import { transcriptPacketNoteCandidateId } from "@high-ground/quipsly-domain/coaching-packet";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { buildCoachingPacketFromTranscriptJob, transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
+import { buildCoachingPacketFromTranscriptJob, transcriptPacketSnapshot, loadSessionFollowThroughSource, sessionFollowThroughAnalysisSource } from "@/lib/server/coaching-packets";
+import { analyzeSessionTranscript } from "@/lib/server/session-transcript-analysis";
+import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { loadSessionWork } from "@/lib/server/session-work";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
@@ -13,7 +16,7 @@ import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_
 import { POST } from "../notes/route";
 import { POST as mergeTask } from "./actions/route";
 import { POST as mergeGoal } from "./goals/route";
-import { GET as readPacket } from "./route";
+import { GET as readPacket, POST as buildPacket } from "./route";
 import { POST as createTask } from "../tasks/route";
 import { POST as createGoal } from "../goals/route";
 import { POST as createDraft } from "../drafts/route";
@@ -28,6 +31,9 @@ if (enabled) {
       || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
       || url.pathname === "/") throw new Error("Transcript work integration requires an explicit loopback database.");
   process.env.DATABASE_URL = url.toString();
+  // One lock holder, two independent callers, and one observer connection.
+  // This test-only pool does not change the application's deployment defaults.
+  process.env.PRISMA_PG_POOL_MAX = "4";
 }
 const actualPrisma = jest.requireActual<typeof import("@/lib/prisma")>("@/lib/prisma");
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -246,6 +252,74 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
 (enabled ? describe : describe.skip)("transcript work against a fresh database fixture", () => {
   afterAll(async () => { if (enabled) await actualPrisma.getPrismaClient().$disconnect(); });
 
+  it("serializes an explicit rebuild with the background worker on the same committed Session", async () => {
+    const db = actualPrisma.getPrismaClient();
+    const setup = await db.$transaction(async tx => {
+      const f = await fixture(tx);
+      const session = await automaticSession(tx, f);
+      const project = await tx.studioProject.findUniqueOrThrow({ where: { id: session.engagement.projectId! } });
+      return { f, engagementId: session.engagement.id, projectId: project.id, workspaceId: project.workspaceId };
+    });
+    const { f } = setup;
+    jest.mocked(getPrismaClient).mockReturnValue(db);
+    f.actAs(f.owner);
+    let unlock!: () => void;
+    const release = new Promise<void>(resolve => { unlock = resolve; });
+    let announce!: (pid: number) => void;
+    const locked = new Promise<number>(resolve => { announce = resolve; });
+    const holder = db.$transaction(async tx => {
+      await acquirePrismaAdvisoryTransactionLock(tx, `capture-transcript-follow-through-room:${f.room.id}`);
+      const [connection] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      announce(connection!.pid);
+      await release;
+    }, { timeout: 15_000 });
+    const pending: Promise<unknown>[] = [holder];
+    try {
+      const pid = await locked;
+      const explicit = buildPacket(new Request("http://localhost/api/mobile/capture/transcripts/packet", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcriptJobId: f.job.id }),
+      }));
+      const worker = reconcileCaptureTranscriptFollowThrough({ prisma: db, transcriptJobId: f.job.id, analysisProvider: null });
+      pending.push(explicit, worker);
+      let waiters = 0;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && waiters < 2) {
+        const [state] = await db.$queryRaw<{ count: number }[]>`
+          SELECT count(*)::int AS count FROM pg_stat_activity
+          WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`;
+        waiters = state!.count;
+        if (waiters < 2) await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      // This is PostgreSQL-observed contention, not a sleep-based assumption
+      // that both code paths happened to use the same lock.
+      expect(waiters).toBe(2);
+      unlock();
+      const [response, followed] = await Promise.all([explicit, worker]);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true });
+      expect(followed).toMatchObject({ packetStatus: "ready" });
+      expect(await db.actionItem.count({ where: { roomId: f.room.id } })).toBe(1);
+      expect(await db.goal.count({ where: { roomId: f.room.id } })).toBe(1);
+      expect(await db.coachingNote.count({ where: { roomId: f.room.id, engagementId: setup.engagementId, kind: "SUMMARY" } })).toBe(1);
+    } finally {
+      unlock();
+      await Promise.allSettled(pending);
+      // Only this test's newly created metadata is removed. No source file was
+      // uploaded; no retained persona or existing project is touched.
+      await db.$transaction(async tx => {
+        await tx.actionItem.deleteMany({ where: { roomId: f.room.id } });
+        await tx.goal.deleteMany({ where: { roomId: f.room.id } });
+        await tx.mobileCaptureFinalizationReceipt.deleteMany({ where: { roomId: f.room.id } });
+        await tx.callRoom.delete({ where: { id: f.room.id } });
+        await tx.coachingEngagement.delete({ where: { id: setup.engagementId } });
+        await tx.studioProject.delete({ where: { id: setup.projectId } });
+        if (setup.workspaceId) await tx.studioWorkspace.delete({ where: { id: setup.workspaceId } });
+        await tx.user.deleteMany({ where: { id: { in: [f.owner.id, f.member.id, f.outsider.id] } } });
+      });
+    }
+  }, 20_000);
+
   it.each(["task", "goal", "note", "draft"] as const)("creates and retries a %s from a known transcript before playback is available", async (kind) => {
     await withFixture(async (tx, f) => {
       await tx.recordingAsset.update({ where: { id: f.asset.id }, data: { localManifestJson: {} } });
@@ -377,6 +451,63 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(await tx.coachingNote.count({ where: { roomId: f.room.id, engagementId: session.engagement.id } })).toBe(notes.length);
       expect(await tx.transcriptSegment.findMany({ where: { transcriptJobId: f.job.id }, orderBy: { startSeconds: "asc" } })).toEqual(session.segments);
       expect(await tx.transcriptSegmentVerification.count({ where: { roomId: f.room.id } })).toBe(0);
+      expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
+    });
+  });
+
+  it("materializes semantic work from one passage, shares it only with members, and preserves edits on retry", async () => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      await tx.transcriptSegment.update({ where: { id: session.segments[1]!.id }, data: {
+        text: "Tomorrow I will draft one page. Then I will read it aloud.",
+      } });
+      const loaded = await loadSessionFollowThroughSource({ prisma: tx, transcriptJobId: f.job.id });
+      if (!loaded.ok) throw new Error(loaded.error);
+      const source = sessionFollowThroughAnalysisSource(loaded.job, loaded.resolvedTranscript);
+      const item = (title: string, excerpt: string) => ({
+        sourceId: source.segments.find(segment => segment.text.includes(excerpt))!.id, title, excerpt,
+      });
+      // Deterministic provider output exercises the real materialization and
+      // access boundary, not model quality or a paid external request.
+      const analysis = await analyzeSessionTranscript(source, { name: "synthetic", model: "integration", generate: async () => JSON.stringify({
+        tasks: [item("Draft a page tomorrow", "Tomorrow I will draft one page."), item("Read the draft aloud", "Then I will read it aloud.")],
+        goals: [item("A daily writing habit", "My goal is to write every morning.")],
+        notes: [item("Small steps help", "I learned that small steps help me start.")],
+      }) });
+      await tx.sessionFollowThroughAnalysis.create({ data: {
+        roomId: f.room.id, sourceFingerprint: analysis.sourceFingerprint, provider: analysis.provider,
+        model: analysis.model, version: analysis.version, status: "completed", attemptCount: 1,
+        resultJson: analysis as unknown as Prisma.InputJsonValue,
+      } });
+      const build = () => buildCoachingPacketFromTranscriptJob({ prisma: tx, transcriptJobId: f.job.id,
+        authorUserId: f.owner.id, requireAnalysisFingerprint: analysis.sourceFingerprint });
+      expect(await build()).toMatchObject({ ok: true, actionItemCount: 2, goalCount: 1 });
+      const tasks = await tx.actionItem.findMany({ where: { roomId: f.room.id }, orderBy: { title: "asc" } });
+      const goal = await tx.goal.findFirstOrThrow({ where: { roomId: f.room.id } });
+      expect(tasks.map(task => task.title)).toEqual(["Draft a page tomorrow", "Read the draft aloud"]);
+      expect(new Set(tasks.map(task => task.id)).size).toBe(2);
+      for (const user of [f.owner, f.member]) {
+        expect((await session.read(user)).map(work => work.id).sort()).toEqual([...tasks.map(task => task.id), goal.id].sort());
+      }
+      expect(await session.read(f.outsider)).toEqual([]);
+      const edited = await tx.actionItem.update({ where: { id: tasks[0]!.id }, data: { title: "My chosen next step", status: "DONE" } });
+      const counts = { tasks: tasks.length, notes: await tx.coachingNote.count({ where: { roomId: f.room.id } }) };
+      const generate = jest.fn(async () => { throw new Error("A completed analysis must not spend again"); });
+      expect(await reconcileCaptureTranscriptFollowThrough({ prisma: getPrismaClient(), transcriptJobId: f.job.id,
+        analysisProvider: { name: "synthetic", model: "integration", generate }, runAnalysis: true,
+      })).toMatchObject({ packetStatus: "ready" });
+      expect(await tx.sessionFollowThroughAnalysis.findUniqueOrThrow({ where: { roomId: f.room.id } }))
+        .toMatchObject({ status: "materialized" });
+      expect(generate).not.toHaveBeenCalled();
+      expect(await build()).toMatchObject({ ok: true, reusedExistingPacket: true });
+      expect(await tx.actionItem.findUniqueOrThrow({ where: { id: edited.id } })).toEqual(edited);
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(counts.tasks);
+      expect(await tx.coachingNote.count({ where: { roomId: f.room.id } })).toBe(counts.notes);
+      await tx.transcriptSegment.update({ where: { id: session.segments[1]!.id }, data: { text: "I have changed my plan." } });
+      expect(await build()).toMatchObject({ ok: false, errorCode: "SESSION_ANALYSIS_SOURCE_CHANGED" });
+      expect(await tx.actionItem.findUniqueOrThrow({ where: { id: edited.id } })).toEqual(edited);
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(counts.tasks);
+      expect(await tx.coachingNote.count({ where: { roomId: f.room.id } })).toBe(counts.notes);
       expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
     });
   });

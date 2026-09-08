@@ -29,6 +29,7 @@ describe("capture transcript follow-through dispatch", () => {
     expect(reconcileCaptureTranscriptFollowThrough).toHaveBeenCalledWith({
       prisma,
       transcriptJobId: "job-1",
+      runAnalysis: true,
     });
   });
 

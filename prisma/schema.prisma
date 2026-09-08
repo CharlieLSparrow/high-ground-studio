@@ -2554,6 +2554,7 @@ model CallRoom {
   sourceAlignmentDecisions       SessionAudioAlignmentDecisionReceipt[]
   audioAuditionJobs              SessionAudioAuditionJob[]
   transcriptJobs                 TranscriptJob[]
+  followThroughAnalysis          SessionFollowThroughAnalysis?
   transcriptCorrections          TranscriptCorrection[]
   transcriptVerifications        TranscriptSegmentVerification[]
   transcriptSpeakerAttributions  TranscriptSpeakerAttribution[]
@@ -3515,6 +3516,28 @@ model UploadChunk {
 
   @@unique([assetId, chunkIndex])
   @@index([status, createdAt])
+}
+
+// Latest source-bound semantic analysis for a Session. Its lease belongs to
+// processing, not the UI; generated notes/tasks/goals remain canonical work.
+model SessionFollowThroughAnalysis {
+  roomId            String    @id
+  sourceFingerprint String
+  provider          String
+  model             String
+  version           String
+  status            String
+  leaseId           String?
+  leaseUntil        DateTime?
+  attemptCount      Int       @default(0)
+  nextAttemptAt     DateTime?
+  resultJson        Json?
+  errorCode         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  room              CallRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
 }
 
 model TranscriptJob {

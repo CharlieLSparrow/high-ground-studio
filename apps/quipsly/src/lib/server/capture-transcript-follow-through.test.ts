@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
-import { buildCoachingPacketFromTranscriptJob } from "./coaching-packets";
+import { buildCoachingPacketFromTranscriptJob, loadSessionFollowThroughSource, sessionFollowThroughAnalysisSource } from "./coaching-packets";
+import { prepareSessionTranscriptAnalysis } from "./session-transcript-analysis-job";
 import { reconcileCaptureTranscriptFollowThrough } from "./capture-transcript-follow-through";
 import { reconcileCaptureTranscriptJob } from "./capture-transcript-reconciliation";
 import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock";
@@ -9,6 +10,8 @@ import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coa
 jest.mock("server-only", () => ({}));
 jest.mock("./coaching-packets", () => ({
   buildCoachingPacketFromTranscriptJob: jest.fn(),
+  loadSessionFollowThroughSource: jest.fn(),
+  sessionFollowThroughAnalysisSource: jest.fn(),
   packetCreatesOrdinarySessionWork: (value: any) => value?.reviewRequired === false || (
     value?.packetBrief?.kind === "quipsly-transcript-packet-brief-v1" &&
     value?.packetBrief?.candidateOnly === false &&
@@ -21,6 +24,7 @@ jest.mock("./capture-transcript-reconciliation", () => ({
 jest.mock("./prisma-advisory-lock", () => ({
   acquirePrismaAdvisoryTransactionLock: jest.fn(),
 }));
+jest.mock("./session-transcript-analysis-job", () => ({ prepareSessionTranscriptAnalysis: jest.fn() }));
 
 function transactionalPrisma<T extends Record<string, any>>(prisma: T) {
   prisma.transcriptJob.update ??= jest.fn().mockResolvedValue({ id: "job-1" });
@@ -44,6 +48,48 @@ describe("automatic transcript follow-through", () => {
       packetBuildId: "packet-1",
       reusedExistingPacket: false,
     } as any);
+  });
+
+  it("prepares semantic analysis before the materialization transaction and binds the commit to its fingerprint", async () => {
+    const authority = { roomId: "room-1", requestedBy: "coach-1", room: { createdByUserId: "coach-1" } };
+    const prisma = transactionalPrisma({
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
+      transcriptJob: { findUnique: jest.fn().mockResolvedValue(authority) },
+      sessionFollowThroughAnalysis: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    });
+    jest.mocked(loadSessionFollowThroughSource).mockResolvedValue({ ok: true, job: authority, resolvedTranscript: {} } as any);
+    jest.mocked(sessionFollowThroughAnalysisSource).mockReturnValue({ roomId: "room-1", purpose: "COACHING", segments: [] });
+    jest.mocked(prepareSessionTranscriptAnalysis).mockImplementation(async () => {
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      return { status: "completed", reused: false, analysis: { sourceFingerprint: "fingerprint-1" } } as any;
+    });
+    const result = await reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1",
+      analysisProvider: { name: "synthetic", model: "test", generate: jest.fn() }, runAnalysis: true });
+    expect(result.packetStatus).toBe("ready");
+    expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalledWith(expect.objectContaining({
+      requireAnalysisFingerprint: "fingerprint-1", authorUserId: "coach-1",
+    }));
+    expect(prisma.sessionFollowThroughAnalysis.updateMany).toHaveBeenCalledWith({
+      where: { roomId: "room-1", sourceFingerprint: "fingerprint-1", status: "completed" },
+      data: { status: "materialized" },
+    });
+  });
+
+  it("an in-flight analysis does not create incomplete fallback work or hold a materialization transaction", async () => {
+    const prisma = transactionalPrisma({ transcriptJob: { update: jest.fn() } });
+    jest.mocked(loadSessionFollowThroughSource).mockResolvedValue({ ok: true,
+      job: { requestedBy: "coach-1" }, resolvedTranscript: {} } as any);
+    jest.mocked(sessionFollowThroughAnalysisSource).mockReturnValue({ roomId: "room-1", purpose: "COACHING", segments: [] });
+    jest.mocked(prepareSessionTranscriptAnalysis).mockResolvedValue({ status: "waiting" });
+    const result = await reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: "job-1", refreshExistingPacket: true,
+      analysisProvider: { name: "synthetic", model: "test", generate: jest.fn() } });
+    expect(result).toMatchObject({ packetStatus: "waiting", analysisStatus: "waiting" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(buildCoachingPacketFromTranscriptJob).not.toHaveBeenCalled();
+    expect(prisma.transcriptJob.update).not.toHaveBeenCalled();
+    expect(prepareSessionTranscriptAnalysis).toHaveBeenCalledWith(expect.objectContaining({
+      allowGeneration: false, retryFailed: false,
+    }));
   });
 
   it("uses the assigned coach for booked coaching even when another participant queued transcription", async () => {

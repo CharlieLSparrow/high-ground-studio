@@ -7,7 +7,8 @@ import {
 } from "@/lib/server/capture-transcript-follow-through-worker";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// A bounded 60-second analysis plus source reconciliation and a short commit.
+export const maxDuration = 120;
 
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 

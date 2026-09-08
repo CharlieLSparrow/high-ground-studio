@@ -109,6 +109,31 @@ describe("capture transcript follow-through worker", () => {
     });
   });
 
+  it("recovers unfinished semantic upgrades even when earlier ordinary work is already ready", async () => {
+    const before = process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED;
+    process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED = "true";
+    try {
+      const findMany = jest.fn().mockResolvedValue([]);
+      await runCaptureTranscriptFollowThroughMaintenance({ prisma: { transcriptJob: { findMany } } });
+      expect(findMany.mock.calls[2]?.[0].where).toMatchObject({
+        status: "COMPLETED",
+        OR: [
+          { NOT: { resultJson: { path: ["followThrough", "packetStatus"], equals: "ready" } } },
+          { room: { followThroughAnalysis: { is: { OR: [
+            { status: "completed" },
+            { status: "running", leaseUntil: { lte: expect.any(Date) } },
+            { status: "failed", attemptCount: { lt: 3 }, OR: [
+              { nextAttemptAt: null }, { nextAttemptAt: { lte: expect.any(Date) } },
+            ] },
+          ] } } } },
+        ],
+      });
+    } finally {
+      if (before === undefined) delete process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED;
+      else process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED = before;
+    }
+  });
+
   it("continues ordinary follow-through when fallback maintenance is temporarily unavailable", async () => {
     const prisma = { transcriptJob: { findMany: jest.fn().mockResolvedValueOnce([{ id: "job-1" }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) } };
     jest.mocked(runExpiredDeviceTranscriptFallbackMaintenance).mockRejectedValueOnce(

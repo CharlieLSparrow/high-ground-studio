@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 
 import {
   buildCoachingPacketFromTranscriptJob,
+  loadSessionFollowThroughSource,
+  sessionFollowThroughAnalysisSource,
   buildTranscriptEvidenceSpans,
   buildTranscriptPacketBrief,
   generatedPacketHighlightCanRemove,
@@ -23,6 +25,7 @@ import {
   transcriptJobPacketSnapshot,
 } from "./coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "./mobile-capture-processing-gates";
+import { analyzeSessionTranscript } from "./session-transcript-analysis";
 
 jest.mock("./mobile-capture-processing-gates", () => ({
   mobileCaptureTranscriptProcessingGate: jest.fn(),
@@ -138,6 +141,52 @@ describe("transcript coaching follow-through", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedTranscriptGate.mockResolvedValue({ allowed: true, receipt: null });
+  });
+
+  it("materializes multiple semantic tasks and notes from one passage with original source anchors", async () => {
+    const job: any = completedTranscriptJob();
+    job.segments = [{ ...job.segments[0],
+      text: "Practicaré mañana. Grabaré el viernes. Mi meta es certificarme. Prefiero las tardes. No quiero recordatorios diarios.",
+    }];
+    const work = automaticWorkStores();
+    let noteSequence = 0;
+    const noteCreate = jest.fn(async ({ data }: any) => ({ id: `semantic-note-${++noteSequence}`, ...data }));
+    const prisma = { transcriptJob: { findUnique: jest.fn().mockResolvedValue(job) },
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null), create: noteCreate }, ...work };
+    const loaded = await loadSessionFollowThroughSource({ prisma, transcriptJobId: job.id });
+    if (!loaded.ok) throw new Error(loaded.error);
+    const source = sessionFollowThroughAnalysisSource(job, loaded.resolvedTranscript);
+    const item = (title: string, excerpt: string) => ({ sourceId: source.segments[0]!.id, title, excerpt });
+    const analysis = await analyzeSessionTranscript(source, { name: "synthetic", model: "semantic-fixture", generate: async () => JSON.stringify({
+      tasks: [item("Practicar mañana", "Practicaré mañana."), item("Grabar el viernes", "Grabaré el viernes.")],
+      goals: [item("Obtener la certificación", "Mi meta es certificarme.")],
+      notes: [item("Preferencia por las tardes", "Prefiero las tardes."), item("Sin recordatorios diarios", "No quiero recordatorios diarios.")],
+    }) });
+    job.room.followThroughAnalysis = { status: "completed", resultJson: analysis };
+    const result = await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id,
+      authorUserId: "coach-1", requireAnalysisFingerprint: analysis.sourceFingerprint });
+    expect(result).toMatchObject({ ok: true, actionItemCount: 2, goalCount: 1 });
+    const tasks = await work.actionItem.findMany();
+    expect(tasks.map(task => task.title)).toEqual(["Practicar mañana", "Grabar el viernes"]);
+    expect(new Set(tasks.map(task => task.id)).size).toBe(2);
+    for (const task of tasks) expect(task.sourceJson).toMatchObject({
+      transcriptJobId: job.id, segmentId: "segment-action", startSeconds: 12, endSeconds: 18,
+    });
+    const notes = noteCreate.mock.calls.map(([call]) => call.data).filter(note => note.kind === "HIGHLIGHT");
+    expect(notes).toHaveLength(2);
+    expect(new Set(notes.map(note => note.sourceJson.analysisItemId)).size).toBe(2);
+    expect(notes[1]!.body).toContain("No quiero recordatorios diarios.");
+    expect(notes[1]!.body).not.toContain("Practicaré");
+    expect((await work.goal.findMany())[0]!.title).toBe("Obtener la certificación");
+
+    work.actionItem.create.mockClear();
+    noteCreate.mockClear();
+    job.segments[0].text = "He cambiado de opinión.";
+    const stale = await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id,
+      authorUserId: "coach-1", requireAnalysisFingerprint: analysis.sourceFingerprint });
+    expect(stale).toMatchObject({ ok: false, errorCode: "SESSION_ANALYSIS_SOURCE_CHANGED" });
+    expect(work.actionItem.create).not.toHaveBeenCalled();
+    expect(noteCreate).not.toHaveBeenCalled();
   });
 
   it("turns the operated coaching transcript into distinct useful work rather than greeting notes", async () => {

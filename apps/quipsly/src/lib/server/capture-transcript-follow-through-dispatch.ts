@@ -13,10 +13,11 @@ import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-tr
 export function dispatchCaptureTranscriptFollowThrough(input: {
   prisma: any;
   transcriptJobId: string;
+  retryAnalysis?: boolean;
 }) {
   after(async () => {
     try {
-      await reconcileCaptureTranscriptFollowThrough(input);
+      await reconcileCaptureTranscriptFollowThrough({ ...input, runAnalysis: true });
     } catch (error) {
       console.error("[Capture Follow-through] Immediate dispatch remains retryable", {
         transcriptJobId: input.transcriptJobId,

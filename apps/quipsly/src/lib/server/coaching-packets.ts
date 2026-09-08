@@ -27,12 +27,18 @@ import {
   selectSessionTranscriptSources,
   type SessionTranscriptSourceCandidate,
 } from "@/lib/server/session-transcript-source-selection";
+import {
+  restoreSessionTranscriptAnalysis,
+  type SessionAnalysisSource,
+  type SessionTranscriptAnalysis,
+} from "@/lib/server/session-transcript-analysis";
 
 type BuildCoachingPacketArgs = {
   prisma: any;
   transcriptJobId: string;
   authorUserId?: string | null;
   force?: boolean;
+  requireAnalysisFingerprint?: string;
 };
 
 type SessionPacketPurpose =
@@ -1388,6 +1394,7 @@ function actionSentence(segment: any, kind: "goal" | "task") {
 }
 
 function actionTitle(segment: any, kind: "goal" | "task" = "goal") {
+  if (segment.analysisTitle) return segment.analysisTitle;
   const excerpt = actionSentence(segment, kind);
   const content = kind === "goal"
     ? excerpt.replace(/^.*?\b(?:goal|objective|commitment)\s+(?:is|was|will be|:)\s*(?:to\s+)?/i, "")
@@ -1400,6 +1407,8 @@ function actionTitle(segment: any, kind: "goal" | "task" = "goal") {
 }
 
 function actionExcerpt(segment: PacketTranscriptEvidenceSpan, kind: "goal" | "task") {
+  const analyzedExcerpt = cleanText(packetObject(segment).analysisExcerpt);
+  if (analyzedExcerpt) return analyzedExcerpt;
   const sentence = actionSentence(segment, kind);
   const source = cleanText(segment.text);
   const start = source.indexOf(sentence);
@@ -1410,6 +1419,7 @@ function actionExcerpt(segment: PacketTranscriptEvidenceSpan, kind: "goal" | "ta
 }
 
 function taskTitle(segment: any) {
+  if (segment.analysisTitle) return segment.analysisTitle;
   const text = actionSentence(segment, "task");
   const explicitTask = text.match(
     /\b(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?(?:task|todo|to-do|action item)\s+(?:to\s+)?(.+)$/i,
@@ -1425,6 +1435,7 @@ function taskTitle(segment: any) {
 }
 
 function contextExcerpt(segment: any) {
+  if (segment.analysisExcerpt) return segment.analysisExcerpt;
   const clauses = workClauses(segment.text);
   const explicitNote = clauses.find((part) => /^(?:and\s+)?note that\b/i.test(part));
   if (explicitNote) return explicitNote.replace(/^(?:and\s+)?note that\s*/i, "");
@@ -1467,9 +1478,9 @@ function transcriptActionCandidate(input: {
     sourceClockSegments(input.segment),
   );
   return createTranscriptActionCandidate({
-    id: `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
+    id: input.segment.analysisItemId || `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
     title: taskTitle(input.segment),
-    detail: segmentLine(input.segment),
+    detail: segmentLine({ ...input.segment, text: input.segment.analysisExcerpt || input.segment.text }),
     transcriptJobId: input.transcriptJobId,
     recordingAssetId: input.recordingAssetId,
     roomId: input.roomId,
@@ -1754,11 +1765,27 @@ function summarizeSegments(
 export async function buildCoachingPacketFromTranscriptJob(
   args: BuildCoachingPacketArgs,
 ) {
+  const loaded = await loadSessionFollowThroughSource(args);
+  if (!loaded.ok) return loaded;
+  const { job, resolvedTranscript } = loaded;
+  return materializeSessionFollowThrough(args, job, resolvedTranscript);
+}
+
+/** One source-selection boundary for analysis and materialization. Model work
+ * uses a detached read; materialization resolves it again inside its write
+ * transaction so corrections and newly uploaded tracks cannot be bypassed. */
+export async function loadSessionFollowThroughSource(
+  args: Pick<BuildCoachingPacketArgs, "prisma" | "transcriptJobId">,
+): Promise<
+  | { ok: true; job: any; resolvedTranscript: ResolvedSessionPacketTranscript }
+  | { ok: false; status: number; error: string; errorCode?: string; explicitReleaseRequired?: boolean }
+> {
   const job = await args.prisma.transcriptJob.findUnique({
     where: { id: args.transcriptJobId },
     include: {
       room: {
         include: {
+          followThroughAnalysis: true,
           booking: true,
           participants: { select: { id: true, userId: true, accessStatus: true } },
           coachingEngagement: {
@@ -1849,6 +1876,47 @@ export async function buildCoachingPacketFromTranscriptJob(
     };
   }
 
+  return { ok: true as const, job, resolvedTranscript };
+}
+
+export function sessionFollowThroughAnalysisSource(
+  job: any,
+  resolvedTranscript: ResolvedSessionPacketTranscript,
+): SessionAnalysisSource {
+  return {
+    roomId: job.roomId,
+    purpose: packetPurpose(job.room?.purpose),
+    segments: distinctWorkSpans(buildTranscriptEvidenceSpans(resolvedTranscript.projected)).map(segment => ({
+      id: `${segment.transcriptJobId || job.id}:${segment.id}`,
+      transcriptJobId: segment.transcriptJobId || job.id,
+      recordingAssetId: segment.recordingAssetId || job.assetId,
+      speakerLabel: segment.speakerLabel,
+      text: segment.text,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+    })),
+  };
+}
+
+function currentSessionAnalysis(job: any, transcript: ResolvedSessionPacketTranscript): SessionTranscriptAnalysis | null {
+  const state = packetObject(job.room?.followThroughAnalysis);
+  if (!["completed", "materialized"].includes(String(state.status))) return null;
+  try {
+    const source = sessionFollowThroughAnalysisSource(job, transcript);
+    return restoreSessionTranscriptAnalysis(source, state.resultJson);
+  } catch { return null; }
+}
+
+async function materializeSessionFollowThrough(
+  args: BuildCoachingPacketArgs,
+  job: any,
+  resolvedTranscript: ResolvedSessionPacketTranscript,
+) {
+  const analysis = currentSessionAnalysis(job, resolvedTranscript);
+  if (args.requireAnalysisFingerprint && analysis?.sourceFingerprint !== args.requireAnalysisFingerprint) {
+    return { ok: false, status: 409, errorCode: "SESSION_ANALYSIS_SOURCE_CHANGED", error: "The transcript changed while follow-through was being prepared. Quipsly will use the updated transcript." };
+  }
+
   const transcriptSnapshot = transcriptPacketSnapshotFromProjected(
     resolvedTranscript.projected,
   );
@@ -1876,6 +1944,7 @@ export async function buildCoachingPacketFromTranscriptJob(
     !args.force &&
     packetCreatesOrdinarySessionWork(existing.sourceJson) &&
     packetTemplateMatches(existing.sourceJson) &&
+    (!analysis || packetObject(existing.sourceJson).analysisSourceFingerprint === analysis.sourceFingerprint) &&
     packetSnapshotMatchesResolvedSession(
       existing.sourceJson,
       resolvedTranscript,
@@ -1923,7 +1992,11 @@ export async function buildCoachingPacketFromTranscriptJob(
   }
 
   const packetSpans = distinctWorkSpans(buildTranscriptEvidenceSpans(packetSegments));
-  const highlights = [...packetSpans]
+  const analysisSpans = (kind: "task" | "goal" | "note") => analysis?.items.filter(item => item.kind === kind).map(item => {
+    const segment = packetSpans.find(span => `${span.transcriptJobId || job.id}:${span.id}` === item.sourceId)!;
+    return { ...segment, analysisItemId: item.id, analysisTitle: item.title, analysisExcerpt: item.excerpt };
+  });
+  const highlights = analysisSpans("note") ?? [...packetSpans]
     .map((segment: any) => ({ segment, score: scoreHighlight(segment) }))
     .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score)
@@ -1957,6 +2030,13 @@ export async function buildCoachingPacketFromTranscriptJob(
     packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
     generatedAt: new Date().toISOString(),
     deterministic: true,
+    ...(analysis ? {
+      deterministic: false,
+      analysisVersion: analysis.version,
+      analysisProvider: analysis.provider,
+      analysisModel: analysis.model,
+      analysisSourceFingerprint: analysis.sourceFingerprint,
+    } : {}),
     reviewRequired: false,
     transcriptSnapshot: transcriptSnapshotEvidence,
     transcriptReviewCoverage: {
@@ -1973,10 +2053,10 @@ export async function buildCoachingPacketFromTranscriptJob(
     highlights,
     actionSegments,
   );
-  const goalSegments = distinctWorkSpans(actionSegments.filter((segment: any) =>
+  const goalSegments = analysisSpans("goal") ?? distinctWorkSpans(actionSegments.filter((segment: any) =>
     GOAL_PATTERN.test(cleanText(segment.text)),
   ), (segment) => actionSentence(segment, "goal"));
-  const taskSegments = distinctWorkSpans(actionSegments.filter((segment: any) => {
+  const taskSegments = analysisSpans("task") ?? distinctWorkSpans(actionSegments.filter((segment: any) => {
     const text = cleanText(segment.text);
     return !GOAL_PATTERN.test(text) || EXPLICIT_TASK_PATTERN.test(text) ||
       ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(text));
@@ -1986,7 +2066,7 @@ export async function buildCoachingPacketFromTranscriptJob(
     highlights.map((segment) => ({ ...segment, displayText: contextExcerpt(segment) })),
     taskSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "task") })),
     goalSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "goal") })),
-    packetSpans.flatMap((segment) => {
+    (analysis ? highlights : packetSpans).flatMap((segment) => {
       const displayText = contextExcerpt(segment);
       return displayText ? [{ ...segment, displayText }] : [];
     }),
@@ -2003,7 +2083,7 @@ export async function buildCoachingPacketFromTranscriptJob(
         recordingAssetId: sourceRecordingAssetId,
         roomId: job.roomId,
         packetBuildId,
-        committedActionItemId: packetWorkId(
+        committedActionItemId: segment.analysisItemId || packetWorkId(
           "task",
           sourceTranscriptJobId,
           String(segment.id),
@@ -2014,7 +2094,7 @@ export async function buildCoachingPacketFromTranscriptJob(
   const goalOutputs = goalSegments.map((segment: any) => {
     const sourceTranscriptJobId = cleanText(segment.transcriptJobId) || job.id;
     return {
-      id: packetWorkId("goal", sourceTranscriptJobId, String(segment.id)),
+      id: segment.analysisItemId || packetWorkId("goal", sourceTranscriptJobId, String(segment.id)),
       segment,
       transcriptJobId: sourceTranscriptJobId,
       recordingAssetId: cleanText(segment.recordingAssetId) || job.assetId,
@@ -2174,7 +2254,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       const sourceAnchor = buildTranscriptSourceAnchorFields(
         sourceClockSegments(output.segment),
       );
-      const goalDescription = segmentLine(output.segment);
+      const goalDescription = segmentLine({ ...output.segment, text: output.segment.analysisExcerpt || output.segment.text });
       const sourceJson = {
         schema: "quipsly-transcript-follow-through-v1",
         origin: "quipsly-session-follow-through",
@@ -2299,7 +2379,8 @@ export async function buildCoachingPacketFromTranscriptJob(
   for (const segment of highlights) {
     const sourceTranscriptJobId = cleanText(segment.transcriptJobId) || job.id;
     const segmentID = String(segment.id);
-    const title = titleFromSegment(segment);
+    const analysisItemId = cleanText(packetObject(segment).analysisItemId);
+    const title = cleanText(packetObject(segment).analysisTitle) || titleFromSegment(segment);
     const body = segmentLine({ ...segment, text: contextExcerpt(segment) });
     const sourceTextSha256 =
       cleanText(segment.sourceTextSha256) ||
@@ -2331,6 +2412,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       programStartSeconds: segment.startSeconds,
       programEndSeconds: segment.endSeconds,
       speakerLabel: segment.speakerLabel,
+      ...(analysisItemId ? { analysisItemId } : {}),
     };
     const existingHighlightCandidate =
       typeof args.prisma.coachingNote.findFirst === "function"
@@ -2355,6 +2437,7 @@ export async function buildCoachingPacketFromTranscriptJob(
                 {
                   sourceJson: { path: ["segmentId"], equals: segmentID },
                 },
+                ...(analysisItemId ? [{ sourceJson: { path: ["analysisItemId"], equals: analysisItemId } }] : []),
               ],
             },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -2373,6 +2456,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       cleanText(existingHighlightSource.transcriptJobId) ===
         sourceTranscriptJobId &&
       cleanText(existingHighlightSource.segmentId) === segmentID
+      && (!analysisItemId || cleanText(existingHighlightSource.analysisItemId) === analysisItemId)
         ? existingHighlightCandidate
         : null;
     const refreshHighlight = Boolean(

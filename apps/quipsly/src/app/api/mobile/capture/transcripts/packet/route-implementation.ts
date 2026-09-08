@@ -41,6 +41,7 @@ import {
   reconcileCaptureTranscriptFollowThrough,
 } from "@/lib/server/capture-transcript-follow-through";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { mobileSessionNoteVisibilityWhere } from "@/lib/server/session-note-access";
 import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
 import {
@@ -1698,6 +1699,7 @@ export async function POST(request: Request) {
     },
     select: {
       id: true,
+      roomId: true,
       requestedBy: true,
       room: {
         select: {
@@ -1729,6 +1731,12 @@ export async function POST(request: Request) {
 
   const result = await prisma.$transaction(
     async (tx: any) => {
+      // Match the background materializer and transcript correction order:
+      // Session first, then source. Waiting builders read the winner's result.
+      await acquirePrismaAdvisoryTransactionLock(
+        tx,
+        `capture-transcript-follow-through-room:${job.roomId}`,
+      );
       await acquirePrismaAdvisoryTransactionLock(
         tx,
         `transcript-job-packet-source:${transcriptJobId}`,
@@ -1769,13 +1777,19 @@ export async function POST(request: Request) {
         force,
       });
     },
-    { isolationLevel: "Serializable" },
+    { isolationLevel: "ReadCommitted", maxWait: 5_000, timeout: 30_000 },
   );
   const status = result.ok
     ? 200
     : "status" in result && typeof result.status === "number"
       ? result.status
       : 500;
+
+  if (result.ok && process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED === "true") {
+    // An explicit rebuild can retry failed analysis after the response. A GET
+    // or ordinary Session refresh cannot restart the paid retry allowance.
+    dispatchCaptureTranscriptFollowThrough({ prisma, transcriptJobId, retryAnalysis: true });
+  }
 
   return NextResponse.json(
     {

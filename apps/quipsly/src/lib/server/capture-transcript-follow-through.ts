@@ -3,10 +3,15 @@ import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coa
 
 import {
   buildCoachingPacketFromTranscriptJob,
+  loadSessionFollowThroughSource,
+  sessionFollowThroughAnalysisSource,
   packetCreatesOrdinarySessionWork,
 } from "@/lib/server/coaching-packets";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
+import { configuredSessionAnalysisProvider } from "./session-transcript-analysis-provider";
+import { prepareSessionTranscriptAnalysis } from "./session-transcript-analysis-job";
+import type { SessionAnalysisProvider } from "./session-transcript-analysis";
 
 export type CaptureTranscriptFollowThroughResult = {
   transcriptJobId: string;
@@ -14,6 +19,8 @@ export type CaptureTranscriptFollowThroughResult = {
   packetStatus: "ready" | "waiting" | "author-missing" | "build-held";
   packetBuildId: string | null;
   reusedExistingPacket: boolean;
+  analysisStatus?: "completed" | "waiting" | "failed";
+  analysisErrorCode?: string;
 };
 
 export function captureTranscriptFollowThroughAuthorId(authority: any): string | null {
@@ -33,6 +40,9 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
   prisma: any;
   transcriptJobId: string;
   refreshExistingPacket?: boolean;
+  analysisProvider?: SessionAnalysisProvider | null;
+  runAnalysis?: boolean;
+  retryAnalysis?: boolean;
 }): Promise<CaptureTranscriptFollowThroughResult> {
   const transcript = await reconcileCaptureTranscriptJob({
     prisma: input.prisma,
@@ -48,14 +58,58 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
     };
   }
 
+  const provider = input.analysisProvider === undefined
+    ? configuredSessionAnalysisProvider() : input.analysisProvider;
+  let requireAnalysisFingerprint: string | undefined;
+  let analysisRoomId: string | undefined;
+  if (provider) {
+    const loaded = await loadSessionFollowThroughSource(input);
+    if (!loaded.ok) return {
+      transcriptJobId: input.transcriptJobId, transcriptStatus: "completed",
+      packetStatus: "build-held", packetBuildId: null, reusedExistingPacket: false,
+    };
+    if (!captureTranscriptFollowThroughAuthorId(loaded.job)) return {
+      transcriptJobId: input.transcriptJobId, transcriptStatus: "completed",
+      packetStatus: "author-missing", packetBuildId: null, reusedExistingPacket: false,
+    };
+    const result = await prepareSessionTranscriptAnalysis({
+      prisma: input.prisma,
+      source: sessionFollowThroughAnalysisSource(loaded.job, loaded.resolvedTranscript),
+      provider,
+      // Ordinary GET refreshes may update source projections, but must never
+      // wait on model IO or reset the paid retry budget.
+      allowGeneration: input.runAnalysis === true,
+      retryFailed: input.retryAnalysis === true,
+    });
+    if (result.status !== "completed") return {
+      transcriptJobId: input.transcriptJobId, transcriptStatus: "completed",
+      packetStatus: result.status === "waiting" ? "waiting" : "build-held",
+      packetBuildId: null, reusedExistingPacket: false,
+      analysisStatus: result.status, analysisErrorCode: result.errorCode,
+    };
+    requireAnalysisFingerprint = result.analysis.sourceFingerprint;
+    analysisRoomId = loaded.job.roomId;
+  }
+
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       return await input.prisma.$transaction(async (tx: any) => {
-        return prepareSessionFollowThrough({
+        const result = await prepareSessionFollowThrough({
           prisma: tx,
           transcriptJobId: input.transcriptJobId,
           refreshExistingPacket: input.refreshExistingPacket,
+          requireAnalysisFingerprint,
         });
+        if (result.packetStatus === "ready" && requireAnalysisFingerprint && analysisRoomId) {
+          // Analysis completion is not yet useful work. Persist this transition
+          // in the same transaction as its tasks/notes/goals, so a process exit
+          // between generation and materialization remains recoverable.
+          await tx.sessionFollowThroughAnalysis.updateMany({
+            where: { roomId: analysisRoomId, sourceFingerprint: requireAnalysisFingerprint, status: "completed" },
+            data: { status: "materialized" },
+          });
+        }
+        return result;
       }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "ReadCommitted" });
     } catch (error) {
       if (attempt >= 3 || !isSerializableWriteConflict(error)) throw error;
@@ -72,6 +126,7 @@ async function prepareSessionFollowThrough(input: {
   prisma: any;
   transcriptJobId: string;
   refreshExistingPacket?: boolean;
+  requireAnalysisFingerprint?: string;
 }): Promise<CaptureTranscriptFollowThroughResult> {
   // Same-job calls can arrive from immediate dispatch, scheduled recovery,
   // and two connected clients refreshing the same Session. Take the narrow
@@ -119,6 +174,8 @@ async function prepareSessionFollowThrough(input: {
     !input.refreshExistingPacket
     && durableReady
     && durableSummary?.roomId === authority?.roomId
+    && (!input.requireAnalysisFingerprint
+      || (durableSummary.sourceJson as Record<string, unknown>)?.analysisSourceFingerprint === input.requireAnalysisFingerprint)
     && durableSummaryMatchesTranscript({
       sourceJson: durableSummary.sourceJson,
       transcriptJobId: input.transcriptJobId,
@@ -155,6 +212,7 @@ async function prepareSessionFollowThrough(input: {
     // The builder reuses current automatic packets, but deliberately versions
     // a historical candidate-only packet into ordinary editable Session work.
     force: false,
+    requireAnalysisFingerprint: input.requireAnalysisFingerprint,
   });
   if (!packet.ok) {
     return {
