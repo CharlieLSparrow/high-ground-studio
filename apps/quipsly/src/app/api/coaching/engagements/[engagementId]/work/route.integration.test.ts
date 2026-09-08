@@ -217,6 +217,18 @@ if (enabled) {
     const edited = await act("PATCH", { kind: "TASK", id: persisted.id, expectedUpdatedAt: current.updatedAt.toISOString(), title: "Introduction practiced together", body: message.body, ownerUserId: client!.id, status: "DONE" }, coach!);
     expect(edited.status).toBe(200);
     expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ status: "DONE", title: "Introduction practiced together" });
+    const completed = edited.body.entry;
+    const reopened = await act("PATCH", {kind: "TASK", id: completed.id, expectedUpdatedAt: completed.updatedAt,
+      clientRequestId: randomUUID(), title: completed.title, body: completed.body, ownerUserId: completed.owner.id,
+      status: "OPEN", targetAt: completed.dueAt}, client!);
+    expect(reopened).toMatchObject({status: 200, body: {entry: {id: completed.id, status: "OPEN",
+      title: completed.title, body: completed.body, owner: completed.owner, dueAt: completed.dueAt,
+      sourceHref: completed.sourceHref, tags: completed.tags}}});
+    expect(reopened.body.entry.tags).toEqual([{id: tag.id, label: "Opening practice", hexColor: "#f2e4c5", isActive: true}]);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: coach!} as never);
+    const reopenedChat = await readChat(new NextRequest(`http://localhost/api/nest-chat?projectSlug=${projectId}&threadKey=engagement:${engagementId}&message=${message.id}`));
+    expect((await reopenedChat.json()).messages.find((entry: {id: string}) => entry.id === message.id).linkedTasks[0])
+      .toMatchObject({id: completed.id, status: "OPEN", title: completed.title, tags: completed.tags});
   });
 
   it("saves a task draft and its canonical tags together, with retries and all-or-nothing failure", async () => {

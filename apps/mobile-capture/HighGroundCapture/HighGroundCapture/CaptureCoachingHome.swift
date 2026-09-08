@@ -323,6 +323,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     @Published private(set) var isSaving = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var pendingUndo: MobileCoachingWorkUndo?
+    private(set) var lastSavedEntry: MobileCoachingEngagementWorkEntry?
     private var createAttempts: [String: CaptureCoachingCreateAttempt] = [:]
     private var taskUpdateRequestIDs: [Data: String] = [:]
     private var history = MobileCoachingWorkHistory()
@@ -501,6 +502,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
+        lastSavedEntry = nil
         do {
             var requestBody: [String: Any] = [
                 "id": entry.id,
@@ -524,9 +526,11 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 requestBody["clientRequestId"] = requestID
             }
             let (payload, response) = try await request(method: "PATCH", body: requestBody)
-            guard response.statusCode < 400, payload.ok, payload.entry != nil else {
+            guard response.statusCode < 400, payload.ok, let savedEntry = payload.entry,
+                  savedEntry.id == entry.id, savedEntry.kind == entry.kind else {
                 throw coachingClientError(payload.error ?? "That coaching item could not be updated.")
             }
+            lastSavedEntry = savedEntry
             taskUpdateRequestIDs[identity] = nil
             await load(force: true)
             return true
@@ -561,6 +565,28 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    /// Read the current task before changing only the person's completion intent.
+    /// The existing revision-checked save preserves its text, owner, dates, and tags.
+    func setTaskCompletion(id: String, completed: Bool) async -> MobileCoachingEngagementWorkEntry? {
+        guard let owner = AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+        await load(force: true)
+        guard owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+        guard errorMessage == nil, let workspace, workspace.canWrite,
+              let entry = workspace.entries.first(where: { $0.id == id && $0.kind == "TASK" }),
+              entry.canEdit else {
+            errorMessage = errorMessage ?? "This task is unavailable or read-only."
+            return nil
+        }
+        let status = completed ? "DONE" : "OPEN"
+        // A lost reply may already have saved this intent. Readback is enough;
+        // do not turn a retry into a second toggle or overwrite unrelated edits.
+        if entry.status == status { return entry }
+        guard await update(entry: entry, title: entry.displayTitle, body: entry.body ?? "",
+                           visibility: entry.visibility, ownerUserID: entry.owner?.id ?? workspace.currentUserId,
+                           status: status, targetAt: entry.dueAt.flatMap(coachingISO8601Date)) else { return nil }
+        return lastSavedEntry
     }
 
     @discardableResult

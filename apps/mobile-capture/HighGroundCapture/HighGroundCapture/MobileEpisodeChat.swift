@@ -176,10 +176,23 @@ final class MobileEpisodeChatClient: ObservableObject {
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
     @Published private(set) var outboundLiveHint: MobileChatPersistedLiveHint?
+    @Published private(set) var updatingTaskIDs: Set<String> = []
+    @Published private(set) var taskErrors: [String: String] = [:]
 
     private let baseURL: URL
     let scope: MobileCollaborationChatScope
     private var currentContextKey: String?
+    private var openingID = UUID()
+    private var readRevision = 0
+    private var requestScope: CaptureConversationRequestScope? {
+        currentContextKey.map { CaptureConversationRequestScope(contextKey: $0,
+            ownerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID,
+            openingID: openingID, readRevision: readRevision) }
+    }
+    private func invalidateOlderReads() {
+        readRevision += 1
+        isLoading = false
+    }
     private var pollingTask: Task<Void, Never>?
     private var accountCancellable: AnyCancellable?
     private var pendingMessageBody: String?
@@ -309,7 +322,7 @@ final class MobileEpisodeChatClient: ObservableObject {
         } else if quietly, pollingDisabledForMissingThread {
             return
         }
-        guard !isLoading else { return }
+        guard !isLoading, !isSending, updatingTaskIDs.isEmpty else { return }
         guard AuthManager.shared.networkActionsAllowed else {
             if !messages.isEmpty {
                 isUsingProtectedCache = true
@@ -321,8 +334,15 @@ final class MobileEpisodeChatClient: ObservableObject {
             return
         }
 
+        readRevision += 1
+        guard let readScope = requestScope,
+              readScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return }
         if !quietly { isLoading = true }
-        defer { if !quietly { isLoading = false } }
+        defer {
+            if !quietly, readScope.permitsDisplay(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) { isLoading = false }
+        }
         do {
             var components = URLComponents(
                 url: context.endpoint,
@@ -344,6 +364,8 @@ final class MobileEpisodeChatClient: ObservableObject {
             let (data, response) = try await AuthManager.shared.authenticatedData(
                 for: request
             )
+            guard readScope.permitsDisplay(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return }
             guard Self.isSameOrigin(response.url, baseURL) else {
                 throw Self.error(
                     "The protected \(scope.title.lowercased()) response left the configured Nest origin.",
@@ -396,6 +418,8 @@ final class MobileEpisodeChatClient: ObservableObject {
                 persist(context: context)
             }
         } catch {
+            guard readScope.permitsDisplay(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return }
             let responseCode = (error as NSError).code
             if messages.isEmpty {
                 _ = restoreProtectedCache(context: context)
@@ -485,9 +509,13 @@ final class MobileEpisodeChatClient: ObservableObject {
               trimmed.count <= 4_000,
               canEdit,
               !isSending,
+              context.key == currentContextKey,
               AuthManager.shared.networkActionsAllowed else {
             return false
         }
+        guard let sendScope = requestScope,
+              sendScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return false }
         let schedulingEvidence = Self.schedulingEvidence(
             request: coachingScheduleRequest,
             decision: coachingScheduleDecision
@@ -504,9 +532,13 @@ final class MobileEpisodeChatClient: ObservableObject {
             pendingMessageID = requestID
         }
 
+        invalidateOlderReads()
         isSending = true
         errorMessage = nil
-        defer { isSending = false }
+        defer {
+            if sendScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) { isSending = false }
+        }
         do {
             var request = URLRequest(url: context.endpoint)
             request.httpMethod = "POST"
@@ -540,6 +572,8 @@ final class MobileEpisodeChatClient: ObservableObject {
                     code: response.statusCode
                 )
             }
+            guard sendScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return false }
             let payload = try JSONDecoder().decode(
                 NestChatPostResponse.self,
                 from: data
@@ -552,6 +586,7 @@ final class MobileEpisodeChatClient: ObservableObject {
                     code: response.statusCode
                 )
             }
+            invalidateOlderReads()
             if !messages.contains(where: { $0.id == message.id }) {
                 messages.append(message)
                 messages = Array(messages.suffix(200))
@@ -571,6 +606,8 @@ final class MobileEpisodeChatClient: ObservableObject {
             persist(context: context)
             return true
         } catch {
+            guard sendScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return false }
             errorMessage = error.localizedDescription
             statusMessage = "Message preserved for retry"
             return false
@@ -667,7 +704,43 @@ final class MobileEpisodeChatClient: ObservableObject {
         }
     }
 
+    func setTaskCompletion(_ task: NestChatLinkedTask, engagement: MobileCaptureCoachingEngagement) async -> Bool {
+        guard canEdit, !updatingTaskIDs.contains(task.id),
+              let context = context(for: engagement), context.key == currentContextKey,
+              let taskScope = requestScope,
+              taskScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return false }
+        invalidateOlderReads()
+        updatingTaskIDs.insert(task.id)
+        taskErrors[task.id] = nil
+        defer {
+            if taskScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) {
+                updatingTaskIDs.remove(task.id)
+            }
+        }
+        let work = MobileCoachingEngagementWorkspaceClient(engagementID: engagement.id, itemID: task.id)
+        let saved = await work.setTaskCompletion(id: task.id, completed: task.status != "DONE")
+        guard taskScope.belongsToOpening(requestScope,
+            currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return false }
+        guard let saved, let status = saved.status else {
+            taskErrors[task.id] = work.errorMessage ?? "Couldn't update this task. Try again."
+            return false
+        }
+        invalidateOlderReads()
+        let confirmed = NestChatLinkedTask(id: saved.id, title: saved.displayTitle, status: status, tags: saved.tags)
+        messages = messages.map { message in
+            var updated = message
+            updated.linkedTasks = message.linkedTasks?.map { $0.id == saved.id ? confirmed : $0 }
+            return updated
+        }
+        persist(context: context)
+        return true
+    }
+
     private func reset() {
+        openingID = UUID()
+        invalidateOlderReads()
         stopPolling()
         currentContextKey = nil
         messages = []
@@ -685,6 +758,8 @@ final class MobileEpisodeChatClient: ObservableObject {
         pollingDisabledForMissingThread = false
         outboundLiveHint = nil
         lastReceivedLiveMessageID = nil
+        updatingTaskIDs = []
+        taskErrors = [:]
     }
 
     @discardableResult
@@ -1192,29 +1267,53 @@ struct MobileEpisodeChatThread: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if case .engagement = target {
+            if case let .engagement(engagement) = target {
                 ForEach(message.linkedTasks ?? []) { task in
-                    Button {
-                        composerIsFocused = false
-                        workSourceMessageID = message.id
-                        workAction = .edit(task)
-                    } label: {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(task.title).font(.subheadline.weight(.semibold))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                if let tags = task.tags, !tags.isEmpty {
-                                    CaptureWorkTags(tags: tags, workID: task.id)
+                    HStack(alignment: .top, spacing: 4) {
+                        Button {
+                            composerIsFocused = false
+                            Task {
+                                if await client.setTaskCompletion(task, engagement: engagement) {
+                                    await onWorkChanged()
                                 }
                             }
-                            Spacer(minLength: 0)
+                        } label: {
+                            Group {
+                                if client.updatingTaskIDs.contains(task.id) { ProgressView() }
+                                else { Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle") }
+                            }
+                            .frame(width: 44, height: 44)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .buttonStyle(.plain)
+                        .disabled(!client.canEdit || previewOnly || client.updatingTaskIDs.contains(task.id))
+                        .accessibilityLabel("\(task.status == "DONE" ? "Reopen" : "Complete") task: \(task.title)")
+                        .accessibilityValue(task.status)
+                        .accessibilityIdentifier("CaptureConversationToggleTask_\(task.id)")
+                        Button {
+                            composerIsFocused = false
+                            workSourceMessageID = message.id
+                            workAction = .edit(task)
+                        } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(task.title).font(.subheadline.weight(.semibold))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    if let tags = task.tags, !tags.isEmpty {
+                                        CaptureWorkTags(tags: tags, workID: task.id)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Task: \(task.title), \(task.status.lowercased())")
+                        .accessibilityIdentifier("CaptureConversationTask_\(task.id)")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Task: \(task.title), \(task.status.lowercased())")
-                    .accessibilityIdentifier("CaptureConversationTask_\(task.id)")
+                    if let error = client.taskErrors[task.id] {
+                        Text(error).font(.caption).foregroundStyle(CapturePalette.brass)
+                            .accessibilityIdentifier("CaptureConversationTaskError_\(task.id)")
+                    }
                 }
                 if client.canEdit, !message.suggestedTaskTitle.isEmpty {
                     Button {
@@ -1222,7 +1321,7 @@ struct MobileEpisodeChatThread: View {
                         workSourceMessageID = message.id
                         workAction = .create(message)
                     } label: {
-                        Label("Create task", systemImage: "checkmark.circle.badge.plus")
+                        Label((message.linkedTasks ?? []).isEmpty ? "Create task" : "Create another task", systemImage: "checkmark.circle.badge.plus")
                             .frame(minHeight: 44)
                     }
                     .accessibilityIdentifier("CaptureConversationCreateTask_\(message.id)")

@@ -3038,6 +3038,36 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(waitForRuntimeElement(savedTag, in: app, timeout: 20, swipeAttempts: 5))
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label == %@", "Tag: Discard this unsaved tag")).firstMatch.exists,
                        "Cancel must not save labels separately from the task draft.")
+        app.buttons["Cancel"].firstMatch.tap()
+        let taskID = String(taskIdentifier.dropFirst("CaptureConversationTask_".count))
+        func completionControl(_ application: XCUIApplication) -> XCUIElement {
+            application.buttons["CaptureConversationToggleTask_\(taskID)"].firstMatch
+        }
+        var completion = completionControl(app)
+        XCTAssertTrue(waitForRuntimeElement(completion, in: app, timeout: 15, swipeAttempts: 12))
+        XCTAssertEqual(completion.value as? String, "OPEN")
+        completion.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "DONE"), object: completion
+        )], timeout: 30), .completed)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.exists,
+                       "Checking off a chat task should not open its editor.")
+        attachRuntimeScreenshot(app, name: "Task completed directly in conversation")
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openConversation(app)
+        completion = completionControl(app)
+        XCTAssertTrue(waitForRuntimeElement(completion, in: app, timeout: 20, swipeAttempts: 16))
+        XCTAssertEqual(completion.value as? String, "DONE", "Completion must survive a fresh app launch.")
+        completion.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "OPEN"), object: completion
+        )], timeout: 30), .completed)
+        let reopened = app.buttons[taskIdentifier].firstMatch
+        XCTAssertTrue(reopened.label.contains(revisedTitle))
+        reopened.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Tag: Draft ready")).firstMatch.waitForExistence(timeout: 15),
+                      "Complete and reopen must preserve the task's tags.")
     }
 
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
