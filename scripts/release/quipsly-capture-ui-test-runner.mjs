@@ -132,6 +132,36 @@ export function resolvedSimulatorDestination(output, destination) {
   return `platform=iOS Simulator,id=${id}${requested.arch ? `,arch=${requested.arch}` : ""}`;
 }
 
+export function simulatorDiscoveryLag(error, destination) {
+  const match = /^platform=iOS Simulator,id=([0-9a-f-]{36})(?:,arch=(?:arm64|x86_64))?$/i.exec(destination);
+  const stderr = String(error?.stderr ?? "");
+  const available = stderr.split(/Available destinations for[^\n]*:/i)[1];
+  // Only the observed cold-runner failure qualifies. A concrete destination,
+  // missing runtime, bad package, timeout, or name-based request is not lag.
+  return match && error?.code === 70
+    && /Unable to find a device matching the provided destination specifier/i.test(stderr)
+    && available?.includes("DVTiOSDeviceSimulatorPlaceholder")
+    && !/\bid:[ ]*[0-9a-f]{8}-[0-9a-f-]{27}/i.test(available)
+    && !/Ineligible destinations|error:|not installed/i.test(available)
+    ? match[1] : null;
+}
+
+export async function refreshAvailableSimulator(id, run = promisify(execFile)) {
+  const { stdout } = await run("xcrun", ["simctl", "list", "devices", "available", "--json"],
+    { encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
+  const matches = Object.entries(JSON.parse(stdout).devices ?? {})
+    .filter(([runtime]) => runtime.startsWith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+    .flatMap(([, devices]) => Array.isArray(devices) ? devices : [])
+    .filter(device => device.udid?.toLowerCase() === id.toLowerCase());
+  if (matches.length !== 1 || matches[0].isAvailable !== true) {
+    throw new Error(`Requested simulator ${id} is no longer available; no tests started`);
+  }
+  // Recheck the same identity immediately before Xcode resolution, rather than
+  // trusting a Safari launch several minutes earlier on the hosted runner.
+  await run("xcrun", ["simctl", "bootstatus", id, "-b"],
+    { encoding: "utf8", timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+}
+
 export async function ensureXcodeDestination(options, {
   resolve = async () => {
     try {
@@ -153,9 +183,24 @@ export async function ensureXcodeDestination(options, {
       throw error;
     }
   },
+  refresh = refreshAvailableSimulator,
 } = {}) {
   process.stdout.write(`Resolving Xcode simulator: ${options.destination}\n`);
-  const resolved = resolvedSimulatorDestination(await resolve(), options.destination);
+  let output;
+  try {
+    output = await resolve();
+  } catch (error) {
+    const id = simulatorDiscoveryLag(error, options.destination);
+    if (!id) throw error;
+    process.stdout.write(`Xcode has not discovered simulator ${id}; checking that exact device before one setup-only retry.\n`);
+    try {
+      await refresh(id);
+      output = await resolve();
+    } catch (recoveryError) {
+      throw new Error(`Xcode simulator discovery failed before tests started; recovery: ${recoveryError.message}`, { cause: error });
+    }
+  }
+  const resolved = resolvedSimulatorDestination(output, options.destination);
   process.stdout.write(`Xcode resolved ${resolved}\n`);
   return resolved;
 }

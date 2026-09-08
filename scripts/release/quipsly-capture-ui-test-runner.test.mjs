@@ -18,6 +18,8 @@ import {
   verifyPlatformExecution,
   resolvedSimulatorDestination,
   ensureXcodeDestination,
+  simulatorDiscoveryLag,
+  refreshAvailableSimulator,
 } from "./quipsly-capture-ui-test-runner.mjs";
 import { createPlan, discoverDeterministicTests } from "./quipsly-capture-ui-test-plan.mjs";
 
@@ -42,6 +44,77 @@ const resolvedSettings = {
   TARGET_DEVICE_PLATFORM_NAME: "iphonesimulator", TARGET_DEVICE_OS_VERSION: "26.2", ARCHS: "arm64",
 };
 const settingsOutput = (settings = resolvedSettings) => JSON.stringify([{ target: "HighGroundCapture", buildSettings: settings }]);
+const discoveryError = () => Object.assign(new Error("Destination unavailable"), { code: 70, stderr: `
+xcodebuild: error: Could not configure request to show build settings: Unable to find a device matching the provided destination specifier:
+  { platform:iOS Simulator, arch:arm64, id:${phoneID} }
+  The requested device could not be found because no available devices matched the request.
+  Available destinations for the "HighGroundCapture" scheme:
+    { platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+    { platform:iOS Simulator, id:dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder, name:Any iOS Simulator Device }
+` });
+
+test("only missing Xcode discovery of an exact simulator qualifies for setup recovery", () => {
+  assert.equal(simulatorDiscoveryLag(discoveryError(), `${exactPhone},arch=arm64`), phoneID);
+  for (const destination of ["platform=iOS Simulator,name=iPhone test", "platform=iOS,id=" + phoneID]) {
+    assert.equal(simulatorDiscoveryLag(discoveryError(), destination), null);
+  }
+  for (const error of [new Error("package failed"), { ...discoveryError(), code: 65 },
+    { ...discoveryError(), stderr: discoveryError().stderr + `\n{ platform:iOS Simulator, id:${phoneID} }` },
+    { ...discoveryError(), stderr: discoveryError().stderr + "\nIneligible destinations: iOS is not installed" }]) {
+    assert.equal(simulatorDiscoveryLag(error, exactPhone), null);
+  }
+});
+
+test("setup recovery refreshes the same simulator once, without retrying tests or substituting devices", async () => {
+  const events = [];
+  assert.equal(await ensureXcodeDestination({ destination: exactPhone }, {
+    resolve: async () => { events.push("resolve"); if (events.length === 1) throw discoveryError(); return settingsOutput(); },
+    refresh: async id => { events.push(id); },
+  }), exactPhone);
+  assert.deepEqual(events, ["resolve", phoneID, "resolve"]);
+});
+
+test("persistent discovery failure stops after one recovery and unavailable simulators do not retry", async () => {
+  for (const refreshFails of [false, true]) {
+    let calls = 0, refreshes = 0;
+    await assert.rejects(ensureXcodeDestination({ destination: exactPhone }, {
+      resolve: async () => { calls++; throw discoveryError(); },
+      refresh: async () => { refreshes++; if (refreshFails) throw new Error("Device unavailable"); },
+    }), /discovery failed before tests started/);
+    assert.equal(calls, refreshFails ? 1 : 2);
+    assert.equal(refreshes, 1);
+  }
+});
+
+test("recovered build settings still must identify the originally requested simulator", async () => {
+  let calls = 0;
+  await assert.rejects(ensureXcodeDestination({ destination: exactPhone }, {
+    resolve: async () => { if (++calls === 1) throw discoveryError(); return settingsOutput({ ...resolvedSettings, TARGET_DEVICE_IDENTIFIER: "22222222-2222-2222-2222-222222222222" }); },
+    refresh: async () => {},
+  }), /no tests started/);
+  assert.equal(calls, 2);
+});
+
+test("simulator refresh reads availability and waits only for the specified device with bounded commands", async () => {
+  for (const scenario of ["available", "missing", "unavailable", "duplicate", "wrong-runtime", "boot-fails"]) {
+    const commands = [];
+    const device = { udid: phoneID, isAvailable: scenario !== "unavailable", state: "Shutdown" };
+    const run = async (command, args, options) => {
+      commands.push([command, args, options.timeout]);
+      if (args.includes("list")) return { stdout: JSON.stringify({ devices: {
+        [scenario === "wrong-runtime" ? "com.apple.CoreSimulator.SimRuntime.tvOS-26-2" : "com.apple.CoreSimulator.SimRuntime.iOS-26-2"]:
+          scenario === "missing" ? [] : scenario === "duplicate" ? [device, device] : [device],
+      } }) };
+      if (scenario === "boot-fails") throw new Error("bootstatus failed");
+      return { stdout: "Finished" };
+    };
+    if (scenario === "available") await refreshAvailableSimulator(phoneID, run);
+    else await assert.rejects(refreshAvailableSimulator(phoneID, run), /no longer available|bootstatus failed/);
+    assert.deepEqual(commands[0], ["xcrun", ["simctl", "list", "devices", "available", "--json"], 30_000]);
+    assert.equal(commands.length, ["available", "boot-fails"].includes(scenario) ? 2 : 1);
+    if (commands.length === 2) assert.deepEqual(commands[1], ["xcrun", ["simctl", "bootstatus", phoneID, "-b"], 120_000]);
+  }
+});
 
 test("Xcode readiness verifies the resolved app target and locks the same simulator identity for testing", () => {
   assert.equal(resolvedSimulatorDestination(settingsOutput(), exactPhone), exactPhone);
@@ -377,7 +450,7 @@ test("GitHub CI uses the skip-intolerant platform runner and preserves both resu
   assert.doesNotMatch(captureWorkflow, /only_testing_args=/);
 });
 
-for (const failure of ["none", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous", "iPhone-exit", "iPad-exit", "both-exit", "iPhone-substitution", "iPhone-unreadable"]) {
+for (const failure of ["none", "iPhone-discovery-recovers", "iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous", "iPhone-exit", "iPad-exit", "both-exit", "iPhone-substitution", "iPhone-unreadable"]) {
   test(`the real runner collects both platforms and reports ${failure} without a second cloud run`, (t) => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "capture-platform-results-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -391,6 +464,15 @@ const platform = destination.includes("iPad") || destination.includes("22222222-
 if (args.includes("-showBuildSettings")) {
   if (!args.includes("-json") || args[args.indexOf("-destination-timeout") + 1] !== "30") process.exit(98);
   if (!destination.endsWith(',arch=arm64')) process.exit(96);
+  if (platform === 'iPhone' && process.env.CAPTURE_FAILURE.startsWith('iPhone-discovery-')) {
+    const counter = process.env.CAPTURE_CALL_LOG + '.resolution';
+    const count = fs.existsSync(counter) ? Number(fs.readFileSync(counter, 'utf8')) : 0;
+    fs.writeFileSync(counter, String(count + 1));
+    if (count === 0 || process.env.CAPTURE_FAILURE === 'iPhone-discovery-persists') {
+      console.error(${JSON.stringify(discoveryError().stderr)});
+      process.exit(70);
+    }
+  }
   if (platform === 'iPhone' && process.env.CAPTURE_FAILURE === 'iPhone-resolution-exit') process.exit(64);
   if (platform === 'iPhone' && process.env.CAPTURE_FAILURE === 'iPhone-ambiguous') console.error('Using the first of multiple matching destinations');
   const id = platform === 'iPhone' ? '${phoneID}' : '22222222-2222-2222-2222-222222222222';
@@ -422,6 +504,14 @@ if (process.env.CAPTURE_FAILURE === platform + "-exit" || process.env.CAPTURE_FA
     writeFileSync(path.join(fixture, "xcrun"), `#!/usr/bin/env node
 const fs = require("node:fs"), path = require("node:path");
 const args = process.argv.slice(2), bundle = args[args.indexOf("--path") + 1];
+if (args[0] === 'simctl') {
+  if (args.join(' ') === 'simctl list devices available --json') {
+    console.log(JSON.stringify({devices: {'com.apple.CoreSimulator.SimRuntime.iOS-26-2':
+      process.env.CAPTURE_FAILURE === 'iPhone-discovery-unavailable' ? [] : [{udid: '${phoneID}', isAvailable: true}]
+    }}));
+  } else if (args.join(' ') !== 'simctl bootstatus ${phoneID} -b') process.exit(99);
+  process.exit(0);
+}
 if (bundle.includes("iphone") && process.env.CAPTURE_FAILURE === "iPhone-unreadable") process.exit(1);
 process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
 `, { mode: 0o700 });
@@ -430,18 +520,21 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     const result = spawnSync(process.execPath, [
       path.join(root, "scripts/release/quipsly-capture-ui-test-runner.mjs"),
       "--suite=critical", `--evidence-root=${evidence}`,
-      "--destination=platform=iOS Simulator,name=iPhone test,arch=arm64",
-      "--ipad-destination=platform=iOS Simulator,name=iPad test,arch=arm64",
+      `--destination=${exactPhone},arch=arm64`,
+      "--ipad-destination=platform=iOS Simulator,id=22222222-2222-2222-2222-222222222222,arch=arm64",
       `--derived-data=${path.join(fixture, "derived")}`,
     ], { encoding: "utf8", timeout: 30_000, env: {
       ...process.env, PATH: `${fixture}${path.delimiter}${process.env.PATH}`,
       CAPTURE_FAILURE: failure, CAPTURE_CALL_LOG: callLog,
     } });
-    const passes = failure === "none";
-    const phoneUnresolved = ["iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous"].includes(failure);
+    const passes = ["none", "iPhone-discovery-recovers"].includes(failure);
+    const phoneUnresolved = ["iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous"].includes(failure);
     assert.equal(result.status, passes ? 0 : 1, result.stdout + result.stderr);
     assert.doesNotMatch(result.stdout + result.stderr, /synthetic-settings-must-not-appear-in-logs/);
     assert.equal(readFileSync(callLog, "utf8"), phoneUnresolved ? "iPad\n" : "iPhone\niPad\n", result.stdout + result.stderr);
+    if (failure.startsWith("iPhone-discovery-")) {
+      assert.equal(readFileSync(callLog + ".resolution", "utf8"), failure === "iPhone-discovery-unavailable" ? "1" : "2");
+    }
     for (const platform of phoneUnresolved ? ["ipad"] : ["iphone", "ipad"]) {
       assert.ok(JSON.parse(readFileSync(path.join(evidence, `capture-ui-tests-${platform}.xcresult/test-results.json`), "utf8")).testNodes.length);
     }
@@ -449,7 +542,7 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     else {
       assert.doesNotMatch(result.stdout, /PASS: executed all/);
       assert.match(result.stderr, /FAIL: Capture UI validation failed/);
-      if (failure === "iPhone-resolution-missing") assert.match(result.stderr, /no tests started on platform=iOS Simulator,name=iPhone test/);
+      if (failure === "iPhone-resolution-missing") assert.ok(result.stderr.includes(`no tests started on ${exactPhone}`));
       if (failure === "both-exit") {
         assert.match(result.stderr, /iPhone: xcodebuild failed with exit code 65/);
         assert.match(result.stderr, /iPad: xcodebuild failed with exit code 65/);

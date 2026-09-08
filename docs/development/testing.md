@@ -217,6 +217,13 @@ Matching counts alone are insufficient: substituted, missing, skipped, failed,
 or repeated tests fail the run. Results are retained in the requested evidence
 directory, or a printed temporary directory for local runs. Missing or unreadable
 result bundles fail rather than falling back to a console-only success.
+Before testing, the runner verifies Xcode's resolved simulator identity. If
+Xcode exits with destination error 70 and lists only placeholder devices, an
+exact-UUID request can recover once: recheck that UUID in simctl's available
+iOS devices, wait for its boot status, then resolve it again. A missing device,
+concrete competing destination, absent runtime, ambiguous match, package error,
+or persistent failure still fails. This is bounded setup recovery, not a retry
+of app tests; the selected test identities and result requirements are unchanged.
 Fastlane qualification and pre-upload evidence readback use this same identity
 verifier. CI and Fastlane route tests containing `RegularWidthIPad` to iPad;
 an executable parity test checks all currently discovered selectors, avoiding a
