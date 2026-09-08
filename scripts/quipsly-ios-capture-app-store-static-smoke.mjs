@@ -1776,7 +1776,7 @@ for (const needle of [
   "CaptureVideoStopButton",
   "CaptureVideoPauseResumeButton",
   "CaptureVideoSwitchCameraButton",
-  "Podcast camera",
+  "Video-only recording",
   "Allow recording?",
   "Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
   "Allow recording",
