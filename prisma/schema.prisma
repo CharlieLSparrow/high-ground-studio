@@ -3562,6 +3562,8 @@ model TranscriptJob {
   providerResponseObject   String?
   workerBuildId            String?
   resultJson               Json                @default("{}")
+  // Recovery cursor, independent of source edits and provider retry budgets.
+  followThroughCheckedAt   DateTime?
   createdAt                DateTime            @default(now())
   updatedAt                DateTime            @updatedAt
 
@@ -3584,6 +3586,7 @@ model TranscriptJob {
   @@index([studioProjectId, status, createdAt])
   @@index([episodeProductionId, status, createdAt])
   @@index([status, createdAt])
+  @@index([status, followThroughCheckedAt, id])
 }
 
 model TranscriptSegment {

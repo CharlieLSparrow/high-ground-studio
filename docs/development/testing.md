@@ -88,6 +88,12 @@ preserve personal edits. Controlled SQL interleavings check row-version guards
 on automatic task/goal refresh and removal; this is not a two-connection race test.
 Cleanup also retains work with deadlines, reminders, tags, planned time, progress,
 or dependent work, and notes with private visibility, revisions, or linked work.
+The follow-through maintenance integration suite uses disposable real database
+rows to test fair recovery across transcript states, exhausted older analyses,
+small batch sizes, concurrent sweep claims, and process failure. It verifies
+that a sweep updates only its recovery cursor, not source evidence or business
+timestamps. The downstream processor is mocked; existing analysis and
+transcript-work suites separately exercise materialization and retry budgets.
 Late reminder/progress insertion exercises deletion predicates even when the
 parent row version has not changed. Unused generated output still clears automatically.
 This replaces the retired retained-account, mandatory-playback-review merge
@@ -311,6 +317,8 @@ for installation on a physical iPhone.
 
 - Add forward-only Prisma migrations.
 - Generate the client and validate affected packages.
+- Use `pnpm db:generate`, which synchronizes generated clients across pnpm peer
+  contexts. A direct `prisma generate` can leave Nest resolving a stale client.
 - Apply only to an explicit safe target.
 - Prove runtime behavior after migration.
 - Document rollback or forward-repair strategy.

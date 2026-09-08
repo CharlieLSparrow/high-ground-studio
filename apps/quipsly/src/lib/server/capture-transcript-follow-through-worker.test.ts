@@ -57,12 +57,12 @@ describe("capture transcript follow-through worker", () => {
     })).resolves.toBe("not-configured");
   });
 
-  it("prioritizes unfinished transcripts, heals interrupted completions, and keeps candidate work private", async () => {
+  it("prioritizes unfinished transcripts and heals interrupted ordinary-work completions", async () => {
     const findMany = jest.fn()
       .mockResolvedValueOnce([{ id: "job-running" }])
       .mockResolvedValueOnce([{ id: "job-held" }])
       .mockResolvedValueOnce([{ id: "job-completed" }, { id: "job-running" }]);
-    const prisma = { transcriptJob: { findMany } };
+    const prisma = { transcriptJob: { findMany }, $executeRaw: jest.fn().mockResolvedValue(1) };
     jest.mocked(reconcileCaptureTranscriptFollowThrough)
       .mockResolvedValueOnce({ transcriptJobId: "job-running", transcriptStatus: "completed", packetStatus: "ready", packetBuildId: "packet-1", reusedExistingPacket: false })
       .mockResolvedValueOnce({ transcriptJobId: "job-completed", transcriptStatus: "completed", packetStatus: "ready", packetBuildId: "packet-2", reusedExistingPacket: true })
@@ -99,7 +99,7 @@ describe("capture transcript follow-through worker", () => {
   });
 
   it("reports one retryable failure without losing other work", async () => {
-    const prisma = { transcriptJob: { findMany: jest.fn().mockResolvedValueOnce([{ id: "job-1" }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) } };
+    const prisma = { transcriptJob: { findMany: jest.fn().mockResolvedValueOnce([{ id: "job-1" }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) }, $executeRaw: jest.fn().mockResolvedValue(1) };
     jest.mocked(reconcileCaptureTranscriptFollowThrough).mockRejectedValue(new Error("temporary"));
     await expect(runCaptureTranscriptFollowThroughMaintenance({ prisma })).resolves.toMatchObject({
       scanned: 1,
@@ -135,7 +135,7 @@ describe("capture transcript follow-through worker", () => {
   });
 
   it("continues ordinary follow-through when fallback maintenance is temporarily unavailable", async () => {
-    const prisma = { transcriptJob: { findMany: jest.fn().mockResolvedValueOnce([{ id: "job-1" }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) } };
+    const prisma = { transcriptJob: { findMany: jest.fn().mockResolvedValueOnce([{ id: "job-1" }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) }, $executeRaw: jest.fn().mockResolvedValue(1) };
     jest.mocked(runExpiredDeviceTranscriptFallbackMaintenance).mockRejectedValueOnce(
       new Error("temporary database timeout"),
     );
@@ -155,5 +155,15 @@ describe("capture transcript follow-through worker", () => {
         maintenanceRetryable: true,
       },
     });
+  });
+
+  it("does not dispatch a sweep snapshot already claimed by another worker", async () => {
+    const prisma = { transcriptJob: { findMany: jest.fn().mockResolvedValueOnce([
+      { id: "job-1", followThroughCheckedAt: null },
+    ]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) }, $executeRaw: jest.fn().mockResolvedValue(0) };
+    await expect(runCaptureTranscriptFollowThroughMaintenance({ prisma })).resolves.toMatchObject({
+      scanned: 1, superseded: 1, ready: 0, waiting: 0, held: 0, failed: 0, results: [],
+    });
+    expect(reconcileCaptureTranscriptFollowThrough).not.toHaveBeenCalled();
   });
 });

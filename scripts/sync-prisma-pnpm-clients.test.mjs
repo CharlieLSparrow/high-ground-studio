@@ -7,6 +7,12 @@ import {syncPrismaClients} from "./sync-prisma-pnpm-clients.mjs";
 
 const current = "enum TransactionalEmailKind {\n BOOKING_CONFIRMED\n BOOKING_RESCHEDULED\n}\n";
 const stale = "enum TransactionalEmailKind {\n BOOKING_CONFIRMED\n}\n";
+
+test("manual schema generation uses the same workspace synchronization as installation", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(pkg.scripts["db:generate"], "node scripts/prisma-generate-workspace-clients.mjs");
+  assert.equal(pkg.scripts["db:generate"], pkg.scripts.postinstall);
+});
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), "quipsly-prisma-sync-"));
   t.after(() => rmSync(root, {recursive: true, force: true}));
