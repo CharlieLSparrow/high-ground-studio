@@ -4,6 +4,7 @@ import { buildCoachingPacketFromTranscriptJob } from "./coaching-packets";
 import { reconcileCaptureTranscriptFollowThrough } from "./capture-transcript-follow-through";
 import { reconcileCaptureTranscriptJob } from "./capture-transcript-reconciliation";
 import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock";
+import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet-version";
 
 jest.mock("server-only", () => ({}));
 jest.mock("./coaching-packets", () => ({
@@ -367,7 +368,7 @@ describe("automatic transcript follow-through", () => {
     );
   });
 
-  it("returns durable ordinary follow-through without rebuilding or rewriting it", async () => {
+  it.each(["current", "old-template", "explicit-refresh"])("handles a durable ready marker with %s without forcing duplicate work", async (mode) => {
     const ready = {
       packetStatus: "ready",
       packetBuildId: "packet-ready",
@@ -383,6 +384,7 @@ describe("automatic transcript follow-through", () => {
           roomId: "room-1",
           sourceJson: {
             packetBuildId: "packet-ready",
+            packetTemplateVersion: mode === "old-template" ? "quipsly-session-packet-v5" : SESSION_PACKET_TEMPLATE_VERSION,
             reviewRequired: false,
             transcriptJobId: "job-1",
           },
@@ -401,10 +403,17 @@ describe("automatic transcript follow-through", () => {
       },
     });
 
-    await expect(reconcileCaptureTranscriptFollowThrough({
+    const result = await reconcileCaptureTranscriptFollowThrough({
       prisma,
       transcriptJobId: "job-1",
-    })).resolves.toEqual({
+      refreshExistingPacket: mode === "explicit-refresh",
+    });
+    if (mode !== "current") {
+      expect(result.packetStatus).toBe("ready");
+      expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
+      return;
+    }
+    expect(result).toEqual({
       transcriptJobId: "job-1",
       transcriptStatus: "completed",
       packetStatus: "ready",

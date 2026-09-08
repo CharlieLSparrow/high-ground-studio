@@ -189,6 +189,7 @@ export function buildTranscriptPacketBrief(
   highlights: TranscriptPacketBriefSegment[],
   actionSegments: TranscriptPacketBriefSegment[],
   selectedGoals?: TranscriptPacketBriefSegment[],
+  selectedContext: TranscriptPacketBriefSegment[] = segments,
 ) {
   const section = (
     id: string,
@@ -211,14 +212,18 @@ export function buildTranscriptPacketBrief(
       section(
         definition.id,
         definition.label,
-        definition.id === "goals" && selectedGoals ? selectedGoals : segments.filter((segment) =>
-          definition.pattern.test(briefText(segment.text)),
+        definition.id === "goals" && selectedGoals ? selectedGoals : selectedContext.filter((segment) =>
+          definition.pattern.test(briefText(segment.displayText) || briefText(segment.text)),
         ),
       ),
   );
   const commitments = section("commitments", "Commitments", actionSegments);
-  const coveredSegments = new Set(
-    [...structuredSections, commitments].flatMap((entry) => entry.items.map((item) => item.segmentId)),
+  // One ASR passage can contain a goal, a task, and a separate useful insight.
+  // Deduplicate repeated quotations, not every different thought from that ID.
+  const quotationKey = (id: string, text: string) =>
+    `${id}\u0000${briefText(text).replace(/[.!?]+$/, "").toLowerCase()}`;
+  const coveredQuotations = new Set(
+    [...structuredSections, commitments].flatMap((entry) => entry.items.map((item) => quotationKey(item.segmentId, item.text))),
   );
   return {
     kind: "quipsly-transcript-packet-brief-v1" as const,
@@ -253,7 +258,8 @@ export function buildTranscriptPacketBrief(
     sections: [
       ...structuredSections,
       commitments,
-      section("key-moments", "Key moments", highlights.filter((segment) => !coveredSegments.has(segment.id))),
+      section("key-moments", "Key moments", highlights.filter((segment) =>
+        !coveredQuotations.has(quotationKey(segment.id, briefSegment(segment).text)))),
     ],
   };
 }

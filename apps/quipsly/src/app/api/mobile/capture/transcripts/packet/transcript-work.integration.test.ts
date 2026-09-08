@@ -360,7 +360,7 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(tasks[0]).toMatchObject({ assignedUserId: f.member.id, status: "OPEN", engagementId: session.engagement.id,
         title: "Tomorrow I will draft one page", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
       expect(goals[0]).toMatchObject({ ownerUserId: f.member.id, status: "ACTIVE", engagementId: session.engagement.id,
-        title: "My goal is to write every morning", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
+        title: "Write every morning", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
       const notes = await tx.coachingNote.findMany({ where: { roomId: f.room.id, engagementId: session.engagement.id } });
       expect(notes.some(note => note.kind === "SUMMARY")).toBe(true);
       expect(notes.some(note => note.kind === "HIGHLIGHT")).toBe(true);

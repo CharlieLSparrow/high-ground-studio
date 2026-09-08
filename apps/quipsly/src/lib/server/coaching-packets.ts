@@ -95,7 +95,7 @@ const REVIEW_LANE_DEFINITIONS = [
     label: "Client follow-up notes",
     meaning: "Source-linked recap notes shared in the coaching relationship.",
     pattern:
-      /\b(client|coachee|you|goal|stuck|decision|commitment|homework|follow up|next step)\b/i,
+      /\b(client|coachee|goal|stuck|decision|commitment|homework|follow up|next step)\b/i,
     purposes: ["COACHING"],
   },
   {
@@ -1342,7 +1342,8 @@ function segmentLine(segment: any) {
 }
 
 function scoreHighlight(segment: any) {
-  const text = cleanText(segment.text);
+  const text = contextExcerpt(segment);
+  if (!text) return 0;
   let score = Math.min(50, text.length / 8);
   if (/\?/.test(text)) score += 8;
   if (
@@ -1357,8 +1358,8 @@ function scoreHighlight(segment: any) {
 }
 
 function titleFromSegment(segment: any) {
-  const text = cleanText(segment.text);
-  const sentences = text.split(/[.!?]/).map((part) => part.trim()).filter(Boolean);
+  const text = contextExcerpt(segment);
+  const sentences = workClauses(text);
   const sentence =
     sentences.find((part) => part.split(/\s+/).length >= 4) || sentences[0] || text;
   const clipped = sentence.slice(0, 82);
@@ -1367,21 +1368,31 @@ function titleFromSegment(segment: any) {
     : clipped || "Session highlight";
 }
 
-function actionSentence(segment: any, kind: "goal" | "task") {
-  const text = cleanText(segment.text);
-  const normalized = text.replace(/^(so|okay|ok|yeah|well|and|but)\s+/i, "");
-  const sentences = normalized
-    .split(/[.!?]/)
+// Provider punctuation is not a semantic boundary. An explicit new task, goal,
+// or note can begin in the middle of an unpunctuated ASR passage. Extract only
+// display quotations; never rewrite the immutable text or narrow its timing.
+function workClauses(value: unknown) {
+  return cleanText(value)
+    .split(/[.!?](?=\s|$)|\s+(?=(?:(?:and\s+)?(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?(?:task|todo|to-do|action item)\b|(?:and\s+)?note that\b|(?:my|our)\s+(?:coaching\s+)?(?:goal|objective)\s+(?:is|will be)\b))/i)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function actionSentence(segment: any, kind: "goal" | "task") {
+  const text = cleanText(segment.text);
+  const sentences = workClauses(text);
   return sentences.find((part) => kind === "goal"
     ? GOAL_PATTERN.test(part)
     : ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(part)),
-  ) || sentences[0] || normalized;
+  ) || sentences[0] || text;
 }
 
 function actionTitle(segment: any, kind: "goal" | "task" = "goal") {
-  const sentence = actionSentence(segment, kind);
+  const excerpt = actionSentence(segment, kind);
+  const content = kind === "goal"
+    ? excerpt.replace(/^.*?\b(?:goal|objective|commitment)\s+(?:is|was|will be|:)\s*(?:to\s+)?/i, "")
+    : excerpt;
+  const sentence = content.charAt(0).toUpperCase() + content.slice(1);
   const clipped = sentence.slice(0, 96);
   return clipped.length < sentence.length
     ? `${clipped}...`
@@ -1399,7 +1410,7 @@ function actionExcerpt(segment: PacketTranscriptEvidenceSpan, kind: "goal" | "ta
 }
 
 function taskTitle(segment: any) {
-  const text = cleanText(segment.text);
+  const text = actionSentence(segment, "task");
   const explicitTask = text.match(
     /\b(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?(?:task|todo|to-do|action item)\s+(?:to\s+)?(.+)$/i,
   );
@@ -1411,6 +1422,19 @@ function taskTitle(segment: any) {
   const sentence = taskText.charAt(0).toUpperCase() + taskText.slice(1);
   const clipped = sentence.slice(0, 96);
   return clipped.length < sentence.length ? `${clipped}...` : clipped;
+}
+
+function contextExcerpt(segment: any) {
+  const clauses = workClauses(segment.text);
+  const explicitNote = clauses.find((part) => /^(?:and\s+)?note that\b/i.test(part));
+  if (explicitNote) return explicitNote.replace(/^(?:and\s+)?note that\s*/i, "");
+  const insight = clauses.find((part) =>
+    /\b(?:i|we)\s+(?:realized?|learned|noticed?|feel|felt|struggle|struggled|need support|want accountability)\b|\b(?:that|this)\s+(?:gives|helps|means)\b|\b(?:decided|agreed|settled on|my question is|i wonder)\b/i.test(part));
+  if (insight) return insight;
+  if (GOAL_PATTERN.test(cleanText(segment.text))) return actionExcerpt(segment, "goal");
+  if (ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(cleanText(segment.text))))
+    return actionExcerpt(segment, "task");
+  return "";
 }
 
 function sourceClockSegments(segment: any) {
@@ -1901,6 +1925,7 @@ export async function buildCoachingPacketFromTranscriptJob(
   const packetSpans = distinctWorkSpans(buildTranscriptEvidenceSpans(packetSegments));
   const highlights = [...packetSpans]
     .map((segment: any) => ({ segment, score: scoreHighlight(segment) }))
+    .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score)
     .slice(0, 6)
     .map((entry) => entry.segment);
@@ -1944,7 +1969,7 @@ export async function buildCoachingPacketFromTranscriptJob(
 
   const reviewLanes = buildTranscriptPacketReviewLanes(
     purpose,
-    packetSpans,
+    packetSpans.filter((segment) => contextExcerpt(segment)),
     highlights,
     actionSegments,
   );
@@ -1958,9 +1983,13 @@ export async function buildCoachingPacketFromTranscriptJob(
   }), (segment) => actionSentence(segment, "task"));
   const packetBrief = buildTranscriptPacketBrief(
     packetSpans,
-    highlights,
+    highlights.map((segment) => ({ ...segment, displayText: contextExcerpt(segment) })),
     taskSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "task") })),
     goalSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "goal") })),
+    packetSpans.flatMap((segment) => {
+      const displayText = contextExcerpt(segment);
+      return displayText ? [{ ...segment, displayText }] : [];
+    }),
   );
   const actionCandidates: TranscriptActionCandidate[] = taskSegments.map(
     (segment: any) => {
@@ -2271,7 +2300,7 @@ export async function buildCoachingPacketFromTranscriptJob(
     const sourceTranscriptJobId = cleanText(segment.transcriptJobId) || job.id;
     const segmentID = String(segment.id);
     const title = titleFromSegment(segment);
-    const body = segmentLine(segment);
+    const body = segmentLine({ ...segment, text: contextExcerpt(segment) });
     const sourceTextSha256 =
       cleanText(segment.sourceTextSha256) ||
       packetSha256(cleanText(segment.text));

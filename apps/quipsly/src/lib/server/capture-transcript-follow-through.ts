@@ -1,4 +1,5 @@
 import "server-only";
+import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet-version";
 
 import {
   buildCoachingPacketFromTranscriptJob,
@@ -53,6 +54,7 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
         return prepareSessionFollowThrough({
           prisma: tx,
           transcriptJobId: input.transcriptJobId,
+          refreshExistingPacket: input.refreshExistingPacket,
         });
       }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "ReadCommitted" });
     } catch (error) {
@@ -69,6 +71,7 @@ function isSerializableWriteConflict(error: unknown) {
 async function prepareSessionFollowThrough(input: {
   prisma: any;
   transcriptJobId: string;
+  refreshExistingPacket?: boolean;
 }): Promise<CaptureTranscriptFollowThroughResult> {
   // Same-job calls can arrive from immediate dispatch, scheduled recovery,
   // and two connected clients refreshing the same Session. Take the narrow
@@ -113,7 +116,8 @@ async function prepareSessionFollowThrough(input: {
       })
     : null;
   if (
-    durableReady
+    !input.refreshExistingPacket
+    && durableReady
     && durableSummary?.roomId === authority?.roomId
     && durableSummaryMatchesTranscript({
       sourceJson: durableSummary.sourceJson,
@@ -217,6 +221,7 @@ function durableSummaryMatchesTranscript(input: {
     || Array.isArray(input.sourceJson)
   ) return false;
   const source = input.sourceJson as Record<string, unknown>;
+  if (source.packetTemplateVersion !== SESSION_PACKET_TEMPLATE_VERSION) return false;
   if (!packetCreatesOrdinarySessionWork(source)) return false;
   if (
     typeof source.packetBuildId !== "string"

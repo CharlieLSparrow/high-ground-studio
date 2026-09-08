@@ -140,6 +140,39 @@ describe("transcript coaching follow-through", () => {
     mockedTranscriptGate.mockResolvedValue({ allowed: true, receipt: null });
   });
 
+  it("turns the operated coaching transcript into distinct useful work rather than greeting notes", async () => {
+    const job = completedTranscriptJob();
+    const original = [
+      "Welcome to our coaching session",
+      "Today we will clarify your goal and choose one next step",
+      "What outcome would make this week feel successful",
+      "my goal is to complete the certification practice review by friday please create a task to send the recording to my instructor tomorrow and note that i want accountability without daily reminders",
+      "You",
+    ];
+    job.segments = original.map((text, index) => ({ id: `operated-${index}`, text,
+      speakerLabel: "Charlie", startSeconds: index * 6, endSeconds: index * 6 + 4, confidence: 0.98 }));
+    const work = automaticWorkStores();
+    const noteCreate = jest.fn(async ({ data }: any) => ({ id: `note-${data.kind}`, ...data }));
+    const result = await buildCoachingPacketFromTranscriptJob({ prisma: {
+      transcriptJob: { findUnique: jest.fn().mockResolvedValue(job) },
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null), create: noteCreate }, ...work,
+    }, transcriptJobId: job.id, authorUserId: "coach-1" });
+    expect(result).toMatchObject({ actionItemCount: 1, goalCount: 1 });
+    expect((await work.goal.findMany())[0].title).toBe("Complete the certification practice review by friday");
+    expect((await work.actionItem.findMany())[0].title).toBe("Send the recording to my instructor tomorrow");
+    const notes = noteCreate.mock.calls.map(([call]) => call.data);
+    const highlights = notes.filter(note => note.kind === "HIGHLIGHT");
+    expect(highlights).toHaveLength(1);
+    expect(highlights[0].body).toContain("i want accountability without daily reminders");
+    expect(highlights[0].body).not.toContain("create a task");
+    expect(highlights[0].sourceJson).toMatchObject({ segmentId: "operated-3", startSeconds: 18, endSeconds: 22 });
+    const summary = notes.find(note => note.kind === "SUMMARY");
+    expect(summary.body).not.toMatch(/Welcome to|What outcome|Today we will|— You(?:\n|$)/);
+    expect(summary.body).toContain("i want accountability without daily reminders");
+    expect(summary.sourceJson.packetBrief.overview.segmentCount).toBe(5);
+    expect(job.segments.map(segment => segment.text)).toEqual(original);
+  });
+
   it("assigns repeated first-person commitments to their recording speaker, not the primary client", async () => {
     const job = completedTranscriptJob();
     job.room.participants[0]!.userId = "coach-1";
@@ -177,6 +210,28 @@ describe("transcript coaching follow-through", () => {
     expect((await work.actionItem.findMany())[0].assignedUserId).toBe("client-1");
   });
 
+  it.each([
+    { text: "I feel stuck.", goal: null, task: null, note: "I feel stuck" },
+    { text: "What outcome would make this week feel successful?", goal: null, task: null, note: null },
+    { text: "My goal is to walk 2.5 miles a day. Please create a task to walk 0.5 miles tomorrow. Note that I do not want daily reminders.",
+      goal: "Walk 2.5 miles a day", task: "Walk 0.5 miles tomorrow", note: "I do not want daily reminders" },
+  ])("keeps useful short statements, numbers, and negation without promoting facilitation prompts: $text", async ({text, goal, task, note}) => {
+    const job = completedTranscriptJob();
+    job.segments = [{ ...job.segments[0]!, text }];
+    const work = automaticWorkStores();
+    const noteCreate = jest.fn(async ({data}: any) => ({id: `note-${data.kind}`, ...data}));
+    await buildCoachingPacketFromTranscriptJob({ prisma: {
+      transcriptJob: {findUnique: jest.fn().mockResolvedValue(job)},
+      coachingNote: {findFirst: jest.fn().mockResolvedValue(null), create: noteCreate}, ...work,
+    }, transcriptJobId: job.id, authorUserId: "coach-1" });
+    expect((await work.goal.findMany()).map(item => item.title)).toEqual(goal ? [goal] : []);
+    expect((await work.actionItem.findMany()).map(item => item.title)).toEqual(task ? [task] : []);
+    const highlights = noteCreate.mock.calls.map(([call]) => call.data).filter(item => item.kind === "HIGHLIGHT");
+    expect(highlights).toHaveLength(note ? 1 : 0);
+    if (note) expect(highlights[0].body).toContain(note);
+    expect(job.segments[0]!.text).toBe(text);
+  });
+
   it("extracts both the goal and commitment from a single provider passage without inventing tighter timing", async () => {
     const job = completedTranscriptJob();
     job.segments = [{ id: "combined", speakerLabel: "Charlie", startSeconds: 0, endSeconds: 10.18,
@@ -192,7 +247,7 @@ describe("transcript coaching follow-through", () => {
       title: "Tomorrow I will draft one page and share it with my coach",
       sourceJson: expect.objectContaining({startSeconds: 0, endSeconds: 10.18}),
     })});
-    expect(work.goal.create).toHaveBeenCalledWith({data: expect.objectContaining({title: "My coaching goal is to write every morning"})});
+    expect(work.goal.create).toHaveBeenCalledWith({data: expect.objectContaining({title: "Write every morning"})});
     const brief = noteCreate.mock.calls.find(([call]) => call.data.kind === "SUMMARY")![0].data.sourceJson.packetBrief;
     expect(brief.sections.find((section: any) => section.id === "goals").items[0]).toMatchObject({
       text: "My coaching goal is to write every morning.", startSeconds: 0, endSeconds: 10.18,
