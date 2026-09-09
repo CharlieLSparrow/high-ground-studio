@@ -241,13 +241,9 @@ export function SessionRecordingShareCard({
   const [editing, setEditing] = useState(false);
   const [audition, setAudition] = useState<PassageAudition | null>(null);
   const [auditionNotice, setAuditionNotice] = useState<string | null>(null);
-  const [previewListenedSecondBins, setPreviewListenedSecondBins] = useState<Set<number>>(() => new Set());
-  const [reviewSaveFailed, setReviewSaveFailed] = useState(false);
   const auditionMediaRef = useRef<HTMLMediaElement | null>(null);
   const previewMediaRef = useRef<HTMLMediaElement | null>(null);
-  const previewLastPlaybackTimeRef = useRef<number | null>(null);
-  const reviewRequestStartedForRef = useRef<string | null>(null);
-  const requestIds = useRef<Partial<Record<"PREPARE" | "REVIEW" | "RELEASE" | "REVOKE", string>>>({});
+  const requestIds = useRef<Partial<Record<"PREPARE" | "RELEASE" | "REVOKE", string>>>({});
   const requestFingerprints = useRef<Partial<Record<"PREPARE" | "RELEASE" | "REVOKE", string>>>({});
   const draftRoom = useRef<string | null>(null);
   const draftTouched = useRef(false);
@@ -316,10 +312,6 @@ export function SessionRecordingShareCard({
     0,
     ...(timeline?.sources.map((source) => source.timingUncertaintyMilliseconds || 0) || []),
   );
-  const reviewOutput = snapshot?.output ?? null;
-  const requiredPreviewSecondBins = reviewOutput?.playbackReview?.requiredSecondBins ?? [];
-  const observedPreviewSecondBins = requiredPreviewSecondBins.filter((second) => previewListenedSecondBins.has(second));
-  const previewReviewComplete = requiredPreviewSecondBins.length > 0 && observedPreviewSecondBins.length === requiredPreviewSecondBins.length;
   const rangeValid = startSeconds >= 0 && endSeconds > startSeconds && endSeconds <= duration + 0.05;
   const chosen = useMemo(() => snapshot?.available?.sources.filter((source) => selected.has(source.id)) || [], [selected, snapshot?.available?.sources]);
   const videoSources = useMemo(
@@ -413,69 +405,6 @@ export function SessionRecordingShareCard({
       media.currentTime = audition.sourceStartSeconds;
     }
   }, [audition]);
-
-  useEffect(() => {
-    setPreviewListenedSecondBins(new Set());
-    setReviewSaveFailed(false);
-    previewLastPlaybackTimeRef.current = null;
-    reviewRequestStartedForRef.current = null;
-  }, [reviewOutput?.contentSha256, reviewOutput?.id]);
-
-  const savePlaybackReview = useCallback(async (output: Output, listenedSecondBins: number[]) => {
-    const reviewKey = `${output.id}:${output.revision}:${output.contentSha256}`;
-    if (reviewRequestStartedForRef.current === reviewKey && !reviewSaveFailed) return;
-    reviewRequestStartedForRef.current = reviewKey;
-    setReviewSaveFailed(false);
-    setBusy("REVIEW");
-    setNotice(null);
-    try {
-      const clientRequestId = requestIds.current.REVIEW || crypto.randomUUID();
-      requestIds.current.REVIEW = clientRequestId;
-      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-share`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "REVIEW",
-          clientRequestId,
-          outputId: output.id,
-          expectedRevision: output.revision,
-          playbackEvidence: { listenedSecondBins, clientTrackedPlaybackIsNotProofOfAudibility: true },
-        }),
-      });
-      const payload = await response.json() as Snapshot;
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Quipsly could not save this playback review.");
-      delete requestIds.current.REVIEW;
-      setNotice("Listening review saved for this exact private preview. It is ready to share.");
-      await load(true);
-    } catch (error) {
-      setReviewSaveFailed(true);
-      setNotice(error instanceof Error ? error.message : "Quipsly could not save this playback review.");
-    } finally {
-      setBusy(null);
-    }
-  }, [load, reviewSaveFailed, roomId]);
-
-  useEffect(() => {
-    if (!reviewOutput || reviewOutput.status !== "DRAFT" || reviewOutput.render.status !== "VERIFIED" || reviewOutput.playbackReview?.reviewed || !previewReviewComplete || reviewSaveFailed || busy) return;
-    void savePlaybackReview(reviewOutput, [...previewListenedSecondBins].sort((left, right) => left - right));
-  }, [busy, previewListenedSecondBins, previewReviewComplete, reviewOutput, reviewSaveFailed, savePlaybackReview]);
-
-  function observePreviewPlayback(media: HTMLMediaElement, ended = false) {
-    const durationSeconds = Number.isFinite(media.duration) ? media.duration : reviewOutput?.render.durationSeconds;
-    const currentTime = ended && durationSeconds && durationSeconds > 0 ? durationSeconds - 0.001 : media.currentTime;
-    if (!ended && (media.paused || media.seeking)) return;
-    if (!durationSeconds || durationSeconds <= 0) return;
-    const second = Math.max(0, Math.min(Math.ceil(durationSeconds) - 1, Math.floor(currentTime)));
-    const previousTime = previewLastPlaybackTimeRef.current;
-    const contiguous = previousTime !== null && currentTime >= previousTime && currentTime - previousTime <= 1.5;
-    const firstSecond = contiguous ? Math.floor(previousTime) : second;
-    previewLastPlaybackTimeRef.current = currentTime;
-    setPreviewListenedSecondBins((current) => {
-      const next = new Set(current);
-      for (let bin = firstSecond; bin <= second; bin += 1) next.add(bin);
-      return next.size === current.size ? current : next;
-    });
-  }
 
   useEffect(() => {
     if (!focusTranscriptKey || !snapshot?.role) return;
@@ -674,7 +603,7 @@ export function SessionRecordingShareCard({
                       onError={() => setAuditionNotice("Quipsly could not open this protected participant master. Refresh after source preparation finishes.")}
                     >Your browser cannot play this private participant recording.</audio>
                   )}
-                  <p className="mt-2 text-[11px] font-bold leading-5 text-indigo-800">This plays only the exact source passage. Your reversible cut is not applied until you create and listen to the private preview.</p>
+                  <p className="mt-2 text-[11px] font-bold leading-5 text-indigo-800">This plays the original passage. Create a preview to hear your edit; the original recording stays unchanged.</p>
                 </div>
               ) : null}
               {auditionNotice ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950" role="status">{auditionNotice}</p> : null}
@@ -747,31 +676,27 @@ export function SessionRecordingShareCard({
         </fieldset>
       ) : null}
 
-      {output ? <div className="mt-5 space-y-4 rounded-2xl border border-sky-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-black text-sky-950">{output.title}</p><p className="text-xs font-bold text-sky-700">Revision {output.revision} · {output.status === "DRAFT" ? "Private coach draft" : output.status === "RELEASED" ? `Visible to ${output.recipient.label}` : "Access revoked"}</p></div><span className="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-900">{output.render.status}</span></div>
+      {output ? <div className="mt-5 space-y-4 rounded-2xl border border-sky-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-black text-sky-950">{output.title}</p><p className="text-xs font-bold text-sky-700">{output.status === "DRAFT" ? "Private draft" : output.status === "RELEASED" ? `Shared with ${output.recipient.label}` : "Access revoked"}</p></div><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900">{{VERIFIED: "Ready", QUEUED: "Preparing", PROCESSING: "Preparing", FAILED: "Needs attention", NOT_REQUESTED: "Not prepared"}[output.render.status]}</span></div>
         {output.render.status === "VERIFIED" && output.mediaUrl ? <>{output.render.mediaKind === "video" ? <video
           ref={(node) => { previewMediaRef.current = node; }}
           aria-label={output.status === "RELEASED" ? "Shared video recording" : "Private video preview"}
           className="aspect-video w-full rounded-xl bg-black"
           controls playsInline preload="metadata" src={output.mediaUrl}
-          onPlay={(event) => { previewLastPlaybackTimeRef.current = event.currentTarget.currentTime; }}
-          onPause={() => { previewLastPlaybackTimeRef.current = null; }}
-          onSeeking={() => { previewLastPlaybackTimeRef.current = null; }}
-          onTimeUpdate={(event) => observePreviewPlayback(event.currentTarget)}
-          onEnded={(event) => observePreviewPlayback(event.currentTarget, true)}
         >Your browser cannot play this private video.</video> : <audio
           ref={(node) => { previewMediaRef.current = node; }}
           aria-label={output.status === "RELEASED" ? "Shared recording" : "Private recording preview"}
           className="w-full" controls preload="metadata" src={output.mediaUrl}
-          onPlay={(event) => { previewLastPlaybackTimeRef.current = event.currentTarget.currentTime; }}
-          onPause={() => { previewLastPlaybackTimeRef.current = null; }}
-          onSeeking={() => { previewLastPlaybackTimeRef.current = null; }}
-          onTimeUpdate={(event) => observePreviewPlayback(event.currentTarget)}
-          onEnded={(event) => observePreviewPlayback(event.currentTarget, true)}
-        >Your browser cannot play this private recording.</audio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span><span>·</span><span className="font-mono">SHA-256 {output.render.sha256?.slice(0, 12)}…</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Download className="mr-1.5" size={14} />Download private copy</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
-        {coach && output.status === "DRAFT" && output.render.status === "VERIFIED" ? <div className={`rounded-xl border p-4 ${output.playbackReview?.reviewed ? "border-emerald-200 bg-emerald-50" : "border-indigo-200 bg-indigo-50"}`}>
-          {output.playbackReview?.reviewed
-            ? <p className="text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />You listened through this exact revision.</p>
-            : <p className="text-sm font-semibold leading-6 text-indigo-950">Preview the edit above when useful, or share it now. The original recordings remain unchanged.</p>}
+        >Your browser cannot play this private recording.</audio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex min-h-11 items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900"><Download className="mr-1.5" size={14} />Download recording</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
+        <details className="text-xs text-sky-800">
+          <summary className="min-h-11 cursor-pointer py-3 font-semibold">File details</summary>
+          <dl className="space-y-2 rounded-lg border border-sky-100 p-3">
+            <div><dt className="font-semibold">Revision</dt><dd>{output.revision}</dd></div>
+            <div><dt className="font-semibold">Processing status</dt><dd>{output.render.status}</dd></div>
+            {output.render.sha256 && <div><dt className="font-semibold">SHA-256 checksum</dt><dd className="break-all font-mono">{output.render.sha256}</dd></div>}
+          </dl>
+        </details>
+        {coach && output.status === "DRAFT" && output.render.status === "VERIFIED" ? <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+          <p className="text-sm font-semibold leading-6 text-indigo-950">Preview the edit above when useful, or share it now. The original recordings remain unchanged.</p>
           <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("RELEASE")} className="mt-3 w-full rounded-xl bg-emerald-800 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"><Send className="mr-2 inline" size={16} />Share with {output.recipient.label}</button>
         </div> : null}
         {coach && output.status === "RELEASED" ? <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("REVOKE")} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-900"><Undo2 className="mr-1.5 inline" size={14} />Revoke client access</button> : null}

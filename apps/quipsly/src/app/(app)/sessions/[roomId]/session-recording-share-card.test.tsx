@@ -518,7 +518,7 @@ describe("SessionRecordingShareCard", () => {
     fireEvent.loadedMetadata(source);
     expect(source.currentTime).toBeCloseTo(8.1, 3);
     expect(play).toHaveBeenCalled();
-    expect(screen.getByText(/plays only the exact source passage/i)).toBeInTheDocument();
+    expect(screen.getByText(/plays the original passage.*original recording stays unchanged/i)).toBeInTheDocument();
   });
 
   it("keeps overlapping speech included and explains why", async () => {
@@ -613,7 +613,7 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByRole("button", { name: "Create new private edit" })).toBeInTheDocument();
   });
 
-  it("records optional listening evidence without turning it into a share gate", async () => {
+  it.each(["audio", "video"])("keeps %s playback read-only and shares only on the coach's explicit action", async (mediaKind) => {
     const draftOutput = {
       id: "session_output_review_0001",
       status: "DRAFT",
@@ -621,25 +621,22 @@ describe("SessionRecordingShareCard", () => {
       revision: 2,
       contentSha256: "d".repeat(64),
       recipient: { id: "client_user_0001", label: "Client" },
-      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      render: { status: "VERIFIED", mediaKind, durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
       mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_review_0001",
       playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: false, reviewedAt: null, clientTrackedPlaybackIsNotProofOfAudibility: true },
       body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
     };
-    const reviewedOutput = { ...draftOutput, revision: 3, playbackReview: { ...draftOutput.playbackReview, reviewed: true, reviewedAt: "2026-08-24T12:00:00.000Z" } };
-    let currentOutput: typeof draftOutput | typeof reviewedOutput = draftOutput;
     const requests: Array<Record<string, any>> = [];
     global.fetch = jest.fn(async (_url, init) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         requests.push(body);
-        if (body.action === "REVIEW") currentOutput = reviewedOutput;
       }
-      return response({ ...snapshot, output: currentOutput });
+      return response({ ...snapshot, output: draftOutput });
     }) as jest.MockedFunction<typeof fetch>;
 
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
-    const audio = await screen.findByLabelText("Private recording preview") as HTMLAudioElement;
+    const audio = await screen.findByLabelText(mediaKind === "video" ? "Private video preview" : "Private recording preview") as HTMLMediaElement;
     Object.defineProperties(audio, {
       duration: { configurable: true, value: 30 },
       paused: { configurable: true, value: false },
@@ -653,17 +650,16 @@ describe("SessionRecordingShareCard", () => {
       fireEvent.pause(audio);
     }
 
-    await waitFor(() => expect(requests.some((request) => request.action === "REVIEW")).toBe(true));
-    expect(requests.find((request) => request.action === "REVIEW")).toMatchObject({
-      outputId: draftOutput.id,
-      expectedRevision: 2,
-      playbackEvidence: { listenedSecondBins: [0, 15, 29], clientTrackedPlaybackIsNotProofOfAudibility: true },
-    });
-    expect(await screen.findByText(/listening review saved for this exact private preview/i)).toBeInTheDocument();
+    fireEvent.ended(audio);
+    expect(requests).toEqual([]);
+    expect(screen.queryByText(/listening review saved|You listened through/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", {name: "Share with Client"}));
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({action: "RELEASE", outputId: draftOutput.id, expectedRevision: 2});
   });
 
-  it("describes a client release without claiming somebody completed an optional review", async () => {
+  it("keeps a client recording simple with technical evidence available in file details", async () => {
     const output = {
       id: "session_output_released_0001",
       status: "RELEASED",
@@ -682,6 +678,14 @@ describe("SessionRecordingShareCard", () => {
 
     expect(await screen.findByText("Your coach shared this private recording in your Session.")).toBeInTheDocument();
     expect(screen.queryByText(/released this reviewed copy/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Download recording"})).toHaveAttribute("href", `${output.mediaUrl}?download=1`);
+    expect(screen.getByText("Ready")).toBeVisible();
+    const checksum = screen.getByText(output.render.sha256);
+    expect(checksum.closest("details")).not.toHaveAttribute("open");
+    expect(checksum).not.toBeVisible();
+    await userEvent.click(screen.getByText("File details"));
+    expect(checksum).toBeVisible();
+    expect(screen.getByText("VERIFIED")).toBeVisible();
   });
 
   it("reopens the current edit without losing transcript cuts and cancels safely", async () => {

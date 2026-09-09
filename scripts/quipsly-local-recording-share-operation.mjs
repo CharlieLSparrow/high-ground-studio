@@ -157,7 +157,7 @@ try {
   }
   await Promise.race([
     prepareButton.waitFor({ state: "visible", timeout: 30_000 }),
-    coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 30_000 }),
+    coachCard.getByText("Ready", { exact: true }).waitFor({ timeout: 30_000 }),
   ]);
   if (await prepareButton.isVisible().catch(() => false)) {
     const sourceCheckboxes = coachCard.locator('fieldset input[type="checkbox"]');
@@ -217,9 +217,9 @@ try {
       prepareResponse.ok() && preparePacket?.ok === true,
       `Private preview request failed (${prepareResponse.status()}): ${JSON.stringify(preparePacket)}. Range: ${JSON.stringify(renderedRange)}. Capture group: ${room.captureGroupId}. Sources: ${availableSourceIds.length}.`,
     );
-    if (preparePacket.output) await coachCard.getByText(`Revision ${preparePacket.output.revision} · Private coach draft`, { exact: true }).waitFor({ timeout: 30_000 });
+    if (preparePacket.output) await coachCard.getByText("Private draft", { exact: true }).waitFor({ timeout: 30_000 });
   }
-  await coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 120_000 });
+  await coachCard.getByText("Ready", { exact: true }).waitFor({ timeout: 120_000 });
   results.coachPreview = await decodeAndAdvance(coachCard);
   assert(results.coachPreview.readyState >= 1 && results.coachPreview.currentTimeSeconds > 0, "Coach preview did not decode and advance.");
   results.playbackReview = await assertShareAvailableWithoutListeningCeremony(
@@ -241,7 +241,7 @@ try {
     coachCard.getByRole("button", { name: `Share with ${identities.client.displayName}`, exact: true }).click(),
   ]);
   const releaseBody = releaseRequest.postDataJSON();
-  await coachCard.getByText(`Visible to ${identities.client.displayName}`, { exact: false }).waitFor({ timeout: 30_000 });
+  await coachCard.getByText(`Shared with ${identities.client.displayName}`, { exact: true }).waitFor({ timeout: 30_000 });
   const releaseReplay = await coachPage.evaluate(async ({ roomId, body }) => {
     const response = await fetch(`/api/sessions/${roomId}/recording-share`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     return { status: response.status, packet: await response.json() };
@@ -258,7 +258,7 @@ try {
   assert(results.clientMediaStatusBeforeRevoke === 200, `Recipient media readback returned ${results.clientMediaStatusBeforeRevoke} before revoke.`);
   const [download] = await Promise.all([
     clientPage.waitForEvent("download"),
-    clientCard.getByRole("link", { name: "Download private copy", exact: true }).click(),
+    clientCard.getByRole("link", { name: "Download recording", exact: true }).click(),
   ]);
   assert(!await download.failure(), "The recipient's recording download failed.");
   assert(/^[a-z0-9-]+$/i.test(output.id), "Unexpected recording output filename.");
