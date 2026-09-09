@@ -27,6 +27,7 @@ import {
 import { sessionAccessWhere } from "@/lib/server/session-access";
 import {
   sessionProtectedPlaybackBinding,
+  sessionRecordingNeedsAudioDerivative,
   type SessionProtectedPlaybackBinding,
 } from "@/lib/server/session-protected-playback";
 
@@ -73,7 +74,7 @@ export async function prepareSessionAudioAudition(input: {
   actor: Actor;
 }) {
   const context = await loadContext(input);
-  if (context.playback.kind === "audio") return notRequired(context.playback);
+  if (!sessionRecordingNeedsAudioDerivative(context.playback.contentType)) return notRequired(context.playback);
 
   const desired = desiredManifest({
     playback: context.playback,
@@ -117,7 +118,7 @@ export async function reconcileSessionAudioAudition(input: {
   actor: Actor;
 }): Promise<SessionAudioAuditionPublicState> {
   const context = await loadContext(input);
-  if (context.playback.kind === "audio") return notRequired(context.playback);
+  if (!sessionRecordingNeedsAudioDerivative(context.playback.contentType)) return notRequired(context.playback);
   const jobId = jobIdFor(context.playback);
   const row = await input.prisma.sessionAudioAuditionJob.findFirst({
     where: {
@@ -229,11 +230,11 @@ export async function resolveSessionAudioAuditionBinding(input: {
   actor: Actor;
 }) {
   const context = await loadContext(input);
-  if (context.playback.kind !== "video")
+  if (!sessionRecordingNeedsAudioDerivative(context.playback.contentType))
     throw new SessionAudioAuditionError(
       409,
       "AUDITION_NOT_REQUIRED",
-      "This source is already audio-only.",
+      "This source already supports direct audio playback.",
     );
   const row = await input.prisma.sessionAudioAuditionJob.findUnique({
     where: { id: jobIdFor(context.playback) },

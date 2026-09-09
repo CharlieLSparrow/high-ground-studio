@@ -6436,6 +6436,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(safeOfflineRow.buttons["Stop playback"].firstMatch.waitForExistence(timeout: 3))
         safeOfflineRow.buttons["Stop playback"].firstMatch.tap()
 
+        let playRecovered = crashOfflineRow.buttons["Play local source"].firstMatch
+        XCTAssertTrue(playRecovered.exists && playRecovered.isEnabled,
+                      "An interrupted take must recover playable audio, not only a journal row and undecodable bytes.")
+        playRecovered.tap()
+        XCTAssertTrue(crashOfflineRow.buttons["Stop playback"].firstMatch.waitForExistence(timeout: 3))
+        crashOfflineRow.buttons["Stop playback"].firstMatch.tap()
+
         app.terminate()
         app = try launchSignedInCaptureApp()
         XCTAssertTrue(

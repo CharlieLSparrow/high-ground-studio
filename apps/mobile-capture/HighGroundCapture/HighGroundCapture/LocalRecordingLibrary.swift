@@ -958,7 +958,7 @@ final class LocalRecordingLibrary: ObservableObject {
 #endif
 
     func makeUniqueRecordingURL(startedAt: Date = Date()) throws -> URL {
-        try makeUniqueSourceURL(mediaKind: .audio, startedAt: startedAt)
+        try makeUniqueSourceURL(mediaKind: .audio, fileExtension: "caf", startedAt: startedAt)
     }
 
     /// Removes only a never-started encoder file created before the durable

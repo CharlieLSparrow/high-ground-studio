@@ -1071,11 +1071,16 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     private var directAudioSettings: [String: Any] {
         [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            // Fixed-size PCM packets in CAF remain decodable if the process
+            // ends before Stop closes the file. AAC/M4A needs a final sample
+            // table, which left crash-open coaching takes unreadable.
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
             AVSampleRateKey: 48_000.0,
             AVNumberOfChannelsKey: 1,
-            AVEncoderBitRateKey: 192_000,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            AVLinearPCMBitDepthKey: 24,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
         ]
     }
 
@@ -1175,8 +1180,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
             captureGroupId: captureIntent.captureGroupID,
             roomStartReceiptId: captureIntent.startReceiptID,
             sourceProfile: LocalRecordingSourceProfile(
-                container: "m4a",
-                codec: "aac-lc",
+                container: "caf",
+                codec: "pcm_s24le",
                 includesAudio: true,
                 audioSampleRate: 48_000,
                 audioChannelCount: 1,

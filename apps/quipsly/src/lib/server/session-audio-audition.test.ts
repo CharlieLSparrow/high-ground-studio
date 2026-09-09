@@ -25,6 +25,7 @@ jest.mock("@/lib/server/session-access", () => ({
   sessionAccessWhere: jest.fn(() => ({ id: "room-12345678" })),
 }));
 jest.mock("@/lib/server/session-protected-playback", () => ({
+  ...jest.requireActual("@/lib/server/session-protected-playback"),
   sessionProtectedPlaybackBinding: jest.fn(),
 }));
 
@@ -121,6 +122,35 @@ describe("Session audio audition durable outbox", () => {
     expect(replay.jobId).toBe(first.jobId);
     expect(prisma.created).toHaveLength(1);
     expect(storage.objects.size).toBe(2);
+  });
+
+  it.each(["audio/x-caf", "audio/caf"])("prepares a browser listening copy for a %s master", async (contentType) => {
+    const binding = jest.mocked(sessionProtectedPlaybackBinding).getMockImplementation()!({} as never)!;
+    jest.mocked(sessionProtectedPlaybackBinding).mockReturnValue({
+      ...binding, contentType, kind: "audio",
+      objectName: "media-vault/recordings/coaching/master.caf",
+    });
+    const result = await prepareSessionAudioAudition({
+      prisma: prisma.client, roomId, recordingAssetId, actor: { id: "coach-12345678", primaryEmail: "coach@example.com" },
+    });
+    expect(result.state).not.toBe("NOT_REQUIRED");
+    expect(prisma.created).toHaveLength(1);
+    expect(prisma.created[0].inputJson).toMatchObject({
+      source: { contentType, sha256: sourceSha, objectName: "media-vault/recordings/coaching/master.caf" },
+      target: { contentType: "audio/mp4" },
+      originalRemainsSourceTruth: true,
+    });
+  });
+
+  it("does not create unnecessary copies for browser-ready audio", async () => {
+    const binding = jest.mocked(sessionProtectedPlaybackBinding).getMockImplementation()!({} as never)!;
+    jest.mocked(sessionProtectedPlaybackBinding).mockReturnValue({ ...binding, kind: "audio", contentType: "audio/mp4" });
+    const result = await prepareSessionAudioAudition({
+      prisma: prisma.client, roomId, recordingAssetId, actor: { id: "coach-12345678", primaryEmail: "coach@example.com" },
+    });
+    expect(result.state).toBe("NOT_REQUIRED");
+    expect(prisma.created).toHaveLength(0);
+    expect(storage.objects.size).toBe(0);
   });
 
   it("revalidates duration and exact source binding before readback", async () => {
