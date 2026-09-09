@@ -1336,10 +1336,12 @@ struct MobileEpisodeChatThread: View {
         .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Thread")
         .sheet(item: $workAction, onDismiss: {
             guard !previewOnly else { return }
+            // Return to the source when the editor closes, not after network
+            // refreshes finish and the person may already be tapping a task.
+            workReturnRevision += 1
             Task {
                 await target.load(with: client, forceRefresh: true)
                 await onWorkChanged()
-                workReturnRevision += 1
             }
         }) { action in
             if case let .nest(project) = target, case let .create(message) = action {

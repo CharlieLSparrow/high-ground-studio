@@ -24194,7 +24194,11 @@ private struct CaptureWorkLocationBar: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 48)
-            .background(CapturePalette.locationBarBackground)
+            .contentShape(Rectangle())
+            // This is a control in the split-view detail, not a full-screen
+            // backdrop. Safe-area expansion otherwise gives its accessibility
+            // frame a hit point inside the iPad navigation bar.
+            .background(CapturePalette.locationBarBackground, ignoresSafeAreaEdges: [])
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(CapturePalette.divider)

@@ -43,18 +43,22 @@ struct NestChatLinkedTask: Identifiable, Codable, Hashable {
 
 /// Retries keep the same identity; editing the input starts a new command.
 struct NestConversationTaskCommand: Encodable, Equatable {
-    struct Tags: Encodable, Equatable { let tagIds: [String] }
+    struct Tags: Encodable, Equatable {
+        let tagIds: [String]
+        let newTagLabels: [String]
+    }
     let projectSlug: String
     let sourceMessageId: String
     let title: String
     let clientRequestId: String
     let tags: Tags
 
-    init(projectSlug: String, messageID: String, title: String, tagIDs: [String], previous: Self? = nil) {
+    init(projectSlug: String, messageID: String, title: String, tagIDs: [String], newTagLabels: [String] = [], previous: Self? = nil) {
         self.projectSlug = projectSlug
         sourceMessageId = messageID
         self.title = title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        tags = Tags(tagIds: Array(Set(tagIDs)).sorted())
+        tags = Tags(tagIds: Array(Set(tagIDs)).sorted(),
+                    newTagLabels: newTagLabels.map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }.sorted())
         if let previous, previous.projectSlug == projectSlug, previous.sourceMessageId == messageID,
            previous.title == self.title, previous.tags == tags {
             clientRequestId = previous.clientRequestId

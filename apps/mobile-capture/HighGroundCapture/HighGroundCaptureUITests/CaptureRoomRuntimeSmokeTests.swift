@@ -4446,13 +4446,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let tag = app.buttons[tagLabel].firstMatch
         XCTAssertTrue(tag.waitForExistence(timeout: 10))
         tag.tap()
+        let newTagLabel = "Chapter \(UUID().uuidString.prefix(8))"
+        let newTag = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(newTag, in: app, timeout: 10, swipeAttempts: 5))
+        newTag.tap()
+        newTag.typeText(newTagLabel)
         app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
         let save = app.buttons["CaptureNestConversationTaskSave"].firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         XCTAssertTrue(save.isEnabled)
         save.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: save)
+        waitForExpectations(timeout: 20)
         let task = app.buttons["Task: \(message), open"].firstMatch
         XCTAssertTrue(task.waitForExistence(timeout: 20), "Canonical task must return to its source message")
+        XCTAssertTrue(waitUntilHittable(task, timeout: 10))
         task.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTaskEditTitle"].firstMatch.waitForExistence(timeout: 20),
             "The conversation task must open the normal native task editor")
@@ -4461,6 +4469,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         open.tap()
         XCTAssertTrue(task.waitForExistence(timeout: 20), "Reopening must read the persisted task from Nest")
         XCTAssertTrue(app.staticTexts[message].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts[newTagLabel].firstMatch.exists, "The new shared tag must return with the saved task")
     }
 
     func testWorkTagOutboxSurvivesOfflineRelaunchAndConverges() throws {

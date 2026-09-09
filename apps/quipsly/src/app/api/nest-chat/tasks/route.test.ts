@@ -25,10 +25,17 @@ test("passes scope and tags to the canonical command, ignoring a submitted actor
   const response = await POST(request({ ...input, actorUserId: "someone-else" }));
   expect(response.status).toBe(200);
   expect(createNestConversationTask).toHaveBeenCalledWith({ prisma: {}, actorUserId: "current-user", projectSlug: "our-book",
-    messageId: input.sourceMessageId, title: input.title, clientRequestId: input.clientRequestId, tagIds: ["research"] });
+    messageId: input.sourceMessageId, title: input.title, clientRequestId: input.clientRequestId, tagIds: ["research"], newTagLabels: [] });
   expect(response.headers.get("Cache-Control")).toBe("private, no-store");
 });
-test.each([null, {}, { ...input, tags: { tagIds: [42] } }])("rejects malformed payloads", async body => {
+test("passes inline tag names to the same task transaction", async () => {
+  jest.mocked(createNestConversationTask).mockResolvedValue({ entry: { id: "task", title: input.title, status: "OPEN", tags: [] }, idempotentReplay: false });
+  expect((await POST(request({ ...input, tags: { tagIds: [], newTagLabels: ["Chapter ideas"] } }))).status).toBe(200);
+  expect(createNestConversationTask).toHaveBeenCalledWith(expect.objectContaining({ tagIds: [], newTagLabels: ["Chapter ideas"] }));
+});
+test.each([null, {}, { ...input, tags: { tagIds: [42] } },
+  { ...input, tags: { tagIds: [], newTagLabels: [42] } },
+  { ...input, tags: { tagIds: [], newTagLabels: "Chapter ideas" } }])("rejects malformed payloads", async body => {
   expect((await POST(request(body))).status).toBe(400);
   expect(createNestConversationTask).not.toHaveBeenCalled();
 });

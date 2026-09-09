@@ -67,6 +67,46 @@ if (enabled) {
     expect(owner?.memberUserId).toBe(id("owner"));
     expect(await prisma.studioProjectAccessGrant.count({ where: { projectId: id("project") } })).toBe(before);
   });
+  it("saves inline names and task together, reuses colored tags, and converges concurrent retries", async () => {
+    const input = command({ actorUserId: id("editor"), newTagLabels: ["research", "Opening chapter"] });
+    const results = await Promise.all([createNestConversationTask(input), createNestConversationTask(input)]);
+    expect(results[0].entry.id).toBe(results[1].entry.id);
+    expect(results.map(result => result.idempotentReplay).sort()).toEqual([false, true]);
+    expect(results[0].entry.tags).toHaveLength(2);
+    expect(results[0].entry.tags).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: id("tag"), label: "Research", hexColor: "#506b46" }),
+      expect.objectContaining({ label: "Opening chapter", isActive: true }),
+    ]));
+    expect(await prisma.studioTag.count({ where: { projectId: id("project"), slug: "opening-chapter" } })).toBe(1);
+    expect(await read(results[0].entry.id, "viewer")).not.toBeNull();
+    expect(await read(results[0].entry.id, "outsider")).toBeNull();
+    await expect(createNestConversationTask({ ...input, newTagLabels: ["Different chapter"] })).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.studioTag.count({ where: { projectId: id("project"), slug: "different-chapter" } })).toBe(0);
+  });
+  it("rolls back new vocabulary if another requested tag cannot be used", async () => {
+    await prisma.studioTag.create({ data: { projectId: id("project"), label: "ZZ archived", slug: "zz-archived", isActive: false } });
+    const count = await prisma.actionItem.count({ where: { projectId: id("project") } });
+    await expect(createNestConversationTask(command({ newTagLabels: ["AA should roll back", "ZZ archived"] }))).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.studioTag.count({ where: { projectId: id("project"), slug: "aa-should-roll-back" } })).toBe(0);
+    expect(await prisma.actionItem.count({ where: { projectId: id("project") } })).toBe(count);
+  });
+  it("converges different teammates' tasks onto one new shared tag and follows former names", async () => {
+    const results = await Promise.all(["owner", "editor"].map(actor => createNestConversationTask(
+      command({ actorUserId: id(actor), tagIds: [], newTagLabels: ["Shared outline"] }))));
+    expect(results[0].entry.id).not.toBe(results[1].entry.id);
+    expect(results[0].entry.tags[0].id).toBe(results[1].entry.tags[0].id);
+    expect(await prisma.studioTag.count({ where: { projectId: id("project"), slug: "shared-outline" } })).toBe(1);
+    await prisma.studioTagAlias.create({ data: { projectId: id("project"), tagId: id("tag"), slug: "former-research", label: "Former research" } });
+    const aliased = await createNestConversationTask(command({ tagIds: [], newTagLabels: ["Former research"] }));
+    expect(aliased.entry.tags).toEqual([expect.objectContaining({ id: id("tag"), label: "Research", hexColor: "#506b46" })]);
+  });
+  it.each(["viewer", "outsider"])("does not let %s expand vocabulary through task creation", async actor => {
+    await expect(createNestConversationTask(command({ actorUserId: id(actor), newTagLabels: ["Forbidden inline tag"] }))).rejects.toMatchObject({ status: 404 });
+    expect(await prisma.studioTag.count({ where: { projectId: id("project"), slug: "forbidden-inline-tag" } })).toBe(0);
+  });
+  it.each([["Research", "research"], ["x".repeat(81)], Array.from({ length: 9 }, (_, i) => `Tag ${i}`)])("rejects invalid inline vocabulary %j", async (...labels) => {
+    await expect(createNestConversationTask(command({ newTagLabels: labels }))).rejects.toMatchObject({ status: 400 });
+  });
   it("projects shared tasks, color, sources, and current edit capability into the Nest work view", async () => {
     const { entry } = await createNestConversationTask(command());
     for (const actor of ["owner", "editor", "viewer", "outsider"]) {

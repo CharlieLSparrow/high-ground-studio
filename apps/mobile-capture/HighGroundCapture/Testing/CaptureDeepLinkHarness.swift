@@ -82,6 +82,15 @@ struct CaptureDeepLinkHarness {
         let elsewhere = NestConversationTaskCommand(projectSlug: "other", messageID: "idea-1",
             title: "Gather examples", tagIDs: ["research", "chapter"], previous: taskCommand)
         precondition(elsewhere.clientRequestId != taskCommand.clientRequestId)
+        let withNewTag = NestConversationTaskCommand(projectSlug: "writing", messageID: "idea-1",
+            title: "Gather examples", tagIDs: ["research", "chapter"], newTagLabels: ["  Chapter  ideas "], previous: taskCommand)
+        precondition(withNewTag.clientRequestId != taskCommand.clientRequestId)
+        precondition(withNewTag.tags.newTagLabels == ["Chapter ideas"])
+        let retryNewTag = NestConversationTaskCommand(projectSlug: "writing", messageID: "idea-1",
+            title: "Gather examples", tagIDs: ["chapter", "research"], newTagLabels: ["Chapter ideas"], previous: withNewTag)
+        precondition(retryNewTag == withNewTag)
+        let newTagBody = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(withNewTag)) as! [String: Any]
+        precondition((newTagBody["tags"] as? [String: [String]])?["newTagLabels"] == ["Chapter ideas"])
         let taskBody = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(taskCommand)) as! [String: Any]
         precondition(taskBody["sourceMessageId"] as? String == "idea-1")
         precondition((taskBody["tags"] as? [String: [String]])?["tagIds"] == ["chapter", "research"])

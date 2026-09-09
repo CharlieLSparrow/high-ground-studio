@@ -30,11 +30,15 @@ struct CaptureNestConversationTaskEditor: View {
                     TextField("Task title", text: $title, axis: .vertical)
                         .accessibilityIdentifier("CaptureNestConversationTaskTitle")
                     NavigationLink {
-                        CaptureTaskTagPicker(tags: tags, selection: $selection, allowsNewTags: false)
+                        CaptureTaskTagPicker(tags: tags, selection: $selection)
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Tags")
                             CaptureWorkTags(tags: tags.filter { selection.tagIDs.contains($0.id) }, workID: "conversation-draft")
+                            ForEach(selection.newTagLabels, id: \.self) { label in
+                                Text(label.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .accessibilityIdentifier("CaptureNestConversationTaskTags")
@@ -52,7 +56,7 @@ struct CaptureNestConversationTaskEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isSaving ? "Adding…" : "Add task") {
                         let command = NestConversationTaskCommand(projectSlug: project.slug, messageID: message.id,
-                            title: title, tagIDs: selection.tagIDs, previous: pending)
+                            title: title, tagIDs: selection.tagIDs, newTagLabels: selection.newTagLabels, previous: pending)
                         pending = command
                         isSaving = true
                         error = nil
