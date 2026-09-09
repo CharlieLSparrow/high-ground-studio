@@ -27,6 +27,22 @@ const sharedTask = {
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it.each([true, false])("keeps canonical tag colors in the reading view without requiring edit access (%s)", (canWrite) => {
+    const entry = {...sharedTask, tags: [
+      {id: "research", label: "Research", hexColor: "#23543a", isActive: true},
+      {id: "old", label: "Earlier work", hexColor: "url(https://example.test/track)", isActive: false},
+    ]};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="client-1" canWrite={canWrite} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
+    const tags = within(screen.getByRole("group", {name: "Tags on this work"}));
+    expect(tags.getByText("Research")).toHaveStyle({backgroundColor: "#23543a", color: "#ffffff"});
+    expect(tags.getByText("Earlier work · archived")).not.toHaveAttribute("style");
+    expect(tags.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", {name: "Tags on this work"}).closest("details")).toBeNull();
+    if (canWrite) expect(screen.getByRole("textbox", {name: "task name"}).closest("details")).not.toHaveAttribute("open");
+    else expect(screen.queryByRole("textbox", {name: "task name"})).not.toBeInTheDocument();
+  });
+
   it("opens a chat-linked task after client navigation without remounting the workspace", () => {
     const originalUrl = window.location.href;
     window.history.replaceState({}, "", "/coaching/engagements/engagement-1#relationship-conversation");

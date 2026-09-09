@@ -19,6 +19,7 @@ import {
 import { CoachingWorkEditor } from "./coaching-work-editor";
 import { CoachingWorkCollection } from "./coaching-work-collection";
 import { WorkTagPicker, type WorkTagOption } from "./work-tag-picker";
+import { tagChipColors } from "@/lib/tag-color";
 
 export type CoachingEngagementWorkEntry = {
   id: string;
@@ -827,6 +828,12 @@ function CoachingEngagementWorkspaceContent({
                     <h3 className="mt-1 text-lg font-black text-[#3d3122]">
                       {entry.title || "Untitled note"}
                     </h3>
+                    {Boolean(entry.tags?.length) && <div role="group" aria-label="Tags on this work" className="mt-2 flex min-w-0 flex-wrap gap-1">
+                      {entry.tags?.map(tag => <span key={tag.id} style={tagChipColors(tag.hexColor)}
+                        className="max-w-full rounded-full border border-border bg-muted px-2 py-1 text-xs font-semibold text-foreground [overflow-wrap:anywhere]">
+                        {tag.label}{tag.isActive === false ? " · archived" : ""}
+                      </span>)}
+                    </div>}
                     {entry.body ? (
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#765f40]">
                         {entry.body}
