@@ -16,6 +16,7 @@ import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets"
 import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { readSharedWorkTagSummaries } from "@/lib/server/work-tags";
 import {
   createWritingDraftFromSourceAnnotation,
   setSourceAnnotationStatus,
@@ -165,7 +166,7 @@ export async function GET(request: Request) {
             where: { memberUserId: userId, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
             take: 1, select: { id: true },
           } } },
-          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, hexColor: true, isActive: true } } } },
           room: { select: { id: true, title: true } },
           booking: { select: { clientUserId: true, coachUserId: true } },
           engagement: { select: {
@@ -192,7 +193,7 @@ export async function GET(request: Request) {
         select: {
           id: true, ownerUserId: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true,
           project: { select: { id: true, name: true, slug: true } },
-          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, hexColor: true, isActive: true } } } },
           room: { select: { id: true, title: true } },
           booking: { select: { clientUserId: true, coachUserId: true } },
           engagement: { select: {
@@ -278,7 +279,7 @@ export async function GET(request: Request) {
         where: { projectId: { in: visibleProjectIds }, isActive: true },
         orderBy: [{ label: "asc" }, { id: "asc" }],
         take: 500,
-        select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+        select: { id: true, projectId: true, slug: true, label: true, hexColor: true, isActive: true },
       }) : Promise.resolve([]),
       prisma.actionItem.findMany({
         where: {
@@ -505,6 +506,19 @@ export async function GET(request: Request) {
       if (!entity.project || !visibleProjectIds.includes(entity.project.id)) continue;
       for (const link of entity.tagLinks) tagCatalogById.set(link.tag.id, link.tag);
     }
+    const sharedTagSummaries = await readSharedWorkTagSummaries({ prisma, actorUserId: userId, actorEmail,
+      taskIds: tasks.filter((task: any) => !task.project).map((task: any) => task.id),
+      goalIds: goals.filter((goal: any) => !goal.project).map((goal: any) => goal.id),
+    });
+    for (const [kind, entries] of [["task", tasks], ["goal", goals]] as const) {
+      for (const entry of entries) {
+        const summary = sharedTagSummaries.get(`${kind}:${entry.id}`);
+        if (!summary) continue;
+        Object.assign(entry, { canEditTags: true, tagScope: { projectId: summary.projectId },
+          tagIds: summary.tags.map(tag => tag.id), tagLabels: summary.tags.map(tag => tag.label) });
+        for (const tag of summary.tags) tagCatalogById.set(tag.id, tag);
+      }
+    }
     return NextResponse.json({
       ok: true,
       briefKind: "quipsly-mobile-today-v1",
@@ -552,6 +566,7 @@ export async function GET(request: Request) {
         projectId: tag.projectId,
         slug: tag.slug,
         label: tag.label,
+        hexColor: tag.hexColor ?? null,
         isActive: tag.isActive,
       })),
       boundaries: responseBoundaries(reminderRows.length <= 500),

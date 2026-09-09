@@ -4,6 +4,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { readSharedWorkTagSummaries } from "@/lib/server/work-tags";
 import {
   createWritingDraftFromSourceAnnotation,
   setSourceAnnotationStatus,
@@ -19,6 +20,7 @@ import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/work-tags", () => ({ ...jest.requireActual("@/lib/server/work-tags"), readSharedWorkTagSummaries: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
 jest.mock("@/lib/server/goal-receipt-projection", () => ({ loadLatestGoalReceiptProjection: jest.fn() }));
 jest.mock("@/lib/server/client-follow-up-attention", () => ({ loadClientFollowUpAttention: jest.fn() }));
@@ -64,6 +66,7 @@ describe("mobile Capture Today contract", () => {
     jest.setSystemTime(expected);
     jest.clearAllMocks();
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
+    jest.mocked(readSharedWorkTagSummaries).mockResolvedValue(new Map());
     jest.mocked(loadLatestGoalReceiptProjection).mockResolvedValue(new Map());
     jest.mocked(loadClientFollowUpAttention).mockResolvedValue(null);
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
@@ -99,6 +102,32 @@ describe("mobile Capture Today contract", () => {
     const response = await GET(new Request("http://localhost/api/mobile/capture/today"));
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("carries client-space colors and tag editing without projecting the private Nest", async () => {
+    signedIn();
+    const task = { id: "client-task", title: "Make an outline", assignedUserId: "user-1", status: "OPEN",
+      updatedAt: expected, dueAt: null, sourceJson: {}, project: { id: "private-nest", name: "Private coach Nest", slug: "private-coach" },
+      tagLinks: [], room: { id: "client-room", title: "Our writing session" } };
+    const empty = () => ({ findMany: jest.fn().mockResolvedValue([]) });
+    jest.mocked(getPrismaClient).mockReturnValue({
+      actionItem: { findMany: jest.fn().mockResolvedValue([task]) }, goal: empty(), workPlanBlock: empty(),
+      weeklyCommitment: { findFirst: jest.fn().mockResolvedValue(null) }, callRoom: empty(), taskReminder: empty(), studioTag: empty(),
+    } as any);
+    const tag = { id: "shared-tag", projectId: "private-nest", slug: "first-session", label: "First session", hexColor: "#8b5e3c", isActive: true };
+    jest.mocked(readSharedWorkTagSummaries).mockResolvedValue(new Map([["task:client-task", { projectId: "private-nest", tags: [tag] }]]));
+    const response = await GET(new Request("http://localhost/api/mobile/capture/today"));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.tasks[0]).toMatchObject({ project: null, canEditTags: true, tagScope: { projectId: "private-nest" }, tagIds: ["shared-tag"], tagLabels: ["First session"] });
+    expect(payload.tagCatalog).toEqual([tag]);
+    expect(JSON.stringify(payload)).not.toContain("Private coach Nest");
+    expect(readSharedWorkTagSummaries).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "user-1", taskIds: ["client-task"], goalIds: [] }));
+    jest.mocked(readSharedWorkTagSummaries).mockResolvedValue(new Map());
+    const revoked = await (await GET(new Request("http://localhost/api/mobile/capture/today"))).json();
+    expect(revoked.tasks[0]).toMatchObject({ project: null, canEditTags: false, tagIds: [] });
+    expect(revoked.tasks[0].tagScope).toBeUndefined();
+    expect(revoked.tagCatalog).toEqual([]);
   });
 
   it("saves one protected iPhone weekly plan through the canonical transaction", async () => {

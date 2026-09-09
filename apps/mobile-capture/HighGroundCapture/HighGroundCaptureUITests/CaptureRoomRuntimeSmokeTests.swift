@@ -1040,6 +1040,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     }
 
     private func openTaskTagEditor(taskID: String, in app: XCUIApplication) {
+        if !app.descendants(matching: .any)["CaptureAcrossNestsFollowThroughView"].firstMatch.exists {
+            tapRootTab("Today", in: app)
+            let openWork = app.buttons["CaptureHomeWorkOpen"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(openWork, in: app, timeout: 15, swipeAttempts: 6),
+                "Home should lead directly to tasks and goals without requiring a Nest search.")
+            openWork.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureAcrossNestsFollowThroughView"].firstMatch.waitForExistence(timeout: 10))
+        }
         let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
         if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
             showMore.tap()

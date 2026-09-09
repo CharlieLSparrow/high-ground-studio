@@ -2,7 +2,7 @@
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAndAssignWorkEntityTag, readGoalTagContext, readTaskTagContext, readNewCoachingTaskTagContext, replaceWorkEntityTags } from "./work-tags";
+import { createAndAssignWorkEntityTag, readGoalTagContext, readTaskTagContext, readNewCoachingTaskTagContext, readSharedWorkTagSummaries, replaceWorkEntityTags } from "./work-tags";
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
 if (enabled) {
@@ -69,8 +69,13 @@ if (enabled) {
       expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: true, tagIds: [id("tag")] });
       expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: true, idempotentReplay: true });
       expect(await readTaskTagContext(actor)).toMatchObject({ selectedTagIds: [id("tag")] });
+      const summaries = (name = "client") => readSharedWorkTagSummaries({ prisma, actorUserId: id(name), actorEmail: email(name), taskIds: [task.id], goalIds: [] });
+      expect((await summaries()).get(`task:${task.id}`)).toMatchObject({ projectId: id("project"),
+        tags: [{ id: id("tag"), hexColor: "#506b46" }] });
+      for (const name of ["coach", "observer", "outsider"]) expect((await summaries(name)).size).toBe(0);
       await prisma.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: id("engagement"), userId: id("client") } }, data: { status: "REMOVED" } });
       expect(await readTaskTagContext(actor)).toBeNull();
+      expect((await summaries()).size).toBe(0);
       expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: false });
       expect(await prisma.actionItemTagLink.count({ where: { actionItemId: task.id, tagId: id("tag") } })).toBe(1);
     } finally {
@@ -87,6 +92,9 @@ if (enabled) {
       title: "Private preparation", sourceJson: { visibility: "AUTHOR_PRIVATE" } } });
     const command = { prisma, actorUserId: id("client"), actorEmail: email("client"), entityKind: "goal" as const,
       entityId: goal.id, expectedUpdatedAt: goal.updatedAt, tagIds: [id("tag")], clientRequestId: randomUUID() };
+    const summaries = await readSharedWorkTagSummaries({ prisma, actorUserId: id("client"), actorEmail: email("client"),
+      taskIds: [], goalIds: [goal.id, privateGoal.id] });
+    expect([...summaries.keys()]).toEqual([`goal:${goal.id}`]);
     for (const actor of ["observer", "outsider"]) {
       expect(await replaceWorkEntityTags({ ...command, actorUserId: id(actor), actorEmail: email(actor) }))
         .toMatchObject({ ok: false, code: "NOT_FOUND" });

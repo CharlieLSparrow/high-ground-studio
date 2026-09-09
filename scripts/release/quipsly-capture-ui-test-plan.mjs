@@ -34,6 +34,8 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testCameraAttentionRetriesPreflightWithoutStartingCapture",
   "CaptureExperienceUITests/testSessionAttentionOpensSessionsWithoutBlockingTheApp",
   "CaptureExperienceUITests/testCaptureFirstNavigationKeepsFiveFocusedDestinations",
+  "CaptureExperienceUITests/testHomeOpensTasksAndGoalsWithoutChoosingANest",
+  "CaptureExperienceUITests/testHomeOpensTasksAndGoalsWithoutChoosingANestOnRegularWidthIPad",
   "CaptureExperienceUITests/testCoreShellPassesAccessibilityAuditAtLargestTextSize",
   "CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
   "CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad",

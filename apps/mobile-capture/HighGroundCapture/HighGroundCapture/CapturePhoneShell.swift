@@ -980,6 +980,25 @@ private struct CaptureTodayView: View {
                     onNewSession: { showsNewSession = true }
                 )
 
+                NavigationLink {
+                    CaptureAcrossNestsFollowThroughView(model: model, visibleTab: $visibleTab)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checklist").foregroundStyle(CapturePalette.accent)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Tasks & goals").font(.headline)
+                            Text("Your tasks, goals, and reminders")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 6)
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .captureCard()
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("CaptureHomeWorkOpen")
+
                 if let draft = writingStore.drafts.first {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -2607,7 +2626,7 @@ private struct CaptureWorkView: View {
                                 .background(CapturePalette.accent.opacity(0.1), in: Circle())
                                 .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Across your Nests")
+                                Text("Tasks & goals")
                                     .font(.headline)
                                     .foregroundStyle(.primary)
                                 Text("See tasks, goals, reminders, and Session follow-through together.")
@@ -2746,7 +2765,10 @@ private struct CaptureWorkView: View {
             )
         }
         .sheet(item: $taskTagsToEdit) { task in
-            if let project = task.project {
+            if let scope = task.tagScope {
+                SharedWorkTagSheet(client: model.todayClient, kind: .task, entityID: task.id,
+                    entityTitle: task.title, scope: scope, onSaved: reloadSelectedWork)
+            } else if let project = task.project {
                 TodayWorkTagSheet(
                     client: model.todayClient,
                     kind: .task,
@@ -2762,7 +2784,10 @@ private struct CaptureWorkView: View {
             }
         }
         .sheet(item: $goalTagsToEdit) { goal in
-            if let project = goal.project {
+            if let scope = goal.tagScope {
+                SharedWorkTagSheet(client: model.todayClient, kind: .goal, entityID: goal.id,
+                    entityTitle: goal.title, scope: scope, onSaved: reloadSelectedWork)
+            } else if let project = goal.project {
                 TodayWorkTagSheet(
                     client: model.todayClient,
                     kind: .goal,
@@ -4000,10 +4025,11 @@ private struct CaptureWorkView: View {
     @ViewBuilder
     private func workTagLabels(_ labels: [String]) -> some View {
         if !labels.isEmpty {
-            Text(labels.map { "#\($0)" }.joined(separator: "  "))
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(CapturePalette.accent)
-                .lineLimit(2)
+            CaptureWorkTags(tags: labels.map { label in
+                let tag = workspace?.tags.first { $0.label == label }
+                return MobileWorkTagLabel(id: tag?.id ?? label, label: label,
+                    hexColor: tag?.hexColor, isActive: tag?.isActive ?? true)
+            }, workID: "workspace-tags")
         }
     }
 
@@ -4086,7 +4112,7 @@ private struct CaptureAcrossNestsFollowThroughView: View {
             .padding(.bottom, 96)
         }
         .background(CaptureCanvas())
-        .navigationTitle("Across your Nests")
+        .navigationTitle("Tasks & goals")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             await model.todayClient.load()
@@ -4748,7 +4774,7 @@ struct TodayFollowThroughCard: View {
                                             .foregroundStyle(task.isOverdue == true ? CapturePalette.brass : Color.secondary)
                                             .accessibilityIdentifier("CaptureTodayTaskDue_\(task.id)")
                                     }
-                                    if let project = task.project {
+                                    if let project = task.tagEditorProject {
                                         TodayProjectTagLine(
                                             project: project,
                                             tagLabels: client.effectiveTagLabels(
@@ -4758,7 +4784,8 @@ struct TodayFollowThroughCard: View {
                                                 canonicalTagIDs: task.tagIds ?? [],
                                                 canonicalTagLabels: task.tagLabels ?? []
                                             ),
-                                            identifier: "CaptureTodayTaskTags_\(task.id)"
+                                            identifier: "CaptureTodayTaskTags_\(task.id)",
+                                            availableTags: client.tags(for: project.id)
                                         )
                                         if let pendingTags {
                                             Label(
@@ -5191,7 +5218,7 @@ struct TodayFollowThroughCard: View {
                                 .accessibilityIdentifier("CaptureTodayGoalEdit_\(goal.id)")
                                 .accessibilityHint("Edit this goal's title, description, or target date.")
                             }
-                            if let project = goal.project {
+                            if let project = goal.tagEditorProject {
                                 TodayProjectTagLine(
                                     project: project,
                                     tagLabels: client.effectiveTagLabels(
@@ -5201,7 +5228,8 @@ struct TodayFollowThroughCard: View {
                                         canonicalTagIDs: goal.tagIds ?? [],
                                         canonicalTagLabels: goal.tagLabels ?? []
                                     ),
-                                    identifier: "CaptureTodayGoalTags_\(goal.id)"
+                                    identifier: "CaptureTodayGoalTags_\(goal.id)",
+                                    availableTags: client.tags(for: project.id)
                                 )
                                 if let pendingTags {
                                     Label(
@@ -5756,7 +5784,10 @@ struct TodayFollowThroughCard: View {
             TodayTaskReminderSheet(client: client, task: task)
         }
         .sheet(item: $taskTagsToEdit) { task in
-            if let project = task.project {
+            if let scope = task.tagScope {
+                SharedWorkTagSheet(client: client, kind: .task, entityID: task.id,
+                    entityTitle: task.title, scope: scope)
+            } else if let project = task.project {
                 TodayWorkTagSheet(
                     client: client,
                     kind: .task,
@@ -5769,7 +5800,10 @@ struct TodayFollowThroughCard: View {
             }
         }
         .sheet(item: $goalTagsToEdit) { goal in
-            if let project = goal.project {
+            if let scope = goal.tagScope {
+                SharedWorkTagSheet(client: client, kind: .goal, entityID: goal.id,
+                    entityTitle: goal.title, scope: scope)
+            } else if let project = goal.project {
                 TodayWorkTagSheet(
                     client: client,
                     kind: .goal,
@@ -7315,6 +7349,58 @@ private struct TodayTaskReminderSheet: View {
     }
 }
 
+private struct SharedWorkTagSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: CaptureTodayClient
+    let kind: PendingWorkTagDecision.EntityKind
+    let entityID: String
+    let entityTitle: String
+    let scope: MobileCaptureWorkTagScope
+    var onSaved: (() -> Void)? = nil
+    @State private var context: MobileCaptureWorkTagContext?
+    @State private var error: String?
+
+    var body: some View {
+        Group {
+            if let context, let tags = context.tags, let updatedAt = context.updatedAt {
+                TodayWorkTagSheet(client: client, kind: kind, entityID: entityID,
+                    entityTitle: entityTitle, project: scope.displayProject,
+                    canonicalTagIDs: context.selectedTagIds ?? [], expectedUpdatedAt: updatedAt,
+                    availableTags: tags.map { .init(id: $0.id, projectId: scope.projectId,
+                        slug: $0.id, label: $0.label, isActive: $0.isActive, hexColor: $0.hexColor) },
+                    canCreateTags: context.canCreateTags == true, onSaved: onSaved)
+            } else {
+                NavigationStack {
+                    VStack(spacing: 16) {
+                        if let error {
+                            Text(error).multilineTextAlignment(.center)
+                            Button("Try again") { Task { await load() } }.buttonStyle(.bordered)
+                        } else {
+                            ProgressView("Loading tags…")
+                        }
+                    }
+                    .padding()
+                    .navigationTitle("Edit tags")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        error = nil
+        do {
+            let result = try await client.loadSharedTagContext(kind: kind, entityID: entityID, projectID: scope.projectId)
+            try Task.checkCancellation()
+            context = result
+        } catch is CancellationError {
+        } catch {
+            self.error = "Tags couldn't load. Please try again."
+        }
+    }
+}
+
 private struct TodayWorkTagSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var client: CaptureTodayClient
@@ -7327,6 +7413,7 @@ private struct TodayWorkTagSheet: View {
     let expectedTagRevision: Int?
     let readOnlyPreview: Bool
     let availableTags: [MobileCaptureTodayTag]?
+    let canCreateTags: Bool
     let onSaved: (() -> Void)?
 
     @State private var selectedTagIDs: Set<String>
@@ -7344,6 +7431,7 @@ private struct TodayWorkTagSheet: View {
         expectedTagRevision: Int? = nil,
         readOnlyPreview: Bool = false,
         availableTags: [MobileCaptureTodayTag]? = nil,
+        canCreateTags: Bool = true,
         onSaved: (() -> Void)? = nil
     ) {
         self.client = client
@@ -7356,6 +7444,7 @@ private struct TodayWorkTagSheet: View {
         self.expectedTagRevision = expectedTagRevision
         self.readOnlyPreview = readOnlyPreview
         self.availableTags = availableTags
+        self.canCreateTags = canCreateTags
         self.onSaved = onSaved
         _selectedTagIDs = State(initialValue: Set(canonicalTagIDs))
     }
@@ -7454,13 +7543,13 @@ private struct TodayWorkTagSheet: View {
                     .accessibilityElement(children: .combine)
                 }
 
-                Section("Tags in this Nest") {
+                Section(canCreateTags ? "Tags in this Nest" : "Shared tags") {
                     if visibleTags.isEmpty {
                         ContentUnavailableView(
                             searchText.isEmpty ? "No reusable tags yet" : "No matching tags",
                             systemImage: "tag.slash",
                             description: Text(searchText.isEmpty
-                                ? "Create the first reusable label below."
+                                ? (canCreateTags ? "Create the first reusable label below." : "Tags from shared work will appear here.")
                                 : "Try another search.")
                         )
                     } else {
@@ -7499,33 +7588,35 @@ private struct TodayWorkTagSheet: View {
                     }
                 }
 
-                Section("Create or reuse a tag") {
-                    TextField("e.g. Recording day", text: $newTagLabel)
-                        .textInputAutocapitalization(.sentences)
-                        .accessibilityLabel("New reusable tag")
-                        .accessibilityIdentifier("CaptureTodayWorkTagNewLabel")
-                    if let matchingExistingTag {
-                        Label(
-                            "Existing #\(matchingExistingTag.label) will be reused—no duplicate.",
-                            systemImage: "arrow.triangle.2.circlepath"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CapturePalette.ink)
-                    } else if newTagRequested, newTagError == nil {
-                        Text("#\(normalizedNewTagLabel) will be private to \(project.name) and selected on this record.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let newTagError {
-                        Label(newTagError, systemImage: "exclamationmark.triangle.fill")
+                if canCreateTags {
+                    Section("Create or reuse a tag") {
+                        TextField("e.g. Recording day", text: $newTagLabel)
+                            .textInputAutocapitalization(.sentences)
+                            .accessibilityLabel("New reusable tag")
+                            .accessibilityIdentifier("CaptureTodayWorkTagNewLabel")
+                        if let matchingExistingTag {
+                            Label(
+                                "Existing #\(matchingExistingTag.label) will be reused—no duplicate.",
+                                systemImage: "arrow.triangle.2.circlepath"
+                            )
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(CapturePalette.brass)
-                            .accessibilityIdentifier("CaptureTodayWorkTagNewLabelError")
+                            .foregroundStyle(CapturePalette.ink)
+                        } else if newTagRequested, newTagError == nil {
+                            Text("#\(normalizedNewTagLabel) will be private to \(project.name) and selected on this record.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let newTagError {
+                            Label(newTagError, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(CapturePalette.brass)
+                                .accessibilityIdentifier("CaptureTodayWorkTagNewLabelError")
+                        }
                     }
                 }
 
                 Section {
-                    Text("Tags help you find related notes, recordings, tasks, and goals across this Nest.")
+                    Text("Tags help you find related notes, recordings, tasks, and goals.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -8099,24 +8190,20 @@ private struct TodayProjectTagLine: View {
     let project: MobileCaptureTodayProject?
     let tagLabels: [String]
     let identifier: String
+    var availableTags: [MobileCaptureTodayTag] = []
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                if let project {
-                    Label(project.name, systemImage: "tray.full")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(CapturePalette.ink)
-                }
-                ForEach(tagLabels, id: \.self) { label in
-                    Text("#\(label)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(CapturePalette.ink)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(CapturePalette.ink.opacity(0.08), in: Capsule())
-                }
+        VStack(alignment: .leading, spacing: 6) {
+            if let project {
+                Label(project.name, systemImage: "tray.full")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CapturePalette.ink)
             }
+            CaptureWorkTags(tags: tagLabels.map { label in
+                let tag = availableTags.first { $0.label == label }
+                return MobileWorkTagLabel(id: tag?.id ?? label, label: label,
+                    hexColor: tag?.hexColor, isActive: tag?.isActive ?? true)
+            }, workID: identifier)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(([project?.name].compactMap { $0 } + tagLabels.map { "Tag \($0)" }).joined(separator: ", "))

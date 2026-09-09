@@ -74,13 +74,16 @@ test("full shards cover each current deterministic UI test exactly once", async 
   assert.ok(Math.max(...shards.map((shard) => shard.estimatedWeight)) - Math.min(...shards.map((shard) => shard.estimatedWeight)) <= 1);
 });
 
-test("critical lane is explicit, valid, and much smaller than the complete suite", async () => {
+test("critical lane is explicit, valid, and stays within its test budget", async () => {
   const tests = discoverDeterministicTests(await readFile(SOURCE_URL, "utf8"));
   const plan = createPlan(tests, { suite: "critical" });
 
   assert.equal(plan.selectedTestCount, CRITICAL_TESTS.length);
   assert.ok(plan.selectedTestCount >= 10);
-  assert.ok(plan.selectedTestCount < tests.length / 3);
+  // Keep growth deliberate without tying release coverage to the number of
+  // unrelated tests. This budget includes Home-to-work on both Apple layouts.
+  assert.ok(plan.selectedTestCount <= 53, "Critical lane exceeded its 53-test budget.");
+  assert.ok(plan.selectedTestCount < tests.length);
   assert.deepEqual(
     plan.selectors,
     CRITICAL_TESTS.map((entry) => `${TEST_TARGET}/${entry}`),

@@ -1942,6 +1942,24 @@ struct MobileCaptureTodayReminderIntent: Codable, Identifiable, Hashable {
     }
 }
 
+struct MobileCaptureWorkTagScope: Codable, Hashable {
+    let projectId: String
+    var displayProject: MobileCaptureTodayProject {
+        .init(id: projectId, name: "Shared space", slug: "")
+    }
+}
+
+struct MobileCaptureWorkTagContext: Decodable {
+    let ok: Bool
+    let entityId: String?
+    let projectId: String?
+    let updatedAt: String?
+    let selectedTagIds: [String]?
+    let tags: [MobileWorkTagLabel]?
+    let canCreateTags: Bool?
+    let error: String?
+}
+
 struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let id: String
     let title: String
@@ -1962,6 +1980,8 @@ struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let todayReason: String?
     let recurrence: MobileCaptureTodayRecurrence?
     let reminder: MobileCaptureTodayReminderIntent?
+    var tagScope: MobileCaptureWorkTagScope? = nil
+    var tagEditorProject: MobileCaptureTodayProject? { project ?? tagScope?.displayProject }
 }
 
 struct MobileCaptureTodayGoal: Codable, Identifiable, Hashable {
@@ -1982,6 +2002,8 @@ struct MobileCaptureTodayGoal: Codable, Identifiable, Hashable {
     let tagLabels: [String]?
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
     let lastMergedTranscriptEvidence: MobileCaptureTodayGoalTranscriptEvidence?
+    var tagScope: MobileCaptureWorkTagScope? = nil
+    var tagEditorProject: MobileCaptureTodayProject? { project ?? tagScope?.displayProject }
 }
 
 struct MobileCaptureTodayGoalTranscriptEvidence: Codable, Hashable {
@@ -4737,6 +4759,28 @@ final class CaptureTodayClient: ObservableObject {
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+
+    func loadSharedTagContext(kind: PendingWorkTagDecision.EntityKind, entityID: String,
+                              projectID: String) async throws -> MobileCaptureWorkTagContext {
+        guard var components = URLComponents(string: "\(baseURL)/api/work/tags") else {
+            throw NSError(domain: "CaptureTags", code: 0, userInfo: [NSLocalizedDescriptionKey: "Tags couldn't open."])
+        }
+        components.queryItems = [.init(name: "entityKind", value: kind.rawValue), .init(name: "entityId", value: entityID)]
+        guard let url = components.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+        let context = try JSONDecoder().decode(MobileCaptureWorkTagContext.self, from: data)
+        guard response.statusCode == 200, context.ok, context.entityId == entityID,
+              context.projectId == projectID, context.updatedAt != nil,
+              context.tags != nil, context.selectedTagIds != nil else {
+            throw NSError(domain: "CaptureTags", code: response.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: context.error ?? "These tags aren't available. Refresh your work and try again."])
+        }
+        return context
+    }
     private let focusDecisionOutbox = FocusBlockDecisionOutbox.shared
     private let focusPlanOutbox = FocusBlockPlanOutbox.shared
     private let reminderDecisionOutbox = TaskReminderDecisionOutbox.shared

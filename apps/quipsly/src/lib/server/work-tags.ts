@@ -598,22 +598,72 @@ function sharedWorkTagCatalogWhere(engagementId: string, entityKind: "task" | "g
   ] };
 }
 
+type TagSpaceEntity = { projectId: string | null; engagementId?: string | null; booking?: { engagementId: string | null } | null;
+  room?: { projectId: string | null; coachingEngagementId: string | null } | null };
+
+function tagSpaceId(entity: TagSpaceEntity) {
+  return entity.engagementId ?? entity.booking?.engagementId
+    ?? (entity.room?.projectId === entity.projectId ? entity.room?.coachingEngagementId : null);
+}
+
 async function writableTagSpace(
   prisma: Pick<Prisma.TransactionClient, "coachingEngagement">,
-  entity: { projectId: string; engagementId?: string | null; booking?: { engagementId: string | null } | null;
-    room?: { projectId: string | null; coachingEngagementId: string | null } | null },
+  entity: TagSpaceEntity,
   actorUserId: string,
 ): Promise<string | null> {
   // Transcript-derived work may be anchored only to its Session. Resolve that
   // canonical relationship without granting access to the rest of the Nest.
-  const engagementId = entity.engagementId ?? entity.booking?.engagementId
-    ?? (entity.room?.projectId === entity.projectId ? entity.room?.coachingEngagementId : null);
-  if (!engagementId) return null;
+  const engagementId = tagSpaceId(entity);
+  if (!engagementId || !entity.projectId) return null;
   const space = await prisma.coachingEngagement.findFirst({
     where: { id: engagementId, projectId: entity.projectId, ...activeCoachingEngagementParticipantWhere(actorUserId, "write") },
     select: { id: true },
   });
   return space?.id ?? null;
+}
+
+/** A bounded mobile list projection, not a Nest vocabulary grant. It uses the
+ * same entity and client-space write rules as the tag editor and batches reads
+ * instead of loading one full tag context per Today card. */
+export async function readSharedWorkTagSummaries(input: {
+  prisma: PrismaClient; actorUserId: string; actorEmail: string; taskIds: string[]; goalIds: string[];
+}) {
+  type Tag = { id: string; projectId: string; label: string; slug: string; hexColor: string | null; isActive: boolean };
+  type Row = TagSpaceEntity & { id: string; tagLinks: Array<{ tag: Tag }> };
+  const select = {
+    id: true, projectId: true, engagementId: true,
+    booking: { select: { engagementId: true } },
+    room: { select: { projectId: true, coachingEngagementId: true } },
+    tagLinks: { orderBy: { createdAt: "asc" as const }, select: { tag: { select: {
+      id: true, projectId: true, label: true, slug: true, hexColor: true, isActive: true,
+    } } } },
+  };
+  const load = async (kind: "task" | "goal", ids: string[]) => {
+    if (!ids.length) return [];
+    if (ids.length > 40) throw new Error("Shared tag summaries require a bounded work page.");
+    const rows: Row[] = await entityModel(input.prisma, kind).findMany({
+      where: { ...entityWhere(kind, "", input.actorUserId, input.actorEmail), id: { in: ids } }, select,
+    });
+    return rows.map(row => ({ ...row, kind }));
+  };
+  const rows = (await Promise.all([load("task", input.taskIds), load("goal", input.goalIds)])).flat();
+  const scopes = rows.flatMap(row => {
+    const id = tagSpaceId(row);
+    return id && row.projectId ? [{ id, projectId: row.projectId }] : [];
+  });
+  const spaces = scopes.length ? await input.prisma.coachingEngagement.findMany({
+    where: { OR: scopes, ...activeCoachingEngagementParticipantWhere(input.actorUserId, "write") },
+    select: { id: true, projectId: true },
+  }) : [];
+  const allowed = new Map(spaces.map(space => [space.id, space.projectId]));
+  const result = new Map<string, { projectId: string; tags: Tag[] }>();
+  for (const row of rows) {
+    const spaceId = tagSpaceId(row);
+    if (!row.projectId || !spaceId || allowed.get(spaceId) !== row.projectId) continue;
+    result.set(`${row.kind}:${row.id}`, { projectId: row.projectId,
+      tags: row.tagLinks.map(link => link.tag).filter(tag => tag.projectId === row.projectId) });
+  }
+  return result;
 }
 
 /** Archiving retires a label from new work, not from records already using it.

@@ -3376,6 +3376,29 @@ final class CaptureExperienceUITests: XCTestCase {
         wait(for: [selected], timeout: 5)
     }
 
+    func testHomeOpensTasksAndGoalsWithoutChoosingANest() {
+        assertHomeOpensTasksAndGoals()
+    }
+
+    func testHomeOpensTasksAndGoalsWithoutChoosingANestOnRegularWidthIPad() {
+        assertHomeOpensTasksAndGoals()
+    }
+
+    private func assertHomeOpensTasksAndGoals() {
+        let open = app.buttons["CaptureHomeWorkOpen"]
+        reveal(open)
+        XCTAssertTrue(open.isHittable, "Home should offer an obvious route to tasks and goals.")
+        open.tap()
+        XCTAssertTrue(app.navigationBars["Tasks & goals"].waitForExistence(timeout: 5))
+        let task = app.staticTexts["CaptureTodayTask_preview-task"]
+        reveal(task)
+        XCTAssertTrue(task.isHittable, "The user's work should not require selecting or joining a Nest first.")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "home-tasks-and-shared-colors"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
         app.tabBars.buttons["Nests"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]
