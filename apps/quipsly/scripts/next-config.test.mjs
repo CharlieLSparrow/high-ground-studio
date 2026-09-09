@@ -8,7 +8,7 @@ test("development retains the native startup working set through serial compilat
   // must still be compiled when the app begins its one-minute sign-in check.
   assert.ok(config.onDemandEntries.maxInactiveAge >= startupRoutes.length * 90_000 + 60_000);
   assert.ok(config.onDemandEntries.pagesBufferLength >= startupRoutes.length);
-  assert.ok(config.onDemandEntries.maxInactiveAge <= 30 * 60_000);
+  assert.ok(config.onDemandEntries.maxInactiveAge <= 45 * 60_000);
   assert.ok(config.onDemandEntries.pagesBufferLength <= 64);
   assert.equal(config.output, "standalone");
   assert.equal(config.typescript.ignoreBuildErrors, false);

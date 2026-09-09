@@ -8,6 +8,8 @@ export const startupRoutes = [
   '/api/mobile/capture/entitlements',
   '/api/mobile/capture/review-digest',
   '/api/mobile/capture/sessions',
+  '/api/mobile/capture/consent',
+  '/api/mobile/capture/rooms/provider-recording',
   '/api/mobile/capture/today',
   '/api/mobile/capture/work',
   '/api/mobile/capture/inbox',

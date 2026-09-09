@@ -39,7 +39,7 @@ const config = {
   // are still compiling. Retain that working set without changing production
   // caching, request timeouts, or authentication behavior.
   onDemandEntries: {
-    maxInactiveAge: 15 * 60 * 1000,
+    maxInactiveAge: 35 * 60 * 1000,
     pagesBufferLength: 32,
   },
   logging: {
