@@ -5,6 +5,7 @@ import { GET as readChat } from "@/app/api/nest-chat/route";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadSessionWork } from "@/lib/server/session-work";
+import { coachingSpaceTaskWhere } from "@/lib/server/coaching-work-access";
 import { createAndAssignWorkEntityTag, replaceWorkEntityTags, readTaskTagContext, readNoteTagContext, readNewCoachingTaskTagContext, workTagSlug } from "@/lib/server/work-tags";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
@@ -79,6 +80,86 @@ if (enabled) {
       await prisma.studioWorkspace.deleteMany({where: {id: workspaceId}});
       await prisma.user.deleteMany({where: {id: {in: people.map((person) => person.id)}}});
     } finally { await prisma.$disconnect(); }
+  });
+
+  it("keeps personal session tasks editable in context without sharing, copying, or losing colored tags and sources", async () => {
+    const tag = await prisma.studioTag.create({data: {projectId, slug: `personal-${nonce}`, label: "Writing rhythm", hexColor: "#8b5e3c"}});
+    const sourceJson = {origin: "quipsly-session-follow-through", roomId, recordingAssetId: "retained-source-fixture", sourceStartSeconds: 12};
+    const personal = await prisma.actionItem.create({data: {roomId, projectId, assignedUserId: client!.id,
+      title: "My session writing task", sourceJson, tagLinks: {create: {tagId: tag.id}}}});
+    const coachPersonal = await prisma.actionItem.create({data: {roomId, projectId, assignedUserId: coach!.id,
+      title: "Coach personal task", sourceJson}});
+    const shared = await seed("TASK");
+    const entries = (result: {body: any}) => result.body.engagement?.entries ?? [];
+    const clientRead = await act("GET");
+    const entry = entries(clientRead).find((item: {id: string}) => item.id === personal.id);
+    expect(entry).toMatchObject({id: personal.id, visibility: "PRIVATE", canEdit: true,
+      sourceHref: `/sessions/${roomId}?mode=transcript&source=retained-source-fixture&at=12`,
+      tags: [{id: tag.id, label: "Writing rhythm", hexColor: "#8b5e3c"}]});
+    expect(entries(clientRead).some((item: {id: string}) => item.id === coachPersonal.id)).toBe(false);
+    for (const actor of [coach!, observer!]) {
+      const visible = entries(await act("GET", {}, actor));
+      expect(visible.some((item: {id: string}) => item.id === personal.id)).toBe(false);
+      expect(visible.some((item: {id: string}) => item.id === shared.id)).toBe(true);
+    }
+    expect(entries(await act("GET", {}, coach!)).find((item: {id: string}) => item.id === coachPersonal.id))
+      .toMatchObject({visibility: "PRIVATE"});
+    expect(entries(await act("GET", {}, client!, `tag=${tag.id}&kind=TASK`)).map((item: {id: string}) => item.id)).toEqual([personal.id]);
+    expect(entries(await act("GET", {}, coach!, `item=${personal.id}`))).toEqual([]);
+    expect(entries(await act("GET", {}, coach!, `tag=${tag.id}`))).toEqual([]);
+    for (const actor of [guest!, outsider!]) expect((await act("GET", {}, actor)).status).toBe(404);
+
+    const edit = {kind: "TASK", id: personal.id, clientRequestId: randomUUID(), expectedUpdatedAt: entry.updatedAt,
+      title: "An outline from my session", body: "Start with three points", ownerUserId: client!.id, status: "OPEN",
+      targetAt: "2026-09-25", tags: {tagIds: [tag.id]}};
+    for (const method of ["PATCH", "DELETE", "PUT"] as const) {
+      expect((await act(method, edit, coach!)).status).toBe(409);
+      expect((await act(method, edit, outsider!)).status).toBe(404);
+    }
+    expect((await act("PATCH", {...edit, ownerUserId: coach!.id})).status).toBe(403);
+    const saved = await act("PATCH", edit);
+    expect(saved).toMatchObject({status: 200, body: {entry: {id: personal.id, visibility: "PRIVATE", title: edit.title,
+      owner: {id: client!.id}, tags: [{id: tag.id, hexColor: "#8b5e3c"}], sourceHref: entry.sourceHref}}});
+    expect(await act("PATCH", edit)).toMatchObject({status: 200, body: {entry: saved.body.entry}});
+    const stored = await prisma.actionItem.findUniqueOrThrow({where: {id: personal.id}});
+    expect(stored).toMatchObject({engagementId: null, bookingId: null, isNestShared: false,
+      assignedUserId: client!.id, roomId, sourceJson});
+    const removed = await act("DELETE", {...edit, expectedUpdatedAt: saved.body.entry.updatedAt});
+    expect(removed.status).toBe(200);
+    expect(entries(await act("GET")).some((item: {id: string}) => item.id === personal.id)).toBe(false);
+    const restored = await act("PUT", {...edit, expectedUpdatedAt: removed.body.removal.updatedAt});
+    expect(restored).toMatchObject({status: 200, body: {entry: {id: personal.id, status: "OPEN", visibility: "PRIVATE",
+      tags: [{id: tag.id, hexColor: "#8b5e3c"}], sourceHref: entry.sourceHref}}});
+    expect(entries(await act("GET")).find((item: {id: string}) => item.id === personal.id)).toEqual(restored.body.entry);
+    expect(entries(await act("GET", {}, coach!)).some((item: {id: string}) => item.id === personal.id)).toBe(false);
+    await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: client!.id}, data: {status: "REMOVED"}});
+    try {
+      expect((await act("GET")).status).toBe(404);
+      expect(await prisma.actionItem.findMany({where: coachingSpaceTaskWhere(engagementId, client!), select: {id: true}})).toEqual([]);
+    } finally {
+      await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: client!.id}, data: {status: "ACTIVE"}});
+    }
+  });
+
+  it("does not infer a task's space from a conflicting room or expose personal tasks from another session", async () => {
+    const elsewhere = `${roomId}-elsewhere`;
+    const otherEngagement = `${engagementId}-elsewhere`;
+    await prisma.coachingEngagement.create({data: {id: otherEngagement, projectId, title: "Other space",
+      primaryCoachUserId: coach!.id, primaryClientUserId: client!.id}});
+    await prisma.callRoom.create({data: {id: elsewhere, projectId, createdByUserId: client!.id}});
+    try {
+      const wrongSpace = await prisma.actionItem.create({data: {roomId, engagementId: otherEngagement,
+        assignedUserId: client!.id, title: "Different explicit space", sourceJson: {visibility: "engagement-shared"}}});
+      const wrongRoom = await prisma.actionItem.create({data: {roomId: elsewhere, assignedUserId: client!.id, title: "Unrelated session task"}});
+      const read = await act("GET");
+      for (const id of [wrongSpace.id, wrongRoom.id]) {
+        expect(read.body.engagement.entries.some((entry: {id: string}) => entry.id === id)).toBe(false);
+      }
+    } finally {
+      await prisma.callRoom.delete({where: {id: elsewhere}});
+      await prisma.actionItem.deleteMany({where: {engagementId: otherEngagement}});
+      await prisma.coachingEngagement.delete({where: {id: otherEngagement}});
+    }
   });
 
   it.each(["NOTE", "TASK", "GOAL"] as const)("replays a saved %s after a lost response without creating duplicate work", async (kind) => {

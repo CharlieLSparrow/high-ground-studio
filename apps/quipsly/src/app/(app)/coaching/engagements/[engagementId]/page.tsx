@@ -26,7 +26,7 @@ import {
 } from "@/components/coaching-relationship-overview";
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
-import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { coachingSpaceTaskWhere, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { NOTE_SELECT, TASK_SELECT, GOAL_SELECT, notePayload, taskPayload, goalPayload } from "@/lib/server/coaching-work-projection";
 import { coachingWorkPage } from "@/lib/server/coaching-work-page";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
@@ -110,12 +110,6 @@ export default async function CoachingEngagementPage({
         take: workPage.take,
         select: NOTE_SELECT,
       },
-      actionItems: {
-        where: {...sharedCoachingWorkVisibilityWhere(), ...workPage.where("TASK")},
-        orderBy: workPage.orderBy,
-        take: workPage.take,
-        select: TASK_SELECT,
-      },
       goals: {
         where: {...sharedCoachingWorkVisibilityWhere(), ...workPage.where("GOAL")},
         orderBy: workPage.orderBy,
@@ -137,6 +131,10 @@ export default async function CoachingEngagementPage({
     },
   });
   if (!engagement) notFound();
+  const tasks = await prisma.actionItem.findMany({
+    where: { AND: [coachingSpaceTaskWhere(engagementId, session.user), workPage.where("TASK")] },
+    orderBy: workPage.orderBy, take: workPage.take, select: TASK_SELECT,
+  });
   const ownMembership = engagement.members.find(
     (member) => member.userId === session.user.id,
   );
@@ -159,7 +157,7 @@ export default async function CoachingEngagementPage({
     }),
   );
   const activeNotes = engagement.notes.filter((note) => !isRelationshipWorkRemoved(note.sourceJson));
-  const activeTasks = engagement.actionItems.filter((task) => !isRelationshipWorkRemoved(task.sourceJson));
+  const activeTasks = tasks.filter((task) => !isRelationshipWorkRemoved(task.sourceJson));
   const activeGoals = engagement.goals.filter((goal) => !isRelationshipWorkRemoved(goal.sourceJson));
   const workEntries: CoachingEngagementWorkEntry[] = [
     ...activeNotes.map(note => notePayload(note, session.user.id, canPost)),

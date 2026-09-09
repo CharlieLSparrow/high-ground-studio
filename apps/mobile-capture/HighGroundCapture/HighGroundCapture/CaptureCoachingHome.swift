@@ -4003,7 +4003,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill")
                         .accessibilityHidden(true)
-                    Text("Only you can read this note")
+                    Text("Only me")
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(CapturePalette.brass)
@@ -4011,6 +4011,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(CapturePalette.brass.opacity(0.12), in: Capsule())
+                .accessibilityIdentifier("CaptureCoachingWorkPrivacy_\(entry.id)")
             }
             if let body = entry.body?.nonemptyCoachingText, body != entry.displayTitle {
                 Text(body)
@@ -4329,12 +4330,16 @@ struct MobileCoachingWorkEditorSheet: View {
                     }
                 } else {
                     Section(kind == "TASK" ? "Task owner" : "Goal owner") {
-                        Picker("Owner", selection: $ownerUserID) {
-                            ForEach(workspace.members) { member in
-                                Text(member.label).tag(member.id)
+                        if entry?.visibility == "PRIVATE" {
+                            Label("Only me", systemImage: "lock")
+                        } else {
+                            Picker("Owner", selection: $ownerUserID) {
+                                ForEach(workspace.members) { member in
+                                    Text(member.label).tag(member.id)
+                                }
                             }
+                            .accessibilityIdentifier("CaptureCoachingWorkOwner")
                         }
-                        .accessibilityIdentifier("CaptureCoachingWorkOwner")
 
                         if entry != nil {
                             Picker("Status", selection: $status) {

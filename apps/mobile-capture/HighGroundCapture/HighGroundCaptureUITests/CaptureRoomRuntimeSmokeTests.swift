@@ -1872,7 +1872,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             title: privateNoteTitle,
             privateNote: true
         )
-        let privateBoundary = app.staticTexts["Only you can read this note"].firstMatch
+        let privateBoundary = app.staticTexts["Only me"].firstMatch
         XCTAssertTrue(
             privateBoundary.waitForExistence(timeout: 8),
             "The phone must expose the author-only boundary to sighted and assistive-technology users."
@@ -3177,6 +3177,51 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["CaptureWorkTagFilter_\(noteID)_\(tagID)"].exists,
                       "Editing writing without changing the tag picker must preserve the saved selection.")
         attachRuntimeScreenshot(app, name: "Shared note and canonical tag after two native relaunches")
+    }
+
+    func testPersonalSessionTaskEditsInItsClientSpaceAndStaysPersonalAfterRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let taskID = try XCTUnwrap(credentials.taskID)
+        let original = try XCTUnwrap(credentials.taskEditSourceTitle)
+        let revised = try XCTUnwrap(credentials.taskEditUpdatedTitle)
+        let tag = try XCTUnwrap(credentials.tagLabel)
+
+        func openSpace(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let space = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+            XCTAssertTrue(space.waitForExistence(timeout: 15))
+            space.tap()
+            exerciseSharedTagFilter(app, taskID: taskID, label: tag)
+            let privacy = app.descendants(matching: .any)["CaptureCoachingWorkPrivacy_\(taskID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(privacy, in: app, timeout: 15, swipeAttempts: 8))
+        }
+
+        func edit(in app: XCUIApplication, from oldTitle: String, to newTitle: String) {
+            let edit = app.buttons["CaptureCoachingEdit_\(taskID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 15, swipeAttempts: 8))
+            edit.tap()
+            let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+            XCTAssertTrue(title.waitForExistence(timeout: 15))
+            XCTAssertEqual(title.value as? String, oldTitle)
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkOwner"].exists,
+                "Editing a personal task must not offer a transfer to another member.")
+            replaceText(in: title, with: newTitle, app: app)
+            let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(save, in: app, timeout: 20, swipeAttempts: 4))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: save)], timeout: 30), .completed)
+            save.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+            XCTAssertTrue(waitForRuntimeElement(app.staticTexts[newTitle].firstMatch, in: app, timeout: 20, swipeAttempts: 8))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(in: app)
+        edit(in: app, from: original, to: revised)
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(in: app)
+        edit(in: app, from: revised, to: original)
+        attachRuntimeScreenshot(app, name: "Personal session task restored in its client space with its shared tag")
     }
 
     func testSharedWorkTagFiltersAndClears() throws {

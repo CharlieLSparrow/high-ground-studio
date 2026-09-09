@@ -196,6 +196,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  personal-session-task)
+    TEST_CASE="testPersonalSessionTaskEditsInItsClientSpaceAndStaysPersonalAfterRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Personal session task mode requires an exact Session, personal task, original/replacement titles, and retained tag." >&2
+      exit 2
+    fi
+    ;;
   work-tag-filter)
     TEST_CASE="testSharedWorkTagFiltersAndClears"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_TAG_LABEL" ]]; then

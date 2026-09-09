@@ -5,7 +5,7 @@ import Page from "./page";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
-import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { coachingSpaceTaskWhere, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import type { CoachingEngagementWorkEntry } from "@/components/coaching-engagement-workspace";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
@@ -15,17 +15,18 @@ jest.mock("@/components/session-thread", () => ({ CollaborationThread: () => nul
 jest.mock("@/components/coaching-engagement-member-manager", () => ({ CoachingEngagementMemberManager: () => <h2>Manage people</h2> }));
 jest.mock("@/components/coaching-engagement-workspace", () => ({ CoachingEngagementWorkspace: ({ canWrite, initialEntries }: { canWrite: boolean; initialEntries: CoachingEngagementWorkEntry[] }) => <>
   <button disabled={!canWrite}>Add shared note</button>
-  {initialEntries.map((entry) => <div key={entry.id}>
+  {initialEntries.map((entry) => <div key={entry.id} data-testid={entry.id} data-visibility={entry.visibility}>
     {entry.sourceHref ? <a href={entry.sourceHref}>{entry.title} source</a> : null}
     {(entry.tags ?? []).map(tag => <span key={tag.id} data-color={tag.hexColor}>{tag.label}</span>)}
   </div>)}
 </> }));
 jest.mock("@/components/coaching-space-tabs", () => ({ CoachingSpaceTabs: ({ work, people, sessions }: { work: ReactNode; people?: ReactNode; sessions?: ReactNode }) => <>{work}{sessions}{people}</> }));
 
-const prisma = { coachingEngagement: { findFirst: jest.fn() }, callRoom: { findFirst: jest.fn() } };
+const prisma = { coachingEngagement: { findFirst: jest.fn() }, callRoom: { findFirst: jest.fn() }, actionItem: { findMany: jest.fn() } };
 const params = Promise.resolve({ engagementId: "space" });
 const person = { id: "person", primaryEmail: "person@example.test", isStaff: false };
 function arrange(role: "COACH" | "CLIENT" | "OBSERVER", canManage = false, work: Record<string, unknown> = {}) {
+  prisma.actionItem.findMany.mockResolvedValue(work.actionItems ?? []);
   prisma.coachingEngagement.findFirst.mockResolvedValueOnce({
     id: "space", title: "Our shared work", status: "ACTIVE",
     primaryCoachUserId: "coach", primaryClientUserId: "client",
@@ -58,8 +59,8 @@ describe("client space page behavior", () => {
     expect(query.select.notes.where).toMatchObject({ OR: [
       { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } }, { authorUserId: person.id },
     ] });
-    expect(query.select.actionItems.where).toMatchObject(sharedCoachingWorkVisibilityWhere());
-    expect(query.select.goals.where).toEqual(query.select.actionItems.where);
+    expect(prisma.actionItem.findMany.mock.calls[0][0].where.AND[0]).toEqual(coachingSpaceTaskWhere("space", person));
+    expect(query.select.goals.where).toMatchObject(sharedCoachingWorkVisibilityWhere());
   });
 
   it("shows the coach's client list, scheduling, and independently authorized people controls", async () => {
@@ -108,9 +109,10 @@ describe("client space page behavior", () => {
     }
     expect(screen.queryByRole("link", {name: "Manual source"})).not.toBeInTheDocument();
     const query = prisma.coachingEngagement.findFirst.mock.calls[0][0];
-    for (const relation of ["notes", "actionItems", "goals"]) {
+    for (const relation of ["notes", "goals"]) {
       expect(query.select[relation].select).toMatchObject({roomId: true, sourceJson: true});
     }
+    expect(prisma.actionItem.findMany.mock.calls[0][0].select).toMatchObject({roomId: true, sourceJson: true});
   });
 
   it("keeps observers read-only", async () => {
@@ -130,9 +132,23 @@ describe("client space page behavior", () => {
     expect(screen.getByRole("link", {name: "Outline our chapter source"})).toHaveAttribute("href", "/coaching/engagements/space?message=chat-original#relationship-conversation");
     expect(screen.getByText("Research")).toHaveAttribute("data-color", "#23543a");
     const query = prisma.coachingEngagement.findFirst.mock.calls[0][0];
-    for (const relation of ["notes", "actionItems", "goals"]) {
+    for (const relation of ["notes", "goals"]) {
       expect(query.select[relation].select.tagLinks.select.tag.select).toEqual({id: true, label: true, hexColor: true, isActive: true});
     }
+    expect(prisma.actionItem.findMany.mock.calls[0][0].select.tagLinks.select.tag.select).toEqual({id: true, label: true, hexColor: true, isActive: true});
+  });
+
+  it("labels the viewer's personal session task consistently with the refresh response", async () => {
+    arrange("CLIENT", false, {actionItems: [{id: "personal-task", engagementId: null, roomId: "room-1",
+      assignedUserId: person.id, assignedUser: person, title: "My writing", status: "OPEN",
+      sourceJson: {origin: "quipsly-session-follow-through", roomId: "room-1", recordingAssetId: "asset-1", sourceStartSeconds: 4},
+      createdAt: new Date(), updatedAt: new Date(),
+      tagLinks: [{tag: {id: "writing", label: "Writing", hexColor: "#8b5e3c", isActive: true}}],
+    }]});
+    render(await Page({params}));
+    expect(screen.getByTestId("personal-task")).toHaveAttribute("data-visibility", "PRIVATE");
+    expect(screen.getByRole("link", {name: "My writing source"})).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=asset-1&at=4");
+    expect(screen.getByText("Writing")).toHaveAttribute("data-color", "#8b5e3c");
   });
 
   it("does not reveal the space or its work when scoped lookup denies access", async () => {
@@ -140,6 +156,7 @@ describe("client space page behavior", () => {
     await expect(Page({ params })).rejects.toThrow("NOT_FOUND");
     expect(notFound).toHaveBeenCalledTimes(1);
     expect(prisma.coachingEngagement.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.actionItem.findMany).not.toHaveBeenCalled();
   });
 
   it("retains the destination at sign-in without querying private data", async () => {

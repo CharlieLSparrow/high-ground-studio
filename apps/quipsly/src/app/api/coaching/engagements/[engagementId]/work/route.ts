@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
-import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { coachingSpaceTaskWhere, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { NOTE_SELECT, TASK_SELECT, GOAL_SELECT, notePayload, taskPayload, goalPayload } from "@/lib/server/coaching-work-projection";
 import { coachingWorkPage } from "@/lib/server/coaching-work-page";
@@ -179,12 +179,6 @@ export async function GET(
             take: paging.take,
             select: NOTE_SELECT,
           },
-          actionItems: {
-            where: { ...sharedCoachingWorkVisibilityWhere(), ...paging.where("TASK") },
-            orderBy: paging.orderBy,
-            take: paging.take,
-            select: TASK_SELECT,
-          },
           goals: {
             where: { ...sharedCoachingWorkVisibilityWhere(), ...paging.where("GOAL") },
             orderBy: paging.orderBy,
@@ -210,11 +204,15 @@ export async function GET(
       );
     }
 
+    const tasks = await prisma.actionItem.findMany({
+      where: { AND: [coachingSpaceTaskWhere(engagementId, session.user), paging.where("TASK")] },
+      orderBy: paging.orderBy, take: paging.take, select: TASK_SELECT,
+    });
     const entries = [
       ...engagement.notes
         .filter((row: any) => !activeRemoval(row.sourceJson))
         .map((row: any) => notePayload(row, session.user.id, Boolean(writable))),
-      ...engagement.actionItems
+      ...tasks
         .filter((row: any) => !activeRemoval(row.sourceJson))
         .map((row: any) => taskPayload(row, Boolean(writable))),
       ...engagement.goals
@@ -704,7 +702,7 @@ export async function PATCH(
         const current =
           workKind === "TASK"
             ? await tx.actionItem.findFirst({
-                where: { id, engagementId, ...sharedCoachingWorkVisibilityWhere() },
+                where: { id, ...coachingSpaceTaskWhere(engagementId, session.user, "write") },
                 select: { ...TASK_SELECT, sourceJson: true },
               })
             : await tx.goal.findFirst({
@@ -712,6 +710,9 @@ export async function PATCH(
                 select: { ...GOAL_SELECT, sourceJson: true },
               });
         if (!current) return { kind: "conflict" as const };
+        if (workKind === "TASK" && current.engagementId === null && ownerUserId !== current.assignedUserId) {
+          return { kind: "private-task-owner" as const };
+        }
         const source = record(current.sourceJson);
         const replay = clientRequestId && priorReceipts(source).map(record).find(receipt =>
           receipt.clientRequestId === clientRequestId && receipt.actorUserId === session.user.id);
@@ -806,6 +807,9 @@ export async function PATCH(
         { status: 400 },
       );
     }
+    if (result.kind === "private-task-owner") {
+      return NextResponse.json({ ok: false, error: "This task is only visible to you. Its owner cannot be changed here." }, { status: 403 });
+    }
     if (result.kind === "private-author-required") {
       return NextResponse.json(
         {
@@ -891,7 +895,7 @@ export async function DELETE(
               })
             : workKind === "TASK"
               ? await tx.actionItem.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                  where: { id, updatedAt: expectedUpdatedAt, ...coachingSpaceTaskWhere(engagementId, session.user, "write") },
                   select: TASK_SELECT,
                 })
               : await tx.goal.findFirst({
@@ -1043,7 +1047,7 @@ export async function PUT(
               })
             : workKind === "TASK"
               ? await tx.actionItem.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                  where: { id, updatedAt: expectedUpdatedAt, ...coachingSpaceTaskWhere(engagementId, session.user, "write") },
                   select: TASK_SELECT,
                 })
               : await tx.goal.findFirst({

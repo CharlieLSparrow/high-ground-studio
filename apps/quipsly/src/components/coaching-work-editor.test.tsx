@@ -47,6 +47,18 @@ it.each(["TASK", "GOAL", "NOTE"] as const)("edits %s tags with its wording, reta
 });
 
 describe("coaching work editing across concurrent updates", () => {
+  it("edits personal work without offering to transfer it to another space member", async () => {
+    const personal = {...entry, visibility: "PRIVATE" as const};
+    const onSave = jest.fn().mockResolvedValue(personal);
+    render(<CoachingWorkEditor entry={personal} members={members} busy={false} onSave={onSave} />);
+    fireEvent.click(screen.getByText("Edit"));
+    expect(screen.queryByRole("combobox", {name: "Owner"})).not.toBeInTheDocument();
+    expect(screen.getByText(/Only me/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("task name"), {target: {value: "My revised plan"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(personal,
+      expect.objectContaining({title: "My revised plan", ownerUserId: entry.owner!.id, visibility: "PRIVATE"})));
+  });
   it("merges different fields without changing an untouched due time or ownership", () => {
     const base = workEditValues(entry);
     expect(mergeCoachingWorkEdits(base, {...base, body: "My new wording"}, {...base, status: "DONE", ownerUserId: "coach"}))

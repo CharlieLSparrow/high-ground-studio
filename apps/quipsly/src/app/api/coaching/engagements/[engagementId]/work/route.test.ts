@@ -101,6 +101,7 @@ describe("coaching engagement work", () => {
       .mockResolvedValueOnce({ id: engagementId });
     jest.mocked(getPrismaClient).mockReturnValue({
       coachingEngagement: { findFirst },
+      actionItem: { findMany: jest.fn(async () => (await findFirst.mock.results[0].value).actionItems) },
     } as any);
 
     const response = await GET(request("GET"), {
@@ -195,6 +196,7 @@ describe("coaching engagement work", () => {
       .mockResolvedValueOnce(null);
     jest.mocked(getPrismaClient).mockReturnValue({
       coachingEngagement: { findFirst },
+      actionItem: { findMany: jest.fn(async () => (await findFirst.mock.results[0].value).actionItems) },
     } as any);
 
     const response = await GET(request("GET"), {

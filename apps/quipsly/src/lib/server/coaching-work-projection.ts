@@ -57,7 +57,8 @@ export function taskPayload(row: TaskRow, canWrite = true) {
   return {
     ...sharedPayload(row), kind: "TASK" as const, body: row.detail, status: String(row.status),
     owner: row.assignedUser && row.assignedUserId ? { id: row.assignedUserId, label: row.assignedUser.name || row.assignedUser.primaryEmail } : null,
-    visibility: "SHARED" as const, dueAt: row.dueAt?.toISOString() ?? null, canEdit: canWrite,
+    visibility: row.engagementId === null ? "PRIVATE" as const : "SHARED" as const,
+    dueAt: row.dueAt?.toISOString() ?? null, canEdit: canWrite,
   };
 }
 

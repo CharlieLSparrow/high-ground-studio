@@ -1,4 +1,6 @@
 import { Prisma } from "@prisma/client";
+import { coachingEngagementAccessWhere } from "./coaching-engagement";
+import type { SessionAccessActor } from "./session-access";
 
 /** Membership is not permission to read or change explicitly personal work. */
 export function sharedCoachingWorkVisibilityWhere() {
@@ -8,6 +10,22 @@ export function sharedCoachingWorkVisibilityWhere() {
     })),
     // Older engagement-owned records predate per-item visibility.
     { sourceJson: { path: ["visibility"], equals: Prisma.AnyNull } },
+  ] };
+}
+
+/** Show authorized shared tasks and the viewer's personal tasks from this
+ * space's sessions. Context is not sharing: never rewrite engagementId
+ * or infer access to another person's assigned work from room membership. */
+export function coachingSpaceTaskWhere(engagementId: string, actor: SessionAccessActor,
+  access: "read" | "write" = "read"): Prisma.ActionItemWhereInput {
+  const engagement = { is: coachingEngagementAccessWhere(engagementId, actor, access) };
+  return { OR: [
+    { engagementId, engagement, ...sharedCoachingWorkVisibilityWhere() },
+    {
+      engagementId: null, bookingId: null, isNestShared: false,
+      assignedUserId: actor.id,
+      room: { is: { coachingEngagement: engagement } },
+    },
   ] };
 }
 

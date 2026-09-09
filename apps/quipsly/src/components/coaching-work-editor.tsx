@@ -128,7 +128,9 @@ export function CoachingWorkEditor({entry, engagementId, members, busy, onSave}:
           <textarea name="body" value={draft.body} onChange={(event) => change("body", event.target.value)} rows={3} maxLength={20_000}
             className="rounded-xl border border-[#d8c7a7] px-3 py-2 text-sm" aria-label={`${entry.kind.toLowerCase()} details`} />
           <div className="grid gap-3 sm:grid-cols-2">
-            {entry.kind !== "NOTE" ? (
+            {entry.kind !== "NOTE" ? entry.visibility === "PRIVATE" ? (
+              <p className="flex min-h-11 items-center text-sm text-[#765f40]">{entry.owner?.label} · Only me</p>
+            ) : (
               <select name="ownerUserId" value={draft.ownerUserId} onChange={(event) => change("ownerUserId", event.target.value)}
                 className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm" aria-label="Owner">
                 {members.map((member) => <option key={member.id} value={member.id}>{member.label}</option>)}
