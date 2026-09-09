@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { sessionActorAccessWhere } from "@/lib/server/session-access";
 
 import FindPage from "./page";
 
@@ -51,6 +52,11 @@ describe("Search All page", () => {
     expect(screen.queryByText(/Search is read-only|private taxonomy|Permission-filtered/)).not.toBeInTheDocument();
     for (const chip of screen.getAllByText("#Episode seed")) expect(chip).toHaveStyle({ backgroundColor: "#506b46", color: "#ffffff" });
     const prisma = getPrismaClient();
+    expect(prisma.callRoom.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ AND: expect.arrayContaining([
+        sessionActorAccessWhere({ id: "user-1", primaryEmail: "person@example.com" }),
+      ]) }),
+    }));
     expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ tagLinks: expect.objectContaining({ select: { tag: { select: expect.objectContaining({ hexColor: true }) } } }) }) }));
   });
 

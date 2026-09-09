@@ -2472,7 +2472,8 @@ function checkTranscriptCorrectionContractSources() {
       && taskAccessText.includes("{ assignedUserId: userId }")
       && taskAccessText.includes("{ assignedUserId: null, engagementId: null, projectId: { in: projectIds } }")
       && taskAccessText.includes("assignedUserId: null")
-      && workspaceSearchText.includes("roomAccessWhere")
+      && workspaceSearchText.includes("sessionActorAccessWhere({ id: input.actorUserId, primaryEmail: input.actorEmail })")
+      && workspaceSearchText.includes("personalOrSharedCoachingGoalAccessWhere(input.actorUserId)")
       && workspaceSearchText.includes("isUnreviewedTranscriptActionItem")
       && workspaceSearchText.includes("createdByUserId: input.actorUserId")
       && workspaceSearchText.includes("perKindLimit: RESULT_LIMIT")
@@ -2482,21 +2483,17 @@ function checkTranscriptCorrectionContractSources() {
       && workspaceSearchText.includes("tagLinks: { some: { tagId: focusedTagId } }")
       && workspaceSearchText.includes("prisma.studioTag.findMany")
       && workspaceSearchText.includes("isActive: true")
-      && workspaceSearchPageText.includes('redirectTo="/find"')
-      && workspaceSearchPageText.includes('href={`/work?task=${encodeURIComponent(item.id)}`}')
-      && workspaceSearchPageText.includes('href={`/work?goal=${encodeURIComponent(item.id)}`}')
-      && workspaceSearchPageText.includes('href={`/sessions/${encodeURIComponent(item.id)}`}')
-      && workspaceSearchPageText.includes('ResultSection title="Tags"')
-      && workspaceSearchPageText.includes("tagFocusHref(item.id)")
-      && workspaceSearchPageText.includes("Same-label tags in other Nests are not mixed in.")
-      && workspaceSearchPageText.includes("No record identities were disclosed.")
+      && workspaceSearchPageText.includes("await auth()")
+      && workspaceSearchPageText.includes("if (!session?.user?.id)")
+      && workspaceSearchPageText.includes("searchWorkspace(prisma")
+      && workspaceSearchPageText.includes("actorUserId: session.user.id")
+      && workspaceSearchPageText.includes("actorEmail,")
       && tagSearchChipsText.includes("tagFocusHref(tag.id)")
       && researchLibraryModelText.includes("tagCatalog: ResearchSourceTag[]")
       && researchLibraryModelText.includes("...source.annotations.flatMap")
-      && !researchLibraryModelText.includes("...source.tags.map")
-      && workspaceSearchPageText.includes("Search is read-only"),
+      && !researchLibraryModelText.includes("...source.tags.map"),
     "permissionFilteredCanonicalWorkspaceSearch",
-    "Search All is authenticated, permission-filtered, bounded, candidate-safe, and focuses exact canonical tag identities across work and evidence without same-label mixing or side effects.",
+    "Search source retains authenticated identity, canonical task/Session/goal access, and bounded exact-tag query wiring. Rendered navigation and database isolation are tested separately; screen wording is not a contract.",
   );
 }
 

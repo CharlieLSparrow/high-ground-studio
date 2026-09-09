@@ -68,6 +68,7 @@ export default async function FindPage({ searchParams }: FindPageProps) {
     const visibleProjects = shouldSearch ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
     const result = await searchWorkspace(prisma, {
       actorUserId: session.user.id,
+      actorEmail,
       query,
       exactTagId,
       visibleProjects,

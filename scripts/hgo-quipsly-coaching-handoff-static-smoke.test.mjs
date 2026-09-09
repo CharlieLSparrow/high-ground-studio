@@ -61,7 +61,7 @@ for (const missingBoundary of [null, "booking authentication", "packet authentic
   });
 }
 
-for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization", "tag assignment eligibility"]) {
+for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication"]) {
   test(`scheduling source checks tolerate presentation changes and detect ${missingBoundary || "intact wiring"}`, t => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-scheduling-source-gates-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -78,6 +78,18 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
     const route = path.join(fixture, "apps/quipsly/src/app/api/coaching/runway/route.ts");
     const nestQuery = path.join(fixture, "apps/quipsly/src/lib/server/nest-project-follow-through.ts");
     const workTags = path.join(fixture, "apps/quipsly/src/lib/server/work-tags.ts");
+    const search = path.join(fixture, "apps/quipsly/src/lib/server/workspace-search.ts");
+    const searchPage = path.join(fixture, "apps/quipsly/src/app/(app)/find/page.tsx");
+    writeFileSync(searchPage, readFileSync(searchPage, "utf8")
+      .replaceAll('href={`/work?task=${encodeURIComponent(item.id)}`}', 'href={taskHref(item.id)}')
+      .replaceAll('ResultSection title="Tags"', 'ResultSection title="Labels"')
+      .replaceAll("Work tagged #", "Work labeled #")
+      .replaceAll("await auth()", missingBoundary === "search authentication" ? "await missingAuthentication()" : "await auth()"));
+    writeFileSync(search, readFileSync(search, "utf8")
+      .replaceAll("sessionActorAccessWhere({ id: input.actorUserId, primaryEmail: input.actorEmail })",
+        missingBoundary === "search session access" ? "unscopedSearchSessions()" : "sessionActorAccessWhere({ id: input.actorUserId, primaryEmail: input.actorEmail })")
+      .replaceAll("personalOrSharedCoachingGoalAccessWhere(input.actorUserId)",
+        missingBoundary === "search goal access" ? "unscopedSearchGoals()" : "personalOrSharedCoachingGoalAccessWhere(input.actorUserId)"));
     // Product wording and retaining already-assigned archived tags are not an
     // authorization contract. Check the canonical eligibility guard's wiring.
     writeFileSync(workTags, readFileSync(workTags, "utf8")
@@ -100,11 +112,11 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
         cwd: fixture, encoding: "utf8", timeout: 15_000,
       });
       const expectedFailure = (script === scheduling && missingBoundary === "calendar update status")
-        || (script === capture && ["native scheduling command", "Nest task authorization", "tag assignment eligibility"].includes(missingBoundary));
+        || (script === capture && ["native scheduling command", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication"].includes(missingBoundary));
       assert.equal(result.status, expectedFailure ? 1 : 0, result.stdout + result.stderr);
       const report = JSON.parse(result.stdout);
       assert.deepEqual(report.checks.filter(check => check.status === "fail").map(check => check.id ?? check.name),
-        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : missingBoundary === "tag assignment eligibility" ? "canonicalWorkSessionProjectTags" : "nativeCoachingSchedulingManagementParity"] : []);
+        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary?.startsWith("search ") ? "permissionFilteredCanonicalWorkspaceSearch" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : missingBoundary === "tag assignment eligibility" ? "canonicalWorkSessionProjectTags" : "nativeCoachingSchedulingManagementParity"] : []);
     }
   });
 }

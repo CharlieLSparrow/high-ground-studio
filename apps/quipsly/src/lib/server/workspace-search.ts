@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import {
@@ -7,6 +7,8 @@ import {
 } from "@/lib/server/session-note-access";
 import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import { personalOrSharedWorkspaceTaskAccessWhere } from "@/lib/server/task-access";
+import { sessionActorAccessWhere } from "./session-access";
+import { personalOrSharedCoachingGoalAccessWhere } from "./coaching-work-access";
 
 const RESULT_LIMIT = 10;
 const TAG_RESULT_SELECT = {
@@ -26,16 +28,6 @@ const TAG_RESULT_SELECT = {
   },
   project: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.StudioTagSelect;
-
-function roomAccessWhere(userId: string, projectIds: string[] = []) {
-  return [
-    { createdByUserId: userId },
-    { participants: { some: { userId, accessStatus: "ACTIVE" as const } } },
-    { booking: { clientUserId: userId } },
-    { booking: { coachUserId: userId } },
-    ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
-  ];
-}
 
 function tagTextWhere(query: string): Prisma.StudioTagWhereInput {
   return {
@@ -106,9 +98,10 @@ function emptyWorkspaceResult({
 }
 
 export async function searchWorkspace(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   input: {
     actorUserId: string;
+    actorEmail?: string;
     query?: string;
     exactTagId?: string;
     visibleProjects: Array<{
@@ -125,6 +118,7 @@ export async function searchWorkspace(
     return emptyWorkspaceResult({ query, projectCount: 0 });
   }
   const projects = input.visibleProjects;
+  const sessionAccess = sessionActorAccessWhere({ id: input.actorUserId, primaryEmail: input.actorEmail });
   const projectIds = projects.map((project) => project.id);
   const projectTeamProjectIds = projects
     .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
@@ -234,7 +228,10 @@ export async function searchWorkspace(
       },
     }),
     prisma.goal.findMany({
-      where: { AND: [{ OR: [{ ownerUserId: input.actorUserId }, { room: { OR: roomAccessWhere(input.actorUserId, projectIds) } }, { booking: { OR: [{ clientUserId: input.actorUserId }, { coachUserId: input.actorUserId }] } }] }, { OR: goalContentMatches }] },
+      where: { AND: [{ OR: [
+        ...personalOrSharedCoachingGoalAccessWhere(input.actorUserId),
+        { AND: [{ sourceJson: { path: ["visibility"], equals: "SESSION_SHARED" } }, { room: sessionAccess }] },
+      ] }, { OR: goalContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
       select: {
         id: true, title: true, description: true, status: true,
@@ -244,7 +241,7 @@ export async function searchWorkspace(
       },
     }),
     prisma.callRoom.findMany({
-      where: { AND: [{ OR: roomAccessWhere(input.actorUserId, projectIds) }, { OR: sessionContentMatches }] },
+      where: { AND: [sessionAccess, { OR: sessionContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
       select: {
         id: true, title: true, purpose: true, status: true, projectSlug: true, scheduledStart: true,
@@ -255,7 +252,7 @@ export async function searchWorkspace(
     prisma.coachingNote.findMany({
       where: {
         AND: [
-          { room: { OR: roomAccessWhere(input.actorUserId, projectIds) } },
+          { room: sessionAccess },
           { kind: { in: [...SESSION_NOTE_VISIBLE_KINDS] } },
           workspaceNoteVisibilityWhere({
             actorUserId: input.actorUserId,

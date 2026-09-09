@@ -119,7 +119,7 @@ describe("mobile Capture search contract", () => {
     } as never);
 
     const response = await GET(
-      new Request("http://localhost/api/mobile/capture/search?q=paper%20idea"),
+      new Request("http://localhost/api/mobile/capture/search?q=paper%20idea&actorEmail=other%40example.com&actorUserId=other-user"),
     );
     const payload = await response.json();
 
@@ -128,6 +128,7 @@ describe("mobile Capture search contract", () => {
     expect(listProjectsVisibleToEmail).toHaveBeenCalledWith("person@example.com", prisma);
     expect(searchWorkspace).toHaveBeenCalledWith(prisma, expect.objectContaining({
       actorUserId: "actor-1",
+      actorEmail: "person@example.com",
       query: "paper idea",
     }));
     expect(payload).toMatchObject({
