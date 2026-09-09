@@ -2,6 +2,7 @@
 
 import {
   activeCoachingEngagementParticipantWhere,
+  coachingBookingParticipantWhere,
   personalOrSharedCoachingGoalAccessWhere,
   sharedCoachingWorkVisibilityWhere,
 } from "./coaching-work-access";
@@ -30,8 +31,16 @@ describe("coaching work collaboration access", () => {
     expect(where).toEqual([
       { ownerUserId: "user-1" },
       { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere("user-1") } }] },
-      { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] } } }] },
+      { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere("user-1") } }] },
     ]);
     expect(JSON.stringify(where)).not.toContain("projectId");
+  });
+  it("uses original booking participants only when there is no private client space", () => {
+    for (const access of ["read", "write"] as const) {
+      expect(coachingBookingParticipantWhere("user-1", access)).toEqual({ OR: [
+        { engagement: { is: activeCoachingEngagementParticipantWhere("user-1", access) } },
+        { engagementId: null, OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] },
+      ] });
+    }
   });
 });

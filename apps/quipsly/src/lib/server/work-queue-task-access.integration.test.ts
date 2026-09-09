@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { workQueueTaskWhere, readEditableWorkQueueTaskIds } from "./work-queue-task-access";
 import { editCanonicalTaskInTransaction } from "./canonical-task-edit";
-import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
+import { personalOrSharedSessionTaskAccessWhere, personalOrSharedWorkspaceTaskAccessWhere } from "./task-access";
+import { personalOrSharedCoachingGoalAccessWhere, readEditableCoachingGoalIds } from "./coaching-work-access";
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
 if (enabled) {
@@ -49,6 +50,91 @@ if (enabled) {
         await tx.callParticipant.updateMany({ where: { roomId: room.id, userId: member.id }, data: { accessStatus: "REMOVED" } });
         expect(await read(member.id)).toEqual([memberTask.id]);
         expect(await readEditableWorkQueueTaskIds(tx, member.id, [shared.id])).toEqual(new Set());
+        throw rollback;
+      }, { timeout: 30_000 });
+    } catch (error) { if (error !== rollback) throw error; }
+  });
+  it("inherits private client-space membership through sessions and bookings, including revocation and observer roles", async () => {
+    const rollback = new Error("rollback inherited task scope fixture");
+    try {
+      await getPrismaClient().$transaction(async tx => {
+        const nonce = randomUUID();
+        const [coach, client, observer, teammate, guest, outsider] = await Promise.all(
+          ["coach", "client", "observer", "teammate", "guest", "outsider"].map(name =>
+            tx.user.create({ data: { name, primaryEmail: `inherited-${name}-${nonce}@example.test` } })));
+        const project = await tx.studioProject.create({ data: { slug: `inherited-${nonce}`, name: "Inherited scope QA",
+          workspace: { create: { slug: `inherited-${nonce}`, name: "Inherited scope QA" } } } });
+        await tx.studioProjectAccessGrant.create({ data: { projectId: project.id, memberUserId: teammate!.id,
+          email: teammate!.primaryEmail!, role: "OWNER" } });
+        const engagement = await tx.coachingEngagement.create({ data: { projectId: project.id, title: "Private client work",
+          primaryCoachUserId: coach!.id, primaryClientUserId: client!.id,
+          members: { create: [{ userId: coach!.id, role: "COACH" }, { userId: client!.id, role: "CLIENT" },
+            { userId: observer!.id, role: "OBSERVER" }] } } });
+        const booking = await tx.coachingBooking.create({ data: { engagementId: engagement.id,
+          coachUserId: coach!.id, clientUserId: client!.id,
+          scheduledStart: new Date("2026-09-12T10:00:00Z"), scheduledEnd: new Date("2026-09-12T11:00:00Z") } });
+        const room = await tx.callRoom.create({ data: { projectId: project.id, coachingEngagementId: engagement.id,
+          bookingId: booking.id, createdByUserId: coach!.id,
+          participants: { create: [{ userId: client!.id, role: "CLIENT" }, { userId: guest!.id, role: "GUEST" },
+            { userId: observer!.id, role: "OBSERVER" }] } } });
+        const sourceJson = { visibility: "SESSION_SHARED" };
+        const roomTask = await tx.actionItem.create({ data: { projectId: project.id, roomId: room.id,
+          title: "Shared session preparation", sourceJson } });
+        const bookingTask = await tx.actionItem.create({ data: { projectId: project.id, bookingId: booking.id,
+          title: "Shared appointment preparation", sourceJson } });
+        const teamTask = await tx.actionItem.create({ data: { projectId: project.id, title: "Ordinary team task" } });
+        const goal = await tx.goal.create({ data: { projectId: project.id, bookingId: booking.id, ownerUserId: coach!.id,
+          title: "Shared appointment goal", sourceJson } });
+        const taskIds = [roomTask.id, bookingTask.id, teamTask.id];
+        const read = async (userId: string, workspace = false) => (await tx.actionItem.findMany({ where: {
+          id: { in: taskIds }, OR: workspace
+            ? personalOrSharedWorkspaceTaskAccessWhere(userId, userId === teammate!.id ? [project.id] : [])
+            : personalOrSharedSessionTaskAccessWhere(userId),
+        }, select: { id: true } })).map(row => row.id).sort();
+        expect(await read(teammate!.id, true)).toEqual([teamTask.id]);
+        expect(await read(outsider!.id, true)).toEqual([]);
+        for (const member of [coach!, client!, observer!]) {
+          expect(await read(member.id)).toEqual([roomTask.id, bookingTask.id].sort());
+          expect(await read(member.id, true)).toEqual([roomTask.id, bookingTask.id].sort());
+          expect(await tx.goal.count({ where: { id: goal.id, OR: personalOrSharedCoachingGoalAccessWhere(member.id) } })).toBe(1);
+        }
+        expect(await read(guest!.id)).toEqual([roomTask.id]);
+        for (const denied of [observer!, teammate!, guest!, outsider!]) {
+          expect(await readEditableWorkQueueTaskIds(tx, denied.id, [roomTask.id, bookingTask.id])).toEqual(new Set());
+          expect(await tx.goal.count({ where: { id: goal.id, OR: personalOrSharedCoachingGoalAccessWhere(denied.id, "write") } })).toBe(0);
+          expect(await readEditableCoachingGoalIds(tx, denied.id, [goal.id])).toEqual(new Set());
+        }
+        expect(await readEditableWorkQueueTaskIds(tx, client!.id, taskIds)).toEqual(new Set([roomTask.id, bookingTask.id]));
+        expect(await readEditableCoachingGoalIds(tx, client!.id, [goal.id])).toEqual(new Set([goal.id]));
+        await tx.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: engagement.id, userId: client!.id } },
+          data: { status: "REMOVED" } });
+        expect(await read(client!.id)).toEqual([]);
+        expect(await read(client!.id, true)).toEqual([]);
+        expect(await readEditableWorkQueueTaskIds(tx, client!.id, taskIds)).toEqual(new Set());
+        expect(await tx.goal.count({ where: { id: goal.id, OR: personalOrSharedCoachingGoalAccessWhere(client!.id) } })).toBe(0);
+        expect(await readEditableCoachingGoalIds(tx, client!.id, [goal.id])).toEqual(new Set());
+        const rejected = await editCanonicalTaskInTransaction({ tx, taskId: roomTask.id, actorUserId: client!.id,
+          accessOr: personalOrSharedSessionTaskAccessWhere(client!.id, "write"), expectedUpdatedAt: roomTask.updatedAt,
+          title: "Must not change after removal", detail: null, dueAt: null, dueIntent: null, surface: "nest-work" });
+        expect(rejected.kind).toBe("not-found");
+        expect((await tx.actionItem.findUniqueOrThrow({ where: { id: roomTask.id } })).title).toBe(roomTask.title);
+        await tx.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: engagement.id, userId: client!.id } },
+          data: { status: "ACTIVE" } });
+        const restored = await editCanonicalTaskInTransaction({ tx, taskId: roomTask.id, actorUserId: client!.id,
+          accessOr: personalOrSharedSessionTaskAccessWhere(client!.id, "write"), expectedUpdatedAt: roomTask.updatedAt,
+          title: "Prepared together after rejoining", detail: null, dueAt: null, dueIntent: null, surface: "nest-work" });
+        expect(restored.kind).toBe("saved");
+        expect((await tx.actionItem.findUniqueOrThrow({ where: { id: roomTask.id } })).title).toBe("Prepared together after rejoining");
+        const standaloneBooking = await tx.coachingBooking.create({ data: { coachUserId: coach!.id, clientUserId: client!.id,
+          scheduledStart: new Date("2026-09-13T10:00:00Z"), scheduledEnd: new Date("2026-09-13T11:00:00Z") } });
+        const standaloneTask = await tx.actionItem.create({ data: { bookingId: standaloneBooking.id,
+          assignedUserId: coach!.id, title: "Standalone appointment task", sourceJson } });
+        for (const user of [coach!, client!]) {
+          expect(await readEditableWorkQueueTaskIds(tx, user.id, [standaloneTask.id])).toEqual(new Set([standaloneTask.id]));
+        }
+        for (const denied of [observer!, guest!, teammate!, outsider!]) {
+          expect(await tx.actionItem.count({ where: { id: standaloneTask.id, OR: personalOrSharedSessionTaskAccessWhere(denied.id) } })).toBe(0);
+        }
         throw rollback;
       }, { timeout: 30_000 });
     } catch (error) { if (error !== rollback) throw error; }

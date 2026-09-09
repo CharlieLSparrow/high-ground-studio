@@ -5,7 +5,8 @@ import {
   personalOrSharedWorkspaceTaskAccessWhere,
   nestSharedTaskAccessWhere,
 } from "./task-access";
-import { sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
+import { coachingBookingParticipantWhere, sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
+import { sessionActorAccessWhere } from "./session-access";
 
 describe("canonical task visibility", () => {
   const engagementAccess = {
@@ -16,7 +17,7 @@ describe("canonical task visibility", () => {
   };
   const bookingAccess = {
     engagementId: null,
-    booking: { is: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] } },
+    booking: { is: coachingBookingParticipantWhere("user-1") },
   };
 
   it("shares assigned coaching work only through an explicit engagement or booking", () => {
@@ -27,17 +28,12 @@ describe("canonical task visibility", () => {
       {
         assignedUserId: null,
         engagementId: null,
-        room: { OR: [
-          { createdByUserId: "user-1" },
-          { participants: { some: { userId: "user-1", accessStatus: "ACTIVE" } } },
-          { booking: { clientUserId: "user-1" } },
-          { booking: { coachUserId: "user-1" } },
-        ] },
+        room: sessionActorAccessWhere({ id: "user-1" }),
       },
       {
         assignedUserId: null,
         engagementId: null,
-        booking: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] },
+        booking: { is: coachingBookingParticipantWhere("user-1") },
       },
     ].map(where => ({ ...where, isNestShared: false }))]);
   });
@@ -54,7 +50,10 @@ describe("canonical task visibility", () => {
         } },
       } },
     }] });
-    expect(JSON.stringify(where)).not.toContain("OBSERVER");
+    expect(where).toContainEqual(expect.objectContaining({
+      assignedUserId: null, engagementId: null,
+      booking: { is: coachingBookingParticipantWhere("user-1", "write") },
+    }));
   });
 
   it("shares unassigned project work without exposing another assignee", () => {
@@ -62,22 +61,21 @@ describe("canonical task visibility", () => {
       { assignedUserId: "user-1" },
       { AND: [sharedCoachingWorkVisibilityWhere(), engagementAccess] },
       { AND: [sharedCoachingWorkVisibilityWhere(), bookingAccess] },
-      { assignedUserId: null, engagementId: null, projectId: { in: ["project-1"] } },
+      { assignedUserId: null, engagementId: null, AND: [
+        { OR: [{ projectId: { in: ["project-1"] } }, { room: { projectId: { in: ["project-1"] } } }] },
+        { OR: [{ roomId: null }, { room: { coachingEngagementId: null,
+          OR: [{ bookingId: null }, { booking: { engagementId: null } }] } }] },
+        { OR: [{ bookingId: null }, { booking: { engagementId: null } }] },
+      ] },
       {
         assignedUserId: null,
         engagementId: null,
-        room: { OR: [
-          { createdByUserId: "user-1" },
-          { participants: { some: { userId: "user-1", accessStatus: "ACTIVE" } } },
-          { booking: { clientUserId: "user-1" } },
-          { booking: { coachUserId: "user-1" } },
-          { projectId: { in: ["project-1"] } },
-        ] },
+        room: sessionActorAccessWhere({ id: "user-1" }),
       },
       {
         assignedUserId: null,
         engagementId: null,
-        booking: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] },
+        booking: { is: coachingBookingParticipantWhere("user-1") },
       },
     ].map(where => ({ ...where, isNestShared: false }))]);
   });

@@ -30,9 +30,16 @@ export function activeCoachingEngagementParticipantWhere(
   };
 }
 
-/** Booking access keeps pre-engagement coaching Sessions collaborative. */
-function coachingBookingParticipantWhere(userId: string): Prisma.CoachingBookingWhereInput {
-  return { OR: [{ clientUserId: userId }, { coachUserId: userId }] };
+/** A booking inside a client space inherits its current membership. Only
+ * bookings without a client space use their original coach/client pair. */
+export function coachingBookingParticipantWhere(
+  userId: string,
+  access: "read" | "write" = "read",
+): Prisma.CoachingBookingWhereInput {
+  return { OR: [
+    { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } },
+    { engagementId: null, OR: [{ clientUserId: userId }, { coachUserId: userId }] },
+  ] };
 }
 
 export function coachingTaskCollaborationAccessWhere(
@@ -41,7 +48,7 @@ export function coachingTaskCollaborationAccessWhere(
 ): Prisma.ActionItemWhereInput[] {
   return [
     { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } }] },
-    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } }] },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId, access) } }] },
   ];
 }
 
@@ -52,6 +59,20 @@ export function personalOrSharedCoachingGoalAccessWhere(
   return [
     { ownerUserId: userId },
     { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } }] },
-    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } }] },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId, access) } }] },
   ];
+}
+
+/** Render edit controls from the same current policy used by mutations. */
+export async function readEditableCoachingGoalIds(
+  prisma: Pick<Prisma.TransactionClient, "goal">,
+  userId: string,
+  goalIds: string[],
+): Promise<Set<string>> {
+  if (!goalIds.length) return new Set();
+  const rows = await prisma.goal.findMany({
+    where: { id: { in: goalIds }, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write") },
+    select: { id: true },
+  });
+  return new Set(rows.map(row => row.id));
 }

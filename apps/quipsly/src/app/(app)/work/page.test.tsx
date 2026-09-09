@@ -3,13 +3,16 @@ import { render, screen } from "@testing-library/react";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { coachingBookingParticipantWhere, personalOrSharedCoachingGoalAccessWhere, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { sessionActorAccessWhere } from "@/lib/server/session-access";
+import { WorkClient } from "./work-client";
 
 import WorkPage from "./page";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
 jest.mock("../studio-access-shell", () => ({ StudioAccessShell: ({ mode, redirectTo }: { mode: string; redirectTo: string }) => <div>{mode}:{redirectTo}</div> }));
-jest.mock("./work-client", () => ({ WorkClient: () => <div>Persisted work queue</div> }));
+jest.mock("./work-client", () => ({ WorkClient: jest.fn(() => <div>Persisted work queue</div>) }));
 
 describe("Work Queue page truth states", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -43,5 +46,44 @@ describe("Work Queue page truth states", () => {
     render(await WorkPage({}));
     expect(screen.getByRole("status", { name: "Work queue unavailable" })).toHaveTextContent("database connection is unavailable");
     expect(screen.queryByText("Persisted work queue")).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])("uses current goal mutation access for edit controls (editable: %s)", async editable => {
+    jest.mocked(getQuipslySession).mockResolvedValue({ user: { id: "member" } } as never);
+    const goal = { id: "goal", ownerUserId: "coach", title: "Shared appointment goal", status: "ACTIVE",
+      createdAt: new Date(), updatedAt: new Date(), sourceJson: { visibility: "SESSION_SHARED" },
+      booking: { id: "booking" }, engagement: null, taskLinks: [], tagLinks: [] };
+    const prisma = {
+      coachingBooking: { findMany: jest.fn().mockResolvedValue([{ id: "booking" }]) },
+      callRoom: { findMany: jest.fn().mockResolvedValue([
+        { id: "client-room", bookingId: null, coachingEngagementId: "private-client" },
+        { id: "team-room", bookingId: null, coachingEngagementId: null },
+      ]) },
+      actionItem: { findMany: jest.fn().mockResolvedValue([]) },
+      coachingNote: { findMany: jest.fn().mockResolvedValue([]) },
+      goal: { findMany: jest.fn().mockResolvedValueOnce([goal]).mockResolvedValueOnce(editable ? [{ id: "goal" }] : []) },
+      weeklyCommitment: { findMany: jest.fn().mockResolvedValue([]) },
+      workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
+    render(await WorkPage({}));
+    expect(screen.getByText("Persisted work queue")).toBeInTheDocument();
+    expect(jest.mocked(WorkClient).mock.calls[0]![0].initialSnapshot.goals).toEqual([
+      expect.objectContaining({ id: "goal", canEdit: editable }),
+    ]);
+    expect(prisma.coachingBooking.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: coachingBookingParticipantWhere("member") }));
+    expect(prisma.callRoom.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: sessionActorAccessWhere({ id: "member" }) }));
+    expect(prisma.goal.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { OR: [
+      ...personalOrSharedCoachingGoalAccessWhere("member"),
+      { roomId: { in: ["team-room"] }, AND: [sharedCoachingWorkVisibilityWhere()] },
+    ] } }));
+    expect(prisma.goal.findMany).toHaveBeenNthCalledWith(2, {
+      where: { id: { in: ["goal"] }, OR: personalOrSharedCoachingGoalAccessWhere("member", "write") }, select: { id: true },
+    });
+    expect(prisma.coachingNote.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { AND: [
+      { OR: [{ authorUserId: "member" }, { roomId: { in: ["team-room"] } }, { bookingId: { in: ["booking"] } }] },
+      { OR: [{ authorUserId: "member" }, { visibility: "SESSION_SHARED" }] },
+    ] } }));
   });
 });

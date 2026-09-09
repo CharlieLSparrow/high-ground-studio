@@ -5,7 +5,8 @@ import { getPrismaClient } from "@/lib/prisma";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
-import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
+import { coachingBookingParticipantWhere, personalOrSharedCoachingGoalAccessWhere, readEditableCoachingGoalIds, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { sessionActorAccessWhere } from "@/lib/server/session-access";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { readEditableWorkQueueTaskIds, workQueueTaskWhere } from "@/lib/server/work-queue-task-access";
 
@@ -35,21 +36,17 @@ function WorkUnavailableState({ message }: { message: string }) {
 async function loadWork(userId: string, visibleProjectIds: string[] = []) {
   const prisma = getPrismaClient() as any;
   const bookingRows = await prisma.coachingBooking.findMany({
-    where: { OR: [{ clientUserId: userId }, { coachUserId: userId }] },
+    where: coachingBookingParticipantWhere(userId),
     select: { id: true },
     take: 500,
   });
   const bookingIds = bookingRows.map((booking: { id: string }) => booking.id);
-  const roomOr: any[] = [
-    { createdByUserId: userId },
-    { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-  ];
-  if (bookingIds.length) roomOr.push({ bookingId: { in: bookingIds } });
-  const roomRows = await prisma.callRoom.findMany({ where: { OR: roomOr }, select: { id: true, bookingId: true }, take: 500 });
+  const roomRows = await prisma.callRoom.findMany({ where: sessionActorAccessWhere({ id: userId }),
+    select: { id: true, bookingId: true, coachingEngagementId: true }, take: 500 });
   // Booking-backed coaching work follows the explicit client/coach relationship,
   // not generic room participation. Unbooked production rooms remain shared with
   // their participants so episode collaboration still works as expected.
-  const sharedProductionRoomIds = sharedWorkRoomIds(roomRows);
+  const sharedProductionRoomIds = sharedWorkRoomIds(roomRows.filter((room: { coachingEngagementId: string | null }) => !room.coachingEngagementId));
 
   const goalOr: any[] = [{ authorUserId: userId }];
   if (sharedProductionRoomIds.length) {
@@ -90,7 +87,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
       },
     }),
     prisma.coachingNote.findMany({
-      where: { OR: goalOr },
+      where: { AND: [{ OR: goalOr }, { OR: [{ authorUserId: userId }, { visibility: "SESSION_SHARED" }] }] },
       orderBy: { updatedAt: "desc" },
       take: 500,
       select: { id: true, title: true, body: true, sourceJson: true, createdAt: true, updatedAt: true, room: { select: { id: true, title: true } }, booking: { select: { id: true, scheduledStart: true, callRoom: { select: { id: true, title: true } } } } },
@@ -98,7 +95,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
     prisma.goal.findMany({
       where: { OR: [
         ...personalOrSharedCoachingGoalAccessWhere(userId),
-        ...(sharedProductionRoomIds.length ? [{ roomId: { in: sharedProductionRoomIds } }] : []),
+        ...(sharedProductionRoomIds.length ? [{ roomId: { in: sharedProductionRoomIds }, AND: [sharedCoachingWorkVisibilityWhere()] }] : []),
       ] },
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
       take: 500,
@@ -158,6 +155,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
 
   const visibleProjects = new Set(visibleProjectIds);
   const editableTaskIds = await readEditableWorkQueueTaskIds(prisma, userId, taskRows.map((task: { id: string }) => task.id));
+  const editableGoalIds = await readEditableCoachingGoalIds(prisma, userId, canonicalGoalRows.map((goal: { id: string }) => goal.id));
   return buildWorkSnapshot({
     tasks: taskRows.filter((task: any) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).map((task: any) => ({
       ...task,
@@ -168,9 +166,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
     goals: legacyGoalRows,
     canonicalGoals: canonicalGoalRows.map((goal: any) => ({
       ...goal,
-      canEditByActor: goal.ownerUserId === userId
-        || Boolean(!goal.engagement && goal.booking?.id)
-        || Boolean(goal.engagement?.members?.length),
+      canEditByActor: editableGoalIds.has(goal.id),
       progressReceipts: [
         goalReceiptProjection.get(goal.id)?.transcriptEvidence,
         goalReceiptProjection.get(goal.id)?.progress,
