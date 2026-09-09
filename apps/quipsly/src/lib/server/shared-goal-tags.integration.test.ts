@@ -113,13 +113,18 @@ if (enabled) {
         for (const name of ["observer", "outsider"]) {
           expect(await read({ prisma, actorUserId: id(name), actorEmail: email(name), entityId: entity.id })).toBeNull();
         }
-        expect(await replaceWorkEntityTags({ ...actor, entityKind, entityId: entity.id, expectedUpdatedAt: entity.updatedAt, tagIds: [], newTagLabels: [`Hidden new label ${scope}`] }))
+        expect(await replaceWorkEntityTags({ ...actor, entityKind, entityId: entity.id, expectedUpdatedAt: entity.updatedAt, tagIds: [], newTagLabels: [secret.label] }))
           .toMatchObject({ ok: false, code: "FORBIDDEN" });
         const tagIds = entityKind === "task" ? [tag.id, retired.id].sort() : [tag.id];
         const command = { ...actor, entityKind, entityId: entity.id, expectedUpdatedAt: entity.updatedAt, tagIds, clientRequestId: randomUUID() };
         expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: true, tagIds });
         expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: true, idempotentReplay: true });
-        expect(await read({ ...actor, entityId: entity.id })).toMatchObject({ selectedTagIds: expect.arrayContaining(tagIds) });
+        const readback = await read({ ...actor, entityId: entity.id });
+        expect(readback).toMatchObject({ selectedTagIds: expect.arrayContaining(tagIds) });
+        const newLabel = `New ${entityKind} focus ${scope}`;
+        const create = { ...command, expectedUpdatedAt: new Date(readback!.updatedAt), clientRequestId: randomUUID(), newTagLabels: [newLabel] };
+        expect(await replaceWorkEntityTags(create)).toMatchObject({ ok: true, resolvedTags: [expect.objectContaining({ label: newLabel, created: true })] });
+        expect(await replaceWorkEntityTags(create)).toMatchObject({ ok: true, idempotentReplay: true });
         await prisma.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: id("engagement"), userId: id("client") } }, data: { status: "REMOVED" } });
         try {
           expect(await read({ ...actor, entityId: entity.id })).toBeNull();
@@ -128,7 +133,6 @@ if (enabled) {
           await prisma.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: id("engagement"), userId: id("client") } }, data: { status: "ACTIVE" } });
         }
       }
-      expect(await prisma.studioTag.count({ where: { projectId: id("project"), label: `Hidden new label ${scope}` } })).toBe(0);
     } finally {
       await prisma.studioProjectAccessGrant.updateMany({ where: { projectId: id("project"), email: email("client") }, data: { status: "ACTIVE" } });
     }

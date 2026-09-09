@@ -936,7 +936,7 @@ export async function replaceWorkEntityTags(input: {
   const projectEditor = writableProjects.has(entity.projectId);
   const collaborativeKind = input.entityKind === "task" || input.entityKind === "goal" ? input.entityKind : null;
   const spaceId = !projectEditor && collaborativeKind ? await writableTagSpace(prisma, entity, actorUserId) : null;
-  if (!projectEditor && (!spaceId || newTagLabels.length)) return { ok: false, code: "FORBIDDEN", error: "Choose existing tags shared in this space. Creating Nest tags requires Nest editor access." };
+  if (!projectEditor && !spaceId) return { ok: false, code: "FORBIDDEN", error: "This work isn't available to tag." };
   const scopedTags = projectEditor ? {} : sharedWorkTagCatalogWhere(spaceId!, collaborativeKind!, entity.id);
   const priorReceipt = input.entityKind === "document"
     ? safeRecord(entity.documentOperations[0]?.afterJson)
@@ -1032,7 +1032,7 @@ export async function replaceWorkEntityTags(input: {
     const currentWork = collaborativeKind ? await findOwnedTagEntity(tx, collaborativeKind, entityId, actorUserId, actorEmail) : null;
     if (collaborativeKind && !currentWork) return { kind: "forbidden" as const };
     const currentSpaceId = !activeGrant && currentWork ? await writableTagSpace(tx, currentWork, actorUserId) : null;
-    if (!activeGrant && (!currentSpaceId || newTagLabels.length)) return { kind: "forbidden" as const };
+    if (!activeGrant && !currentSpaceId) return { kind: "forbidden" as const };
     if (requestedTagIds.length) {
       const validTagCount = await tx.studioTag.count({ where: {
         id: { in: requestedTagIds }, projectId: entity.projectId,
@@ -1049,11 +1049,22 @@ export async function replaceWorkEntityTags(input: {
         label,
       });
       if (!resolved.ok) {
+        if (!activeGrant) return { kind: "forbidden" as const };
         if (resolved.code === "ARCHIVED") return { kind: "archived" as const };
         if (resolved.code === "SLUG_CONFLICT") {
           return { kind: "slug-conflict" as const, label, existingLabel: resolved.existingLabel };
         }
         return { kind: "invalid" as const };
+      }
+      // New labels can be created with shared work. Reusing an existing label
+      // by name must have the same scope as choosing its ID from the palette.
+      if (!activeGrant && !resolved.created) {
+        const available = await tx.studioTag.count({ where: {
+          id: resolved.tag.id, projectId: entity.projectId,
+          AND: [sharedWorkTagCatalogWhere(currentSpaceId!, collaborativeKind!, entityId),
+            assignableOrRetainedTagWhere(input.entityKind, entityId)],
+        } });
+        if (available !== 1) return { kind: "forbidden" as const };
       }
       resolvedTags.push({
         id: resolved.tag.id,
