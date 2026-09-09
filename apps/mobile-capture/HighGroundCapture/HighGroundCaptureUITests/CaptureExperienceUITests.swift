@@ -1859,11 +1859,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertLessThan(relationship.frame.height, app.frame.height * 0.6,
                           "A client-space navigation row should not fill the screen at accessibility text sizes.")
         relationship.tap()
-        let researchTag = app.staticTexts["CaptureWorkTag_preview-linked-task_research"]
-        let nextTag = app.staticTexts["CaptureWorkTag_preview-linked-task_next"]
+        let researchTag = app.buttons["CaptureWorkTagFilter_preview-linked-task_research"]
+        let nextTag = app.buttons["CaptureWorkTagFilter_preview-linked-task_next"]
         reveal(researchTag, searchAboveFirst: false)
         XCTAssertTrue(researchTag.waitForExistence(timeout: 5))
-        XCTAssertEqual(researchTag.label, "Tag: Research and source material")
+        XCTAssertEqual(researchTag.label, "Show work tagged Research and source material")
         XCTAssertTrue(nextTag.exists)
         let location = app.buttons["CaptureGlobalWorkLocation"]
         if location.exists {
@@ -1879,6 +1879,13 @@ final class CaptureExperienceUITests: XCTestCase {
         tagsScreenshot.name = "shared-work-native-tags.png"
         tagsScreenshot.lifetime = .keepAlways
         add(tagsScreenshot)
+        researchTag.tap()
+        let clearTag = app.buttons["CaptureCoachingClearTagFilter"]
+        XCTAssertTrue(clearTag.waitForExistence(timeout: 5),
+                      "Tapping a shared tag should filter work in this client space.")
+        XCTAssertTrue(app.staticTexts["CaptureWorkTag_filter_research"].exists)
+        clearTag.tap()
+        XCTAssertFalse(clearTag.exists, "Clearing the tag returns to the unfiltered client space.")
         let source = app.descendants(matching: .any)["CaptureCoachingWorkSource_preview-linked-task"].firstMatch
         reveal(source, searchAboveFirst: false)
         if !source.exists || !source.isHittable {

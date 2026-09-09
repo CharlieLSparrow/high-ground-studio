@@ -217,6 +217,11 @@ Matching counts alone are insufficient: substituted, missing, skipped, failed,
 or repeated tests fail the run. Results are retained in the requested evidence
 directory, or a printed temporary directory for local runs. Missing or unreadable
 result bundles fail rather than falling back to a console-only success.
+The runner finishes a separate result bundle after each batch of up to eight
+tests, reusing the build directory and resolved device. Earlier bundles remain
+readable if the job deadline interrupts a later batch. Every planned test must
+still pass exactly once; batching does not raise the CI time limit or turn a
+partial run into success.
 Before testing, the runner verifies Xcode's resolved simulator identity. If
 Xcode exits with destination error 70 and lists only placeholder devices, an
 exact-UUID request can recover once: recheck that UUID in simctl's available

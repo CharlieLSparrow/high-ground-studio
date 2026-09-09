@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   createXcodeArguments,
   createExecutionGroups,
+  createExecutionBatches,
   executedTestCount,
   parseRunnerArguments,
   resultBundlePath,
@@ -36,6 +37,40 @@ const captureWorkflow = readFileSync(
   new URL("../../.github/workflows/capture-pr-tests.yml", import.meta.url),
   "utf8",
 );
+
+test("bounded result batches retain every planned identity once on its original device", () => {
+  const source = readFileSync(path.join(root,
+    "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift"), "utf8");
+  const tests = discoverDeterministicTests(source);
+  const plans = [createPlan(tests), ...[1, 2, 3, 4].map(shard => createPlan(tests, { suite: "full", shard }))];
+  for (const plan of plans) {
+    const groups = createExecutionGroups(plan, { destination: "phone", ipadDestination: "tablet" });
+    const batches = createExecutionBatches(groups);
+    assert.equal(new Set(batches.map(batch => resultBundlePath("/tmp/evidence", batch.name))).size, batches.length);
+    assert.deepEqual(batches.flatMap(batch => batch.selectors), groups.flatMap(group => group.selectors));
+    for (const batch of batches) {
+      assert.ok(batch.selectors.length > 0 && batch.selectors.length <= 8);
+      for (const selector of batch.selectors) {
+        assert.equal(batch.destination, selector.includes("RegularWidthIPad") ? "tablet" : "phone");
+      }
+    }
+  }
+});
+
+test("result batching does not mutate its input or create empty or duplicate attempts", () => {
+  const selectors = Object.freeze(["a", "b", "c", "d", "e"]);
+  const group = Object.freeze({ name: "iPhone", destination: "phone", selectors });
+  assert.deepEqual(createExecutionBatches([group], 2), [
+    { name: "iPhone-1-of-3", destination: "phone", selectors: ["a", "b"] },
+    { name: "iPhone-2-of-3", destination: "phone", selectors: ["c", "d"] },
+    { name: "iPhone-3-of-3", destination: "phone", selectors: ["e"] },
+  ]);
+  assert.deepEqual(createExecutionBatches([group], 8), [group]);
+  assert.deepEqual(createExecutionBatches([]), []);
+  for (const size of [0, -1, 1.5, NaN, Infinity]) {
+    assert.throws(() => createExecutionBatches([group], size), /positive integer/);
+  }
+});
 
 const phoneID = "11111111-1111-1111-1111-111111111111";
 const exactPhone = `platform=iOS Simulator,id=${phoneID}`;
@@ -529,14 +564,22 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     } });
     const passes = ["none", "iPhone-discovery-recovers"].includes(failure);
     const phoneUnresolved = ["iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous"].includes(failure);
+    const source = readFileSync(path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift"), "utf8");
+    const batches = createExecutionBatches(createExecutionGroups(createPlan(discoverDeterministicTests(source)), {
+      destination: "phone", ipadDestination: "tablet",
+    })).filter(batch => !phoneUnresolved || batch.destination === "tablet");
     assert.equal(result.status, passes ? 0 : 1, result.stdout + result.stderr);
     assert.doesNotMatch(result.stdout + result.stderr, /synthetic-settings-must-not-appear-in-logs/);
-    assert.equal(readFileSync(callLog, "utf8"), phoneUnresolved ? "iPad\n" : "iPhone\niPad\n", result.stdout + result.stderr);
+    assert.equal(readFileSync(callLog, "utf8"), batches.map(batch => batch.destination === "phone" ? "iPhone\n" : "iPad\n").join(""), result.stdout + result.stderr);
     if (failure.startsWith("iPhone-discovery-")) {
       assert.equal(readFileSync(callLog + ".resolution", "utf8"), failure === "iPhone-discovery-unavailable" ? "1" : "2");
     }
-    for (const platform of phoneUnresolved ? ["ipad"] : ["iphone", "ipad"]) {
-      assert.ok(JSON.parse(readFileSync(path.join(evidence, `capture-ui-tests-${platform}.xcresult/test-results.json`), "utf8")).testNodes.length);
+    for (const batch of batches) {
+      const report = JSON.parse(readFileSync(path.join(resultBundlePath(evidence, batch.name), "test-results.json"), "utf8"));
+      assert.equal(report.testNodes.length, batch.selectors.length);
+      if (failure !== "iPhone-substitution" || batch.destination !== "phone") {
+        assert.equal(verifyResultTests(report, batch.selectors), batch.selectors.length);
+      }
     }
     if (passes) assert.match(result.stdout, /PASS: executed all .* across 2 platform destinations/);
     else {
@@ -544,8 +587,8 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
       assert.match(result.stderr, /FAIL: Capture UI validation failed/);
       if (failure === "iPhone-resolution-missing") assert.ok(result.stderr.includes(`no tests started on ${exactPhone}`));
       if (failure === "both-exit") {
-        assert.match(result.stderr, /iPhone: xcodebuild failed with exit code 65/);
-        assert.match(result.stderr, /iPad: xcodebuild failed with exit code 65/);
+        assert.match(result.stderr, /iPhone-1-of-\d+: xcodebuild failed with exit code 65/);
+        assert.match(result.stderr, /iPad-1-of-\d+: xcodebuild failed with exit code 65/);
       }
     }
   });

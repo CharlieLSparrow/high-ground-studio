@@ -85,6 +85,24 @@ export function createExecutionGroups(plan, options) {
   ].filter(Boolean);
 }
 
+// Finish small result bundles as we go. If the CI job reaches its overall
+// deadline, Xcode may leave the active bundle unreadable; earlier batches
+// must still retain their screenshots, failures, and exact test identities.
+// This changes neither selected coverage nor the number of test attempts.
+export function createExecutionBatches(groups, batchSize = 8) {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new Error("test batch size must be a positive integer");
+  }
+  return groups.flatMap((group) => {
+    const count = Math.ceil(group.selectors.length / batchSize);
+    return Array.from({ length: count }, (_, index) => ({
+      ...group,
+      name: count === 1 ? group.name : `${group.name}-${index + 1}-of-${count}`,
+      selectors: group.selectors.slice(index * batchSize, (index + 1) * batchSize),
+    }));
+  });
+}
+
 export function createXcodeArguments(plan, options) {
   return [
     "-project",
@@ -370,36 +388,46 @@ async function main() {
   );
   let executedCount = 0;
   const failures = [];
-  for (const execution of executionGroups) {
-    const bundlePath = resultBundlePath(options.evidenceRoot, execution.name);
-    process.stdout.write(
-      `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
-    );
+  for (const group of executionGroups) {
+    let resolvedDestination;
     try {
-      const resolvedDestination = await ensureXcodeDestination({ ...options, destination: execution.destination });
-      const result = await runXcodebuild(createXcodeArguments(
-        { selectors: execution.selectors },
-        {
-          ...options,
-          destination: resolvedDestination,
-          resultBundlePath: bundlePath,
-        },
-      ));
-      executedCount += await verifyPlatformExecution({
-        result,
-        bundlePath,
-        selectors: execution.selectors,
-      });
+      resolvedDestination = await ensureXcodeDestination({ ...options, destination: group.destination });
     } catch (error) {
-      // Platform failures are independent. Retain their evidence and exercise
-      // the other destination once; do not retry failures into a green result.
-      const failure = `${execution.name}: ${error instanceof Error ? error.message : String(error)}`;
+      const failure = `${group.name}: ${error instanceof Error ? error.message : String(error)}`;
       failures.push(failure);
-      process.stderr.write(`${failure}\nResults (if produced): ${bundlePath}\n`);
+      process.stderr.write(`${failure}\n`);
+      continue;
+    }
+    for (const execution of createExecutionBatches([group])) {
+      const bundlePath = resultBundlePath(options.evidenceRoot, execution.name);
+      process.stdout.write(
+        `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
+      );
+      try {
+        const result = await runXcodebuild(createXcodeArguments(
+          { selectors: execution.selectors },
+          {
+            ...options,
+            destination: resolvedDestination,
+            resultBundlePath: bundlePath,
+          },
+        ));
+        executedCount += await verifyPlatformExecution({
+          result,
+          bundlePath,
+          selectors: execution.selectors,
+        });
+      } catch (error) {
+        // Batches are independent. Retain each finished bundle and exercise
+        // the remaining selectors once; do not retry failures into a green result.
+        const failure = `${execution.name}: ${error instanceof Error ? error.message : String(error)}`;
+        failures.push(failure);
+        process.stderr.write(`${failure}\nResults (if produced): ${bundlePath}\n`);
+      }
     }
   }
   if (failures.length) {
-    throw new Error(`Capture UI validation failed on ${failures.length} platform destination(s):\n${failures.join("\n")}`);
+    throw new Error(`Capture UI validation failed in ${failures.length} destination setup(s) or test batch(es):\n${failures.join("\n")}`);
   }
   if (executedCount !== plan.selectedTestCount) {
     throw new Error(
