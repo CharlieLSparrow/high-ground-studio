@@ -709,11 +709,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
         recordingConsentGranted = command.recordingConsentGranted == true
         transcriptionConsentGranted = command.transcriptionConsentGranted == true
 
-        activeCallRoomLabel = activeEpisodeSlug
-            ?? activeProjectSlug
-            ?? activeCapturePurpose
-            ?? activeCallRoomId
-            ?? "Local recording"
+        // Persist the human-facing title at capture start, before a crash or
+        // offline launch can remove access to the Session projection. Slugs
+        // and room IDs are routing context, not recording names.
+        activeCallRoomLabel = normalized(command.sessionTitle) ?? "Local recording"
     }
 
     private func startRecording() {
@@ -1162,7 +1161,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
             recordingConsentGranted: recordingConsentGranted,
             transcriptionConsentGranted: transcriptionConsentGranted,
             recordingAssetId: activeRecordingAssetId,
-            capturePurpose: activeCapturePurpose
+            capturePurpose: activeCapturePurpose,
+            recordingTitle: activeCallRoomLabel
         )
         let ledgerEntry = try localRecordingLibrary.beginRecording(
             id: captureIntent.captureID,

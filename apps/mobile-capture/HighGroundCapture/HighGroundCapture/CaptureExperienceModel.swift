@@ -2803,6 +2803,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
         let command = RecorderCommand(
             action: .start,
+            sessionTitle: session.displayTitle,
             projectSlug: usesLocalPersonalVoiceNoteAuthority
                 ? nil
                 : session.projectSlug ?? contextSlugs.projectSlug ?? "capture-inbox",

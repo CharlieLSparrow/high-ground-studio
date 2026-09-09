@@ -628,9 +628,10 @@ struct LocalRecordingSessionContext: Codable, Equatable {
     var transcriptionConsentGranted: Bool? = nil
     var recordingAssetId: String?
     var capturePurpose: String?
+    var recordingTitle: String? = nil
 
     var sessionTitle: String? {
-        firstNonempty(episodeSlug, projectSlug, capturePurpose, callRoomId)
+        firstNonempty(recordingTitle, episodeSlug, projectSlug, capturePurpose, callRoomId)
     }
 
     private func firstNonempty(_ values: String?...) -> String? {

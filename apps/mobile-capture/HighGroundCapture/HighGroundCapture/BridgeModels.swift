@@ -47,6 +47,7 @@ private func decodeMobileCaptureResponse<Payload: Decodable>(
 
 struct RecorderCommand: Codable {
     let action: ActionType
+    let sessionTitle: String?
     let projectSlug: String?
     let episodeSlug: String?
     let callRoomId: String?
@@ -64,6 +65,7 @@ struct RecorderCommand: Codable {
 
     init(
         action: ActionType,
+        sessionTitle: String? = nil,
         projectSlug: String? = nil,
         episodeSlug: String? = nil,
         callRoomId: String? = nil,
@@ -76,6 +78,7 @@ struct RecorderCommand: Codable {
         captureAuthorityBasis: CaptureRecordingAuthorityBasis? = nil
     ) {
         self.action = action
+        self.sessionTitle = sessionTitle
         self.projectSlug = projectSlug
         self.episodeSlug = episodeSlug
         self.callRoomId = callRoomId

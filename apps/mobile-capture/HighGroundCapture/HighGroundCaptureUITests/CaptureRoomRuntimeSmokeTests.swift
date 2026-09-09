@@ -6126,7 +6126,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
-        if openRecordingConsentIfNeeded(in: app) != nil {
+        // This journey verifies an audio source. Operate the visible choice
+        // instead of inheriting a prior camera test's device preference.
+        let audioMode = app.segmentedControls["CaptureRecordingModePicker"].buttons["Audio"]
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(audioMode, in: app))
+        audioMode.tap()
+
+        if let consentSheet = openRecordingConsentIfNeeded(in: app) {
             let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
             let transcription = app.switches["CaptureConsentTranscriptionToggle"]
             XCTAssertTrue(
@@ -6145,8 +6151,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(saveConsent.isEnabled)
             saveConsent.tap()
             XCTAssertTrue(
-                app.buttons["CaptureStartButton"].firstMatch.waitForExistence(timeout: 12),
-                "The local recorder should return after the explicit consent transaction."
+                consentSheet.waitForNonExistence(timeout: 30),
+                "The consent sheet should dismiss after the server saves and refreshes the choices."
+            )
+            let recorderReturned = waitForAnyRuntimeElement(recordingStartActions(in: app), timeout: 8)
+            if !recorderReturned {
+                attachRuntimeScreenshot(app, name: "Recorder missing after saved consent")
+                let hierarchy = XCTAttachment(string: app.debugDescription)
+                hierarchy.name = "Post-consent screen hierarchy"
+                hierarchy.lifetime = .keepAlways
+                add(hierarchy)
+            }
+            XCTAssertTrue(
+                recorderReturned,
+                "The full recorder or persistent dock should return after the explicit consent transaction."
             )
         }
 
@@ -6295,6 +6313,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let safeIdentifier = safeRow.identifier
         attachRecordingIdentity(safeIdentifier, name: "Completed local source identity")
+        if let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty {
+            XCTAssertTrue(safeRow.staticTexts[sessionTitle].exists,
+                          "A saved recording should use the Session title, not its routing ID.")
+        }
         XCTAssertTrue(safeRow.descendants(matching: .any)["LocalRecordingMomentMarks"].exists)
         let play = safeRow.buttons["Play"].firstMatch
         XCTAssertTrue(play.exists)
@@ -6377,6 +6399,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let crashIdentifier = crashRow.identifier
         attachRecordingIdentity(crashIdentifier, name: "Crash-open local source identity")
+        if let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty {
+            XCTAssertTrue(crashRow.staticTexts[sessionTitle].exists,
+                          "The Session title must be saved before Stop so interrupted takes stay recognizable.")
+        }
         app.terminate()
 
         let offlineApp = XCUIApplication()
@@ -6418,8 +6444,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         tapRootTab("Library", in: app)
         selectRecordingLibrary(in: app)
-        XCTAssertTrue(app.descendants(matching: .any)[safeIdentifier].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.descendants(matching: .any)[crashIdentifier].waitForExistence(timeout: 12))
+        // Library is a lazy List, newest take first. A recovered take can push
+        // the earlier source below the viewport; waiting cannot materialize it.
+        XCTAssertTrue(
+            waitForRuntimeElement(app.descendants(matching: .any)[safeIdentifier].firstMatch, in: app),
+            "The finalized source must remain in Library after reconnecting to Nest."
+        )
+        XCTAssertTrue(
+            waitForRuntimeElementAbove(app.descendants(matching: .any)[crashIdentifier].firstMatch, in: app),
+            "The interrupted source must remain in Library after reconnecting to Nest."
+        )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists, "An orphaned take must not relaunch as an active recording.")
 
         tapRootTab("Sessions", in: app)
