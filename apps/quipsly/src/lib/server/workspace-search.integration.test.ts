@@ -148,4 +148,40 @@ async function seed(tx: Prisma.TransactionClient) {
     await f.tx.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: f.engagement.id, userId: f.users.client.id } }, data: { status: "REMOVED" } });
     expect((await f.read("client", f.tag.id)).tagFocus?.status).toBe("not-found");
   }));
+
+  it("finds shared tasks by their colors without exposing private tasks or tag administration", async () => withSearchFixture(async f => {
+    await f.tx.studioTag.update({ where: { id: f.tag.id }, data: { description: "Private catalog metadata" } });
+    const sharedTask = await f.tx.actionItem.create({ data: { projectId: f.project.id, engagementId: f.engagement.id,
+      assignedUserId: f.users.coach.id, title: "Collect three ideas", sourceJson: { visibility: "engagement-shared" },
+      tagLinks: { create: { tagId: f.tag.id } } } });
+    await f.tx.actionItem.create({ data: { projectId: f.project.id, engagementId: f.engagement.id,
+      assignedUserId: f.users.coach.id, title: "Private planning", sourceJson: { visibility: "AUTHOR_PRIVATE" },
+      tagLinks: { create: { tagId: f.tag.id } } } });
+    const read = (actor: keyof typeof f.users, query: string) => searchWorkspace(f.tx, {
+      actorUserId: f.users[actor].id, query, visibleProjects: [],
+    });
+    for (const actor of ["client", "observer"] as const) {
+      const result = await read(actor, "Reflection");
+      expect(result.tasks.map(task => task.id)).toEqual([sharedTask.id]);
+      expect(result.tasks[0]).toMatchObject({ project: null, tagLinks: [{ tag: { id: f.tag.id, hexColor: "#506b46" } }] });
+      expect(JSON.stringify(result)).not.toContain("Private catalog metadata");
+      expect((await read(actor, "catalog metadata")).tasks).toEqual([]);
+    }
+    for (const actor of ["nestOwner", "guest", "outsider"] as const) {
+      expect((await read(actor, "Reflection")).tasks).toEqual([]);
+    }
+    await f.tx.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: f.engagement.id, userId: f.users.client.id } }, data: { status: "REMOVED" } });
+    expect((await read("client", "Reflection")).tasks).toEqual([]);
+  }));
+
+  it("still finds attached work beyond the bounded tag lookup", async () => withSearchFixture(async f => {
+    const data = Array.from({ length: 501 }, (_, index) => ({ id: `${f.tag.id}-bulk-${index}`, projectId: f.project.id,
+      slug: `overflow-${index}`, label: `Overflow label ${index}` }));
+    await f.tx.studioTag.createMany({ data });
+    await f.tx.callRoomTagLink.create({ data: { roomId: f.publicRoom.id, tagId: data[500].id } });
+    const result = await searchWorkspace(f.tx, { actorUserId: f.users.coach.id, query: "Overflow label",
+      visibleProjects: [{ id: f.project.id, slug: f.project.slug, name: f.project.name, role: "OWNER" }] });
+    expect(result.sessions.map(room => room.id)).toEqual([f.publicRoom.id]);
+    expect(result.tags).toHaveLength(10);
+  }));
 });

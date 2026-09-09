@@ -11,6 +11,7 @@ import { sessionActorAccessWhere } from "./session-access";
 import { personalOrSharedCoachingGoalAccessWhere } from "./coaching-work-access";
 
 const RESULT_LIMIT = 10;
+const TAG_MATCH_ID_LIMIT = 500;
 const TAG_RESULT_SELECT = {
   id: true,
   projectId: true,
@@ -172,7 +173,7 @@ export async function searchWorkspace(
       }
     : null;
   if (resolvedTag) query = resolvedTag.label;
-  const visibleTagMatch: Prisma.StudioTagWhereInput = {
+  const visibleTagTextMatch: Prisma.StudioTagWhereInput = {
     OR: [
       { AND: [{ projectId: { in: projectIds } }, tagTextWhere(query)] },
       { AND: [visibleTagAccess, { OR: [
@@ -181,20 +182,41 @@ export async function searchWorkspace(
       ] }] },
     ],
   };
+  // Resolve this independent predicate once, instead of expanding the same
+  // membership joins inside every record's text/tag OR. Bound the ID list;
+  // broad searches fall back to the predicate, never a truncated set of tags.
+  const matchingTags = focusedTagId ? null : await prisma.studioTag.findMany({
+    where: visibleTagTextMatch,
+    select: { id: true },
+    take: TAG_MATCH_ID_LIMIT + 1,
+  });
+  const visibleTagMatch: Prisma.StudioTagWhereInput = matchingTags && matchingTags.length <= TAG_MATCH_ID_LIMIT
+    ? { id: { in: matchingTags.map(tag => tag.id) } }
+    : visibleTagTextMatch;
+  // For a task/goal that already passed its own access check, an attached tag
+  // is visible by definition. Do not recursively re-run task and goal access
+  // through that same tag. Catalog-only metadata still requires Nest access.
+  const assignedWorkTagMatch: Prisma.StudioTagWhereInput = {
+    OR: [
+      { AND: [{ projectId: { in: projectIds } }, tagTextWhere(query)] },
+      { label: { contains: query, mode: "insensitive" } },
+      { slug: { contains: query, mode: "insensitive" } },
+    ],
+  };
   const exactTaskTagMatch = focusedTagId
     ? [{ tagLinks: { some: { tagId: focusedTagId } } } satisfies Prisma.ActionItemWhereInput]
     : null;
   const taskContentMatches: Prisma.ActionItemWhereInput[] = exactTaskTagMatch ?? [
     { title: { contains: query, mode: "insensitive" } },
     { detail: { contains: query, mode: "insensitive" } },
-    { tagLinks: { some: { tag: visibleTagMatch } } },
+    { tagLinks: { some: { tag: assignedWorkTagMatch } } },
   ];
   const goalContentMatches: Prisma.GoalWhereInput[] = focusedTagId ? [
     { tagLinks: { some: { tagId: focusedTagId } } },
   ] : [
     { title: { contains: query, mode: "insensitive" } },
     { description: { contains: query, mode: "insensitive" } },
-    { tagLinks: { some: { tag: visibleTagMatch } } },
+    { tagLinks: { some: { tag: assignedWorkTagMatch } } },
   ];
   const sessionContentMatches: Prisma.CallRoomWhereInput[] = focusedTagId ? [
     { tagLinks: { some: { tagId: focusedTagId } } },
@@ -228,12 +250,12 @@ export async function searchWorkspace(
     ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentWhereInput] : []),
     ...(projectIds.length ? [{ taggedSpans: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentWhereInput] : []),
   ];
-  const visibleAssignedTags = {
-    where: { tag: visibleTagAccess },
+  const assignedWorkTags = {
     orderBy: { createdAt: "asc" as const },
     take: 12,
     select: { tag: { select: { id: true, slug: true, label: true, hexColor: true, isActive: true } } },
   };
+  const visibleAssignedTags = { ...assignedWorkTags, where: { tag: visibleTagAccess } };
   const [taskRows, goalRows, sessionRows, noteRows, sources, documents, annotations, mediaClips, tagRows] = await Promise.all([
     prisma.actionItem.findMany({
       where: { AND: [taskAccess, { OR: taskContentMatches }] },
@@ -242,7 +264,7 @@ export async function searchWorkspace(
         id: true, title: true, detail: true, status: true, dueAt: true, sourceJson: true,
         room: { select: { id: true, title: true } },
         project: { select: { id: true, name: true, slug: true } },
-        tagLinks: visibleAssignedTags,
+        tagLinks: assignedWorkTags,
       },
     }),
     prisma.goal.findMany({
@@ -252,7 +274,7 @@ export async function searchWorkspace(
         id: true, title: true, description: true, status: true,
         project: { select: { id: true, name: true, slug: true } },
         room: { select: { title: true } },
-        tagLinks: visibleAssignedTags,
+        tagLinks: assignedWorkTags,
       },
     }),
     prisma.callRoom.findMany({

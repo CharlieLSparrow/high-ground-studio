@@ -42,7 +42,10 @@ describe("permission-filtered workspace search", () => {
     expect(JSON.stringify(actionItemFindMany.mock.calls[0][0].where)).toContain("assignedUserId");
     expect(JSON.stringify(actionItemFindMany.mock.calls[0][0].where)).toContain("user-1");
     expect(JSON.stringify(actionItemFindMany.mock.calls[0][0].where)).toContain("tagLinks");
-    expect(JSON.stringify(actionItemFindMany.mock.calls[0][0].select)).toContain("project-1");
+    expect(actionItemFindMany.mock.calls[0][0].select.tagLinks).toEqual({
+      orderBy: { createdAt: "asc" }, take: 12,
+      select: { tag: { select: { id: true, slug: true, label: true, hexColor: true, isActive: true } } },
+    });
     expect(JSON.stringify(noteFindMany.mock.calls[0][0].where)).toContain("user-1");
     expect(JSON.stringify(noteFindMany.mock.calls[0][0].where)).toContain("projectId");
     expect(JSON.stringify(noteFindMany.mock.calls[0][0].where)).toContain("tagLinks");
@@ -267,5 +270,23 @@ describe("permission-filtered workspace search", () => {
 
   it("normalizes whitespace and caps query bytes exposed to Prisma", () => {
     expect(normalizeWorkspaceSearchQuery(`  ${"word ".repeat(80)}  `).length).toBe(120);
+  });
+
+  it.each([0, 1, 500, 501])("bounds matching tag IDs without truncating %i matches", async (count) => {
+    const matching = Array.from({ length: count }, (_, index) => ({ id: `tag-${index}` }));
+    const studioTag = { findMany: jest.fn().mockResolvedValueOnce(matching).mockResolvedValue([]) };
+    const prisma = Object.fromEntries([
+      "actionItem", "goal", "callRoom", "coachingNote", "studioSourceUnit", "studioDocument", "studioSourceAnnotation",
+    ].map(model => [model, { findMany: jest.fn().mockResolvedValue([]) }])) as any;
+    prisma.studioTag = studioTag;
+    await searchWorkspace(prisma, { actorUserId: "user-1", query: "Reflection",
+      visibleProjects: [{ id: "project-1", slug: "coaching", name: "Coaching" }] });
+    const lookup = studioTag.findMany.mock.calls[0][0];
+    expect(lookup).toMatchObject({ select: { id: true }, take: 501 });
+    expect(JSON.stringify(lookup.where)).toContain("user-1");
+    const match = prisma.callRoom.findMany.mock.calls[0][0].where.AND[1].OR.at(-1).tagLinks.some.tag;
+    expect(match).toEqual(count <= 500 ? { id: { in: matching.map(tag => tag.id) } } : lookup.where);
+    // Result display limits cannot become a limit on which tags match content.
+    expect(studioTag.findMany.mock.calls[1][0]).toMatchObject({ where: { isActive: true, AND: [match] }, take: 10 });
   });
 });
