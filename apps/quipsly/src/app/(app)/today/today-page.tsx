@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, Inbox, ListChecks, Radio, Target } from "lucide-react";
+import { CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, ListChecks, Radio, Target } from "lucide-react";
+import { tagChipColors } from "@/lib/tag-color";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Today - Quipsly",
-  description: "A bounded plan of the next session, chosen focus, committed follow-through, and active goals.",
+  description: "Your upcoming session, daily plan, tasks, and goals in one place.",
 };
 
 function formatDateTime(value: string) {
@@ -103,7 +104,7 @@ export async function loadToday(userId: string, actorEmail: string) {
         project: { select: { id: true, name: true, slug: true } },
         tagLinks: {
           orderBy: { tag: { label: "asc" } },
-          select: { tag: { select: { id: true, slug: true, label: true } } },
+          select: { tag: { select: { id: true, slug: true, label: true, hexColor: true } } },
         },
       },
     }),
@@ -119,7 +120,7 @@ export async function loadToday(userId: string, actorEmail: string) {
         project: { select: { id: true, name: true, slug: true } },
         tagLinks: {
           orderBy: { tag: { label: "asc" } },
-          select: { tag: { select: { id: true, slug: true, label: true } } },
+          select: { tag: { select: { id: true, slug: true, label: true, hexColor: true } } },
         },
       },
     }),
@@ -144,7 +145,7 @@ export async function loadToday(userId: string, actorEmail: string) {
             projectId: true,
             tagLinks: {
               orderBy: { tag: { label: "asc" } },
-              select: { tag: { select: { id: true, slug: true, label: true } } },
+              select: { tag: { select: { id: true, slug: true, label: true, hexColor: true } } },
             },
           },
         },
@@ -156,7 +157,7 @@ export async function loadToday(userId: string, actorEmail: string) {
             projectId: true,
             tagLinks: {
               orderBy: { tag: { label: "asc" } },
-              select: { tag: { select: { id: true, slug: true, label: true } } },
+              select: { tag: { select: { id: true, slug: true, label: true, hexColor: true } } },
             },
           },
         },
@@ -208,88 +209,92 @@ export async function loadToday(userId: string, actorEmail: string) {
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold leading-6 text-[#765f40]">{children}</div>;
+  return <div className="rounded-2xl border border-dashed border-border bg-card p-5 text-sm font-semibold leading-6 text-foreground">{children}</div>;
 }
 
-function TagPills({ tags }: { tags: TodayTag[] }) {
+export function TagPills({ tags }: { tags: TodayTag[] }) {
   if (!tags.length) return null;
   return (
     <ul aria-label="Tags" className="mt-2 flex flex-wrap gap-1.5">
       {tags.map((tag) => (
-        <li key={tag.id} className="rounded-full border border-[#d8c7a7] bg-white px-2.5 py-1 text-[10px] font-black text-[#6f542f]">
-          {tag.label}
+        <li key={tag.id}>
+          <Link href={`/find?tag=${encodeURIComponent(tag.id)}`} style={tagChipColors(tag.hexColor)}
+            className="inline-flex min-h-8 max-w-full items-center rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-foreground [overflow-wrap:anywhere] hover:underline"
+            aria-label={`Find work tagged ${tag.label}`}>{tag.label}</Link>
         </li>
       ))}
     </ul>
   );
 }
 
-export default async function TodayPage() {
-  const session = await auth();
-  if (!session?.user?.id) return <StudioAccessShell mode="signed-out" redirectTo="/today" />;
-
-  try {
-    const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
-    const today = await loadToday(session.user.id, actorEmail);
+export function TodayContent({ today }: { today: ReturnType<typeof buildTodayView> }) {
     return (
-      <main className="mx-auto max-w-[1320px] space-y-7 px-2 py-2 text-[#3d3122]">
-        <header className="overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#f4d799,_transparent_42%),linear-gradient(135deg,#fffaf0,#f8edda)] p-6 shadow-sm md:p-8">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9a6b2f]">Today</p>
-          <h1 className="mt-2 max-w-4xl font-serif text-4xl font-black tracking-tight md:text-5xl">Do the next useful thing. Keep the rest quiet.</h1>
-          <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-[#715a3e]">This is a bounded continuation surface: one upcoming Session, work you deliberately planned, at most three evidence-backed attention items, and two active goals. It is not an accumulated guilt list.</p>
-          <nav aria-label="Today actions" className="mt-6 flex flex-wrap gap-2">
-            <Link href="/schedule" className="rounded-full bg-[#3e2f21] px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white">Plan in Calendar</Link>
-            <Link href="/inbox" className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wide text-[#5b472f]">Review Inbox</Link>
-            <Link href="/work" className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wide text-[#5b472f]">Open all Work</Link>
+      <main className="mx-auto max-w-[1320px] space-y-7 px-2 py-2 text-foreground">
+        <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm md:p-6">
+          <div className="min-w-0">
+            <h1 className="font-serif text-3xl font-semibold tracking-tight">Today</h1>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">Your sessions and next steps, in one place.</p>
+          </div>
+          <nav aria-label="Today actions" className="flex flex-wrap gap-2">
+            <Link href="/schedule" className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground">Calendar</Link>
+            <Link href="/inbox" className="inline-flex min-h-11 items-center rounded-full border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground">Inbox</Link>
+            <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground">All tasks & goals</Link>
           </nav>
         </header>
 
         {today.clientFollowUpAttention ? (
-          <section aria-labelledby="today-follow-up" className="rounded-3xl border border-emerald-300 bg-emerald-50/70 p-5 shadow-sm md:p-6" data-testid="today-client-follow-up-attention">
+          <section aria-labelledby="today-follow-up" className="rounded-3xl border border-border bg-muted/50 p-5 shadow-sm md:p-6" data-testid="today-client-follow-up-attention">
             <div className="flex items-start gap-3">
-              <ClipboardCheck className="mt-1 text-emerald-800" aria-hidden="true" />
+              <ClipboardCheck className="mt-1 text-primary" aria-hidden="true" />
               <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">New from {today.clientFollowUpAttention.coachLabel}</p>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">New from {today.clientFollowUpAttention.coachLabel}</p>
                 <h2 id="today-follow-up" className="mt-1 font-serif text-3xl font-black">Coaching follow-up</h2>
               </div>
             </div>
-            <article className="mt-4 rounded-2xl border border-emerald-200 bg-white p-5">
-              <p className="text-xs font-black uppercase tracking-wide text-emerald-800">{today.clientFollowUpAttention.sessionTitle} · revision {today.clientFollowUpAttention.revision}</p>
+            <article className="mt-4 rounded-2xl border border-border bg-card p-5">
+              <p className="text-xs font-black uppercase tracking-wide text-primary">{today.clientFollowUpAttention.sessionTitle}</p>
               <h3 className="mt-2 text-xl font-black">{today.clientFollowUpAttention.title}</h3>
-              <p className="mt-2 text-sm font-semibold text-[#765f40]">Released {formatDateTime(today.clientFollowUpAttention.releasedAt)} · {today.clientFollowUpAttention.selectedCount} reviewed record{today.clientFollowUpAttention.selectedCount === 1 ? "" : "s"}</p>
-              <Link href={today.clientFollowUpAttention.href} className="mt-4 inline-flex min-h-11 items-center rounded-full bg-emerald-900 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white">Open follow-up</Link>
-              <p className="mt-3 text-xs font-semibold leading-5 text-emerald-950">Opening the Session does not complete a task or goal. Confirm the exact snapshot there after you have read it.</p>
+              <p className="mt-2 text-sm font-semibold text-foreground">Shared {formatDateTime(today.clientFollowUpAttention.releasedAt)} · {today.clientFollowUpAttention.selectedCount} item{today.clientFollowUpAttention.selectedCount === 1 ? "" : "s"}</p>
+              <Link href={today.clientFollowUpAttention.href} className="mt-4 inline-flex min-h-11 items-center rounded-full bg-primary px-4 py-2.5 text-xs font-black uppercase tracking-wide text-primary-foreground">Open follow-up</Link>
+              <p className="mt-3 text-xs font-semibold leading-5 text-primary">Your session notes and next steps are together in the shared space.</p>
             </article>
           </section>
         ) : null}
 
-        <section aria-labelledby="today-session" className="rounded-3xl border border-sky-200 bg-sky-50/55 p-5 shadow-sm md:p-6">
-          <div className="flex items-start gap-3"><Radio className="mt-1 text-sky-700" aria-hidden="true" /><div className="min-w-0"><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Up next</p><h2 id="today-session" className="mt-1 font-serif text-3xl font-black">Session</h2></div></div>
-          {today.nextSession ? <article className="mt-4 rounded-2xl border border-sky-200 bg-white p-5"><h3 className="text-xl font-black">{today.nextSession.title}</h3><p className="mt-2 text-sm font-bold text-[#765f40]">{formatScheduleDateTime(today.nextSession.scheduledStart, today.nextSession.scheduledTimezone)}</p>{today.nextSession.project && <p className="mt-1 text-xs font-bold text-sky-800">Nest: {today.nextSession.project.name}</p>}<Link href={`/sessions/${encodeURIComponent(today.nextSession.id)}`} className="mt-4 inline-flex rounded-full bg-sky-800 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white">Open Session</Link></article> : <Empty>No accessible upcoming Session is scheduled. Quipsly has not invented one to fill the card.</Empty>}
+        <section aria-labelledby="today-session" className="rounded-3xl border border-border bg-muted/50 p-5 shadow-sm md:p-6">
+          <div className="flex items-start gap-3"><Radio className="mt-1 text-primary" aria-hidden="true" /><div className="min-w-0"><p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Up next</p><h2 id="today-session" className="mt-1 font-serif text-3xl font-black">Session</h2></div></div>
+          {today.nextSession ? <article className="mt-4 rounded-2xl border border-border bg-card p-5"><h3 className="text-xl font-black">{today.nextSession.title}</h3><p className="mt-2 text-sm font-bold text-foreground">{formatScheduleDateTime(today.nextSession.scheduledStart, today.nextSession.scheduledTimezone)}</p>{today.nextSession.project && <p className="mt-1 text-xs font-bold text-primary">Nest: {today.nextSession.project.name}</p>}<Link href={`/sessions/${encodeURIComponent(today.nextSession.id)}`} className="mt-4 inline-flex rounded-full bg-primary px-4 py-2.5 text-xs font-black uppercase tracking-wide text-primary-foreground">Open Session</Link></article> : <Empty>No upcoming sessions. Schedule one from your calendar.</Empty>}
         </section>
 
-        <div className="grid gap-7 xl:grid-cols-2">
-          <section aria-labelledby="today-plan" className="rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm md:p-6">
-            <div className="flex items-start gap-3"><CalendarClock className="mt-1 text-emerald-700" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">Chosen focus</p><h2 id="today-plan" className="mt-1 font-serif text-3xl font-black">Your plan</h2></div></div>
-            {today.planBlocks.length ? <ol className="mt-4 space-y-3">{today.planBlocks.map((block) => <li key={block.id} className="rounded-2xl border border-emerald-100 bg-emerald-50/45 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-emerald-800">{formatTime(block.startsAt, block.timezone)}–{formatTime(block.endsAt, block.timezone)} · {block.targetType}</p><Link href={`/work?${block.targetType === "task" ? "task" : "goal"}=${encodeURIComponent(block.targetId)}`} className="mt-1 block text-base font-black hover:underline">{block.title}</Link><TagPills tags={block.tags} /></div>{block.status === "COMPLETED" && <CheckCircle2 className="text-emerald-700" aria-label="Completed" />}</div></li>)}</ol> : <Empty>Nothing has been deliberately placed on Today yet. Use Calendar to choose a small, honest plan.</Empty>}
+        <div className="grid gap-7 md:grid-cols-2">
+          <section aria-labelledby="today-plan" className="rounded-3xl border border-border bg-card p-5 shadow-sm md:p-6">
+            <div className="flex items-start gap-3"><CalendarClock className="mt-1 text-primary" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-primary">On your calendar</p><h2 id="today-plan" className="mt-1 font-serif text-3xl font-black">Your plan</h2></div></div>
+            {today.planBlocks.length ? <ol className="mt-4 space-y-3">{today.planBlocks.map((block) => <li key={block.id} className="rounded-2xl border border-border bg-muted/50 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-primary">{formatTime(block.startsAt, block.timezone)}–{formatTime(block.endsAt, block.timezone)} · {block.targetType}</p><Link href={`/work?${block.targetType === "task" ? "task" : "goal"}=${encodeURIComponent(block.targetId)}`} className="mt-1 block text-base font-black hover:underline">{block.title}</Link><TagPills tags={block.tags} /></div>{block.status === "COMPLETED" && <CheckCircle2 className="text-primary" aria-label="Completed" />}</div></li>)}</ol> : <Empty>Your day is open. Add time for a task or goal in Calendar.</Empty>}
           </section>
 
-          <section aria-labelledby="today-attention" className="rounded-3xl border border-amber-200 bg-white p-5 shadow-sm md:p-6">
-            <div className="flex items-start gap-3"><ListChecks className="mt-1 text-amber-700" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">Needs a decision</p><h2 id="today-attention" className="mt-1 font-serif text-3xl font-black">Committed work</h2></div></div>
-            {today.tasks.length ? <ul className="mt-4 space-y-3">{today.tasks.map((task) => <li key={task.id} className="rounded-2xl border border-amber-100 bg-amber-50/45 p-4"><p className="text-[10px] font-black uppercase tracking-wide text-amber-800">{task.reason}</p><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="mt-1 block text-base font-black hover:underline">{task.title}</Link>{task.reminderAt && <p className="mt-1 text-xs font-black text-violet-800">Reminder {formatDateTime(task.reminderAt)}</p>}<TagPills tags={task.tags} />{task.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {task.project.name}</p>}{task.sessionTitle && <p className="mt-1 text-xs font-bold text-[#806a4d]">Session: {task.sessionTitle}</p>}</li>)}</ul> : <Empty>No committed work currently meets the bounded attention rules. Ordinary open tasks remain in Work.</Empty>}
+          <section aria-labelledby="today-attention" className="rounded-3xl border border-border bg-card p-5 shadow-sm md:p-6">
+            <div className="flex items-start gap-3"><ListChecks className="mt-1 text-primary" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Next steps</p><h2 id="today-attention" className="mt-1 font-serif text-3xl font-black">Tasks</h2></div></div>
+            {today.tasks.length ? <ul className="mt-4 space-y-3">{today.tasks.map((task) => <li key={task.id} className="rounded-2xl border border-border bg-muted/50 p-4"><p className="text-[10px] font-black uppercase tracking-wide text-primary">{task.reason}</p><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="mt-1 block text-base font-black hover:underline">{task.title}</Link>{task.reminderAt && <p className="mt-1 text-xs font-black text-primary">Reminder {formatDateTime(task.reminderAt)}</p>}<TagPills tags={task.tags} />{task.project && <p className="mt-1 text-xs font-bold text-foreground">Nest: {task.project.name}</p>}{task.sessionTitle && <p className="mt-1 text-xs font-bold text-foreground">Session: {task.sessionTitle}</p>}</li>)}</ul> : <Empty>No tasks due soon. You can browse all your tasks or add a new one.</Empty>}
           </section>
         </div>
 
-        <section aria-labelledby="today-goals" className="rounded-3xl border border-violet-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="flex items-start gap-3"><Target className="mt-1 text-violet-700" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-violet-800">Direction, not decoration</p><h2 id="today-goals" className="mt-1 font-serif text-3xl font-black">Active goals</h2></div></div>
-          {today.goals.length ? <div className="mt-4 grid gap-3 md:grid-cols-2">{today.goals.map((goal) => <article key={goal.id} className="rounded-2xl border border-violet-100 bg-violet-50/45 p-4"><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="text-lg font-black hover:underline">{goal.title}</Link><TagPills tags={goal.tags ?? []} /><p className="mt-2 text-xs font-bold text-violet-800">{goal.targetAt ? `Target ${formatDateTime(goal.targetAt)}` : "No target date inferred"}</p>{goal.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {goal.project.name}</p>}</article>)}</div> : <Empty>No actor-owned active goals are available.</Empty>}
+        <section aria-labelledby="today-goals" className="rounded-3xl border border-border bg-card p-5 shadow-sm md:p-6">
+          <div className="flex items-start gap-3"><Target className="mt-1 text-primary" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Keep going</p><h2 id="today-goals" className="mt-1 font-serif text-3xl font-black">Active goals</h2></div></div>
+          {today.goals.length ? <div className="mt-4 grid gap-3 md:grid-cols-2">{today.goals.map((goal) => <article key={goal.id} className="rounded-2xl border border-border bg-muted/50 p-4"><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="text-lg font-black hover:underline">{goal.title}</Link><TagPills tags={goal.tags ?? []} /><p className="mt-2 text-xs font-bold text-primary">{goal.targetAt ? `Target ${formatDateTime(goal.targetAt)}` : "No target date"}</p>{goal.project && <p className="mt-1 text-xs font-bold text-foreground">Nest: {goal.project.name}</p>}</article>)}</div> : <Empty>What would you like to work toward? Add a goal to get started.</Empty>}
         </section>
 
-        <footer className="rounded-2xl border border-[#e4d3b3] bg-[#fffaf0] p-5 text-xs font-semibold leading-5 text-[#765f40]">Today is read-only planning context. It excludes unreviewed transcript proposals and never schedules, messages, assigns, completes, delivers, or publishes anything by being opened.</footer>
       </main>
     );
+}
+
+export default async function TodayPage() {
+  const session = await auth();
+  if (!session?.user?.id) return <StudioAccessShell mode="signed-out" redirectTo="/today" />;
+  try {
+    const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
+    return <TodayContent today={await loadToday(session.user.id, actorEmail)} />;
   } catch (error) {
     console.error("[today] failed to load actor-scoped continuation", error);
-    return <main className="mx-auto grid min-h-[70vh] max-w-3xl place-items-center px-4 py-10 text-[#3d3122]"><section role="status" aria-label="Today unavailable" className="w-full rounded-3xl border border-amber-200 bg-amber-50 p-7"><CircleAlert className="h-8 w-8 text-amber-700" aria-hidden="true" /><p className="mt-5 text-xs font-black uppercase tracking-wide text-amber-800">Private read unavailable</p><h1 className="mt-2 font-serif text-3xl font-black">Today could not be verified</h1><p className="mt-3 font-semibold text-[#765f40]">No sample work is standing in, and no saved record was changed.</p><Link href="/today" className="mt-5 inline-flex rounded-full border border-amber-300 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wide text-amber-900">Retry read</Link></section></main>;
+    return <main className="mx-auto grid min-h-[70vh] max-w-3xl place-items-center px-4 py-10 text-foreground"><section role="status" aria-label="Today unavailable" className="w-full rounded-3xl border border-border bg-muted/50 p-7"><CircleAlert className="h-8 w-8 text-primary" aria-hidden="true" /><p className="mt-5 text-xs font-black uppercase tracking-wide text-primary">Connection problem</p><h1 className="mt-2 font-serif text-3xl font-black">Couldn’t load your day</h1><p className="mt-3 font-semibold text-foreground">Your work is still saved. Please try again.</p><Link href="/today" className="mt-5 inline-flex rounded-full border border-border bg-card px-5 py-2.5 text-xs font-black uppercase tracking-wide text-primary">Try again</Link></section></main>;
   }
 }

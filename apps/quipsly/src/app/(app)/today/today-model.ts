@@ -17,6 +17,7 @@ export type TodayTag = {
   id: string;
   slug: string;
   label: string;
+  hexColor?: string | null;
 };
 
 export type TodayTask = {
