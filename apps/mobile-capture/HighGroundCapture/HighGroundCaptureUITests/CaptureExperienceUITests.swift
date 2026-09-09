@@ -5129,6 +5129,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     private func openTranscriptPassageCreationMenu() {
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkComposer"].firstMatch.waitForNonExistence(timeout: 5))
         let create = app.buttons["CaptureTranscriptCreateFromPassage_preview-segment"].firstMatch
         reveal(create)
         XCTAssertTrue(create.waitForExistence(timeout: 5))
@@ -5168,6 +5169,9 @@ final class CaptureExperienceUITests: XCTestCase {
             action.tap()
             let field = app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 5))
+            XCTAssertTrue(field.isHittable, "Opening work must present the editor in view, without scrolling the transcript to find it.")
+            XCTAssertTrue(app.buttons["CaptureTranscriptCancel\(kind)Button"].isHittable,
+                "Close must stay available in the sheet toolbar.")
             XCTAssertFalse((field.value as? String ?? "").isEmpty, "The passage should seed useful work, not an empty form.")
             for otherKind in ["Note", "Task", "Goal"] where otherKind != kind {
                 XCTAssertFalse(app.textFields["CaptureTranscript\(otherKind)TitleField"].exists,
@@ -5576,10 +5580,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptNoteKindPicker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptNoteVisibilityPicker"].exists)
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateNoteButton"].isEnabled)
-        let noteBoundary = app.staticTexts["CaptureTranscriptNoteBoundary"]
+        let noteBoundary = app.staticTexts["CaptureTranscriptNoteAudienceBoundary"]
         reveal(noteBoundary)
-        XCTAssertTrue(noteBoundary.label.contains("Saved privately by default"))
-        XCTAssertTrue(noteBoundary.label.contains("link back to this transcript moment"))
+        XCTAssertEqual(noteBoundary.label, "Only you.", "A new note should start private without an approval step.")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkDraftSource"].exists,
+            "The composer should retain an identifiable transcript source.")
         app.buttons["CaptureTranscriptCancelNoteButton"].tap()
 
         openTranscriptPassageCreationMenu()
@@ -5609,7 +5614,7 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(goalBoundary)
         XCTAssertTrue(goalBoundary.isHittable, "The concise goal ownership and source-link detail should remain readable.")
         XCTAssertTrue(goalBoundary.label.contains("Owned by you"))
-        XCTAssertTrue(goalBoundary.label.contains("link back to this transcript moment"))
+        XCTAssertTrue(goalBoundary.label.contains("linked to this passage"))
 
     }
 

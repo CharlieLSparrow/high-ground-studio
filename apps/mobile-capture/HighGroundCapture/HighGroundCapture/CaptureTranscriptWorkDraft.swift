@@ -1,8 +1,9 @@
 import CryptoKit
 import Foundation
 
-enum CaptureTranscriptWorkKind: String, Codable, CaseIterable {
+enum CaptureTranscriptWorkKind: String, Codable, CaseIterable, Identifiable {
     case note, task, goal
+    var id: String { rawValue }
 }
 
 /// Unsent work and its retry identity, not another copy of canonical work.

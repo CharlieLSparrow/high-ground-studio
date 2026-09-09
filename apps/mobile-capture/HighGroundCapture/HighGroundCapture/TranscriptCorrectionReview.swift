@@ -7123,10 +7123,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .accessibilityIdentifier("CaptureTranscriptEditRecording_\(segment.id)")
             }
 
-            if creatingWork == .note { transcriptNoteComposer }
-            if creatingWork == .task { transcriptTaskComposer }
-            if creatingWork == .goal { transcriptGoalComposer }
-            if let error = workDraftError ?? (creatingWork != nil ? client.errorMessage : nil) {
+            if creatingWork == nil, let error = workDraftError {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -7155,6 +7152,19 @@ private struct CaptureTranscriptSegmentCard: View {
         .reviewCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptSegment_\(segment.id)")
+        .sheet(item: $creatingWork, onDismiss: { persistWorkDrafts() }) { kind in
+            CaptureTranscriptWorkComposer(
+                kind: kind,
+                draft: Binding(get: { workDrafts[kind] }, set: { workDrafts[kind] = $0 }),
+                sourceLabel: "\(sessionTitle)\n\(segment.speakerLabel ?? "Speaker") · \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp)",
+                canUseProjectTeamNotes: canUseProjectTeamNotes,
+                isSaving: client.isMutating,
+                canSave: !previewOnly && !decisionsLocked,
+                error: workDraftError ?? client.errorMessage,
+                onClose: closeWorkDraft,
+                onSave: { saveWorkDraft(kind) }
+            )
+        }
         .onChange(of: requestedEditingSegmentID, initial: true) { _, requestedID in
             guard requestedID == segment.id else { return }
             beginEditing()
@@ -7606,211 +7616,38 @@ private struct CaptureTranscriptSegmentCard: View {
         .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var transcriptTaskComposer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if creatingWork == .task {
-                Label("Task", systemImage: "checklist")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.ink)
-                TextField("Task title", text: $workDrafts.task.title, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptTaskTitleField")
-                TextField("Useful detail (optional)", text: $workDrafts.task.body, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptTaskBodyField")
-                HStack {
-                    Button("Create my task") {
-                        let submitted = workDrafts.task
-                        let submittedScope = workDraftScope
-                        persistWorkDrafts()
-                        Task {
-                            let saved = await client.createTask(
-                                roomID: roomID,
-                                segment: segment,
-                                title: submitted.title,
-                                detail: submitted.body,
-                                clientRequestID: submitted.requestID,
-                                previewOnly: previewOnly
-                            )
-                            if saved, workDraftScope == submittedScope {
-                                workDrafts.acknowledge(submitted, kind: .task)
-                                creatingWork = nil
-                                persistWorkDrafts()
-                            }
-                        }
-                    }
-                    .captureProminentButton()
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: 44)
-                    .disabled(workDrafts.task.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
-                    .accessibilityIdentifier("CaptureTranscriptCreateTaskButton")
-                    Button("Close") { closeWorkDraft() }
-                        .buttonStyle(.bordered)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minHeight: 44)
-                        .disabled(client.isMutating)
-                        .accessibilityIdentifier("CaptureTranscriptCancelTaskButton")
-                        .accessibilityHint("Keeps your draft for this passage.")
-                }
-                Text("Assigned to you with a link back to this transcript moment.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+    private func saveWorkDraft(_ kind: CaptureTranscriptWorkKind) {
+        guard !client.isMutating else { return }
+        let submitted = workDrafts[kind]
+        let submittedScope = workDraftScope
+        persistWorkDrafts()
+        Task {
+            let saved: Bool
+            switch kind {
+            case .note:
+                saved = await client.createNote(
+                    roomID: roomID, segment: segment, title: submitted.title, body: submitted.body,
+                    kind: MobileSessionNoteKind(rawValue: submitted.noteKind) ?? .sessionNote,
+                    visibility: MobileSessionNoteVisibility(rawValue: submitted.visibility) ?? .authorPrivate,
+                    clientRequestID: submitted.requestID, previewOnly: previewOnly
+                )
+            case .task:
+                saved = await client.createTask(
+                    roomID: roomID, segment: segment, title: submitted.title, detail: submitted.body,
+                    clientRequestID: submitted.requestID, previewOnly: previewOnly
+                )
+            case .goal:
+                saved = await client.createGoal(
+                    roomID: roomID, segment: segment, title: submitted.title, description: submitted.body,
+                    clientRequestID: submitted.requestID, previewOnly: previewOnly
+                )
+            }
+            if saved, workDraftScope == submittedScope {
+                workDrafts.acknowledge(submitted, kind: kind)
+                creatingWork = nil
+                persistWorkDrafts()
             }
         }
-        .padding(12)
-        .background(CapturePalette.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
-        .disabled(client.isMutating)
-    }
-
-    private var transcriptGoalComposer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if creatingWork == .goal {
-                Label("Goal", systemImage: "target")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.plum)
-                TextField("Goal title", text: $workDrafts.goal.title, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptGoalTitleField")
-                TextField("Definition of progress (optional)", text: $workDrafts.goal.body, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptGoalBodyField")
-                HStack {
-                    Button("Create my goal") {
-                        let submitted = workDrafts.goal
-                        let submittedScope = workDraftScope
-                        persistWorkDrafts()
-                        Task {
-                            let saved = await client.createGoal(
-                                roomID: roomID,
-                                segment: segment,
-                                title: submitted.title,
-                                description: submitted.body,
-                                clientRequestID: submitted.requestID,
-                                previewOnly: previewOnly
-                            )
-                            if saved, workDraftScope == submittedScope {
-                                workDrafts.acknowledge(submitted, kind: .goal)
-                                creatingWork = nil
-                                persistWorkDrafts()
-                            }
-                        }
-                    }
-                    .captureProminentButton(fill: CapturePalette.plumFill)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: 44)
-                    .disabled(workDrafts.goal.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
-                    .accessibilityIdentifier("CaptureTranscriptCreateGoalButton")
-                    Button("Close") { closeWorkDraft() }
-                        .buttonStyle(.bordered)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minHeight: 44)
-                        .disabled(client.isMutating)
-                        .accessibilityIdentifier("CaptureTranscriptCancelGoalButton")
-                        .accessibilityHint("Keeps your draft for this passage.")
-                }
-                Text("Owned by you with a link back to this transcript moment.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureTranscriptGoalBoundary")
-            }
-        }
-        .padding(12)
-        .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
-        .disabled(client.isMutating)
-    }
-
-    private var transcriptNoteComposer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if creatingWork == .note {
-                Label("Session note", systemImage: "note.text.badge.plus")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.brass)
-                TextField("Note title (optional)", text: $workDrafts.note.title, axis: .vertical)
-                    .lineLimit(1...3)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptNoteTitleField")
-                TextField("Note", text: $workDrafts.note.body, axis: .vertical)
-                    .lineLimit(3...7)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptNoteBodyField")
-                Picker("Purpose", selection: Binding(get: { noteKind }, set: { workDrafts.note.noteKind = $0.rawValue })) {
-                    ForEach(availableNoteKinds) { kind in
-                        Text(kind.title).tag(kind)
-                    }
-                }
-                .pickerStyle(.menu)
-                .accessibilityIdentifier("CaptureTranscriptNoteKindPicker")
-                Picker("Audience", selection: Binding(get: { noteVisibility }, set: { workDrafts.note.visibility = $0.rawValue })) {
-                    ForEach(availableNoteVisibilities) { visibility in
-                        Text(visibility.title).tag(visibility)
-                    }
-                }
-                .pickerStyle(.menu)
-                .accessibilityIdentifier("CaptureTranscriptNoteVisibilityPicker")
-                Text(noteVisibility.boundary)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureTranscriptNoteAudienceBoundary")
-                HStack {
-                    Button("Save source-linked note") {
-                        let submitted = workDrafts.note
-                        let submittedScope = workDraftScope
-                        persistWorkDrafts()
-                        Task {
-                            let saved = await client.createNote(
-                                roomID: roomID,
-                                segment: segment,
-                                title: submitted.title,
-                                body: submitted.body,
-                                kind: MobileSessionNoteKind(rawValue: submitted.noteKind) ?? .sessionNote,
-                                visibility: MobileSessionNoteVisibility(rawValue: submitted.visibility) ?? .authorPrivate,
-                                clientRequestID: submitted.requestID,
-                                previewOnly: previewOnly
-                            )
-                            if saved, workDraftScope == submittedScope {
-                                workDrafts.acknowledge(submitted, kind: .note)
-                                creatingWork = nil
-                                persistWorkDrafts()
-                            }
-                        }
-                    }
-                    .captureProminentButton(fill: CapturePalette.warningFill)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: 44)
-                    .disabled(workDrafts.note.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
-                    .accessibilityIdentifier("CaptureTranscriptCreateNoteButton")
-                    Button("Close") { closeWorkDraft() }
-                        .buttonStyle(.bordered)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minHeight: 44)
-                        .accessibilityIdentifier("CaptureTranscriptCancelNoteButton")
-                        .disabled(client.isMutating)
-                        .accessibilityHint("Keeps your draft for this passage.")
-                }
-                Text("Saved privately by default with a link back to this transcript moment. You can change who sees it.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureTranscriptNoteBoundary")
-            }
-        }
-        .padding(12)
-        .background(CapturePalette.brass.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
-        .disabled(client.isMutating)
-    }
-
-    private var noteKind: MobileSessionNoteKind {
-        MobileSessionNoteKind(rawValue: workDrafts.note.noteKind) ?? .sessionNote
-    }
-
-    private var noteVisibility: MobileSessionNoteVisibility {
-        MobileSessionNoteVisibility(rawValue: workDrafts.note.visibility) ?? .authorPrivate
     }
 
     private func beginCreatingWork(_ kind: CaptureTranscriptWorkKind) {
@@ -7867,17 +7704,6 @@ private struct CaptureTranscriptSegmentCard: View {
         }
     }
 
-    private var availableNoteKinds: [MobileSessionNoteKind] {
-        canUseProjectTeamNotes
-            ? MobileSessionNoteKind.allCases
-            : MobileSessionNoteKind.allCases.filter { $0 != .production }
-    }
-
-    private var availableNoteVisibilities: [MobileSessionNoteVisibility] {
-        canUseProjectTeamNotes
-            ? MobileSessionNoteVisibility.allCases
-            : MobileSessionNoteVisibility.allCases.filter { $0 != .projectTeam }
-    }
 
     private func proposalReview(_ proposal: CaptureTranscriptCorrection) -> some View {
         VStack(alignment: .leading, spacing: 8) {

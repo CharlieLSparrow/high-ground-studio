@@ -3291,17 +3291,37 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(action.waitForExistence(timeout: 10))
             action.tap()
             XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].isHittable,
+                "The composer must open in view without a search through the transcript.")
+        }
+
+        func replaceDraftText(_ identifier: String, with text: String, in app: XCUIApplication) {
+            let field = app.textFields[identifier].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            field.tap()
+            if let existing = field.value as? String, !existing.isEmpty {
+                field.press(forDuration: 1.2)
+                let menuItem = app.menuItems["Select All"].firstMatch
+                let button = app.buttons["Select All"].firstMatch
+                if menuItem.waitForExistence(timeout: 3) { menuItem.tap() }
+                else {
+                    XCTAssertTrue(button.waitForExistence(timeout: 3), "Use the ordinary touch editing menu to select the complete draft.")
+                    button.tap()
+                }
+            }
+            // Exercise the touch editing workflow rather than Command-A, which
+            // the iPad simulator can deliver without selecting the field text.
+            app.typeText(text)
+            XCTAssertEqual(field.value as? String, text, "The editor must contain exactly the requested replacement, not appended or truncated text.")
         }
 
         var app = try launchSignedInCaptureApp(initialTab: "record")
         openTranscript(in: app)
         for kind in kinds {
             openDraft(kind, in: app)
-            replaceText(in: app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch,
-                with: "\(kind) draft \(proofID)", app: app, dismissKeyboardAfterEditing: false)
-            replaceText(in: app.textFields["CaptureTranscript\(kind)BodyField"].firstMatch,
-                with: "My own \(kind.lowercased()) writing from this passage, \(proofID).", app: app,
-                dismissKeyboardAfterEditing: false)
+            replaceDraftText("CaptureTranscript\(kind)TitleField", with: "\(kind) draft \(proofID)", in: app)
+            replaceDraftText("CaptureTranscript\(kind)BodyField",
+                with: "My own \(kind.lowercased()) writing from this passage, \(proofID).", in: app)
             if kind != "Goal" {
                 app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
                 XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].waitForNonExistence(timeout: 10))
@@ -3320,8 +3340,26 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "My own \(kind.lowercased()) writing from this passage, \(proofID).",
                 "Reopening must not replace writing with the original transcript.")
             attachRuntimeScreenshot(app, name: "\(kind) writing restored after signed-in relaunch")
-            app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
+            if kind == "Task" {
+                let save = app.buttons["CaptureTranscriptCreateTaskButton"].firstMatch
+                XCTAssertTrue(save.isHittable, "Save must remain in view in the editor toolbar.")
+                XCTAssertTrue(save.isEnabled)
+                save.tap()
+                XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkComposer"].firstMatch.waitForNonExistence(timeout: 30),
+                    "A recovered task must save through the real application command and close on success.")
+            } else {
+                app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
+            }
         }
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        openDraft("Task", in: app)
+        let freshTitle = app.textFields["CaptureTranscriptTaskTitleField"].firstMatch.value as? String ?? ""
+        XCTAssertFalse(freshTitle.isEmpty)
+        XCTAssertFalse(freshTitle.contains(proofID), "Saved work must not come back as an unsent draft after another restart.")
+        app.buttons["CaptureTranscriptCancelTaskButton"].firstMatch.tap()
+        attachRecordingIdentity(proofID, name: "Retained transcript task draft save identity")
     }
 
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
