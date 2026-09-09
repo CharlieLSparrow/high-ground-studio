@@ -101,6 +101,7 @@ export type SessionSourceEvidence = {
       durationSeconds: number | null;
     } | null;
     audioMastery?: {
+      canManage: boolean;
       projectId: string;
       projectSlug: string;
       assetId: string;
@@ -348,8 +349,9 @@ function protectedPlayback(
 function audioMasteryCoordinates(
   recording: RecordingAssetEvidenceRow,
   project: { id: string; slug: string } | null | undefined,
+  access: "read" | "write" | undefined,
 ) {
-  if (!project) return null;
+  if (!project || !access) return null;
   const manifest = object(recording.localManifestJson);
   const promotion = object(manifest.promotion);
   const projectId = text(promotion.projectId);
@@ -366,6 +368,7 @@ function audioMasteryCoordinates(
     || sourceUrl !== `/api/ingest/media/${sourceId}`
   ) return null;
   return {
+    canManage: access === "write",
     projectId,
     projectSlug,
     assetId,
@@ -489,6 +492,7 @@ function isNestExternalRecordingImport(manifest: UnknownRecord) {
 export function buildSessionSourceEvidence(input: {
   roomId: string;
   project?: { id: string; slug: string } | null;
+  audioMasteryAccess?: "read" | "write";
   recordingAssets: RecordingAssetEvidenceRow[];
   finalizationReceipts: FinalizationEvidenceRow[];
   stateReceipts: StateReceiptEvidenceRow[];
@@ -645,7 +649,7 @@ export function buildSessionSourceEvidence(input: {
           verifiedAt: iso(recording.verifiedAt),
         },
         protectedPlayback: protectedPlayback(recording, status),
-        audioMastery: audioMasteryCoordinates(recording, input.project),
+        audioMastery: audioMasteryCoordinates(recording, input.project, input.audioMasteryAccess),
         captureRuntime: sourceRuntime(manifest),
         analysis: audioSignalAnalysis(recording, input.audioSignalProfileJobs ?? []),
         processingDisposition,

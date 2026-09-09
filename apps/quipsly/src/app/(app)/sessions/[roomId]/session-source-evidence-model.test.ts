@@ -380,6 +380,7 @@ describe("Session source evidence", () => {
 
   it("exposes audio improvement coordinates only for the canonical Session project", () => {
     const input = fixture();
+    input.audioMasteryAccess = "write";
     input.project = { id: "project-coaching-1", slug: "coach-home" };
     (input.recordingAssets[0].localManifestJson as any).promotion = {
       status: "promoted-to-studio-media",
@@ -391,6 +392,7 @@ describe("Session source evidence", () => {
     };
 
     expect(buildSessionSourceEvidence(input).sources[0].audioMastery).toEqual({
+      canManage: true,
       projectId: "project-coaching-1",
       projectSlug: "coach-home",
       assetId: "studio-media-asset-1",
@@ -399,6 +401,14 @@ describe("Session source evidence", () => {
       sourceKind: "video",
     });
 
+    input.audioMasteryAccess = "read";
+    expect(buildSessionSourceEvidence(input).sources[0].audioMastery?.canManage).toBe(false);
+    input.audioMasteryAccess = undefined;
+    const guest = buildSessionSourceEvidence(input).sources[0];
+    expect(guest.audioMastery).toBeNull();
+    expect(guest.protectedPlayback).toEqual(buildSessionSourceEvidence({...input, audioMasteryAccess: "write"}).sources[0].protectedPlayback);
+
+    input.audioMasteryAccess = "write";
     input.project = { id: "project-other", slug: "other-home" };
     expect(buildSessionSourceEvidence(input).sources[0].audioMastery).toBeNull();
   });

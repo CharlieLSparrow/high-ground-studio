@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionAudioMasteryCard } from "./session-audio-mastery-card";
@@ -8,6 +8,7 @@ function response(payload: Record<string, unknown>, ok = true) {
 }
 
 const coordinates = {
+  canManage: true,
   projectId: "project-coaching-1",
   projectSlug: "coach-home",
   assetId: "asset-recording-1",
@@ -39,6 +40,40 @@ describe("Session audio mastery", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     Object.defineProperty(global, "fetch", { configurable: true, writable: true, value: fetchMock });
+  });
+
+  it("does not start processing or expose editing actions to a read-only viewer", async () => {
+    fetchMock.mockResolvedValue(response({ok: true, status: "not-queued"}));
+    render(<SessionAudioMasteryCard coordinates={{...coordinates, canManage: false}} />);
+    expect(await screen.findByText("Original audio")).toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Check audio now"})).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("method", "POST");
+  });
+
+  it("starts fresh for a different source instead of retaining the prior audio result", async () => {
+    fetchMock.mockResolvedValueOnce(response({ok: true, status: "completed", derivative: {playbackUrl: "/old-improved.m4a"}}))
+      .mockResolvedValueOnce(response({ok: true, status: "not-queued"}));
+    const view = render(<SessionAudioMasteryCard coordinates={{...coordinates, canManage: false}} />);
+    await screen.findByText("Improved listening copy");
+    view.rerender(<SessionAudioMasteryCard coordinates={{...coordinates, canManage: false, assetId: "another-asset", sourceId: "another-source", sourceUrl: "/api/ingest/media/another-source"}} />);
+    expect(screen.queryByText("Improved listening copy")).not.toBeInTheDocument();
+    await screen.findByText("Original audio");
+    expect(fetchMock.mock.calls[1][0]).toContain("assetId=another-asset");
+  });
+
+  it("polls processing status using reads only for a viewer", async () => {
+    jest.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(response({ok: true, status: "processing"}))
+        .mockResolvedValueOnce(response({ok: true, status: "completed", derivative: {playbackUrl: null}}));
+      render(<SessionAudioMasteryCard coordinates={{...coordinates, canManage: false}} />);
+      await screen.findByText("Preparing audio");
+      await act(async () => { jest.advanceTimersByTime(2500); });
+      await screen.findByText("Audio is balanced");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls.every(([url, options]) => url.startsWith("/api/media-vault/audio-mastery?") && options?.method !== "POST")).toBe(true);
+    } finally { jest.useRealTimers(); }
   });
 
   it("automatically prepares a level-matched comparison without replacing the original", async () => {

@@ -57,9 +57,8 @@ describe("browser retained-source consent", () => {
     expect(source).toContain("If anyone else is nearby, let");
     expect(source).toContain("Create a transcript and suggested notes/tasks");
     expect(source).toContain("conversationConnected = true");
-    expect(source).toContain(
-      'className={conversationConnected ? "" : "hidden"}',
-    );
+    // Disconnected upload/recovery visibility is exercised by the rendered
+    // lifecycle test. Hiding the entire recorder would break that workflow.
     expect(source).toContain("the Record button appears after you join");
     expect(source).not.toContain("Save my consent receipt");
     expect(source).toContain("Existing recording choices stay saved");

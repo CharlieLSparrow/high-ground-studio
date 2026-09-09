@@ -381,8 +381,11 @@ export default async function SessionReviewPage({
         },
       });
     }
+    const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
+    const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
     const sourceEvidence = buildSessionSourceEvidence({
       roomId: room.id,
+      audioMasteryAccess: visibleProject ? (visibleProject.role === "OWNER" || visibleProject.role === "EDITOR" ? "write" : "read") : undefined,
       project: room.project
         ? { id: room.project.id, slug: room.project.slug }
         : null,
@@ -533,8 +536,6 @@ export default async function SessionReviewPage({
       actor: session.user,
       roomId: room.id,
     });
-    const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
-    const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
     const relationEpisode = sessionRelationMatchesProject({
       roomProjectId: room.project?.id,
       purpose: room.purpose,
