@@ -238,6 +238,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-work-drafts)
+    TEST_CASE="testTranscriptWorkDraftsRetainWritingAcrossSignedInRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* ]]; then
+      echo "Transcript work drafts require one exact Session and one segment ID." >&2
+      exit 2
+    fi
+    ;;
   transcript-text-edit)
     TEST_CASE="testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* || -z "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" ]]; then

@@ -7619,6 +7619,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 TextField("Useful detail (optional)", text: $workDrafts.task.body, axis: .vertical)
                     .lineLimit(2...5)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("CaptureTranscriptTaskBodyField")
                 HStack {
                     Button("Create my task") {
                         let submitted = workDrafts.task
@@ -7676,6 +7677,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 TextField("Definition of progress (optional)", text: $workDrafts.goal.body, axis: .vertical)
                     .lineLimit(2...5)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("CaptureTranscriptGoalBodyField")
                 HStack {
                     Button("Create my goal") {
                         let submitted = workDrafts.goal

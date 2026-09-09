@@ -3260,6 +3260,70 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(waitForRuntimeElement(work, in: app, timeout: 20, swipeAttempts: 8))
     }
 
+    func testTranscriptWorkDraftsRetainWritingAcrossSignedInRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.transcriptSegmentIDs.count == 1 else {
+            throw XCTSkip("Draft recovery requires one exact Session and transcript passage.")
+        }
+        let segmentID = credentials.transcriptSegmentIDs[0]
+        let proofID = String(UUID().uuidString.prefix(8))
+        let kinds = ["Note", "Task", "Goal"]
+
+        func openTranscript(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let transcript = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(transcript, in: app, timeout: 30, swipeAttempts: 12))
+            transcript.tap()
+            XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+            let controls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(controls, in: app, timeout: 30, swipeAttempts: 12))
+            controls.buttons["Timeline"].firstMatch.tap()
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"].exists,
+                "Draft recovery must reopen the authenticated Session, not a preview or offline projection.")
+        }
+
+        func openDraft(_ kind: String, in app: XCUIApplication) {
+            let create = app.buttons["CaptureTranscriptCreateFromPassage_\(segmentID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(create, in: app, timeout: 30, swipeAttempts: 14))
+            create.tap()
+            let action = app.buttons["CaptureTranscriptMake\(kind)Button"].firstMatch
+            XCTAssertTrue(action.waitForExistence(timeout: 10))
+            action.tap()
+            XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].waitForExistence(timeout: 15))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        for kind in kinds {
+            openDraft(kind, in: app)
+            replaceText(in: app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch,
+                with: "\(kind) draft \(proofID)", app: app, dismissKeyboardAfterEditing: false)
+            replaceText(in: app.textFields["CaptureTranscript\(kind)BodyField"].firstMatch,
+                with: "My own \(kind.lowercased()) writing from this passage, \(proofID).", app: app,
+                dismissKeyboardAfterEditing: false)
+            if kind != "Goal" {
+                app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
+                XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].waitForNonExistence(timeout: 10))
+            }
+        }
+        // Leave the final composer open: backgrounding, not Close, must flush it.
+        XCUIDevice.shared.press(.home)
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        for kind in kinds {
+            openDraft(kind, in: app)
+            XCTAssertEqual(app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch.value as? String,
+                "\(kind) draft \(proofID)", "A new app process must restore the actual edited title.")
+            XCTAssertEqual(app.textFields["CaptureTranscript\(kind)BodyField"].firstMatch.value as? String,
+                "My own \(kind.lowercased()) writing from this passage, \(proofID).",
+                "Reopening must not replace writing with the original transcript.")
+            attachRuntimeScreenshot(app, name: "\(kind) writing restored after signed-in relaunch")
+            app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
+        }
+    }
+
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
