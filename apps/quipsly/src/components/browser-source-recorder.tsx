@@ -2363,6 +2363,28 @@ export function BrowserSourceRecorder({
             updatedAt: stoppedAt,
           };
           await updateLedger(current);
+          const activeDirective = recordingDirectiveRef.current;
+          if (activeDirective?.captureGroupId === current.captureGroupId && participantId) {
+            // The file is closed, hashed, and journaled. Report that local stop
+            // for START (device stop) and STOP (host stop) alike. Delivery is
+            // queued durably; a slow status request must not delay the upload.
+            void acknowledgeBrowserRecordingDirective({
+              ownerParticipantId: participantId,
+              roomId: callRoomId,
+              directiveId: activeDirective.id,
+              state: "STOPPED",
+              captureId,
+              detail: "This endpoint saved its local recording; upload continues independently.",
+            }).then(async (result) => {
+              directiveHandlingRef.current.set(activeDirective.id, "STOPPED");
+              setPendingCoordinationReceiptCount(result.pendingCount);
+              setCoordinationReceiptError(result.latestError);
+              if (result.pendingCount === 0) {
+                const refreshed = await readBrowserRecordingDirective(callRoomId);
+                if (refreshed?.id === recordingDirectiveRef.current?.id) setRecordingDirective(refreshed);
+              }
+            }).catch(() => undefined);
+          }
           try {
             current = await repairStopReceipt(current);
           } catch (error) {
@@ -2370,19 +2392,6 @@ export function BrowserSourceRecorder({
             // exact STOP request remains in this durable ledger and retries
             // independently while upload preserves the participant source.
             current = await rememberStopReceiptFailure(current, error);
-          }
-          const activeDirective = recordingDirectiveRef.current;
-          if (activeDirective?.action === "START" && participantId) {
-            await acknowledgeBrowserRecordingDirective({
-              ownerParticipantId: participantId,
-              roomId: callRoomId,
-              directiveId: activeDirective.id,
-              state: "STOPPED",
-              captureId,
-              detail:
-                "This endpoint stopped its retained local source safely; upload recovery remains independent.",
-            }).catch(() => undefined);
-            directiveHandlingRef.current.set(activeDirective.id, "STOPPED");
           }
           setStatus("ready");
           setMessage(
@@ -3314,6 +3323,11 @@ export function BrowserSourceRecorder({
               : "browser-managed retention"}{" "}
             · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}
           </p> : <p className="mt-2">Recording setup has not finished yet.</p>}
+          {operationalIssue || preflightStorageIssue ? <p
+            role="status"
+            data-testid="recording-health-issue"
+            className="mt-2 text-amber-950"
+          >{(operationalIssue ?? preflightStorageIssue)?.detail}</p> : null}
           {operationalIssue?.technicalDetail ? (
             <p
               className="mt-2 break-words font-mono font-medium"

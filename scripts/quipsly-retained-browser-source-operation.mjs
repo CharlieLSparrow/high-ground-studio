@@ -286,7 +286,31 @@ try {
   // Longer than one complete loop of the known speech, even if the shared
   // microphone stream was already running during the lobby sound check.
   await page.waitForTimeout(14_000);
+  // Hold upload reservation, not the local file write or coordination API.
+  // STOPPED must reach the host before uploading completes, not on a later
+  // ready-state poll after the entire transfer has finished.
+  let releaseUpload;
+  const uploadGate = new Promise(resolve => { releaseUpload = resolve; });
+  await page.route("**/api/mobile/capture/uploads/resumable", async route => {
+    await uploadGate;
+    await route.continue();
+  });
   await stopButton.click();
+  let stoppedReceipt = null;
+  try {
+    const deadline = Date.now() + 30_000;
+    do {
+      stoppedReceipt = await prisma.callRecordingEndpointReceipt.findFirst({
+        where: { roomId, actorUserId: actor.id, state: "STOPPED", receivedAt: { gte: startedAfter }, directive: { action: "STOP" } },
+        orderBy: { receivedAt: "desc" }, select: { captureId: true, receivedAt: true },
+      });
+      if (stoppedReceipt?.captureId) break;
+      await page.waitForTimeout(250);
+    } while (Date.now() < deadline);
+    if (!stoppedReceipt?.captureId) throw new Error("The browser did not confirm its durable local stop while upload was held.");
+  } finally {
+    releaseUpload();
+  }
   await recorder
     .getByText(/Recording saved(?: and verified in Quipsly|\. Quipsly is preparing it for reliable playback)/i)
     .first()
@@ -500,6 +524,24 @@ try {
       `The source-bound transcript did not recover the known speech (${matchedWords.length}/${expectedWords.length} key words).`,
     );
   }
+  const manifest =
+    recording.localManifestJson &&
+    typeof recording.localManifestJson === "object" &&
+    !Array.isArray(recording.localManifestJson)
+      ? recording.localManifestJson
+      : {};
+  if (manifest.captureId !== stoppedReceipt.captureId) {
+    throw new Error("The pre-upload stop confirmation did not belong to this recording.");
+  }
+  console.log(JSON.stringify({
+    phase: "recording-and-transcript-verified",
+    recordingAssetId: recording.id,
+    transcriptJobId: transcript.id,
+    durableStopReportedBeforeUpload: true,
+    matchedSpeechKeywords: matchedWords.length,
+    playbackWindows: playbackEvidence.length,
+    followThroughVerified: false,
+  }));
   // A retained Session assembles multiple source transcripts. Identical work
   // may retain an earlier valid anchor rather than duplicate the newest take.
   let followThrough = { tasks: [], goals: [] };
@@ -519,12 +561,6 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 500));
   } while (Date.now() < workDeadline);
   assertRetainedSpeechWork({ before: workBeforeRecording, after: followThrough, actorId: actor.id });
-  const manifest =
-    recording.localManifestJson &&
-    typeof recording.localManifestJson === "object" &&
-    !Array.isArray(recording.localManifestJson)
-      ? recording.localManifestJson
-      : {};
   await assertNoHorizontalOverflow(
     page.getByRole("main").last(),
     "retained browser-source Session",
@@ -584,6 +620,7 @@ try {
           explicitConsentActionPerformed,
           currentConsentReadback: true,
           explicitRecordAndStop: true,
+          durableStopReportedBeforeUpload: true,
           opfsLocalRetention: true,
           resumableUploadAndVerification: true,
           canonicalReadback: true,

@@ -163,15 +163,46 @@ describe("Session endpoint queue receipt API", () => {
     expect(packet.boundary).toContain("not live presence");
   });
 
-  it("rejects a drain claim from an installation that never joined or ran preflight", async () => {
+  it("accepts a verified drain report without requiring a provider join or sound-check decision", async () => {
     prisma.callParticipantProviderGrantReceipt.findFirst.mockResolvedValue(null);
     prisma.callParticipantPreflightReceipt.findFirst.mockResolvedValue(null);
 
     const response = await POST(request("POST", body()), context);
 
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ ok: true, safeToLeaveThisEndpoint: true });
+    expect(prisma.callParticipantProviderGrantReceipt.findFirst).not.toHaveBeenCalled();
+    expect(prisma.callParticipantPreflightReceipt.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("still rejects an unverified drain report without provider or sound-check history", async () => {
+    prisma.callParticipantProviderGrantReceipt.findFirst.mockResolvedValue(null);
+    prisma.callParticipantPreflightReceipt.findFirst.mockResolvedValue(null);
+    prisma.recordingAsset.findMany.mockResolvedValue([]);
+    const response = await POST(request("POST", body()), context);
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ ok: false, code: "UNKNOWN_ENDPOINT" });
+    expect(await response.json()).toMatchObject({code: "SERVER_COPY_INCOMPLETE"});
     expect(prisma.callEndpointQueueReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it.each([null, {id: "room-1", captureGroupId: "capture-group-1", participants: []}])(
+    "does not accept queue reports without active participant access", async inaccessibleRoom => {
+      prisma.callRoom.findFirst.mockResolvedValue(inaccessibleRoom);
+      const response = await POST(request("POST", body()), context);
+      expect(response.status).toBe(inaccessibleRoom ? 403 : 404);
+      expect(prisma.callEndpointQueueReceipt.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("derives source ownership from the authenticated participant, not a supplied identity", async () => {
+    const response = await POST(request("POST", body({participantId: "someone-else", actorUserId: "someone-else"})), context);
+    expect(response.status).toBe(201);
+    expect(prisma.recordingAsset.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {id: {in: ["asset-1"]}, roomId: "room-1", participantId: "participant-1"},
+    }));
+    expect(prisma.callEndpointQueueReceipt.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({participantId: "participant-1", actorUserId: actor.id}),
+    }));
   });
 
   it("rejects a stale revision without weakening the latest durable receipt", async () => {
