@@ -40,6 +40,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { VoiceWritingRichText } from "@/lib/voice-writing-contract";
+import { TagSearchChips, type NavigableTag } from "@/components/tag-search-chips";
 import {
   tiptapToVoiceWritingRichText,
   voiceWritingRichTextToTiptap,
@@ -107,7 +108,7 @@ type WritingDraft = {
   sourceSha256: string | null;
   callRoomId: string | null;
   sources: WritingSource[];
-  tags: Array<{ id: string; label: string; slug: string }>;
+  tags: Array<NavigableTag & { slug: string }>;
   createdAt?: string;
   updatedAt: string;
 };
@@ -796,6 +797,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#87663d]">{audience.eyebrow} · {draft.projectName}</p>
           <input value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={320} aria-label="Writing title" className="mt-1 w-full border-0 bg-transparent p-0 font-serif text-3xl font-black leading-tight text-[#33281d] outline-none placeholder:text-[#a18b6c] sm:text-4xl" placeholder="Give this a title" />
+          <TagSearchChips tags={draft.tags} label="Writing tags" />
         </div>
       </div>
     </header>

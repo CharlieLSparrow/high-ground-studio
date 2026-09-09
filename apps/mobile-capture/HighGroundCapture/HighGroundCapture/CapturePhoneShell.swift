@@ -7336,12 +7336,6 @@ private struct TodayWorkTagSheet: View {
         selectedTagIDs != Set(canonicalTagIDs)
     }
 
-    private var archivedSelection: [MobileCaptureTodayTag] {
-        tagCatalog.filter {
-            !$0.isActive && selectedTagIDs.contains($0.id)
-        }
-    }
-
     private var normalizedNewTagLabel: String {
         let compatible = newTagLabel.precomposedStringWithCompatibilityMapping
         let withoutControls = String(
@@ -7385,7 +7379,6 @@ private struct TodayWorkTagSheet: View {
 
     private var saveDisabled: Bool {
         (!selectionChanged && !newTagRequested)
-            || !archivedSelection.isEmpty
             || newTagError != nil
             || readOnlyPreview
             || client.isMutating
@@ -7430,16 +7423,16 @@ private struct TodayWorkTagSheet: View {
                             Button {
                                 if selectedTagIDs.contains(tag.id) {
                                     selectedTagIDs.remove(tag.id)
-                                } else if tag.isActive && selectedTagIDs.count < 24 {
+                                } else if (tag.isActive || canonicalTagIDs.contains(tag.id)) && selectedTagIDs.count < 24 {
                                     selectedTagIDs.insert(tag.id)
                                 }
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(tag.label)
-                                            .foregroundStyle(.primary)
+                                        CaptureWorkTags(tags: [MobileWorkTagLabel(id: tag.id, label: tag.label,
+                                            hexColor: tag.hexColor, isActive: tag.isActive)], workID: "selection")
                                         if !tag.isActive {
-                                            Text("Archived · remove to save another change")
+                                            Text("Archived")
                                                 .font(.caption2)
                                                 .foregroundStyle(CapturePalette.brass)
                                         }
@@ -7453,8 +7446,10 @@ private struct TodayWorkTagSheet: View {
                                 .frame(minHeight: 44)
                             }
                             .accessibilityIdentifier("CaptureTodayWorkTag_\(tag.id)")
+                            .accessibilityLabel(tag.label)
                             .accessibilityValue(selectedTagIDs.contains(tag.id) ? "Selected" : "Not selected")
                             .accessibilityHint(tag.isActive ? "Active reusable Nest tag." : "Archived tag. It can be removed but not newly applied.")
+                            .disabled(!tag.isActive && !canonicalTagIDs.contains(tag.id))
                         }
                     }
                 }
@@ -7485,14 +7480,6 @@ private struct TodayWorkTagSheet: View {
                 }
 
                 Section {
-                    if !archivedSelection.isEmpty {
-                        Label(
-                            "Remove archived selections before saving a new tag set.",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CapturePalette.brass)
-                    }
                     Text("Tags help you find related notes, recordings, tasks, and goals across this Nest.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -7543,7 +7530,7 @@ private struct TodayWorkTagSheet: View {
                 newTagLabels: newTagLabels,
                 expectedUpdatedAt: expectedUpdatedAt,
                 expectedTagRevision: expectedTagRevision,
-                availableTagIDs: Set(tagCatalog.filter(\.isActive).map(\.id))
+                availableTagIDs: Set(tagCatalog.filter(\.isActive).map(\.id)).union(canonicalTagIDs)
             )
             if saved {
                 dismiss()
@@ -9545,11 +9532,11 @@ private struct CaptureVoiceWritingEditor: View {
             }
 
             if !canonicalTags.isEmpty {
-                TodayProjectTagLine(
-                    project: nil,
-                    tagLabels: canonicalTags.map(\.label),
-                    identifier: "CaptureVoiceWritingTags"
-                )
+                CaptureWorkTags(tags: canonicalTags.map {
+                    MobileWorkTagLabel(id: $0.id, label: $0.label, hexColor: $0.hexColor, isActive: $0.isActive != false)
+                }, workID: "writing")
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureVoiceWritingTags")
             }
 
             Button {
@@ -9890,20 +9877,22 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private var canonicalTags: [MobileCaptureTag] {
-        (currentDraft?.canonicalTags ?? []).filter { $0.isActive != false }
+        currentDraft?.canonicalTags ?? []
     }
 
     private var availableVoiceTags: [MobileCaptureTodayTag] {
         guard let projectID = currentDraft?.canonicalProjectID?.nonempty
                 ?? writingSync.homeProject?.id.nonempty else { return [] }
-        let tags = currentDraft?.canonicalAvailableTags ?? writingSync.availableTags
+        let available = currentDraft?.canonicalAvailableTags ?? writingSync.availableTags
+        let tags = available + canonicalTags.filter { selected in !available.contains { $0.id == selected.id } }
         return tags.map {
             MobileCaptureTodayTag(
                 id: $0.id,
                 projectId: projectID,
                 slug: $0.slug,
                 label: $0.label,
-                isActive: $0.isActive != false
+                isActive: $0.isActive != false,
+                hexColor: $0.hexColor
             )
         }
     }
@@ -17540,7 +17529,13 @@ private struct CaptureLibraryPreviewWritingCard: View {
         canonicalProjectSlug: "home-preview",
         canonicalVisibility: "personal",
         canonicalTagRevision: 0,
-        canonicalTags: [],
+        canonicalTags: [
+            MobileCaptureTag(id: "preview-writing-research", slug: "research", label: "Research", isActive: true, hexColor: "#506b46"),
+            MobileCaptureTag(id: "preview-writing-earlier", slug: "earlier-focus", label: "Earlier focus", isActive: false, hexColor: "#866c52"),
+        ],
+        canonicalAvailableTags: [
+            MobileCaptureTag(id: "preview-writing-research", slug: "research", label: "Research", isActive: true, hexColor: "#506b46"),
+        ],
         canonicalUpdatedAt: "2026-08-27T17:00:00Z",
         lastSyncedAt: Date(timeIntervalSince1970: 1_787_820_300),
         lastSyncError: nil,

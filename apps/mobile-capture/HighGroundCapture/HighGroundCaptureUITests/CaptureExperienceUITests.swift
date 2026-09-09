@@ -1558,6 +1558,48 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(editor.exists)
     }
 
+    func testVoiceWritingKeepsSharedTagsAndArchivedContext() {
+        exerciseVoiceWritingSharedTags()
+    }
+
+    func testVoiceWritingKeepsSharedTagsAndArchivedContextOnRegularWidthIPad() {
+        exerciseVoiceWritingSharedTags()
+    }
+
+    private func exerciseVoiceWritingSharedTags() {
+        openRootDestination("Notes")
+        app.buttons["Writing"].tap()
+        let draft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        XCTAssertTrue(draft.waitForExistence(timeout: 5))
+        draft.tap()
+        let editTags = app.buttons["CaptureVoiceWritingEditTags"]
+        let editor = app.descendants(matching: .any)["CaptureVoiceWritingEditor"].firstMatch
+        for _ in 0..<6 where !editTags.exists || !editTags.isHittable { editor.swipeUp() }
+        XCTAssertTrue(editTags.isHittable)
+        let archivedChip = app.descendants(matching: .any)["CaptureWorkTag_writing_preview-writing-earlier"].firstMatch
+        XCTAssertTrue(archivedChip.exists, "Existing archived tags must remain visible on writing.")
+        XCTAssertTrue(archivedChip.label.contains("archived"))
+        editTags.tap()
+        let active = app.buttons["CaptureTodayWorkTag_preview-writing-research"]
+        let archived = app.buttons["CaptureTodayWorkTag_preview-writing-earlier"]
+        XCTAssertTrue(active.waitForExistence(timeout: 5))
+        XCTAssertEqual(archived.value as? String, "Selected")
+        active.tap()
+        XCTAssertEqual(archived.value as? String, "Selected")
+        XCTAssertTrue(app.buttons["CaptureTodayWorkTagsSave"].isEnabled,
+            "Keeping earlier context must not prevent another tag change.")
+        XCTAssertFalse(app.staticTexts["Remove archived selections before saving a new tag set."].exists)
+        archived.tap()
+        XCTAssertEqual(archived.value as? String, "Not selected")
+        archived.tap()
+        XCTAssertEqual(archived.value as? String, "Selected", "Removing a tag from an unsaved draft must remain undoable.")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "writing-shared-tag-context"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.buttons["Cancel"].tap()
+    }
+
     func testVoiceWritingKeepsTimedSourceBesideEditableText() {
         openRootDestination("Notes")
         app.buttons["Writing"].tap()

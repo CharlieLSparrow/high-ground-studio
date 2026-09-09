@@ -88,6 +88,22 @@ function loadPayload(text = "Home is finishing his PhD.", acceptedCorrectionId: 
 }
 
 describe("VoiceWritingEditor transcript correction", () => {
+  it("keeps shared tag colors and exact tag navigation beside a spoken-writing draft", async () => {
+    const payload = loadPayload();
+    globalThis.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({...payload, drafts: [{...payload.drafts[0], tags: [
+      {id: "research", slug: "research", label: "Research", hexColor: "#506b46", isActive: true},
+      {id: "earlier", slug: "earlier", label: "Earlier focus", hexColor: "#866c52", isActive: false},
+    ]}]})});
+    render(<VoiceWritingEditor draftId={draftId} />);
+    const research = await screen.findByRole("link", {name: "Find all accessible work tagged Research"});
+    expect(research).toHaveAttribute("href", "/find?tag=research");
+    expect(research).toHaveStyle({backgroundColor: "#506b46"});
+    const earlier = screen.getByRole("link", {name: "Find all accessible work tagged Earlier focus (archived)"});
+    expect(earlier).toHaveAttribute("href", "/find?tag=earlier");
+    expect(earlier).toHaveStyle({backgroundColor: "#866c52"});
+    expect(screen.getByLabelText("Writing title")).toHaveValue("Dissertation opening");
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     Object.defineProperty(window, "matchMedia", {

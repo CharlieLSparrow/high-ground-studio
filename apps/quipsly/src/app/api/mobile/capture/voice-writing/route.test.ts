@@ -105,6 +105,7 @@ describe("mobile voice-writing continuation", () => {
           slug: "phd",
           label: "PhD",
           isActive: true,
+          hexColor: "#506b46",
         }],
       },
       tagLinks: [{
@@ -114,6 +115,7 @@ describe("mobile voice-writing continuation", () => {
           slug: "phd",
           label: "PhD",
           isActive: true,
+          hexColor: "#506b46",
         },
       }],
       blocks: [
@@ -183,6 +185,10 @@ describe("mobile voice-writing continuation", () => {
         ]),
       }),
       take: 1,
+      include: expect.objectContaining({
+        project: {select: expect.objectContaining({tags: expect.objectContaining({select: expect.objectContaining({hexColor: true})})})},
+        tagLinks: expect.objectContaining({select: {tag: {select: expect.objectContaining({hexColor: true})}}}),
+      }),
     }));
     expect(payload).toMatchObject({
       ok: true,
@@ -216,10 +222,10 @@ describe("mobile voice-writing continuation", () => {
           },
         ],
         tagRevision: 2,
-        tags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true }],
+        tags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true, hexColor: "#506b46" }],
       }],
       homeProject: { id: "project-home", name: "Person Home Nest", slug: "person-home" },
-      availableTags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true }],
+      availableTags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true, hexColor: "#506b46" }],
       destinations: [{
         id: "project-home",
         name: "Person Home Nest",

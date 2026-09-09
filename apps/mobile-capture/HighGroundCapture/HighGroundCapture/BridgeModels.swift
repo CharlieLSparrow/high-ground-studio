@@ -1698,6 +1698,7 @@ struct MobileCaptureTag: Codable, Identifiable, Hashable {
     let slug: String
     let label: String
     var isActive: Bool? = nil
+    var hexColor: String? = nil
 }
 
 struct MobileCaptureProjectDestination: Codable, Identifiable, Hashable {
@@ -2157,6 +2158,7 @@ struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
     let slug: String
     let label: String
     let isActive: Bool
+    var hexColor: String? = nil
 }
 
 struct MobileCaptureClientFollowUpAttention: Codable, Identifiable, Hashable {
