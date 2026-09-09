@@ -27,6 +27,22 @@ const sharedTask = {
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it("keeps long task text full-width and places completion below its reading content", () => {
+    const entry = {...sharedTask, title: "A long writing outline for our next coaching conversation", body: `Source: https://example.test/${"long-source-name".repeat(20)}`};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
+    const heading = screen.getByRole("heading", {name: entry.title});
+    const card = heading.closest("article")!;
+    const body = within(card).getByText(entry.body, {selector: "p"});
+    const completion = within(card).getByRole("button", {name: "Complete"});
+    // The former row let the action steal half the text width on a phone.
+    expect(completion.parentElement).toHaveClass("flex-col");
+    expect(completion.parentElement).not.toHaveClass("flex-wrap");
+    expect(heading).toHaveClass("[overflow-wrap:anywhere]");
+    expect(body).toHaveClass("[overflow-wrap:anywhere]");
+    expect(card).toHaveClass("bg-card", "text-foreground");
+  });
+
   it.each([true, false])("keeps canonical tag colors in the reading view without requiring edit access (%s)", (canWrite) => {
     const entry = {...sharedTask, tags: [
       {id: "research", label: "Research", hexColor: "#23543a", isActive: true},

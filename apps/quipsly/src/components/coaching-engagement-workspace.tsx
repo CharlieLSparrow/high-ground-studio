@@ -813,24 +813,24 @@ function CoachingEngagementWorkspaceContent({
                 key={entry.id}
                 data-work-id={entry.id}
                 hidden={entry.id !== selectedId || !visibleEntries.some((visible) => visible.id === entry.id)}
-                className={`rounded-2xl border bg-white p-4 ${isActive ? "border-[#eadfc9]" : "border-[#c8d3bd] opacity-80"}`}
+                className={`min-w-0 rounded-2xl border border-border bg-card p-4 text-foreground ${isActive ? "" : "opacity-80"}`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#80694a]">
+                <div className="flex min-w-0 flex-col gap-4">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-muted-foreground">
                       <Icon size={15} aria-hidden="true" />{" "}
                       {entry.kind.toLowerCase()}
                       {entry.visibility === "PRIVATE" ? (
-                        <span className="inline-flex items-center gap-1 text-[#41624b]">
+                        <span className="inline-flex items-center gap-1 text-primary">
                           <LockKeyhole size={12} aria-hidden="true" /> only me
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[#41624b]">
+                        <span className="inline-flex items-center gap-1 text-primary">
                           <UsersRound size={12} aria-hidden="true" /> shared
                         </span>
                       )}
                     </p>
-                    <h3 className="mt-1 text-lg font-black text-[#3d3122]">
+                    <h3 className="mt-1 text-lg font-bold text-foreground [overflow-wrap:anywhere]">
                       {entry.title || "Untitled note"}
                     </h3>
                     {Boolean(entry.tags?.length) && <div role="group" aria-label="Tags on this work" className="mt-2 flex min-w-0 flex-wrap gap-1">
@@ -840,20 +840,20 @@ function CoachingEngagementWorkspaceContent({
                       </span>)}
                     </div>}
                     {entry.body ? (
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#765f40]">
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
                         {entry.body}
                       </p>
                     ) : null}
                     {entry.sourceHref ? (
                       <Link
                         href={entry.sourceHref}
-                        className="mt-2 inline-flex min-h-11 items-center rounded-md px-1 text-sm font-bold text-[#41624b] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                        className="mt-2 inline-flex min-h-11 items-center rounded-md px-1 text-sm font-bold text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                         aria-label={`${sourceLabel(entry)}: ${entry.title || "Untitled note"}`}
                       >
                         {sourceLabel(entry)}
                       </Link>
                     ) : null}
-                    <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-[#8a7354]">
+                    <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground [overflow-wrap:anywhere]">
                       {entry.owner ? <span>{entry.owner.label}</span> : null}
                       {entry.status ? (
                         <span>{statusLabel(entry.status)}</span>
@@ -880,7 +880,7 @@ function CoachingEngagementWorkspaceContent({
                           status: isActive ? completedStatus : reopenStatus,
                         })
                       }
-                      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#a6b696] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#354332] disabled:opacity-50"
+                      className="inline-flex min-h-11 items-center gap-2 self-start rounded-xl border border-border px-4 py-2 text-sm font-semibold text-primary hover:bg-accent disabled:opacity-50"
                     >
                       {isActive ? <Check size={15} /> : <RotateCcw size={15} />}
                       {isActive
@@ -892,7 +892,7 @@ function CoachingEngagementWorkspaceContent({
                   ) : null}
                 </div>
                 {canWrite && entry.canEdit ? (
-                  <div className="mt-4 border-t border-[#eee4d1] pt-3">
+                  <div className="mt-4 border-t border-border pt-3">
                     <CoachingWorkEditor
                       entry={entry}
                       engagementId={engagementId}
