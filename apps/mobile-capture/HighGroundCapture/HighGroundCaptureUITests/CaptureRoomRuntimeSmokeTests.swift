@@ -332,6 +332,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
         }
         app.launchArguments.append("--quipsly-capture-runtime-smoke")
+        if name.contains("testDeviceSoundAnalysisSynchronizesAfterUploadAndRelaunch") {
+            app.launchArguments.append("--capture-runtime-sound-analysis")
+        }
         if credentials.recordingFixtureAssetID?.isEmpty == false {
             app.launchArguments.append("--quipsly-capture-runtime-playback-fixture")
         }
@@ -1355,6 +1358,34 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         else if weeklyPlanKeyboardDone.waitForExistence(timeout: 2) { weeklyPlanKeyboardDone.tap() }
         else if keyboardDoneAfterEditing.exists { keyboardDoneAfterEditing.tap() }
         else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap() }
+    }
+
+    func testDeviceSoundAnalysisSynchronizesAfterUploadAndRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let rawID = credentials.recordingFixtureLocalID, let localID = UUID(uuidString: rawID)?.uuidString,
+              credentials.recordingFixtureAssetID?.isEmpty == false else {
+            XCTFail("Sound synchronization requires one exact retained source fixture.")
+            return
+        }
+        for launch in 0..<2 {
+            let app = try launchSignedInCaptureApp(initialTab: "library")
+            let recordings = app.segmentedControls["CaptureLibrarySectionPicker"].buttons["Recordings"]
+            XCTAssertTrue(recordings.waitForExistence(timeout: 15))
+            recordings.tap()
+            let quality = app.descendants(matching: .any)["CaptureSourceEvidenceLink_\(localID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(quality, in: app, timeout: 30, swipeAttempts: 16))
+            quality.tap()
+            let synced = app.descendants(matching: .any)["CaptureSoundAnalysisSyncStatus"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(synced, in: app, timeout: 45, swipeAttempts: 18))
+            let complete = NSPredicate(format: "label == %@", "Sound details synced")
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: complete, object: synced)], timeout: 45), .completed,
+                           "The native classifier must deliver source-bound results to authenticated Nest and persist the acknowledgement.")
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "sound-analysis-synced-launch-\(launch).png"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            app.terminate()
+        }
     }
 
     private func runtimeJSON(

@@ -18,6 +18,7 @@ import type {
 } from "@/lib/audio/audible-event-review";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { readRecordingSoundAnalyses } from "@/lib/server/recording-sound-analysis";
 
 type Actor = { id: string; email: string };
 type Coordinates = { prisma: any; projectSlug: string; assetId: string; sourceId: string };
@@ -169,26 +170,30 @@ export async function loadAudibleEventContext(input: Coordinates) {
         take: 500,
       })
     : [];
-  if (ledger.length > 0) {
-    const analyses = ledger.map((row: any) => analysisFromLedgerRow(row, context));
-    if (analyses.some((analysis: AudibleEventDetectorReceipt | null) => analysis === null)) {
-      throw new AudibleEventReviewError("Stored detector analysis failed its immutable source or receipt contract.", 500, "AUDIBLE_EVENT_ANALYSIS_LEDGER_INVALID");
-    }
-    return { ...context, analysis: analyses[0] as AudibleEventDetectorReceipt };
+  const ledgerAnalyses = ledger.map((row: any) => analysisFromLedgerRow(row, context));
+  if (ledgerAnalyses.some((analysis: AudibleEventDetectorReceipt | null) => analysis === null)) {
+    throw new AudibleEventReviewError("Stored detector analysis failed its immutable source or receipt contract.", 500, "AUDIBLE_EVENT_ANALYSIS_LEDGER_INVALID");
   }
-  const productions = await input.prisma.studioEpisodeProduction.findMany({
+  const productions = ledger.length > 0 ? [] : await input.prisma.studioEpisodeProduction.findMany({
     where: { projectId: context.project.id },
     select: { productionJson: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
     take: 500,
   });
-  const analysis = selectSourceBoundAnalysis({
+  const importedAnalysis = selectSourceBoundAnalysis({
     productions,
     assetId: context.asset.id,
     sourceId: context.source.id,
     sourceSha256: context.sourceBinding.sha256,
     sourceByteCount: context.sourceBinding.sizeBytes,
   });
+  const deviceAnalyses = await readRecordingSoundAnalyses({
+    prisma: input.prisma, projectId: context.project.id,
+    assetId: context.asset.id, sourceId: context.source.id,
+    sha256: context.sourceBinding.sha256, sizeBytes: context.sourceBinding.sizeBytes,
+  });
+  const analysis: AudibleEventDetectorReceipt | null = [...deviceAnalyses, ...ledgerAnalyses, ...(importedAnalysis ? [importedAnalysis] : [])]
+    .sort((a, b) => Date.parse(b.analyzedAt) - Date.parse(a.analyzedAt))[0] ?? null;
   return { ...context, analysis };
 }
 

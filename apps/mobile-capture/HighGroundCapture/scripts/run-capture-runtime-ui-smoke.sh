@@ -115,6 +115,13 @@ case "$TEST_MODE" in
   surface)
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
     ;;
+  sound-analysis-sync)
+    TEST_CASE="testDeviceSoundAnalysisSynchronizesAfterUploadAndRelaunch"
+    if [[ -z "$TEST_RECORDING_FIXTURE_PATH" || -z "$TEST_RECORDING_FIXTURE_ASSET_ID" || -z "$TEST_RECORDING_FIXTURE_LOCAL_ID" ]]; then
+      echo "Sound-analysis sync requires one exact retained source fixture." >&2
+      exit 2
+    fi
+    ;;
   voice-writing)
     TEST_CASE="testSignedInRecorderStopsAndSeparateTypedDraftSavesToNest"
     echo "Coverage: recording plus a separate typed draft; not source-linked transcription." >&2

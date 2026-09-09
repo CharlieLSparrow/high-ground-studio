@@ -46,6 +46,7 @@ const context = {
 function createPrisma() {
   const reviews = new Map<string, any>();
   const models = {
+    recordingAsset: { findMany: jest.fn().mockResolvedValue([]) },
     studioProject: { findFirst: jest.fn().mockResolvedValue(context.project) },
     studioMediaAsset: { findUnique: jest.fn().mockResolvedValue({ ...context.asset, isProxy: false, mimeType: "audio/wav", url: `/api/ingest/media/${coordinates.sourceId}`, assetAttachments: [{ metadataJson: { sourceId: coordinates.sourceId } }] }) },
     studioVideoSource: { findUnique: jest.fn().mockResolvedValue({ ...context.source, url: `/api/ingest/media/${coordinates.sourceId}`, providerSourceId: "/tmp/source.wav" }) },
@@ -72,6 +73,7 @@ function createAnalysisPrisma() {
     create: jest.fn().mockImplementation(async ({ data }) => { const row = { ...data, createdAt: new Date() }; analyses.set(row.id, row); return row; }),
   };
   const models = {
+    recordingAsset: { findMany: jest.fn().mockResolvedValue([]) },
     studioProject: { findFirst: jest.fn().mockResolvedValue(context.project) },
     studioMediaAsset: { findUnique: jest.fn().mockResolvedValue({ ...context.asset, isProxy: false, mimeType: "audio/wav", url: `/api/ingest/media/${coordinates.sourceId}`, assetAttachments: [{ metadataJson: { sourceId: coordinates.sourceId } }] }) },
     studioVideoSource: { findUnique: jest.fn().mockResolvedValue({ ...context.source, url: `/api/ingest/media/${coordinates.sourceId}`, providerSourceId: "/tmp/source.wav" }) },
@@ -113,6 +115,14 @@ describe("audible-event append-only review evidence", () => {
     expect(prisma.analyses.size).toBe(1);
     expect(loaded.analysis?.analysisId).toBe(analysis.analysisId);
     expect(prisma.studioEpisodeProduction.findMany).not.toHaveBeenCalled();
+  });
+
+  it("uses later device results instead of an old upload snapshot or source ledger", async () => {
+    const prisma = createAnalysisPrisma();
+    await registerAudibleEventAnalysis({ prisma, ...coordinates, analysis });
+    const later = { ...analysis, analysisId: "audible_analysis_device_later", analyzedAt: "2026-09-09T18:00:00Z" };
+    prisma.recordingAsset.findMany.mockResolvedValue([{ localManifestJson: { reportedSourceProfile: { audibleEventAnalysis: later } } }]);
+    expect((await loadAudibleEventContext({ prisma, ...coordinates })).analysis?.analysisId).toBe(later.analysisId);
   });
 
   it("appends a source-context-bound review, replays idempotently, and projects current state", async () => {

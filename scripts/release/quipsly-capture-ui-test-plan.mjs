@@ -43,6 +43,8 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad",
   "CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResume",
   "CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResumeOnRegularWidthIPad",
+  "CaptureExperienceUITests/testSlowSoundAnalysisDoesNotDelaySavingOrPlayback",
+  "CaptureExperienceUITests/testSlowSoundAnalysisDoesNotDelaySavingOrPlaybackOnRegularWidthIPad",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashing",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
   "CaptureExperienceUITests/testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad",

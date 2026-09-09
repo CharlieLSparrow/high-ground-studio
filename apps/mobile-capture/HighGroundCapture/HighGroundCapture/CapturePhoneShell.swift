@@ -116,10 +116,11 @@ struct CapturePhoneShell: View {
             // validate. Let its canonical fixtures become ready immediately
             // instead of making every cold UI flight wait on an unrelated
             // device-library pass.
-            if !model.usesPreviewData {
+            if !model.usesPreviewData || CaptureLaunchConfiguration.forcesLocalVoiceNoteUITest {
                 await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
             }
             await model.load()
+            LocalRecordingLibrary.shared.resumePendingSoundAnalysis()
             _ = await subscriptionLoad
             if !model.usesPreviewData {
                 await VoiceWritingRecognitionSyncClient.shared.synchronize()
@@ -179,6 +180,7 @@ struct CapturePhoneShell: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active { LocalRecordingLibrary.shared.resumePendingSoundAnalysis() }
             guard phase == .active,
                   !model.usesPreviewData,
                   deepLinkRouter.pendingSession == nil,

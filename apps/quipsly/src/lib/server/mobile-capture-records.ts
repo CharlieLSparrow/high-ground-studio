@@ -1,4 +1,5 @@
 import { captureDeviceTranscriptExpectation } from "@/lib/server/capture-device-transcript-expectation";
+import { audibleEventDetectorReceiptMatchesSource, parseAudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 
 type MobileCaptureRecordInput = {
   prisma: any;
@@ -607,6 +608,18 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
       : existingRecordingAsset?.status === "VERIFIED" || exactBytesVerified
       ? "VERIFIED"
       : "UPLOADED";
+  const previousProfile = safeJson(safeJson(existingRecordingAsset?.localManifestJson).reportedSourceProfile);
+  const incomingProfile = safeJson(metadataJson.reportedSourceProfile);
+  const previousAnalysis = parseAudibleEventDetectorReceipt(previousProfile.audibleEventAnalysis);
+  const incomingAnalysis = parseAudibleEventDetectorReceipt(incomingProfile.audibleEventAnalysis);
+  const preserveAnalysis = previousAnalysis?.status === "completed"
+    && audibleEventDetectorReceiptMatchesSource(previousAnalysis, input.checksumSha256 || existingRecordingAsset?.checksum, input.sizeBytes)
+    && (!incomingAnalysis || incomingAnalysis.status !== "completed"
+      || Date.parse(previousAnalysis.analyzedAt) >= Date.parse(incomingAnalysis.analyzedAt));
+  // Never carry a derived result across a different source merely because the
+  // upload retry omitted that optional field.
+  const retainedProfile = { ...previousProfile };
+  delete retainedProfile.audibleEventAnalysis;
   const recordingAssetData = {
     kind: recordingKind,
     status: recordingStatus,
@@ -619,6 +632,8 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
     localManifestJson: {
       ...safeJson(existingRecordingAsset?.localManifestJson),
       ...metadataJson,
+      reportedSourceProfile: { ...retainedProfile, ...incomingProfile,
+        ...(preserveAnalysis ? { audibleEventAnalysis: previousAnalysis } : {}) },
       provider: input.provider,
       totalChunks: input.totalChunks || 1,
       consentId: consent?.id || null,
@@ -641,7 +656,7 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
 
   const recordingAsset = existingRecordingAsset
     ? await input.prisma.recordingAsset.update({
-        where: { id: existingRecordingAsset.id },
+        where: { id: existingRecordingAsset.id, updatedAt: existingRecordingAsset.updatedAt },
         data: recordingAssetData,
       })
     : await input.prisma.recordingAsset.create({

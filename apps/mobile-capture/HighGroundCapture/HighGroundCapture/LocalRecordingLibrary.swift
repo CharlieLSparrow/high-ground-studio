@@ -332,6 +332,7 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var verifiedCloudSizeBytes: Int64? = nil
     var verifiedCloudGeneration: String? = nil
     var verifiedCloudAt: Date? = nil
+    var soundAnalysisSyncedID: String? = nil
     var canonicalObjectPath: String? = nil
     var serverProcessingDisposition: String? = nil
     var serverProcessingHoldReasonCode: String? = nil
@@ -718,6 +719,10 @@ final class LocalRecordingLibrary: ObservableObject {
     private var activeOwnerAccountID: String?
     private var accountObserver: NSObjectProtocol?
     private var projectionPublishTask: Task<Void, Never>?
+    private var audibleAnalysisTask: Task<Void, Never>?
+    private var audibleAnalysisGeneration = UUID()
+    private var soundAnalysisSyncTask: Task<Void, Never>?
+    private var soundAnalysisSyncGeneration = UUID()
 
     private static let fileNameFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -794,8 +799,15 @@ final class LocalRecordingLibrary: ObservableObject {
         let normalizedOwnerAccountID = normalizedOwnerID(ownerAccountID)
         guard normalizedOwnerAccountID != activeOwnerAccountID else { return }
         activeOwnerAccountID = normalizedOwnerAccountID
+        audibleAnalysisGeneration = UUID()
+        audibleAnalysisTask?.cancel()
+        audibleAnalysisTask = nil
+        soundAnalysisSyncGeneration = UUID()
+        soundAnalysisSyncTask?.cancel()
+        soundAnalysisSyncTask = nil
         derivedAnalysisNotices = [:]
         sortAndPublish()
+        resumePendingSoundAnalysis()
     }
 
 #if DEBUG
@@ -877,12 +889,15 @@ final class LocalRecordingLibrary: ObservableObject {
             )
         }
 
-        let validation = Self.validateSourceHeader(at: targetURL, mediaKind: .audio)
+        let testsSoundAnalysis = process.arguments.contains("--capture-runtime-sound-analysis")
+        let validation = testsSoundAnalysis
+            ? Self.validateAudioSource(at: targetURL, readsToEnd: true)
+            : Self.validateSourceHeader(at: targetURL, mediaKind: .audio)
         guard validation.isPlayable, let durationSeconds = validation.durationSeconds else {
             throw LibraryError.runtimeSmokeFixtureNotPlayable
         }
         let installedAt = Date()
-        let recording = LocalRecording(
+        var recording = LocalRecording(
             id: localID,
             ownerAccountID: ownerAccountID,
             fileName: targetURL.lastPathComponent,
@@ -904,7 +919,9 @@ final class LocalRecordingLibrary: ObservableObject {
             mediaKind: .audio,
             captureGroupId: localID,
             roomStartReceiptId: nil,
-            sourceProfile: nil,
+            sourceProfile: testsSoundAnalysis
+                ? LocalRecordingSourceProfile(container: sourceURL.pathExtension, includesAudio: true, audioSignal: validation.audioSignal)
+                : nil,
             recordingSegmentsJson: nil,
             uploadProgress: 1,
             uploadedSourceId: assetID,
@@ -915,7 +932,14 @@ final class LocalRecordingLibrary: ObservableObject {
             verifiedCloudAt: installedAt,
             statusMessage: "Exact retained source installed for the operated simulator acceptance journey."
         )
+        if testsSoundAnalysis, let existing = storedRecordings.first(where: { $0.id == localID }),
+           existing.ownerAccountID == ownerAccountID, existing.recordingAssetId == assetID,
+           existing.sourceSHA256 == expectedSHA256 {
+            recording.sourceProfile = existing.sourceProfile ?? recording.sourceProfile
+            recording.soundAnalysisSyncedID = existing.soundAnalysisSyncedID
+        }
         try commit(upserting: recording)
+        if testsSoundAnalysis { resumePendingSoundAnalysis() }
         return recording
     }
 
@@ -1219,6 +1243,7 @@ final class LocalRecordingLibrary: ObservableObject {
         // payload must never turn already-proven source bytes into a failed
         // recording. Attach them only after source truth has committed.
         attachDerivedAnalysisIfPossible(validation, to: id)
+        startPendingAudibleAnalyses()
 
         guard let recording = storedRecordings.first(where: { $0.id == id }) else {
             throw LibraryError.recordingNotFound
@@ -1314,6 +1339,7 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.status = verification == "verified" ? .uploaded : .awaitingVerification
             recording.statusMessage = self.nonempty(detail)
         }
+        startPendingSoundAnalysisSync()
     }
 
     func markUploadHeld(_ id: UUID, message: String) throws {
@@ -2014,6 +2040,9 @@ final class LocalRecordingLibrary: ObservableObject {
     /// into undefined view-update reentrancy. Candidates remain fail-closed in
     /// `validatingRecovery` until this lifecycle-owned operation commits them.
     func validatePendingRecoveredSources() async {
+        // Missing analysis in the durable source profile is the restart queue.
+        // A cold launch must resume it even when no source needs repair.
+        defer { resumePendingSoundAnalysis() }
         let candidates = pendingDeepValidations
         pendingDeepValidations.removeAll()
         guard !candidates.isEmpty else { return }
@@ -2115,13 +2144,115 @@ final class LocalRecordingLibrary: ObservableObject {
         do {
             try mutate(recordingID, allowInactiveOwner: true) { recording in
                 guard var sourceProfile = recording.sourceProfile else { return }
-                sourceProfile.audioSignal = validation.audioSignal
-                sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
+                if let signal = validation.audioSignal { sourceProfile.audioSignal = signal }
+                if let events = validation.audibleEventAnalysis { sourceProfile.audibleEventAnalysis = events }
                 recording.sourceProfile = sourceProfile
             }
             derivedAnalysisNotices.removeValue(forKey: recordingID)
+            startPendingSoundAnalysisSync()
         } catch {
             derivedAnalysisNotices[recordingID] = "The recording is saved and playable. Its quality scan did not finish, so waveform and loudness details are not available yet."
+        }
+    }
+
+    func resumePendingSoundAnalysis() {
+        startPendingAudibleAnalyses()
+        startPendingSoundAnalysisSync()
+    }
+
+    private func startPendingSoundAnalysisSync() {
+        guard soundAnalysisSyncTask == nil, AuthManager.shared.networkActionsAllowed,
+              let owner = normalizedOwnerID(activeOwnerAccountID) else { return }
+        let generation = UUID()
+        soundAnalysisSyncGeneration = generation
+        soundAnalysisSyncTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if self.soundAnalysisSyncGeneration == generation { self.soundAnalysisSyncTask = nil } }
+            while !Task.isCancelled, self.soundAnalysisSyncGeneration == generation,
+                  AuthManager.shared.networkActionsAllowed, AuthManager.currentStoredOwnerID() == owner {
+                let pending = self.storedRecordings.filter {
+                    guard $0.ownerAccountID == owner, $0.status.isVerified,
+                          $0.recordingAssetId != nil, let analysis = $0.sourceProfile?.audibleEventAnalysis,
+                          analysis.status == "completed", analysis.sourceSHA256 == $0.verifiedCloudSHA256,
+                          analysis.sourceByteCount == $0.verifiedCloudSizeBytes else { return false }
+                    return $0.soundAnalysisSyncedID != analysis.analysisId
+                }
+                guard !pending.isEmpty else { return }
+                for recording in pending {
+                    guard !Task.isCancelled, self.soundAnalysisSyncGeneration == generation else { return }
+                    do {
+                        let receipt = try await CaptureSoundAnalysisSync.deliver(recording: recording)
+                        guard !Task.isCancelled, self.soundAnalysisSyncGeneration == generation else { return }
+                        try self.mutate(recording.id) { current in
+                            guard current.recordingAssetId == receipt.recordingAssetId,
+                                  current.sourceProfile?.audibleEventAnalysis?.analysisId == receipt.analysisId else { return }
+                            current.soundAnalysisSyncedID = receipt.analysisId
+                        }
+                    } catch {
+                        // Missing acknowledgement leaves the same durable analysis pending.
+                        // A lost success response is replayed safely with its original id.
+                    }
+                }
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+    }
+
+    /// One local classifier at a time, downstream of playable source truth.
+    /// Missing/failed profiles can be picked up again after launch; no UI waits
+    /// for this task, and account changes cancel it without discarding sources.
+    private func startPendingAudibleAnalyses() {
+        guard audibleAnalysisTask == nil, let owner = normalizedOwnerID(activeOwnerAccountID) else { return }
+        let generation = UUID()
+        audibleAnalysisGeneration = generation
+        audibleAnalysisTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.audibleAnalysisGeneration == generation { self.audibleAnalysisTask = nil }
+            }
+            var attempted = Set<UUID>()
+            while !Task.isCancelled, self.audibleAnalysisGeneration == generation,
+                  let candidate = self.storedRecordings.first(where: { recording in
+                      guard !attempted.contains(recording.id), recording.ownerAccountID == owner,
+                            recording.effectiveMediaKind == .audio, recording.status.isPlaybackEligible,
+                            recording.sourceProfile != nil, recording.byteCount > 0 else { return false }
+                      guard let previous = recording.sourceProfile?.audibleEventAnalysis else { return true }
+                      return previous.status == "failed" && Date().timeIntervalSince(previous.analyzedAt) > 300
+                  }) {
+                attempted.insert(candidate.id)
+                let fileURL = self.sourceFileURL(for: candidate)
+                guard self.fileByteCount(at: fileURL) == candidate.byteCount else { continue }
+                self.derivedAnalysisNotices[candidate.id] = "Your recording is saved and playable. Sound details are being added in the background."
+                #if DEBUG && targetEnvironment(simulator)
+                if CaptureLaunchConfiguration.usesSlowDerivedAudioAnalysisUITest {
+                    try? await Task.sleep(for: .seconds(120))
+                    guard !Task.isCancelled else { break }
+                }
+                #endif
+                let analysis = Task.detached(priority: .utility) {
+                    await LocalAudibleEventAnalyzer.analyze(fileURL: fileURL,
+                        durationSeconds: candidate.durationSeconds, sourceByteCount: candidate.byteCount,
+                        supersedesAnalysisId: candidate.sourceProfile?.audibleEventAnalysis?.analysisId)
+                }
+                let result = await withTaskCancellationHandler {
+                    await analysis.value
+                } onCancel: { analysis.cancel() }
+                guard !Task.isCancelled, self.audibleAnalysisGeneration == generation else { break }
+                guard let current = self.storedRecordings.first(where: { $0.id == candidate.id }),
+                      current.ownerAccountID == owner, current.fileName == candidate.fileName,
+                      current.byteCount == candidate.byteCount, current.status.isPlaybackEligible,
+                      result.sourceByteCount == candidate.byteCount,
+                      current.sourceSHA256 == nil || current.sourceSHA256 == result.sourceSHA256 else {
+                    self.derivedAnalysisNotices.removeValue(forKey: candidate.id)
+                    continue
+                }
+                let validation = SourceValidation(isPlayable: true, durationSeconds: candidate.durationSeconds,
+                    failureMessage: nil, audibleEventAnalysis: result)
+                self.attachDerivedAnalysisIfPossible(validation, to: candidate.id)
+                if result.status == "failed" {
+                    self.derivedAnalysisNotices[candidate.id] = "Your recording is saved and playable. Sound details could not finish and can be retried on a later launch."
+                }
+            }
         }
     }
 
@@ -2144,33 +2275,7 @@ final class LocalRecordingLibrary: ObservableObject {
     ) async -> SourceValidation {
         switch mediaKind {
         case .audio:
-            let header = validateAudioSource(at: fileURL, readsToEnd: false)
-            guard header.isPlayable,
-                  let headerDurationSeconds = header.durationSeconds else {
-                return header
-            }
-            async let pendingAudibleEventAnalysis = LocalAudibleEventAnalyzer.analyze(
-                fileURL: fileURL,
-                durationSeconds: headerDurationSeconds,
-                sourceByteCount: fileByteCountForValidation(at: fileURL),
-                supersedesAnalysisId: expectedSourceProfile?.audibleEventAnalysis?.analysisId
-            )
-            let validation = validateAudioSource(at: fileURL, readsToEnd: true)
-            guard validation.isPlayable,
-                  validation.durationSeconds != nil else {
-                _ = await pendingAudibleEventAnalysis
-                return validation
-            }
-            let audibleEventAnalysis = await pendingAudibleEventAnalysis
-            return SourceValidation(
-                isPlayable: validation.isPlayable,
-                durationSeconds: validation.durationSeconds,
-                failureMessage: validation.failureMessage,
-                recordedMedia: validation.recordedMedia,
-                audioSignal: validation.audioSignal,
-                audibleEventAnalysis: audibleEventAnalysis,
-                sourceIntegrityHoldReason: validation.sourceIntegrityHoldReason
-            )
+            return validateAudioSource(at: fileURL, readsToEnd: true)
         case .video:
             return await validateVideoSourceThroughEnd(
                 at: fileURL,

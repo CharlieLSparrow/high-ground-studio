@@ -237,6 +237,14 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesSlowDerivedAudioAnalysisUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        forcesLocalVoiceNoteUITest && ProcessInfo.processInfo.arguments.contains("--capture-slow-derived-analysis-ui-test")
+        #else
+        false
+        #endif
+    }
+
     /// A DEBUG-only presentation layer for deterministic App Store layout
     /// drafts. It uses the same mutation-free preview model, but removes
     /// engineering boundary labels and substitutes clearly fictional account

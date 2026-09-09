@@ -81,8 +81,9 @@ test("critical lane is explicit, valid, and stays within its test budget", async
   assert.equal(plan.selectedTestCount, CRITICAL_TESTS.length);
   assert.ok(plan.selectedTestCount >= 10);
   // Keep growth deliberate without tying release coverage to the number of
-  // unrelated tests. This budget includes Home-to-work on both Apple layouts.
-  assert.ok(plan.selectedTestCount <= 53, "Critical lane exceeded its 53-test budget.");
+  // unrelated tests. This includes Home-to-work and saved-source playback
+  // during slow optional analysis on both Apple layouts.
+  assert.ok(plan.selectedTestCount <= 55, "Critical lane exceeded its 55-test budget.");
   assert.ok(plan.selectedTestCount < tests.length);
   assert.deepEqual(
     plan.selectors,

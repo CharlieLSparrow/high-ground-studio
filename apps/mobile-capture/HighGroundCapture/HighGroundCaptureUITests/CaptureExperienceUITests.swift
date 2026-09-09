@@ -205,7 +205,14 @@ final class CaptureExperienceUITests: XCTestCase {
             app.launchArguments += [
                 "--capture-force-local-voice-note-ui-test",
                 "--capture-derived-analysis-persistence-failure-ui-test",
-                "--capture-share-owner-ui-preview=derived-analysis-failure-owner",
+                "--capture-share-owner-ui-preview=derived-analysis-failure-\(UUID().uuidString.lowercased())",
+            ]
+        }
+        if name.contains("testSlowSoundAnalysisDoesNotDelaySavingOrPlayback") {
+            app.launchArguments += [
+                "--capture-force-local-voice-note-ui-test",
+                "--capture-slow-derived-analysis-ui-test",
+                "--capture-share-owner-ui-preview=slow-analysis-\(UUID().uuidString.lowercased())",
             ]
         }
         if name.contains("testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground") {
@@ -1280,6 +1287,18 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testDerivedAudioAnalysisFailureKeepsSourcePlayable() {
+        exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: false)
+    }
+
+    func testSlowSoundAnalysisDoesNotDelaySavingOrPlayback() {
+        exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: true)
+    }
+
+    func testSlowSoundAnalysisDoesNotDelaySavingOrPlaybackOnRegularWidthIPad() {
+        exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: true)
+    }
+
+    private func exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: Bool) {
         let speakToWrite = app.frame.width >= 700
             ? app.buttons["CaptureIPadSpeakToWrite"]
             : app.buttons["CaptureStartVoiceNote"]
@@ -1303,11 +1322,11 @@ final class CaptureExperienceUITests: XCTestCase {
         allowSystemPermissionIfPresented()
         let stop = app.buttons["CaptureStopButton"]
         XCTAssertTrue(stop.waitForExistence(timeout: 15))
-        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        RunLoop.current.run(until: Date().addingTimeInterval(4))
         stop.tap()
         XCTAssertTrue(
             stop.waitForNonExistence(timeout: 12),
-            "Optional analysis failure must not leave source finalization stuck."
+            "Optional analysis must not leave source finalization stuck."
         )
         allowSystemPermissionIfPresented()
 
@@ -1326,7 +1345,7 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(savedRow, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
             savedRow.waitForExistence(timeout: 12),
-            "The decoded source must remain in Notes after derived analysis rejects its payload."
+            "The decoded source must remain in Notes independently of derived analysis."
         )
         let play = savedRow.buttons["Play"].firstMatch
         XCTAssertTrue(play.exists && play.isEnabled)
@@ -1346,6 +1365,13 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             savedRow.label.localizedCaseInsensitiveContains("capture failed")
         )
+        if expectsBackgroundAnalysis {
+            XCTAssertTrue(warning.label.localizedCaseInsensitiveContains("background"))
+        }
+        reveal(play, searchAboveFirst: true)
+        play.tap()
+        XCTAssertTrue(savedRow.buttons["Stop"].waitForExistence(timeout: 2),
+                      "The saved source should actually play while optional analysis is unavailable.")
     }
 
     func testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture() {
@@ -5921,7 +5947,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["00:08 · Possible dropout · listen before classifying"].exists
         )
-        XCTAssertTrue(app.staticTexts["Sounds to review"].exists)
+        XCTAssertTrue(app.staticTexts["Detected sounds"].exists)
         XCTAssertTrue(app.staticTexts["00:12 · Cough · 86% score"].exists)
         let audibleEventBoundary = app.descendants(matching: .any)["CaptureAudibleEventPreviewBoundary"]
         XCTAssertTrue(audibleEventBoundary.exists)
