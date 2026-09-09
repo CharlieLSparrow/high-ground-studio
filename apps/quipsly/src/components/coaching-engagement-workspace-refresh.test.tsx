@@ -192,6 +192,49 @@ describe("client-space live refresh", () => {
     expect(screen.getByText(next.body, {selector: "p"})).toBeVisible();
   });
 
+  it("keeps background updates quiet while preserving progress for an explicit refresh", async () => {
+    let finishRead!: (value: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise(resolve => {finishRead = resolve;}));
+    render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.change(screen.getByLabelText("task name"), {target: {value: "An unfinished thought"}});
+    await act(async () => {jest.advanceTimersByTime(15_000);});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Finding your work…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Refreshing work"})).not.toBeInTheDocument();
+    expect(screen.getByLabelText("task name")).toHaveValue("An unfinished thought");
+    fireEvent.click(screen.getByRole("button", {name: "Refresh work"}));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", {name: "Refreshing work"})).toBeDisabled();
+    expect(screen.getByText("Finding your work…")).toBeVisible();
+    await act(async () => finishRead(response(snapshot([next]))));
+    expect(screen.getByRole("button", {name: "Refresh work"})).toBeEnabled();
+    expect(screen.queryByText("Finding your work…")).not.toBeInTheDocument();
+    expect(screen.getByText(next.body, {selector: "p"})).toBeVisible();
+    expect(screen.getByLabelText("task name")).toHaveValue("An unfinished thought");
+  });
+
+  it("loads the requested next page even when a quiet refresh is in flight", async () => {
+    let finishOld!: (value: unknown) => void;
+    const page = {nextCursor: "older-page"};
+    const older = {...original, id: "older", title: "An earlier idea"};
+    fetchMock.mockReturnValueOnce(new Promise(resolve => {finishOld = resolve;}))
+      .mockResolvedValueOnce(response(snapshot([next], {page})))
+      .mockResolvedValueOnce(response(snapshot([older], {page: {nextCursor: null}})));
+    render(<CoachingEngagementWorkspace {...props} initialPage={page} />);
+    await act(async () => {jest.advanceTimersByTime(15_000);});
+    const signal = fetchMock.mock.calls[0][1].signal;
+    expect(screen.getByRole("button", {name: "Show more work"})).toBeEnabled();
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Show more work"})));
+    expect(signal.aborted).toBe(true);
+    expect(fetchMock.mock.calls[2][0]).toContain("cursor=older-page");
+    expect(screen.getByRole("button", {name: `Open task: ${older.title}`})).toBeVisible();
+    await act(async () => finishOld(response(snapshot([original], {page}))));
+    expect(screen.getByRole("button", {name: `Open task: ${older.title}`})).toBeVisible();
+    expect(screen.queryByRole("button", {name: "Show more work"})).not.toBeInTheDocument();
+  });
+
   it("keeps loaded work after a temporary failure and recovers on reconnect", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValue(response(snapshot([next])));

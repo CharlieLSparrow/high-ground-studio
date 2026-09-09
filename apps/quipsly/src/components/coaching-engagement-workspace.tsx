@@ -214,13 +214,21 @@ function CoachingEngagementWorkspaceContent({
     return () => {controller.abort(); window.clearTimeout(timeout);};
   }, [selectedId, engagementId, currentUserId]);
 
-  const refreshEntries = useCallback(async (moreCursor?: string) => {
-    if (refreshController.current || pendingIds.current.size) return;
+  const refreshEntries = useCallback(async (moreCursor?: string, {background = false}: {background?: boolean} = {}) => {
+    if (pendingIds.current.size) return;
+    if (refreshController.current && !moreCursor) {
+      // A manual refresh can join the existing read without starting another.
+      if (!background) setRefreshing(true);
+      return;
+    }
+    // Loading another page supersedes a quiet refresh; do not consume that
+    // click by merely waiting for a read that never requested the next page.
+    refreshController.current?.abort();
     const controller = new AbortController();
     refreshController.current = controller;
     const revision = mutationRevision.current;
     const timeout = window.setTimeout(() => controller.abort(), 10_000);
-    setRefreshing(true);
+    setRefreshing(!background);
     try {
       const changedQuery = history.current.query !== search || history.current.kind !== workFilter || history.current.tag !== (tagFilter?.id ?? "");
       const cursors = changedQuery ? [null] : [...history.current.cursors];
@@ -320,12 +328,12 @@ function CoachingEngagementWorkspaceContent({
   useEffect(() => {
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible" && navigator.onLine && !workspace.current?.closest("[hidden]")) {
-        void refreshEntries();
+        void refreshEntries(undefined, {background: true});
       }
     };
     const interval = window.setInterval(refreshWhenVisible, 15_000);
     const workChanged = (event: Event) => {
-      if ((event as CustomEvent).detail?.engagementId === engagementId) void refreshEntries();
+      if ((event as CustomEvent).detail?.engagementId === engagementId) void refreshEntries(undefined, {background: true});
     };
     window.addEventListener("quipsly-coaching-work-changed", workChanged);
     window.addEventListener("focus", refreshWhenVisible);
