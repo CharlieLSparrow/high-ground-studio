@@ -3417,6 +3417,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if revision < 2 {
                 let error = app.staticTexts["Test connection interrupted after saving revision \(revision). Try Save again."].firstMatch
                 XCTAssertTrue(error.waitForExistence(timeout: 30), "The server must persist before the proxy loses this reply.")
+                XCTAssertTrue(error.isHittable, "The save error must be visible above the keyboard without scrolling.")
+                XCTAssertTrue(save.isHittable, "Retry must remain in view beside the retained writing.")
                 XCTAssertTrue(app.textFields["CaptureTranscriptTaskTitleField"].exists, "Failed replies must leave writing editable.")
                 attachRuntimeScreenshot(app, name: "Task writing retained after lost reply \(revision)")
                 XCUIDevice.shared.press(.home)

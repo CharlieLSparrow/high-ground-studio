@@ -72,15 +72,20 @@ struct CaptureTranscriptWorkComposer: View {
                         Text("Close keeps your draft on this device.")
                     }
                 }
-                if let error {
-                    Section {
-                        Text(error).foregroundStyle(.red)
-                            .accessibilityIdentifier("CaptureTranscriptWorkDraftError")
-                    }
-                }
             }
             .disabled(isSaving)
             .captureFormSurface()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let error {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(.regularMaterial)
+                        .accessibilityIdentifier("CaptureTranscriptWorkDraftError")
+                }
+            }
             .navigationTitle(kindName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
