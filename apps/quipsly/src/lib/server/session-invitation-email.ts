@@ -1,6 +1,7 @@
 import "server-only";
 
 import { normalizeEmail } from "@/lib/server/studio-user-identity";
+import { isSyntheticEmailRecipient } from "./synthetic-email-recipient";
 
 export type SessionInvitationEmailResult =
   | {
@@ -202,11 +203,9 @@ export async function sendSessionInvitationEmail(input: {
       retryAfterSeconds: null,
     };
   }
-  // `.dev.test` is Quipsly's reserved local acceptance namespace. Refuse it
-  // before reading provider configuration or making an outbound request so a
-  // developer machine can safely exercise the real invitation action without
-  // leaking synthetic recipients to Resend.
-  if (recipientEmail.endsWith("@dev.test")) {
+  // Local and documentation fixtures are not restricted to one mailbox domain.
+  // Check before provider configuration or any outbound request.
+  if (isSyntheticEmailRecipient(recipientEmail)) {
     return {
       ok: false,
       provider: "resend",

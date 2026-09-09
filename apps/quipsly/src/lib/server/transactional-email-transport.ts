@@ -1,4 +1,5 @@
 import "server-only";
+import { isSyntheticEmailRecipient } from "./synthetic-email-recipient";
 
 import type { TransactionalEmailKind } from "@prisma/client";
 
@@ -166,7 +167,7 @@ export async function sendTransactionalEmail(input: {
       retryAfterSeconds: null,
     };
   }
-  if (recipientEmail.endsWith("@dev.test")) {
+  if (isSyntheticEmailRecipient(recipientEmail)) {
     return {
       ok: false,
       provider: "resend",
