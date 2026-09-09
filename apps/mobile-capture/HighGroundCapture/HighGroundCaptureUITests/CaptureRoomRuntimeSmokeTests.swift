@@ -3077,6 +3077,84 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
     }
 
+    func testSharedCoachingNoteTagsPersistAcrossRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let initialTitle = try XCTUnwrap(credentials.noteEditSourceTitle)
+        let finalTitle = try XCTUnwrap(credentials.noteEditUpdatedTitle)
+        let initialBody = try XCTUnwrap(credentials.noteEditSourceBody)
+        let finalBody = try XCTUnwrap(credentials.noteEditUpdatedBody)
+        let tagLabel = try XCTUnwrap(credentials.tagLabel)
+
+        func openSpace(_ app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let open = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 30, swipeAttempts: 12))
+            open.tap()
+            XCTAssertTrue(app.scrollViews["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 30))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(app)
+        let add = app.buttons["CaptureCoachingQuickAdd_NOTE"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(add, in: app, timeout: 20, swipeAttempts: 12))
+        add.tap()
+        let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        let body = app.textViews["CaptureCoachingWorkDetail"].firstMatch
+        replaceText(in: title, with: initialTitle, app: app, dismissKeyboardAfterEditing: false)
+        replaceText(in: body, with: initialBody, app: app, dismissKeyboardAfterEditing: false)
+        let tags = app.buttons["CaptureCoachingWorkTags"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(tags, in: app, timeout: 20, swipeAttempts: 8))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: tags)], timeout: 20), .completed)
+        tags.tap()
+        let choice = app.buttons[tagLabel].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(choice, in: app, timeout: 15, swipeAttempts: 8))
+        XCTAssertEqual(choice.value as? String, "Not selected")
+        XCTAssertTrue(choice.identifier.hasPrefix("CaptureTaskTagChoice_"))
+        let tagID = String(choice.identifier.dropFirst("CaptureTaskTagChoice_".count))
+        XCTAssertFalse(tagID.isEmpty)
+        choice.tap()
+        XCTAssertEqual(choice.value as? String, "Selected")
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        app.buttons["CaptureCoachingSaveWork"].firstMatch.tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 30))
+        let card = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingWork_"))
+            .containing(.staticText, identifier: initialTitle).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(card, in: app, timeout: 30, swipeAttempts: 12))
+        let noteID = String(card.identifier.dropFirst("CaptureCoachingWork_".count))
+        XCTAssertFalse(noteID.isEmpty)
+        XCTAssertTrue(app.buttons["CaptureWorkTagFilter_\(noteID)_\(tagID)"].exists)
+        attachRecordingIdentity(noteID, name: "Shared native note identity for cross-account readback")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(app)
+        let edit = app.buttons["CaptureCoachingEdit_\(noteID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 25, swipeAttempts: 12))
+        edit.tap()
+        let restoredTitle = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        let restoredBody = app.textViews["CaptureCoachingWorkDetail"].firstMatch
+        XCTAssertTrue(restoredTitle.waitForExistence(timeout: 10))
+        XCTAssertEqual(restoredTitle.value as? String, initialTitle)
+        XCTAssertEqual(restoredBody.value as? String, initialBody)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_\(tagID)"].exists)
+        replaceText(in: restoredTitle, with: finalTitle, app: app, dismissKeyboardAfterEditing: false)
+        replaceText(in: restoredBody, with: finalBody, app: app, dismissKeyboardAfterEditing: false)
+        app.buttons["CaptureCoachingSaveWork"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(app)
+        let saved = app.descendants(matching: .any)["CaptureCoachingWork_\(noteID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(saved, in: app, timeout: 25, swipeAttempts: 12))
+        XCTAssertTrue(saved.staticTexts[finalTitle].exists)
+        XCTAssertTrue(saved.staticTexts[finalBody].exists)
+        XCTAssertTrue(app.buttons["CaptureWorkTagFilter_\(noteID)_\(tagID)"].exists,
+                      "Editing writing without changing the tag picker must preserve the saved selection.")
+        attachRuntimeScreenshot(app, name: "Shared note and canonical tag after two native relaunches")
+    }
+
     func testSharedWorkTagFiltersAndClears() throws {
         let credentials = try runtimeSmokeCredentials()
         let taskID = try XCTUnwrap(credentials.taskID)

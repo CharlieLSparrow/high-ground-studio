@@ -1321,7 +1321,6 @@ for (const needle of [
   requireIncludes(captureCoachingHomeText, needle, "native coaching work supports conventional reversible remove and Undo");
 }
 for (const needle of [
-  'requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()',
   'targetAt: entry.dueAt.flatMap(coachingISO8601Date)',
   'accessibilityIdentifier("CaptureCoachingWorkDateToggle")',
   'accessibilityIdentifier("CaptureCoachingWorkDate")',

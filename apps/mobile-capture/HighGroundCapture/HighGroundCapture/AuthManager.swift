@@ -850,8 +850,8 @@ final class AuthManager: ObservableObject {
         // A reachable Nest endpoint can fail independently (for example, media
         // upload storage may be unavailable while sessions and notes are fine).
         // Preserve the authenticated shell and let the owning feature handle
-        // every non-authentication HTTP status. Only transport failures prove
-        // that protected offline access is necessary.
+        // every non-authentication HTTP status. Only explicit connectivity
+        // unavailability, not an endpoint timeout, enters offline access.
         guard firstResult.1.statusCode == 401 else {
             return firstResult
         }
@@ -1838,29 +1838,7 @@ final class AuthManager: ObservableObject {
 
     private func isNetworkAvailabilityError(_ error: Error) -> Bool {
         guard !isRequestCancellation(error) else { return false }
-        let nsError = error as NSError
-        guard nsError.domain == NSURLErrorDomain else { return false }
-        let codes: Set<Int> = [
-            URLError.notConnectedToInternet.rawValue,
-            URLError.networkConnectionLost.rawValue,
-            URLError.cannotConnectToHost.rawValue,
-            URLError.cannotFindHost.rawValue,
-            URLError.dnsLookupFailed.rawValue,
-            URLError.timedOut.rawValue,
-            URLError.internationalRoamingOff.rawValue,
-            URLError.dataNotAllowed.rawValue,
-            URLError.secureConnectionFailed.rawValue,
-            URLError.serverCertificateHasBadDate.rawValue,
-            URLError.serverCertificateUntrusted.rawValue,
-            URLError.serverCertificateHasUnknownRoot.rawValue,
-            URLError.serverCertificateNotYetValid.rawValue,
-            URLError.clientCertificateRejected.rawValue,
-            URLError.clientCertificateRequired.rawValue,
-            URLError.cannotLoadFromNetwork.rawValue,
-            URLError.resourceUnavailable.rawValue,
-            URLError.badServerResponse.rawValue,
-        ]
-        return codes.contains(nsError.code)
+        return AuthRequestConnectivity.requiresOfflineAccess(for: error)
     }
 
     private func isRequestCancellation(_ error: Error) -> Bool {

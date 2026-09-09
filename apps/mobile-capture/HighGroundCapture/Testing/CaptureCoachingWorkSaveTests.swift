@@ -51,6 +51,16 @@ enum CaptureCoachingWorkSaveTests {
                 expect(merged.body["visibility"] as? String == "PRIVATE", "private stays private")
             } else {
                 expect(attempt.body["targetAt"] is NSNull, "no date is JSON null")
+                var dated = original
+                dated.targetAt = "2026-09-10T16:00:00Z"
+                expect(dated.createBody(requestID: "dated-command")["targetAt"] as? String == dated.targetAt,
+                       "\(kind) creation keeps the selected exact date")
+                let datedUpdate = dated.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")
+                expect(datedUpdate["targetAt"] as? String == dated.targetAt,
+                       "\(kind) update keeps the selected exact date")
+                dated.targetAt = nil
+                expect(dated.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")["targetAt"] is NSNull,
+                       "\(kind) clearing a saved date sends explicit JSON null")
                 latest.status = kind == "TASK" ? "DONE" : "ACHIEVED"
                 let result = edited.amendment(from: original, to: latest)
                 expect(result.body["status"] as? String == latest.status, "collaborator completion survives retry")

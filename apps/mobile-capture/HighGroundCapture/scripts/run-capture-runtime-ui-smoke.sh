@@ -441,6 +441,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  coaching-note-tags)
+    TEST_CASE="testSharedCoachingNoteTagsPersistAcrossRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TAG_LABEL" || -z "$TEST_NOTE_EDIT_SOURCE_TITLE" || -z "$TEST_NOTE_EDIT_UPDATED_TITLE" || -z "$TEST_NOTE_EDIT_SOURCE_BODY" || -z "$TEST_NOTE_EDIT_UPDATED_BODY" ]]; then
+      echo "Shared-note tag mode requires an exact Session, an existing shared tag, and unique initial and updated writing." >&2
+      exit 2
+    fi
+    ;;
   session-note-edit)
     TEST_CASE="testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox"
     if [[ -z "$TEST_SESSION_ID" ]]; then
