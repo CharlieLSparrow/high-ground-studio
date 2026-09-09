@@ -107,11 +107,11 @@ test("counts pending client labels toward tag limits without making separate wri
   fireEvent.change(screen.getByRole("searchbox"), {target: {value: "new 0"}});
   expect(screen.queryByRole("button", {name: "Add “new 0” tag"})).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole("searchbox"), {target: {value: ""}});
-  for (let index = 0; index < 16; index++) fireEvent.click(screen.getByRole("checkbox", {name: `Existing ${index}`, exact: true}));
+  for (let index = 0; index < 16; index++) fireEvent.click(screen.getByRole("checkbox", {name: `Existing ${index}`}));
   expect(screen.getByRole("button", {name: "Tags (24)"})).toBeVisible();
-  expect(screen.getByRole("checkbox", {name: "Existing 16", exact: true})).toBeDisabled();
+  expect(screen.getByRole("checkbox", {name: "Existing 16"})).toBeDisabled();
   fireEvent.click(screen.getByRole("button", {name: "Remove new New 0 tag"}));
-  expect(screen.getByRole("checkbox", {name: "Existing 16", exact: true})).toBeEnabled();
+  expect(screen.getByRole("checkbox", {name: "Existing 16"})).toBeEnabled();
   expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 });
 
