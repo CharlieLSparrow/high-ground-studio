@@ -79,7 +79,7 @@ const resolvedSettings = {
   TARGET_DEVICE_PLATFORM_NAME: "iphonesimulator", TARGET_DEVICE_OS_VERSION: "26.2", ARCHS: "arm64",
 };
 const settingsOutput = (settings = resolvedSettings) => JSON.stringify([{ target: "HighGroundCapture", buildSettings: settings }]);
-const discoveryError = () => Object.assign(new Error("Destination unavailable"), { code: 70, stderr: `
+const discoveryError = () => Object.assign(new Error("Destination unavailable"), { code: 64, stderr: `
 xcodebuild: error: Could not configure request to show build settings: Unable to find a device matching the provided destination specifier:
   { platform:iOS Simulator, arch:arm64, id:${phoneID} }
   The requested device could not be found because no available devices matched the request.
@@ -90,10 +90,13 @@ xcodebuild: error: Could not configure request to show build settings: Unable to
 
 test("only missing Xcode discovery of an exact simulator qualifies for setup recovery", () => {
   assert.equal(simulatorDiscoveryLag(discoveryError(), `${exactPhone},arch=arm64`), phoneID);
+  assert.equal(simulatorDiscoveryLag({ ...discoveryError(), code: 70 }, exactPhone), phoneID);
   for (const destination of ["platform=iOS Simulator,name=iPhone test", "platform=iOS,id=" + phoneID]) {
     assert.equal(simulatorDiscoveryLag(discoveryError(), destination), null);
   }
   for (const error of [new Error("package failed"), { ...discoveryError(), code: 65 },
+    { code: 64, stderr: "xcodebuild: error: invalid command line option" },
+    { ...discoveryError(), killed: true },
     { ...discoveryError(), stderr: discoveryError().stderr + `\n{ platform:iOS Simulator, id:${phoneID} }` },
     { ...discoveryError(), stderr: discoveryError().stderr + "\nIneligible destinations: iOS is not installed" }]) {
     assert.equal(simulatorDiscoveryLag(error, exactPhone), null);
@@ -505,7 +508,7 @@ if (args.includes("-showBuildSettings")) {
     fs.writeFileSync(counter, String(count + 1));
     if (count === 0 || process.env.CAPTURE_FAILURE === 'iPhone-discovery-persists') {
       console.error(${JSON.stringify(discoveryError().stderr)});
-      process.exit(70);
+      process.exit(64);
     }
   }
   if (platform === 'iPhone' && process.env.CAPTURE_FAILURE === 'iPhone-resolution-exit') process.exit(64);

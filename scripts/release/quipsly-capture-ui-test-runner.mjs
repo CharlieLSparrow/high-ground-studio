@@ -156,7 +156,10 @@ export function simulatorDiscoveryLag(error, destination) {
   const available = stderr.split(/Available destinations for[^\n]*:/i)[1];
   // Only the observed cold-runner failure qualifies. A concrete destination,
   // missing runtime, bad package, timeout, or name-based request is not lag.
-  return match && error?.code === 70
+  // Xcode 26.2's -showBuildSettings reports this destination failure as 64;
+  // other destination operations use 70. The diagnostic and exact-device
+  // recheck, not an exit code alone, establish eligibility for setup recovery.
+  return match && [64, 70].includes(error?.code) && !error?.killed
     && /Unable to find a device matching the provided destination specifier/i.test(stderr)
     && available?.includes("DVTiOSDeviceSimulatorPlaceholder")
     && !/\bid:[ ]*[0-9a-f]{8}-[0-9a-f-]{27}/i.test(available)

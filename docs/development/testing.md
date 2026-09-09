@@ -223,7 +223,8 @@ readable if the job deadline interrupts a later batch. Every planned test must
 still pass exactly once; batching does not raise the CI time limit or turn a
 partial run into success.
 Before testing, the runner verifies Xcode's resolved simulator identity. If
-Xcode exits with destination error 70 and lists only placeholder devices, an
+Xcode reports the exact destination-not-found diagnostic (exit 64 from
+`-showBuildSettings`, or 70) and lists only placeholder devices, an
 exact-UUID request can recover once: recheck that UUID in simctl's available
 iOS devices, wait for its boot status, then resolve it again. A missing device,
 concrete competing destination, absent runtime, ambiguous match, package error,
