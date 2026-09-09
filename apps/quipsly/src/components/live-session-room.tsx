@@ -543,7 +543,15 @@ export function LiveSessionRoom({
   const [sourceLocked, setSourceLocked] = useState(false);
   const [leaveAfterSourceStops, setLeaveAfterSourceStops] = useState(false);
   const [sourceStopRequestVersion, setSourceStopRequestVersion] = useState(0);
-  const [retainedGuardianEvidence, setRetainedGuardianEvidence] = useState<BrowserRetainedSourceGuardianEvidence | null>(null);
+  const recorderIdentity = `${callRoomId}:${captureGroupId?.trim() || ""}`;
+  const [retainedGuardianState, setRetainedGuardianState] = useState<{
+    identity: string; evidence: BrowserRetainedSourceGuardianEvidence;
+  } | null>(null);
+  const retainedGuardianEvidence = retainedGuardianState?.identity === recorderIdentity
+    ? retainedGuardianState.evidence : null;
+  const reportRetainedGuardianEvidence = useCallback((evidence: BrowserRetainedSourceGuardianEvidence) => {
+    setRetainedGuardianState({identity: recorderIdentity, evidence});
+  }, [recorderIdentity]);
   const [pageVisible, setPageVisible] = useState(true);
   const [providerRecording, setProviderRecording] = useState<ProviderRecordingState | null>(null);
   const [providerRecordingBusy, setProviderRecordingBusy] = useState(false);
@@ -695,10 +703,6 @@ export function LiveSessionRoom({
     document.addEventListener("visibilitychange", changed);
     return () => document.removeEventListener("visibilitychange", changed);
   }, []);
-
-  useEffect(() => {
-    setRetainedGuardianEvidence(null);
-  }, [callRoomId, captureGroupId]);
 
   useEffect(() => {
     onStatusChange?.(status);
@@ -2172,7 +2176,7 @@ export function LiveSessionRoom({
       callTransportInterrupted={status === "reconnecting" || callRecoveryAvailable || localRecordingFallback}
       onSourceLockChange={setSourceLocked}
       stopRequestVersion={sourceStopRequestVersion}
-      onGuardianEvidenceChange={setRetainedGuardianEvidence}
+      onGuardianEvidenceChange={reportRetainedGuardianEvidence}
       onPreparationStateChange={handlePreparationStateChange}
     />
   ) : (
@@ -2182,7 +2186,8 @@ export function LiveSessionRoom({
       <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session. If recording is still unavailable, ask the host to reopen it.</p>
     </section>
   );
-  const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops;
+  const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops ||
+    (retainedGuardianEvidence?.protectedRecoveryCount ?? 0) > 0;
   const callVideoStage = (
     <div
       data-testid="call-video-stage"
@@ -2323,7 +2328,12 @@ export function LiveSessionRoom({
             </div>
           ) : null}
 
-          {connected && showRetainedSourceControls ? retainedSourceControls : null}
+          {/* One stable recorder owns capture/recovery across call transitions.
+              Keep it mounted in the lobby so a reload resumes saved uploads
+              without asking someone to join the conversation again. */}
+          <div hidden={!showRetainedSourceControls} data-testid="session-recorder-surface">
+            {retainedSourceControls}
+          </div>
 
           <details data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
@@ -2500,7 +2510,6 @@ export function LiveSessionRoom({
             </p>
           </section>
         ) : null}
-        {!connected && showRetainedSourceControls ? retainedSourceControls : null}
         <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
             Recording safety details

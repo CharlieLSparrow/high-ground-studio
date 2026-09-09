@@ -6,7 +6,7 @@ export function selectRetainedSpeechWork({ tasks, goals }) {
   const title = (row) => row.sourceJson?.generatedSnapshot?.title ?? row.title;
   return {
     tasks: tasks.filter((row) => /draft one page/i.test(title(row))),
-    goals: goals.filter((row) => /^My coaching goal is to write/i.test(title(row))),
+    goals: goals.filter((row) => /^(?:My coaching goal is to write|Write every morning\b)/i.test(title(row))),
   };
 }
 

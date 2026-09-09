@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
+import type { BrowserRetainedSourceGuardianEvidence } from "@/lib/session-guardian";
 
 const mockRouterRefresh = jest.fn();
+let mockRetainedRecoveryCount = 0;
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: mockRouterRefresh }),
@@ -95,6 +97,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     stopRequestVersion,
     onSourceLockChange,
     onPreparationStateChange,
+    onGuardianEvidenceChange,
   }: {
     captureGroupId: string;
     projectSlug?: string | null;
@@ -105,7 +108,15 @@ jest.mock("@/components/browser-source-recorder", () => ({
     stopRequestVersion?: number;
     onSourceLockChange?: (locked: boolean) => void;
     onPreparationStateChange?: (state: { participantReady: boolean; everyoneReady: boolean }) => void;
+    onGuardianEvidenceChange?: (evidence: BrowserRetainedSourceGuardianEvidence) => void;
   }) => {
+    useEffect(() => {
+      if (mockRetainedRecoveryCount) onGuardianEvidenceChange?.({
+        status: "ready", sourceType: "audio", message: "Saved recording found", vaultAvailable: true,
+        vaultPersistent: true, readinessOk: false, readinessReason: "Join before starting a new recording",
+        protectedRecoveryCount: mockRetainedRecoveryCount, activeCaptureId: null, activeSizeBytes: 0, issue: null,
+      });
+    }, [onGuardianEvidenceChange]);
     useEffect(() => {
       if (stopRequestVersion) onSourceLockChange?.(false);
     }, [onSourceLockChange, stopRequestVersion]);
@@ -130,6 +141,7 @@ describe("LiveSessionRoom", () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
+    mockRetainedRecoveryCount = 0;
     window.localStorage.removeItem("quipsly-live-preferred-devices-v1");
     window.localStorage.removeItem("quipsly-live-preferred-devices-v2");
     window.localStorage.removeItem("quipsly-live-preferred-devices-v3");
@@ -177,6 +189,23 @@ describe("LiveSessionRoom", () => {
     expect(liveMicrophoneStatusPresentation({ evidence, muted, recoveryHeld }).label).toBe(label);
   });
 
+  it("reveals saved recording recovery from the lobby without joining or opening the microphone", async () => {
+    mockRetainedRecoveryCount = 1;
+    const getUserMedia = jest.fn();
+    Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([]), getUserMedia,
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ok: true}), {
+      headers: {"Content-Type": "application/json"},
+    }));
+    await act(async () => { render(<LiveSessionRoom callRoomId="saved-room" captureGroupId="55555555-5555-4555-8555-555555555551" sessionTitle="Saved recording" kind="coaching" />); });
+    expect(screen.getByTestId("session-recorder-surface")).toBeVisible();
+    expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("lobby");
+    expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
   it("makes external device choice and the no-hidden-recording boundary explicit", async () => {
     const enumerateDevices = jest.fn().mockResolvedValue([
       { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
@@ -212,7 +241,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByText(/Turning this copy off cannot change take synchronization/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Session Guardian" })).toHaveTextContent(/Checking the retained-source recorder/i);
     expect(screen.getByText("Why Quipsly says this")).toBeInTheDocument();
-    expect(screen.queryByTestId("browser-source-capture-group")).not.toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-capture-group")).not.toBeVisible();
   });
 
   it("asks for media only from Join and enters muted when permission stays unavailable", async () => {
@@ -938,7 +967,7 @@ describe("LiveSessionRoom", () => {
     ).toBeTruthy();
     expect(join).toBeEnabled();
     expect(screen.getByRole("button", { name: "Test speakers" })).toBeEnabled();
-    expect(screen.queryByTestId("browser-source-conversation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-conversation")).not.toBeVisible();
     expect(preview?.parentElement).toHaveClass("h-28");
   });
 
@@ -1092,7 +1121,7 @@ describe("LiveSessionRoom", () => {
     });
 
     expect(screen.getByText("Ready to join", { selector: "span" })).toBeInTheDocument();
-    expect(screen.queryByTestId("browser-source-capture-group")).not.toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-capture-group")).not.toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
 
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
@@ -1248,8 +1277,11 @@ describe("LiveSessionRoom", () => {
     await act(async () => {
       render(<LiveSessionRoom callRoomId="room-rejoin" captureGroupId="55555555-5555-4555-8555-555555555537" sessionTitle="Recovery call" kind="coaching" />);
     });
+    const recorderInstance = screen.getByTestId("browser-source-capture-group");
+    expect(recorderInstance).not.toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-capture-group")).toBe(recorderInstance);
     fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));
 
     await act(async () => {
@@ -1265,6 +1297,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByText("Call disconnected", { selector: "span" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Ready to rejoin" })).toHaveTextContent("Ready to rejoin");
     expect(screen.getByRole("button", { name: "Rejoin call" })).toBeEnabled();
+    expect(screen.getByTestId("browser-source-capture-group")).toBe(recorderInstance);
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/local recording is still protected/i);
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
@@ -1273,6 +1306,7 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rejoin call" }));
     expect(await screen.findByRole("button", { name: "Stop recording & leave" })).toBeInTheDocument();
     expect(joinRequests).toBe(2);
+    expect(screen.getByTestId("browser-source-capture-group")).toBe(recorderInstance);
     expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("active");
     expect(screen.getByTestId("browser-source-call-transport")).toHaveTextContent("available");

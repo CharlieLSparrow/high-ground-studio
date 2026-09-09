@@ -3068,18 +3068,18 @@ export function BrowserSourceRecorder({
               {exitSafety.detail}
             </p>
           </section>
-        ) : (
+        ) : !activeLedger && !recoveryRows.length ? (
           <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
             Next, check your microphone and camera, then join the call. Joining
             does not start recording; the Record button appears after you join.
           </p>
-        )
+        ) : null
       ) : null}
 
       <div
-        className={conversationConnected ? "" : "hidden"}
-        aria-hidden={!conversationConnected}
+        hidden={!conversationConnected && !conversationEnded && !activeLedger && !recoveryRows.length}
       >
+        <div hidden={!conversationConnected}>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {["ENDED", "CANCELED", "FAILED"].includes(
             roomStatus?.toUpperCase() ?? "",
@@ -3215,6 +3215,7 @@ export function BrowserSourceRecorder({
             {retainedReadiness.reason}
           </p>
         ) : null}
+        </div>
         {pendingCoordinationReceiptCount > 0 || coordinationReceiptError ? (
           <p
             role="status"

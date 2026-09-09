@@ -86,7 +86,7 @@ describe("browser recording lifecycle", () => {
       return response({ ok: true, sessions: [] });
     });
     global.fetch = fetchMock as typeof fetch;
-    render(<BrowserSourceRecorder {...props} />);
+    const {rerender} = render(<BrowserSourceRecorder {...props} />);
     await screen.findByText("Recording starts when the coach or host presses Record.");
     const base = { id: "start", sequence: "1", action: "START", captureGroupId: "take", issuedAt: new Date().toISOString(), shouldRecord: true,
       participantStatuses: [], endpointReceipts: [], recordingHealth: { expectedParticipantCount: 0, participantWithEndpointCount: 0,
@@ -111,7 +111,11 @@ describe("browser recording lifecycle", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/resumable"))).toBe(true));
     expect(acknowledgeBrowserRecordingDirective).toHaveBeenCalledWith(expect.objectContaining({ directiveId: stopOrigin === "host" ? "stop" : "start", state: "STOPPED", captureId: expect.any(String) }));
     expect(screen.queryByText("Recording saved and verified in Quipsly.")).not.toBeInTheDocument();
+    rerender(<BrowserSourceRecorder {...props} conversationConnected={false} />);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", {name: "Record"})).not.toBeInTheDocument();
+    expect(screen.queryByText(/Next, check your microphone/)).not.toBeInTheDocument();
     await act(async () => { upload.resolve(response({ ok: true })); stopDelivery.resolve({ acknowledgedCount: 1, rejectedCount: 0, pendingCount: 0, latestError: null }); });
-    expect(await screen.findByText("Recording saved and verified in Quipsly.")).toBeInTheDocument();
+    expect(await screen.findByText("Recording saved and verified in Quipsly.")).toBeVisible();
   });
 });

@@ -24,6 +24,13 @@ test("new speech work is assigned to the speaker", () => {
   assertRetainedSpeechWork({ before: { tasks: [], goals: [] }, after, actorId: "client" });
 });
 
+test("recognizes the concise generated goal while retaining user wording", () => {
+  const work = workFixture();
+  work.goals[0].sourceJson.generatedSnapshot.title = "Write every morning";
+  assert.deepEqual(selectRetainedSpeechWork(work), work);
+  assert.deepEqual(selectRetainedSpeechWork({tasks: [], goals: [{title: "Write every evening"}]}).goals, []);
+});
+
 for (const [label, mutate] of [
   ["title overwrite", (work) => { work.tasks[0].title = "Overwritten"; }],
   ["due date overwrite", (work) => { work.tasks[0].dueAt = null; }],

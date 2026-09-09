@@ -260,6 +260,39 @@ describe("transcript coaching follow-through", () => {
   });
 
   it.each([
+    { ending: "Tomorrow I will draft one page and share it with my", speaker: "Charlie", expected: 1 },
+    { ending: "Tomorrow I will draft one page and share it with my.", speaker: "Charlie", expected: 1 },
+    // A complete shorter commitment is not an unfinished repetition.
+    { ending: "Tomorrow I will draft one page.", speaker: "Charlie", expected: 2 },
+    { ending: "Tomorrow I will draft one page and share it with my instructor.", speaker: "Charlie", expected: 2 },
+    { ending: "Tomorrow I will draft one page and share it with my", speaker: "Homer", expected: 2 },
+  ])("handles repeated speech without discarding a distinct commitment: $ending / $speaker", async ({ending, speaker, expected}) => {
+    const job = completedTranscriptJob();
+    // A participant-isolated source correctly overrides provider speaker names.
+    // Use provider attribution for the two-speaker case instead of inventing a
+    // second person on a source explicitly bound to Charlie.
+    if (speaker === "Homer") job.resultJson.processingControl.routing.speakerAuthority = "provider";
+    job.segments = [
+      {id: "complete", speakerLabel: "Charlie", startSeconds: 0, endSeconds: 5,
+        text: "Tomorrow I will draft one page and share it with my coach.", confidence: 0.98},
+      {id: "repeat", speakerLabel: speaker, startSeconds: 10, endSeconds: 15, text: ending, confidence: 0.98},
+    ];
+    const original = structuredClone(job.segments);
+    const work = automaticWorkStores();
+    const result = await buildCoachingPacketFromTranscriptJob({prisma: {
+      transcriptJob: {findUnique: jest.fn().mockResolvedValue(job)},
+      coachingNote: {findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({data}: any) => ({id: "summary", ...data}))},
+      ...work,
+    }, transcriptJobId: job.id, authorUserId: "coach-1"});
+    expect(result).toMatchObject({ok: true, actionItemCount: expected});
+    const tasks = await work.actionItem.findMany();
+    expect(tasks).toHaveLength(expected);
+    expect(tasks[0]).toMatchObject({title: "Tomorrow I will draft one page and share it with my coach",
+      sourceJson: {segmentId: "complete", startSeconds: 0, endSeconds: 5}});
+    expect(job.segments).toEqual(original);
+  });
+
+  it.each([
     { text: "I feel stuck.", goal: null, task: null, note: "I feel stuck" },
     { text: "What outcome would make this week feel successful?", goal: null, task: null, note: null },
     { text: "My goal is to walk 2.5 miles a day. Please create a task to walk 0.5 miles tomorrow. Note that I do not want daily reminders.",

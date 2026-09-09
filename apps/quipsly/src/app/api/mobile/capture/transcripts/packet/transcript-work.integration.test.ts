@@ -561,6 +561,32 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
     });
   });
 
+  it.each([false, true])("replaces an unfinished repeated task only while it is untouched (adopted: %s)", async adopted => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      const partial = await tx.transcriptSegment.update({where: {id: session.segments[1]!.id}, data: {
+        text: "Tomorrow I will draft one page and share it with my", startSeconds: 4, endSeconds: 5,
+      }});
+      await tx.transcriptSegment.update({where: {id: session.segments[2]!.id}, data: {startSeconds: 10, endSeconds: 12}});
+      expect(await session.build()).toMatchObject({ok: true, actionItemCount: 1});
+      let originalTask = await tx.actionItem.findFirstOrThrow({where: {roomId: f.room.id}});
+      if (adopted) originalTask = await tx.actionItem.update({where: {id: originalTask.id}, data: {title: "My own chosen next step"}});
+      const complete = await tx.transcriptSegment.create({data: {
+        transcriptJobId: f.job.id, speakerLabel: "Other participant", speakerUserId: f.member.id,
+        text: "Tomorrow I will draft one page and share it with my coach.", startSeconds: 20, endSeconds: 25,
+      }});
+      expect(await session.build()).toMatchObject({ok: true, actionItemCount: 1});
+      const tasks = await tx.actionItem.findMany({where: {roomId: f.room.id}});
+      expect(tasks).toHaveLength(adopted ? 2 : 1);
+      const canonical = tasks.find(task => task.title === "Tomorrow I will draft one page and share it with my coach")!;
+      expect(canonical).toMatchObject({assignedUserId: f.member.id, sourceJson: {segmentId: complete.id}});
+      expect(await tx.actionItem.findUnique({where: {id: originalTask.id}})).toEqual(adopted ? originalTask : null);
+      expect(await tx.transcriptSegment.findUniqueOrThrow({where: {id: partial.id}})).toEqual(partial);
+      expect(await session.read(f.outsider)).toEqual([]);
+      expect((await session.read(f.member)).some(work => work.id === canonical.id)).toBe(true);
+    });
+  });
+
   it("preserves a person's edited work when a corrected transcript refreshes the automatic results", async () => {
     await withFixture(async (tx, f) => {
       const session = await automaticSession(tx, f);

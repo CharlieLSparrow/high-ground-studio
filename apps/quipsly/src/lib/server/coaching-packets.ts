@@ -1070,8 +1070,13 @@ function distinctWorkSpans(
     const key = JSON.stringify([
       speaker, span.speakerLabel, cleanText(textForWork(span)).toLowerCase(),
     ]);
-    const workText = cleanText(textForWork(span)).toLowerCase().replace(/(?:\.{3}|…)\s*$/, "").trim();
-    if (/(?:\.{3}|…)\s*$/.test(span.text) && spans.some((other) => {
+    const workText = cleanText(textForWork(span)).toLowerCase().replace(/[.!?…]+$/, "").trim();
+    // Recordings can end mid-repeat without the provider adding an ellipsis.
+    // Only collapse an exact prefix with an explicitly unfinished ending;
+    // a complete shorter commitment or a different continuation is distinct.
+    const unfinished = /(?:\.{3}|…)\s*$/.test(span.text) ||
+      /\b(?:a|an|the|my|your|our|their|and|because)$/.test(workText);
+    if (unfinished && spans.some((other) => {
       const otherSpeaker = other.attributedParticipantId || other.sourceBoundParticipantId ||
         `${other.transcriptJobId || ""}:${other.speakerLabel || other.id}`;
       return otherSpeaker === speaker && other.speakerLabel === span.speakerLabel &&
