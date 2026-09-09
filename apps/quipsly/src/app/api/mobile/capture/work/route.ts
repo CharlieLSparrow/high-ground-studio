@@ -59,6 +59,7 @@ export async function GET(request: Request) {
   const prisma = getPrismaClient();
   const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
   const requestedProjectId = cleanText(new URL(request.url).searchParams.get("projectId"), 160);
+  const requestedTaskId = cleanText(new URL(request.url).searchParams.get("taskId"), 200);
   const selectedProject = requestedProjectId
     ? visibleProjects.find((project) => project.id === requestedProjectId)
     : visibleProjects[0];
@@ -93,7 +94,9 @@ export async function GET(request: Request) {
   const project = projectShape(selectedProject);
   const [taskRows, goalRows, noteRows, tagRows] = await Promise.all([
     prisma.actionItem.findMany({
-      where: nestProjectTaskWhere(selectedProject.id, selectedProject.slug, actorUserId),
+      where: requestedTaskId
+        ? { AND: [nestProjectTaskWhere(selectedProject.id, selectedProject.slug, actorUserId), { id: requestedTaskId }] }
+        : nestProjectTaskWhere(selectedProject.id, selectedProject.slug, actorUserId),
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }, { dueAt: "asc" }],
       take: 100,
       select: {

@@ -41,6 +41,33 @@ struct NestChatLinkedTask: Identifiable, Codable, Hashable {
     let tags: [MobileWorkTagLabel]?
 }
 
+/// Retries keep the same identity; editing the input starts a new command.
+struct NestConversationTaskCommand: Encodable, Equatable {
+    struct Tags: Encodable, Equatable { let tagIds: [String] }
+    let projectSlug: String
+    let sourceMessageId: String
+    let title: String
+    let clientRequestId: String
+    let tags: Tags
+
+    init(projectSlug: String, messageID: String, title: String, tagIDs: [String], previous: Self? = nil) {
+        self.projectSlug = projectSlug
+        sourceMessageId = messageID
+        self.title = title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        tags = Tags(tagIds: Array(Set(tagIDs)).sorted())
+        if let previous, previous.projectSlug == projectSlug, previous.sourceMessageId == messageID,
+           previous.title == self.title, previous.tags == tags {
+            clientRequestId = previous.clientRequestId
+        } else { clientRequestId = UUID().uuidString.lowercased() }
+    }
+}
+
+struct NestConversationTaskResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let entry: NestChatLinkedTask?
+}
+
 struct NestChatMessageMetadata: Codable, Hashable {
     let coachingScheduleRequest: NestChatCoachingScheduleRequest?
     let coachingScheduleDecision: NestChatCoachingScheduleDecision?

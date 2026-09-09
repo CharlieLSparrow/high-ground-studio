@@ -7626,6 +7626,22 @@ final class CaptureWorkClient: ObservableObject {
         errorMessage = nil
     }
 
+    /// Opens linked work beyond the overview's bounded recent-task list. This
+    /// query uses the same scoped projection without replacing that overview.
+    func task(id: String, projectID: String) async -> MobileCaptureTodayTask? {
+        guard AuthManager.shared.networkActionsAllowed,
+              var components = URLComponents(string: "\(baseURL)/api/mobile/capture/work") else { return nil }
+        components.queryItems = [URLQueryItem(name: "projectId", value: projectID), URLQueryItem(name: "taskId", value: id)]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: URLRequest(url: url))
+            let payload = try JSONDecoder().decode(MobileCaptureWorkResponse.self, from: data)
+            guard (200...299).contains(response.statusCode), payload.ok,
+                  payload.workspace?.project.id == projectID else { return nil }
+            return payload.workspace?.tasks.first { $0.id == id }
+        } catch { return nil }
+    }
+
     func load(projectID: String? = nil) async {
         guard !isLoading else {
             // A Nest choice is user intent, not a disposable refresh. If an

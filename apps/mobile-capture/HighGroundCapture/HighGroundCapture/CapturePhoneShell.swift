@@ -2395,6 +2395,9 @@ private struct CaptureWorkView: View {
     @State private var selectedTagID: String?
     @State private var showsCompletedTasks = false
     @State private var showsTagVocabulary = false
+    @State private var conversationProject: MobileCaptureWorkProject?
+    @State private var conversationTaskID: String?
+    @State private var conversationTaskError: String?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var showsNewProject = false
     @State private var showsCoachingSetup = false
@@ -2702,6 +2705,24 @@ private struct CaptureWorkView: View {
                 )
                 .presentationDetents([.large])
             }
+        }
+        .sheet(item: $conversationProject, onDismiss: {
+            guard let taskID = conversationTaskID else { return }
+            conversationTaskID = nil
+            guard let projectID = selectedProject?.id else { return }
+            Task {
+                let task = await client.task(id: taskID, projectID: projectID)
+                guard selectedProject?.id == projectID else { return }
+                if let task { taskToEdit = task }
+                else { conversationTaskError = "This task is no longer available in this Nest. Refresh to try again." }
+            }
+        }) { project in
+            MobileNestChatView(project: project, tags: (workspace?.tags ?? []).map {
+                MobileWorkTagLabel(id: $0.id, label: $0.label, hexColor: $0.hexColor, isActive: $0.isActive)
+            }, previewOnly: CaptureLaunchConfiguration.usesPreviewData, onOpenTask: { taskID in
+                conversationTaskID = taskID
+                conversationProject = nil
+            }, onWorkChanged: { await client.load(projectID: project.id) })
         }
         .sheet(item: $taskToEdit) { task in
             CaptureTaskEditSheet(
@@ -3271,6 +3292,15 @@ private struct CaptureWorkView: View {
         let openTaskCount = workspace.tasks.filter { $0.status == "OPEN" }.count
         let activeGoalCount = workspace.goals.filter { $0.status == "ACTIVE" }.count
         return VStack(alignment: .leading, spacing: 14) {
+            Button {
+                conversationTaskError = nil
+                conversationProject = workspace.project
+            } label: {
+                Label("Conversation", systemImage: "bubble.left.and.bubble.right")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("CaptureNestConversationOpenButton")
+            if let conversationTaskError { Text(conversationTaskError).font(.caption).foregroundStyle(CapturePalette.brass) }
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text("At a glance")
@@ -3314,6 +3344,7 @@ private struct CaptureWorkView: View {
             RoundedRectangle(cornerRadius: 22)
                 .stroke(.primary.opacity(0.09))
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureWorkProjectSummary")
     }
 

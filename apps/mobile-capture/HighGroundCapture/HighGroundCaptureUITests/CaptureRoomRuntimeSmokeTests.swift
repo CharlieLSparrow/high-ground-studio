@@ -4353,6 +4353,65 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app.buttons["Cancel"].firstMatch.tap()
     }
 
+    func testIPhoneCreatesTaskFromNestConversation() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let projectName = credentials.projectName, let tagLabel = credentials.tagLabel else {
+            throw XCTSkip("Requires a writable synthetic Nest and an existing tag")
+        }
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Work", in: app)
+        let location = app.buttons["CaptureGlobalWorkLocation"].firstMatch
+        XCTAssertTrue(location.waitForExistence(timeout: 20))
+        location.tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText(projectName)
+        let project = app.buttons[projectName].firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntilHittable(project, timeout: 10))
+        project.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: search)
+        waitForExpectations(timeout: 10)
+        let open = app.buttons["CaptureNestConversationOpenButton"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 20, swipeAttempts: 8))
+        open.tap()
+        let composer = app.descendants(matching: .any)["CaptureNestConversationComposer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 20))
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: composer)
+        waitForExpectations(timeout: 20)
+        let message = "Collect examples for our next chapter \(UUID().uuidString.prefix(8))"
+        composer.tap()
+        composer.typeText(message)
+        app.buttons["CaptureNestConversationSendButton"].tap()
+        XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 20))
+        let choices = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureNestConversationCreateTask_"))
+        XCTAssertTrue(choices.count > 0)
+        choices.element(boundBy: choices.count - 1).tap()
+        let title = app.descendants(matching: .any)["CaptureNestConversationTaskTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.value as? String, message)
+        app.buttons["CaptureNestConversationTaskTags"].tap()
+        let tag = app.buttons[tagLabel].firstMatch
+        XCTAssertTrue(tag.waitForExistence(timeout: 10))
+        tag.tap()
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        let save = app.buttons["CaptureNestConversationTaskSave"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        let task = app.buttons["Task: \(message), open"].firstMatch
+        XCTAssertTrue(task.waitForExistence(timeout: 20), "Canonical task must return to its source message")
+        task.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTaskEditTitle"].firstMatch.waitForExistence(timeout: 20),
+            "The conversation task must open the normal native task editor")
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 15, swipeAttempts: 8))
+        open.tap()
+        XCTAssertTrue(task.waitForExistence(timeout: 20), "Reopening must read the persisted task from Nest")
+        XCTAssertTrue(app.staticTexts[message].firstMatch.exists)
+    }
+
     func testWorkTagOutboxSurvivesOfflineRelaunchAndConverges() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty,

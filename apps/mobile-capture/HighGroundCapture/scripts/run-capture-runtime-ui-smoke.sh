@@ -385,6 +385,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  nest-conversation)
+    TEST_CASE="testIPhoneCreatesTaskFromNestConversation"
+    if [[ -z "$TEST_PROJECT_NAME" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Nest conversation mode requires a writable synthetic Nest name and existing tag label." >&2
+      exit 2
+    fi
+    ;;
   tag-authoring)
     TEST_CASE="testIPhoneCreatesReusableNestTagWithCanonicalTask"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TAGGED_TASK_TITLE" || -z "$TEST_TAG_LABEL" ]]; then

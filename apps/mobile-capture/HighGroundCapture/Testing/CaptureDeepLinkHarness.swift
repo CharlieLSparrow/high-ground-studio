@@ -69,6 +69,21 @@ struct CaptureDeepLinkHarness {
         let plainMessage = NestChatMessage(id: "plain", authorEmail: nil, authorName: nil,
             body: String(repeating: "a", count: 500), gifUrl: nil, createdAt: "now")
         precondition(plainMessage.suggestedTaskTitle.count == 160 && plainMessage.linkedTasks == nil)
+        let taskCommand = NestConversationTaskCommand(projectSlug: "writing", messageID: "idea-1",
+            title: "  Gather\n examples  ", tagIDs: ["research", "chapter", "research"])
+        precondition(taskCommand.title == "Gather examples" && taskCommand.tags.tagIds == ["chapter", "research"])
+        let retry = NestConversationTaskCommand(projectSlug: "writing", messageID: "idea-1",
+            title: "Gather examples", tagIDs: ["research", "chapter"], previous: taskCommand)
+        precondition(retry == taskCommand)
+        let edited = NestConversationTaskCommand(projectSlug: "writing", messageID: "idea-1",
+            title: "Gather better examples", tagIDs: ["research", "chapter"], previous: taskCommand)
+        precondition(edited.clientRequestId != taskCommand.clientRequestId)
+        let elsewhere = NestConversationTaskCommand(projectSlug: "other", messageID: "idea-1",
+            title: "Gather examples", tagIDs: ["research", "chapter"], previous: taskCommand)
+        precondition(elsewhere.clientRequestId != taskCommand.clientRequestId)
+        let taskBody = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(taskCommand)) as! [String: Any]
+        precondition(taskBody["sourceMessageId"] as? String == "idea-1")
+        precondition((taskBody["tags"] as? [String: [String]])?["tagIds"] == ["chapter", "research"])
         precondition(CaptureTagColor(hex: "#f2e4c5")?.usesWhiteText == false)
         precondition(CaptureTagColor(hex: "#aBc") == CaptureTagColor(hex: "#aabbcc"))
         precondition(CaptureTagColor(hex: "#aBc")?.hexString == "#aabbcc")

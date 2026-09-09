@@ -69,12 +69,14 @@ struct MobileChatPersistedLiveHint: Codable, Hashable {
 }
 
 enum MobileCollaborationChatScope: String, Codable {
+    case nest
     case episode
     case session
     case engagement
 
     var title: String {
         switch self {
+        case .nest: "Conversation"
         case .episode: "Episode thread"
         case .session: "Session thread"
         case .engagement: "Coaching conversation"
@@ -83,6 +85,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var conversationLabel: String {
         switch self {
+        case .nest: "Nest conversation"
         case .episode: "Canonical episode conversation"
         case .session: "Canonical take conversation"
         case .engagement: "Private coaching conversation"
@@ -91,6 +94,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var openLabel: String {
         switch self {
+        case .nest: "Open conversation"
         case .episode: "Open episode thread"
         case .session: "Open Session thread"
         case .engagement: "Open coaching conversation"
@@ -99,6 +103,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var accessibilityPrefix: String {
         switch self {
+        case .nest: "CaptureNestConversation"
         case .episode: "CaptureEpisodeChat"
         case .session: "CaptureSessionChat"
         case .engagement: "CaptureCoachingConversation"
@@ -107,6 +112,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var openButtonAccessibilityIdentifier: String {
         switch self {
+        case .nest: "CaptureNestConversationOpenButton"
         case .episode: "CaptureEpisodeChatOpenButton"
         case .session: "CaptureSessionChatOpenButton"
         case .engagement: "CaptureCoachingConversationOpenButton"
@@ -115,6 +121,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var startNoun: String {
         switch self {
+        case .nest: "Nest"
         case .episode: "episode"
         case .session: "Session"
         case .engagement: "coaching"
@@ -123,6 +130,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var composerPlaceholder: String {
         switch self {
+        case .nest: "Message this Nest"
         case .episode: "Message the episode team"
         case .session: "Message this Session"
         case .engagement: "Message this coaching space"
@@ -131,6 +139,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var emptyExplanation: String {
         switch self {
+        case .nest: "Talk through ideas and keep the next steps with your shared work."
         case .episode:
             "Keep writing, recording, editing, and publishing decisions with this exact episode."
         case .session:
@@ -142,6 +151,7 @@ enum MobileCollaborationChatScope: String, Codable {
 
     var boundaryExplanation: String {
         switch self {
+        case .nest: "Everyone with access to this Nest can read this conversation. Client conversations stay in their private spaces."
         case .episode:
             "Posts stay with this episode. Recording and playback never start from chat."
         case .session:
@@ -270,6 +280,40 @@ final class MobileEpisodeChatClient: ObservableObject {
         statusMessage = "1 message"
     }
 
+    func loadPreview(project: MobileCaptureWorkProject) {
+        reset()
+        currentContextKey = "preview|\(project.id)"
+        threadTitle = project.name
+        var message = NestChatMessage(id: "preview-nest-idea", authorEmail: "writer@example.test",
+            authorName: "Alex", body: "Collect three examples for our opening chapter.",
+            gifUrl: nil, createdAt: "2026-09-08T12:00:00Z")
+        message.linkedTasks = [NestChatLinkedTask(id: "preview-nest-task", title: "Find the opening story", status: "OPEN",
+            tags: [MobileWorkTagLabel(id: "research", label: "Research", hexColor: "#506b46", isActive: true)])]
+        messages = [message]
+        canEdit = project.canWrite
+    }
+
+    func load(project: MobileCaptureWorkProject, forceRefresh: Bool = false, quietly: Bool = false) async {
+        guard let context = context(for: project) else { return }
+        await load(context: context, forceRefresh: forceRefresh, quietly: quietly)
+    }
+
+    func startPolling(project: MobileCaptureWorkProject) {
+        stopPolling()
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self, !self.pollingDisabledForMissingThread else { return }
+                await self.load(project: project, quietly: true)
+            }
+        }
+    }
+
+    func send(project: MobileCaptureWorkProject, body: String) async -> Bool {
+        guard let context = context(for: project) else { return false }
+        return await send(context: context, body: body)
+    }
+
     func load(
         session: MobileCaptureSession,
         forceRefresh: Bool = false,
@@ -396,7 +440,7 @@ final class MobileEpisodeChatClient: ObservableObject {
                 threadTitle = nextThreadTitle
             }
             let actorRole = payload.actor?.role?.uppercased() ?? ""
-            let nextCanEdit = scope == .episode
+            let nextCanEdit = scope == .episode || scope == .nest
                 ? ["OWNER", "EDITOR"].contains(actorRole)
                 : !actorRole.isEmpty && !["OBSERVER", "VIEWER"].contains(actorRole)
             if canEdit != nextCanEdit {
@@ -627,7 +671,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     }
 
     static func clearProtectedCache() {
-        for scope in [MobileCollaborationChatScope.episode, .session, .engagement] {
+        for scope in [MobileCollaborationChatScope.episode, .session, .engagement, .nest] {
             guard let root = protectedCacheRoot(scope: scope) else { continue }
             try? FileManager.default.removeItem(at: root)
         }
@@ -656,7 +700,7 @@ final class MobileEpisodeChatClient: ObservableObject {
                   let sessionThreadKey = MobileChatPersistedLiveHint.sessionThreadKey(callRoomID) else { return nil }
             scopeKey = callRoomID
             threadKey = sessionThreadKey
-        case .engagement:
+        case .engagement, .nest:
             return nil
         }
         let endpoint = baseURL
@@ -695,12 +739,60 @@ final class MobileEpisodeChatClient: ObservableObject {
         context: Context
     ) -> Bool {
         switch scope {
+        case .nest:
+            payload.project?.slug == context.projectSlug && payload.episode == nil
+                && payload.session == nil && payload.engagement == nil
         case .episode:
             payload.episode?.slug == context.scopeKey
         case .session:
             payload.session?.id.lowercased() == context.scopeKey
         case .engagement:
             payload.engagement?.id.lowercased() == context.scopeKey
+        }
+    }
+
+    private func context(for project: MobileCaptureWorkProject) -> Context? {
+        guard scope == .nest, let slug = Self.safeSlug(project.slug) else { return nil }
+        return Context(key: "nest|\(slug)|default", projectSlug: slug, scopeKey: "default",
+            threadKey: "default", endpoint: baseURL.appendingPathComponent("api/nest-chat"))
+    }
+
+    func createTask(_ command: NestConversationTaskCommand, project: MobileCaptureWorkProject) async -> NestChatLinkedTask? {
+        guard canEdit, let context = context(for: project), context.key == currentContextKey,
+              command.projectSlug == project.slug, messages.contains(where: { $0.id == command.sourceMessageId }),
+              let activeScope = requestScope,
+              activeScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return nil }
+        invalidateOlderReads()
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: baseURL.appendingPathComponent("api/nest-chat/tasks"))
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(command)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard activeScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return nil }
+            let payload = try JSONDecoder().decode(NestConversationTaskResponse.self, from: data)
+            guard (200...299).contains(response.statusCode), payload.ok, let entry = payload.entry,
+                  Self.isSameOrigin(response.url, baseURL) else {
+                throw Self.error(payload.error ?? "Your task couldn't save. Try again.", code: response.statusCode)
+            }
+            invalidateOlderReads()
+            messages = messages.map { message in
+                guard message.id == command.sourceMessageId else { return message }
+                var updated = message
+                updated.linkedTasks = (message.linkedTasks ?? []).filter { $0.id != entry.id } + [entry]
+                return updated
+            }
+            persist(context: context)
+            return entry
+        } catch {
+            guard activeScope.belongsToOpening(requestScope,
+                currentOwnerAccountID: AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID) else { return nil }
+            errorMessage = error.localizedDescription
+            return nil
         }
     }
 
@@ -866,7 +958,7 @@ final class MobileEpisodeChatClient: ObservableObject {
             in: .userDomainMask
         ).first?
             .appendingPathComponent(
-                scope == .episode
+                scope == .nest ? "QuipslyCapture/NestChat" : scope == .episode
                     ? "QuipslyCapture/EpisodeChat"
                     : "QuipslyCapture/SessionChat",
                 isDirectory: true
@@ -930,6 +1022,7 @@ final class MobileEpisodeChatClient: ObservableObject {
 }
 
 enum MobileCollaborationChatTarget {
+    case nest(MobileCaptureWorkProject)
     case session(MobileCaptureSession)
     case engagement(MobileCaptureCoachingEngagement)
 
@@ -938,6 +1031,8 @@ enum MobileCollaborationChatTarget {
         forceRefresh: Bool = false
     ) async {
         switch self {
+        case let .nest(project):
+            await client.load(project: project, forceRefresh: forceRefresh)
         case let .session(session):
             await client.load(session: session, forceRefresh: forceRefresh)
         case let .engagement(engagement):
@@ -947,6 +1042,8 @@ enum MobileCollaborationChatTarget {
 
     func send(with client: MobileEpisodeChatClient, body: String) async -> Bool {
         switch self {
+        case let .nest(project):
+            await client.send(project: project, body: body)
         case let .session(session):
             await client.send(session: session, body: body)
         case let .engagement(engagement):
@@ -1041,7 +1138,7 @@ struct MobileEngagementChatCard: View {
     @ObservedObject var client: MobileEpisodeChatClient
     let engagement: MobileCaptureCoachingEngagement
     let previewOnly: Bool
-    var onWorkChanged: @MainActor () async -> Void = {}
+    var onWorkChanged: @MainActor @Sendable () async -> Void = {}
     @State private var isPresented = false
 
     var body: some View {
@@ -1139,7 +1236,9 @@ struct MobileEpisodeChatThread: View {
     @ObservedObject var client: MobileEpisodeChatClient
     let target: MobileCollaborationChatTarget
     let previewOnly: Bool
-    var onWorkChanged: @MainActor () async -> Void = {}
+    var onWorkChanged: @MainActor @Sendable () async -> Void = {}
+    var nestTags: [MobileWorkTagLabel] = []
+    var onOpenNestTask: (String) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
     @State private var workAction: MobileConversationWorkAction?
@@ -1214,6 +1313,10 @@ struct MobileEpisodeChatThread: View {
                 workReturnRevision += 1
             }
         }) { action in
+            if case let .nest(project) = target, case let .create(message) = action {
+                CaptureNestConversationTaskEditor(client: client, project: project, message: message,
+                    tags: nestTags, previewOnly: previewOnly)
+            }
             if case let .engagement(engagement) = target {
                 switch action {
                 case let .create(message):
@@ -1266,6 +1369,33 @@ struct MobileEpisodeChatThread: View {
                 Label("Shared GIF · open Nest to view", systemImage: "photo")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if case .nest = target {
+                ForEach(message.linkedTasks ?? []) { task in
+                    Button { onOpenNestTask(task.id) } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(task.title).font(.subheadline.weight(.semibold))
+                                CaptureWorkTags(tags: task.tags ?? [], workID: task.id)
+                            }
+                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Task: \(task.title), \(task.status.lowercased())")
+                    .accessibilityIdentifier("CaptureNestConversationTask_\(task.id)")
+                    .disabled(previewOnly)
+                }
+                if client.canEdit, !message.suggestedTaskTitle.isEmpty {
+                    Button {
+                        composerIsFocused = false
+                        workSourceMessageID = message.id
+                        workAction = .create(message)
+                    } label: {
+                        Label("Create task", systemImage: "checkmark.circle.badge.plus").frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("CaptureNestConversationCreateTask_\(message.id)")
+                }
             }
             if case let .engagement(engagement) = target {
                 ForEach(message.linkedTasks ?? []) { task in

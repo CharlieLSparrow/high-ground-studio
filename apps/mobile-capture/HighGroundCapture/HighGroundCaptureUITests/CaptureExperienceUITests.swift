@@ -3469,6 +3469,40 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["Access"].value as? String, "Can edit")
     }
 
+    func testNestConversationKeepsIdeasTasksAndSharedTagsTogether() {
+        exerciseNestConversationTaskDraft()
+    }
+
+    func testNestConversationKeepsIdeasTasksAndSharedTagsTogetherOnRegularWidthIPad() {
+        exerciseNestConversationTaskDraft()
+    }
+
+    private func exerciseNestConversationTaskDraft() {
+        openRootDestination("Nests")
+        let open = app.buttons["CaptureNestConversationOpenButton"]
+        reveal(open)
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+        let create = app.buttons["CaptureNestConversationCreateTask_preview-nest-idea"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["CaptureNestConversationTask_preview-nest-task"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_preview-nest-task_research"].exists)
+        XCTAssertFalse(app.textFields["Nest URL"].exists)
+        create.tap()
+        let title = app.descendants(matching: .any)["CaptureNestConversationTaskTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Collect three examples for our opening chapter.")
+        XCTAssertFalse(app.buttons["CaptureNestConversationTaskSave"].isEnabled,
+            "Preview explores the real editor without pretending to create shared work")
+        app.buttons["CaptureNestConversationTaskTags"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTaskTagPicker"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTaskTagChoice_")).count > 0)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Nest conversation task tags"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testNestNoteWorkingDraftSurvivesDismissalAndRelaunch() {
         let retainedWords = " Retained after an ordinary dismissal and relaunch."
 

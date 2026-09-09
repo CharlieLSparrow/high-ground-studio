@@ -87,6 +87,7 @@ struct CaptureTagColorEditor: View {
 struct CaptureTaskTagPicker: View {
     let tags: [MobileWorkTagLabel]
     @Binding var selection: CaptureTaskTagSelection
+    var allowsNewTags = true
     @State private var search = ""
 
     private var newLabel: Binding<String> {
@@ -124,20 +125,22 @@ struct CaptureTaskTagPicker: View {
         List {
             Section("Tags") {
                 ForEach(visibleTags) { tag in tagRow(tag) }
-                if tags.isEmpty { Text("Add your first tag below.").foregroundStyle(.secondary) }
+                if tags.isEmpty { Text(allowsNewTags ? "Add your first tag below." : "Create tags from this Nest’s tag manager.").foregroundStyle(.secondary) }
             }
-            Section {
-                TextField("Tag name", text: newLabel)
-                    .textInputAutocapitalization(.sentences)
-                    .accessibilityIdentifier("CaptureTaskTagNewLabel")
-                if !selection.isValid {
-                    Text("Use up to 24 tags, with names no longer than 80 characters.")
-                        .font(.caption).foregroundStyle(CapturePalette.brass)
+            if allowsNewTags {
+                Section {
+                    TextField("Tag name", text: newLabel)
+                        .textInputAutocapitalization(.sentences)
+                        .accessibilityIdentifier("CaptureTaskTagNewLabel")
+                    if !selection.isValid {
+                        Text("Use up to 24 tags, with names no longer than 80 characters.")
+                            .font(.caption).foregroundStyle(CapturePalette.brass)
+                    }
+                } header: {
+                    Text("New tag")
+                } footer: {
+                    Text("Tags are saved with the task. An existing name reuses the same tag and color.")
                 }
-            } header: {
-                Text("New tag")
-            } footer: {
-                Text("Tags are saved with the task. An existing name reuses the same tag and color.")
             }
         }
         .searchable(text: $search, prompt: "Find a tag")

@@ -283,6 +283,11 @@ describe("mobile Capture Work contract", () => {
     expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ AND: expect.any(Array) }),
     }));
+    const normalScope = prisma.actionItem.findMany.mock.calls[0][0].where;
+    await GET(new Request("http://localhost/api/mobile/capture/work?projectId=project-1&taskId=older-linked-task"));
+    expect(prisma.actionItem.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { AND: [normalScope, { id: "older-linked-task" }] },
+    }));
     jest.useRealTimers();
   });
 });
