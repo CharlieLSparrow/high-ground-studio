@@ -43,38 +43,9 @@ quipsly_local_process_cwd() {
 quipsly_local_git_source_revision() {
   local repo_root="$1"
   shift
-
-  (
-    cd "${repo_root}"
-    {
-      # Hash the working-tree source closure itself, not the repository's
-      # global HEAD. Otherwise an unrelated docs-only commit restarts every
-      # durable local service even though none of its executable inputs moved.
-      while IFS= read -r -d '' tracked_file; do
-        printf 'tracked\0%s\0' "${tracked_file}"
-        if [[ -e "${tracked_file}" || -L "${tracked_file}" ]]; then
-          if [[ -x "${tracked_file}" ]]; then
-            printf 'executable\0'
-          else
-            printf 'non-executable\0'
-          fi
-          git hash-object -- "${tracked_file}"
-        else
-          printf 'missing\0'
-        fi
-      done < <(git ls-files -z -- "$@")
-
-      while IFS= read -r -d '' untracked_file; do
-        printf 'untracked\0%s\0' "${untracked_file}"
-        if [[ -x "${untracked_file}" ]]; then
-          printf 'executable\0'
-        else
-          printf 'non-executable\0'
-        fi
-        git hash-object -- "${untracked_file}"
-      done < <(git ls-files -z --others --exclude-standard -- "$@")
-    } | git hash-object --stdin
-  )
+  local helper_dir
+  helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  node "${helper_dir}/quipsly-source-fingerprint.mjs" "${repo_root}" "$@"
 }
 
 # Bind a service's non-secret runtime inputs to its source fingerprint. Values
@@ -115,6 +86,7 @@ quipsly_local_nest_source_revision() {
     scripts/dev/quipsly-local-up.sh
     scripts/dev/quipsly-local-nest-launcher.mjs
     scripts/dev/quipsly-local-state.sh
+    scripts/dev/quipsly-source-fingerprint.mjs
   )
 
   source_revision="$(

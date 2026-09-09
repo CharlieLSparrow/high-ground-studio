@@ -250,6 +250,7 @@ worker_source_paths=(
   pnpm-lock.yaml
   scripts/dev/quipsly-local-up.sh
   scripts/dev/quipsly-local-state.sh
+  scripts/dev/quipsly-source-fingerprint.mjs
   scripts/dev/quipsly-local-transcript-worker.mjs
   scripts/register-ts-extension-loader.mjs
 )
