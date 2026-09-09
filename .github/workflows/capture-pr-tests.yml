@@ -117,6 +117,7 @@ jobs:
           bash scripts/test-capture-document-note-edits.sh
           bash scripts/test-capture-task-reminders.sh
           bash scripts/test-capture-voice-writing-continuation.sh
+          bash scripts/test-capture-voice-writing-account-context.sh
           node --test scripts/quipsly-ios-capture-account-isolation.test.mjs
           node apps/mobile-capture/HighGroundCapture/scripts/test-recording-content-summary.mjs
           node --test scripts/release/quipsly-capture-ui-test-plan.test.mjs

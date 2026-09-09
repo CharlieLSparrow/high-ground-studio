@@ -1014,7 +1014,7 @@ private struct VoiceWritingDeleteResponse: Decodable {
 /// the complete iPhone copy instead of silently overwriting another edit.
 @MainActor
 final class VoiceWritingDraftSyncClient: ObservableObject {
-    static let shared = VoiceWritingDraftSyncClient()
+    static let shared = VoiceWritingDraftSyncClient(store: .shared)
 
     @Published private(set) var syncingDraftIDs: Set<UUID> = []
     @Published private(set) var movingDraftIDs: Set<UUID> = []
@@ -1028,21 +1028,42 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     @Published private(set) var transcriptRefreshErrors: [UUID: String] = [:]
     private var pendingTasks: [UUID: Task<Void, Never>] = [:]
     private var accountCancellable: AnyCancellable?
+    private var accountGeneration: UInt64 = 0
+    private let store: VoiceWritingDraftStore
     private let nestBaseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
 
-    private init() {
+    init(store: VoiceWritingDraftStore) {
+        self.store = store
         accountCancellable = NotificationCenter.default.publisher(
             for: .quipslyCaptureAccountIdentityDidChange
         ).sink { [weak self] _ in
-            Task { @MainActor in
-                self?.remoteTranscriptsByRequestID = [:]
-                self?.loadingTranscriptDraftIDs = []
-                self?.transcriptRefreshErrors = [:]
+            // AuthManager publishes synchronously on MainActor. Clear before
+            // another account can render, not in a subsequently scheduled task.
+            MainActor.assumeIsolated {
+                self?.resetAccountContext()
             }
         }
+    }
+
+    private func resetAccountContext() {
+        accountGeneration &+= 1
+        for task in pendingTasks.values { task.cancel() }
+        pendingTasks = [:]
+        syncingDraftIDs = []
+        movingDraftIDs = []
+        isRefreshing = false
+        refreshError = nil
+        homeProject = nil
+        availableTags = []
+        destinations = []
+        remoteTranscriptsByRequestID = [:]
+        loadingTranscriptDraftIDs = []
+        transcriptRefreshErrors = [:]
+        // Protected drafts remain in the account-partitioned store. Signing out
+        // discards presentation/request state, never a person's unsynced work.
     }
 
     func schedule(_ draft: VoiceWritingDraft, delay: Duration = .milliseconds(650)) {
@@ -1067,13 +1088,15 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
               let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else { return }
         isRefreshing = true
         refreshError = nil
-        defer { isRefreshing = false }
+        let generation = accountGeneration
+        defer { if generation == accountGeneration { isRefreshing = false } }
         do {
             var request = URLRequest(url: endpoint)
             request.httpMethod = "GET"
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             request.setValue("2", forHTTPHeaderField: "X-Quipsly-Writing-Version")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard generation == accountGeneration else { return }
             let payload = try JSONDecoder().decode(VoiceWritingListResponse.self, from: data)
             guard (200...299).contains(response.statusCode), payload.ok else {
                 throw NSError(
@@ -1087,14 +1110,15 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             destinations = payload.destinations ?? []
             for saved in payload.drafts ?? [] {
                 if let remote = Self.remoteDraft(from: saved) {
-                    VoiceWritingDraftStore.shared.reconcile(remote)
+                    store.reconcile(remote)
                 }
             }
-            for draft in VoiceWritingDraftStore.shared.drafts
+            for draft in store.drafts
                 where !draft.isSynced && draft.pendingRemote == nil {
                 schedule(draft, delay: .zero)
             }
         } catch {
+            guard generation == accountGeneration else { return }
             refreshError = error.localizedDescription
         }
     }
@@ -1106,7 +1130,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     func refreshTranscripts(draftID: UUID) async {
         guard !loadingTranscriptDraftIDs.contains(draftID),
               AuthManager.shared.networkActionsAllowed,
-              let draft = VoiceWritingDraftStore.shared.draft(id: draftID),
+              let draft = store.draft(id: draftID),
               draft.canonicalDocumentID != nil,
               !draft.allSources.isEmpty,
               var components = URLComponents(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else { return }
@@ -1117,10 +1141,11 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         guard let endpoint = components.url else { return }
 
         let expectedOwnerAccountID = draft.ownerAccountID
+        let generation = accountGeneration
         let expectedRequestIDs = Set(draft.allSources.map(\.transcriptClientRequestID))
         loadingTranscriptDraftIDs.insert(draftID)
         transcriptRefreshErrors[draftID] = nil
-        defer { loadingTranscriptDraftIDs.remove(draftID) }
+        defer { if generation == accountGeneration { loadingTranscriptDraftIDs.remove(draftID) } }
 
         do {
             var request = URLRequest(url: endpoint)
@@ -1131,6 +1156,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 for: request,
                 expectedOwnerAccountID: expectedOwnerAccountID
             )
+            guard generation == accountGeneration else { return }
             let payload = try JSONDecoder().decode(VoiceWritingListResponse.self, from: data)
             guard (200...299).contains(response.statusCode), payload.ok else {
                 throw NSError(
@@ -1144,7 +1170,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             // local working copy and the server returned the exact requested
             // document. This prevents a late request from crossing sign-in or
             // document-deletion boundaries.
-            guard let currentDraft = VoiceWritingDraftStore.shared.draft(id: draftID),
+            guard let currentDraft = store.draft(id: draftID),
                   currentDraft.ownerAccountID == expectedOwnerAccountID else { return }
             var next = remoteTranscriptsByRequestID
             for requestID in expectedRequestIDs {
@@ -1174,6 +1200,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             }
             remoteTranscriptsByRequestID = next
         } catch {
+            guard generation == accountGeneration else { return }
             transcriptRefreshErrors[draftID] = error.localizedDescription
         }
     }
@@ -1185,11 +1212,13 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     }
 
     func delete(draftID: UUID) async throws {
+        let generation = accountGeneration
         pendingTasks[draftID]?.cancel()
         pendingTasks[draftID] = nil
         for _ in 0..<100 where syncingDraftIDs.contains(draftID) {
             try await Task.sleep(for: .milliseconds(50))
         }
+        guard generation == accountGeneration else { throw CancellationError() }
         guard !syncingDraftIDs.contains(draftID) else {
             throw NSError(
                 domain: "QuipslyVoiceWriting",
@@ -1197,11 +1226,11 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "Quipsly is finishing the last save. Try Delete again in a moment."]
             )
         }
-        guard let draft = VoiceWritingDraftStore.shared.draft(id: draftID) else {
+        guard let draft = store.draft(id: draftID) else {
             throw VoiceWritingDraftStoreError.draftUnavailable
         }
         if draft.canonicalDocumentID == nil {
-            try VoiceWritingDraftStore.shared.remove(draftID: draftID)
+            try store.remove(draftID: draftID)
             return
         }
         guard AuthManager.shared.networkActionsAllowed else {
@@ -1230,9 +1259,10 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             for: request,
             expectedOwnerAccountID: draft.ownerAccountID
         )
+        guard generation == accountGeneration else { throw CancellationError() }
         let payload = try JSONDecoder().decode(VoiceWritingDeleteResponse.self, from: data)
         if response.statusCode == 404 {
-            try VoiceWritingDraftStore.shared.remove(draftID: draftID)
+            try store.remove(draftID: draftID)
             return
         }
         guard (200...299).contains(response.statusCode), payload.ok else {
@@ -1242,7 +1272,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: payload.error ?? "This writing could not be deleted yet."]
             )
         }
-        try VoiceWritingDraftStore.shared.remove(draftID: draftID)
+        try store.remove(draftID: draftID)
     }
 
     func move(
@@ -1251,11 +1281,13 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         visibility: String? = nil
     ) async throws {
         guard !movingDraftIDs.contains(draftID) else { return }
+        let generation = accountGeneration
         pendingTasks[draftID]?.cancel()
         pendingTasks[draftID] = nil
         for _ in 0..<100 where syncingDraftIDs.contains(draftID) {
             try await Task.sleep(for: .milliseconds(50))
         }
+        guard generation == accountGeneration else { throw CancellationError() }
         guard !syncingDraftIDs.contains(draftID) else {
             throw NSError(
                 domain: "QuipslyVoiceWriting",
@@ -1263,10 +1295,11 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "Quipsly is finishing the last save. Try moving this writing again in a moment."]
             )
         }
-        if VoiceWritingDraftStore.shared.draft(id: draftID)?.isSynced != true {
+        if store.draft(id: draftID)?.isSynced != true {
             await syncLatest(draftID: draftID)
         }
-        guard let draft = VoiceWritingDraftStore.shared.draft(id: draftID),
+        guard generation == accountGeneration else { throw CancellationError() }
+        guard let draft = store.draft(id: draftID),
               draft.isSynced,
               let currentProjectID = draft.canonicalProjectID?.trimmingCharacters(in: .whitespacesAndNewlines),
               !currentProjectID.isEmpty else {
@@ -1289,7 +1322,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         }
 
         movingDraftIDs.insert(draftID)
-        defer { movingDraftIDs.remove(draftID) }
+        defer { if generation == accountGeneration { movingDraftIDs.remove(draftID) } }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1305,12 +1338,13 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             for: request,
             expectedOwnerAccountID: draft.ownerAccountID
         )
+        guard generation == accountGeneration else { throw CancellationError() }
         let payload = try JSONDecoder().decode(VoiceWritingMoveResponse.self, from: data)
         if response.statusCode == 409,
            payload.code == "VOICE_WRITING_MOVE_CONFLICT",
            let current = payload.current,
            let remote = Self.remoteDraft(from: current) {
-            VoiceWritingDraftStore.shared.reconcile(remote)
+            store.reconcile(remote)
             throw NSError(
                 domain: "QuipslyVoiceWriting",
                 code: response.statusCode,
@@ -1327,21 +1361,21 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: payload.error ?? "This writing could not move yet."]
             )
         }
-        VoiceWritingDraftStore.shared.reconcile(remote)
+        store.reconcile(remote)
     }
 
     private func syncLatest(draftID: UUID) async {
         if syncingDraftIDs.contains(draftID) {
-            if let latest = VoiceWritingDraftStore.shared.draft(id: draftID) {
+            if let latest = store.draft(id: draftID) {
                 schedule(latest, delay: .milliseconds(800))
             }
             return
         }
         guard AuthManager.shared.networkActionsAllowed,
-              let draft = VoiceWritingDraftStore.shared.draft(id: draftID),
+              let draft = store.draft(id: draftID),
               !draft.isSynced else { return }
         guard let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else {
-            VoiceWritingDraftStore.shared.markSyncFailed(
+            store.markSyncFailed(
                 draftID: draftID,
                 message: "Quipsly's private writing address is invalid."
             )
@@ -1349,7 +1383,8 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         }
 
         syncingDraftIDs.insert(draftID)
-        defer { syncingDraftIDs.remove(draftID) }
+        let generation = accountGeneration
+        defer { if generation == accountGeneration { syncingDraftIDs.remove(draftID) } }
         do {
             var request = URLRequest(url: endpoint)
             request.httpMethod = "POST"
@@ -1361,12 +1396,13 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 for: request,
                 expectedOwnerAccountID: draft.ownerAccountID
             )
+            guard generation == accountGeneration else { return }
             let payload = try JSONDecoder().decode(VoiceWritingSyncResponse.self, from: data)
             if response.statusCode == 409,
                payload.code == "VOICE_WRITING_CONFLICT",
                let current = payload.current,
                let remote = Self.remoteDraft(from: current) {
-                VoiceWritingDraftStore.shared.reconcile(remote)
+                store.reconcile(remote)
                 return
             }
             guard (200...299).contains(response.statusCode),
@@ -1378,7 +1414,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                     userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Writing could not sync yet. Your device draft is safe."]
                 )
             }
-            VoiceWritingDraftStore.shared.markSynced(
+            store.markSynced(
                 draftID: draftID,
                 canonicalDocumentID: saved.documentId,
                 serverRevision: saved.serverRevision,
@@ -1405,12 +1441,13 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             if let updatedDestinations = payload.destinations {
                 destinations = updatedDestinations
             }
-            if let latest = VoiceWritingDraftStore.shared.draft(id: draftID),
+            if let latest = store.draft(id: draftID),
                !latest.isSynced {
                 schedule(latest, delay: .milliseconds(250))
             }
         } catch {
-            VoiceWritingDraftStore.shared.markSyncFailed(
+            guard generation == accountGeneration else { return }
+            store.markSyncFailed(
                 draftID: draftID,
                 message: error.localizedDescription
             )
