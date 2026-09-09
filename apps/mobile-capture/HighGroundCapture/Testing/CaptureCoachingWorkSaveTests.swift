@@ -12,11 +12,11 @@ enum CaptureCoachingWorkSaveTests {
             var tagged = original
             tagged.tags = CaptureTaskTagSelection(tagIDs: ["research"], newTagLabels: ["Writing"])
             let taggedBody = tagged.createBody(requestID: "tagged-command")
-            if kind == "TASK" {
+            if kind == "TASK" || kind == "GOAL" {
                 let tags = taggedBody["tags"] as? [String: Any]
-                expect(tags?["tagIds"] as? [String] == ["research"], "task creation retains canonical selections")
-                expect(tags?["newTagLabels"] as? [String] == ["Writing"], "task creation includes new labels in its single save")
-            } else { expect(taggedBody["tags"] == nil, "task tags do not bleed into other work types") }
+                expect(tags?["tagIds"] as? [String] == ["research"], "\(kind) creation retains canonical selections")
+                expect(tags?["newTagLabels"] as? [String] == ["Writing"], "\(kind) creation includes new labels in its single save")
+            } else { expect(taggedBody["tags"] == nil, "work tags do not bleed into note creation") }
             var edited = original
             edited.title = "A clearer first step"
             expect(attempt.body["title"] as? String == original.title, "retry retains submitted content")

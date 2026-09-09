@@ -41,7 +41,7 @@ struct CaptureCoachingWorkDraft: Equatable {
             values["ownerUserId"] = ownerUserID
             values["targetAt"] = targetAt.map { $0 as Any } ?? NSNull()
         }
-        if kind == "TASK", let tags { values["tags"] = tags.body }
+        if ["TASK", "GOAL"].contains(kind), let tags { values["tags"] = tags.body }
         return values
     }
 

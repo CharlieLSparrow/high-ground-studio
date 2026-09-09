@@ -83,10 +83,11 @@ struct CaptureTagColorEditor: View {
     }
 }
 
-/// Edits the parent task draft only. Its Save commits text and tags together.
+/// Edits the parent work draft only. Its Save commits text and tags together.
 struct CaptureTaskTagPicker: View {
     let tags: [MobileWorkTagLabel]
     @Binding var selection: CaptureTaskTagSelection
+    var workLabel: String = "task"
     @State private var search = ""
 
     private var newLabel: Binding<String> {
@@ -137,7 +138,7 @@ struct CaptureTaskTagPicker: View {
             } header: {
                 Text("New tag")
             } footer: {
-                Text("Tags are saved with the task. An existing name reuses the same tag and color.")
+                Text("Tags are saved with the \(workLabel). An existing name reuses the same tag and color.")
             }
         }
         .searchable(text: $search, prompt: "Find a tag")

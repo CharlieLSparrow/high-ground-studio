@@ -1887,6 +1887,57 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
     }
 
+    func testCoachingGoalDraftKeepsSharedTagsAndWritingTogether() {
+        exerciseCoachingGoalTags()
+    }
+
+    func testCoachingGoalDraftKeepsSharedTagsAndWritingTogetherOnRegularWidthIPad() {
+        exerciseCoachingGoalTags()
+    }
+
+    private func exerciseCoachingGoalTags() {
+        relaunchCoachingPreview(role: "coach", additionalArguments: ["--capture-coaching-work-source-preview"])
+        openRootDestination("Home")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
+        reveal(relationship)
+        relationship.tap()
+        let addGoal = app.buttons["CaptureCoachingQuickAdd_GOAL"]
+        reveal(addGoal, searchAboveFirst: true)
+        XCTAssertTrue(addGoal.isHittable)
+        addGoal.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        title.typeText("Make writing feel easier")
+        let tags = app.buttons["CaptureCoachingWorkTags"]
+        reveal(tags)
+        XCTAssertTrue(tags.isHittable, "A goal should use the same visible tag picker as a task.")
+        tags.tap()
+        let research = app.buttons["CaptureTaskTagChoice_research"]
+        XCTAssertTrue(research.waitForExistence(timeout: 5))
+        research.tap()
+        XCTAssertEqual(research.value as? String, "Selected")
+        let newLabel = app.textFields["CaptureTaskTagNewLabel"]
+        reveal(newLabel)
+        newLabel.tap()
+        newLabel.typeText("Writing practice")
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(title.value as? String, "Make writing feel easier")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_research"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_new-Writing practice"].exists)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "coaching-goal-tags-draft.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        XCTAssertFalse(app.buttons["CaptureCoachingSaveWork"].isEnabled,
+                       "Preview must not claim that draft exploration saved canonical work.")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
+    }
+
     private func exerciseCoachingWorkSourceNavigation() {
         relaunchCoachingPreview(
             role: "coach",
