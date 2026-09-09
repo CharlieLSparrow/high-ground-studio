@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { VoiceWritingEditor } from "./voice-writing-editor";
 
@@ -10,6 +10,146 @@ const chain = new Proxy({ run: () => true }, {
     if (property in target) return target[property as keyof typeof target];
     return () => chain;
   },
+});
+
+describe("VoiceWritingEditor save recovery", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false }) });
+  });
+  afterEach(() => { jest.useRealTimers(); });
+
+  async function advance(milliseconds: number) {
+    await act(async () => { await jest.advanceTimersByTimeAsync(milliseconds); });
+  }
+
+  async function openWithFailure(status?: number, retryAfter?: string) {
+    const payload = loadPayload();
+    const fetchMock = jest.fn().mockImplementation(async (_url: string, options?: RequestInit) => {
+      if (!options?.method) return { ok: true, json: async () => payload };
+      if (!status) throw new TypeError("Failed to fetch");
+      return { ok: false, status, headers: new Headers(retryAfter ? { "Retry-After": retryAfter } : {}), json: async () => ({
+        ok: false, error: "Could not save", ...(status === 409 ? { code: "VOICE_WRITING_CONFLICT", current: payload.drafts[0] } : {}),
+      }) };
+    });
+    globalThis.fetch = fetchMock;
+    render(<VoiceWritingEditor draftId={draftId} />);
+    await screen.findByLabelText("Writing title");
+    fireEvent.change(screen.getByLabelText("Writing title"), { target: { value: "Keep these new words" } });
+    await advance(900);
+    return fetchMock;
+  }
+
+  it("backs off failed saves, keeps new edits, and stops after three automatic retries", async () => {
+    const fetchMock = await openWithFailure();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fireEvent.change(screen.getByLabelText("Writing title"), { target: { value: "Still writing while offline" } });
+    await advance(900);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await advance(1100);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await advance(5000);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    await advance(15000);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    await advance(60000);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(screen.getByLabelText("Writing title")).toHaveValue("Still writing while offline");
+    expect(screen.getByRole("button", { name: "Save again" })).toBeEnabled();
+  });
+
+  it("does not retry a rejected request until explicitly asked, then saves the retained writing", async () => {
+    const fetchMock = await openWithFailure(400);
+    await advance(60000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fetchMock.mockImplementation(async (_url, options) => ({ ok: true, json: async () => ({
+      ok: true, draft: { ...loadPayload().drafts[0], title: JSON.parse(String(options?.body)).title, serverRevision: 3, contentRevision: "revision-3" },
+    }) }));
+    fireEvent.click(screen.getByRole("button", { name: "Save again" }));
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ title: "Keep these new words", sources: loadPayload().drafts[0].sources });
+    expect(screen.queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Saved");
+  });
+
+  it("honors the server rate-limit delay", async () => {
+    const fetchMock = await openWithFailure(429, "60");
+    fireEvent(window, new Event("online"));
+    await advance(59999);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds a stalled request and keeps the writing available for recovery", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce({ok: true, json: async () => loadPayload()})
+      .mockImplementation((_url, options: RequestInit) => new Promise((_resolve, reject) => {
+        options.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }));
+    globalThis.fetch = fetchMock;
+    render(<VoiceWritingEditor draftId={draftId} />);
+    await screen.findByLabelText("Writing title");
+    fireEvent.change(screen.getByLabelText("Writing title"), {target: {value: "Keep this thought through a stalled connection"}});
+    await advance(900);
+    await advance(20000);
+    expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true);
+    expect(screen.getByRole("alert")).toHaveTextContent("Saving is taking longer than expected");
+    expect(screen.getByLabelText("Writing title")).toHaveValue("Keep this thought through a stalled connection");
+    await advance(2000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps a conflict paused even when the person continues typing", async () => {
+    const fetchMock = await openWithFailure(409);
+    fireEvent.change(screen.getByLabelText("Writing title"), { target: { value: "My next thought" } });
+    await advance(60000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Keep my version" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Writing title")).toHaveValue("My next thought");
+  });
+
+  it("tries again when connectivity returns after the automatic attempts are exhausted", async () => {
+    const fetchMock = await openWithFailure();
+    await advance(2000);
+    await advance(5000);
+    await advance(15000);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    fireEvent(window, new Event("online"));
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it("automatically saves a correction to a rejected input without an extra confirmation", async () => {
+    const fetchMock = await openWithFailure(422);
+    fireEvent.change(screen.getByLabelText("Writing title"), { target: { value: "Corrected input" } });
+    await advance(900);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).title).toBe("Corrected input");
+  });
+
+  it("queues edits made during an in-flight save against the returned revision", async () => {
+    const payload = loadPayload();
+    let complete!: (value: unknown) => void;
+    const fetchMock = jest.fn().mockResolvedValueOnce({ok: true, json: async () => payload})
+      .mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }))
+      .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, draft: {...payload.drafts[0], serverRevision: 4, contentRevision: "revision-4"}})});
+    globalThis.fetch = fetchMock;
+    render(<VoiceWritingEditor draftId={draftId} />);
+    await screen.findByLabelText("Writing title");
+    fireEvent.change(screen.getByLabelText("Writing title"), {target: {value: "First thought"}});
+    await advance(900);
+    fireEvent.change(screen.getByLabelText("Writing title"), {target: {value: "And a second thought"}});
+    await advance(900);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => complete({ok: true, json: async () => ({ok: true, draft: {...payload.drafts[0], title: "First thought", serverRevision: 3, contentRevision: "revision-3"}})}));
+    expect(screen.getByLabelText("Writing title")).toHaveValue("And a second thought");
+    await advance(900);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({title: "And a second thought", expectedServerRevision: 3, expectedContentRevision: "revision-3"});
+    expect(screen.getByRole("status")).toHaveTextContent("Saved");
+  });
 });
 const editor = {
   commands: { setContent: jest.fn() },
