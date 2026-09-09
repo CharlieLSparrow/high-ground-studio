@@ -9,6 +9,29 @@ const entry: CoachingEngagementWorkEntry = {
 };
 const members = [{id: "client", label: "Riley", role: "CLIENT"}, {id: "coach", label: "Morgan", role: "COACH"}];
 
+it("retains new tag labels in an edit, keeps unrelated remote edits, and clears them on cancel", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, canCreateTags: false, tags: []})});
+  const onSave = jest.fn().mockResolvedValue(null);
+  try {
+    const {rerender} = render(<CoachingWorkEditor entry={entry} engagementId="space" members={members} busy={false} onSave={onSave} />);
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.click(screen.getByRole("button", {name: "Add tags"}));
+    await screen.findByText("Type a name to create your first tag.");
+    fireEvent.change(screen.getByRole("searchbox"), {target: {value: "Writing rhythm"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add “Writing rhythm” tag"}));
+    const latest = {...entry, body: "Coach clarification", updatedAt: "2026-09-09T00:00:00Z"};
+    rerender(<CoachingWorkEditor entry={latest} engagementId="space" members={members} busy={false} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(latest, expect.objectContaining({body: "Coach clarification", newTagLabels: ["Writing rhythm"]})));
+    expect(screen.getByRole("button", {name: "Remove new Writing rhythm tag"})).toBeVisible();
+    fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+    fireEvent.click(screen.getByText("Edit"));
+    expect(screen.queryByRole("button", {name: "Remove new Writing rhythm tag"})).not.toBeInTheDocument();
+    expect(screen.getByLabelText("task details")).toHaveValue("Coach clarification");
+  } finally {globalThis.fetch = originalFetch;}
+});
+
 it("preserves unrelated tag updates and identifies conflicting tag choices by identity, not color or order", () => {
   const research = {id: "research", label: "Research", hexColor: "#23543a", isActive: true};
   const next = {...research, id: "next", label: "Next"};

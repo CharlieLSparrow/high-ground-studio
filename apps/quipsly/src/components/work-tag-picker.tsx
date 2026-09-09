@@ -6,7 +6,7 @@ import { TagSearchChips } from "./tag-search-chips";
 
 export type WorkTagOption = { id: string; label: string; hexColor: string | null; isActive: boolean };
 
-export function WorkTagPicker({ entityKind = "task", entityId, engagementId, projectSlug, selected, onChange, disabled, onPendingChange, navigateSelected = false }: {
+export function WorkTagPicker({ entityKind = "task", entityId, engagementId, projectSlug, selected, onChange, disabled, onPendingChange, navigateSelected = false, newLabels = [], onNewLabelsChange }: {
   entityKind?: "task" | "goal" | "note" | "document";
   entityId?: string;
   engagementId?: string;
@@ -16,6 +16,8 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
   disabled: boolean;
   onPendingChange: (pending: boolean) => void;
   navigateSelected?: boolean;
+  newLabels?: string[];
+  onNewLabelsChange?: (labels: string[]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [tags, setTags] = useState<WorkTagOption[]>([]);
@@ -25,6 +27,7 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
   const [attempt, setAttempt] = useState(0);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [canCreateTags, setCanCreateTags] = useState(false);
+  const [contextLoaded, setContextLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [newColor, setNewColor] = useState<string | null>("#506b46");
@@ -40,6 +43,7 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
     setTags([]);
     setProjectId(null);
     setCanCreateTags(false);
+    setContextLoaded(false);
     const params = new URLSearchParams({ entityKind, ...(entityId ? { entityId } : engagementId ? { engagementId } : { projectSlug: projectSlug! }) });
     void (async () => {
       try {
@@ -50,6 +54,7 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
         setTags(payload.tags.filter((tag: WorkTagOption) => tag.isActive));
         setProjectId(typeof payload.projectId === "string" ? payload.projectId : null);
         setCanCreateTags(payload.canCreateTags === true);
+        setContextLoaded(true);
       } catch {
         if (!controller.signal.aborted) setError(`Tags couldn't load. You can still save your ${entityKind}.`);
       } finally {
@@ -59,9 +64,19 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
     return () => controller.abort();
   }, [expanded, entityKind, entityId, engagementId, projectSlug, attempt]);
 
+  useEffect(() => {
+    if (!contextLoaded) return;
+    // A work save can return newly resolved tags while this picker stays open.
+    // Keep them available for deselect/reselect without another round trip.
+    setTags(current => {
+      const added = selected.filter(tag => tag.isActive && !current.some(value => value.id === tag.id));
+      return added.length ? [...current, ...added].sort((a, b) => a.label.localeCompare(b.label)) : current;
+    });
+  }, [selected, contextLoaded]);
+
   async function createTag() {
     const label = query.trim();
-    if (!projectId || !canCreateTags || !label || disabled || selected.length >= 24 || creatingRef.current) return;
+    if (!projectId || !canCreateTags || !label || disabled || selected.length + newLabels.length >= 24 || creatingRef.current) return;
     creatingRef.current = true;
     setCreating(true);
     onPendingChange(true);
@@ -87,20 +102,30 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
 
   const visible = tags.filter(tag => tag.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const newLabel = query.trim();
-  const canOfferCreation = canCreateTags && projectId && newLabel && !tags.some(tag => tag.label.normalize("NFKC").toLocaleLowerCase() === newLabel.normalize("NFKC").toLocaleLowerCase());
+  const canonicalLabel = (label: string) => label.normalize("NFKC").toLocaleLowerCase("en-US");
+  const selectedCount = selected.length + newLabels.length;
+  const canDraftLabel = contextLoaded && !canCreateTags && Boolean(onNewLabelsChange);
+  const unmatchedLabel = newLabel && !tags.some(tag => canonicalLabel(tag.label) === canonicalLabel(newLabel))
+    && !newLabels.some(label => canonicalLabel(label) === canonicalLabel(newLabel));
+  const canOfferCreation = canCreateTags && projectId && unmatchedLabel;
   return <div className={navigateSelected && !expanded ? "flex min-w-0 flex-wrap items-center gap-x-3" : "min-w-0 space-y-2"}>
     <button type="button" disabled={disabled || creating} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
       className="min-h-11 text-sm font-semibold text-primary underline underline-offset-4">
-      {selected.length ? `Tags (${selected.length})` : "Add tags"}
+      {selectedCount ? `Tags (${selectedCount})` : "Add tags"}
     </button>
     {navigateSelected && !expanded ? <TagSearchChips tags={selected} label="Document tags" className="" /> : selected.length > 0 && <div className="flex flex-wrap gap-1" aria-label="Selected tags">
       {selected.map(tag => <button key={tag.id} type="button" disabled={disabled || creating}
         aria-label={`Remove ${tag.label} tag`} onClick={() => onChange(selected.filter(value => value.id !== tag.id))}
         style={tagChipColors(tag.hexColor)} className="min-h-11 max-w-full rounded-full border px-3 py-1 text-xs [overflow-wrap:anywhere]"><span>{tag.label}</span>{!tag.isActive && " · archived"} <span aria-hidden="true">×</span></button>)}
     </div>}
+    {newLabels.length > 0 && <div className="flex flex-wrap gap-1" aria-label="New tags to save">
+      {newLabels.map(label => <button key={label} type="button" disabled={disabled || creating}
+        aria-label={`Remove new ${label} tag`} onClick={() => onNewLabelsChange?.(newLabels.filter(value => value !== label))}
+        className="min-h-11 max-w-full rounded-full border border-border bg-muted px-3 py-1 text-xs text-foreground [overflow-wrap:anywhere]">{label} <span aria-hidden="true">×</span></button>)}
+    </div>}
     {expanded && <fieldset disabled={disabled || creating} className="min-w-0 space-y-2">
       <legend className="sr-only">{entityKind === "document" ? "Document tags" : entityKind === "goal" ? "Goal tags" : entityKind === "note" ? "Note tags" : "Task tags"}</legend>
-      <input type="search" aria-label={`Find ${entityKind} tags`} value={query} maxLength={80} onChange={event => { setQuery(event.target.value); setCreateError(""); }} placeholder={canCreateTags ? "Find or create a tag…" : "Find a tag…"}
+      <input type="search" aria-label={`Find ${entityKind} tags`} value={query} maxLength={80} onChange={event => { setQuery(event.target.value); setCreateError(""); }} placeholder={canCreateTags || canDraftLabel ? "Find or create a tag…" : "Find a tag…"}
         className="block min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
       {loading && <p role="status" className="text-sm text-muted-foreground">Loading tags…</p>}
       {error && <div role="status" className="text-sm text-muted-foreground">{error} <button type="button" onClick={() => setAttempt(value => value + 1)} className="min-h-11 font-semibold underline">Retry tags</button></div>}
@@ -108,12 +133,18 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
         {visible.map(tag => {
           const checked = selected.some(value => value.id === tag.id);
           return <label key={tag.id} className="flex min-h-11 cursor-pointer items-center gap-2">
-            <input type="checkbox" checked={checked} disabled={!checked && selected.length >= 24}
+            <input type="checkbox" checked={checked} disabled={!checked && selectedCount >= 24}
               onChange={() => onChange(checked ? selected.filter(value => value.id !== tag.id) : [...selected, tag])} />
             <span style={tagChipColors(tag.hexColor)} className="min-w-0 rounded-full border border-border bg-muted px-2 py-1 text-xs font-semibold text-foreground [overflow-wrap:anywhere]">{tag.label}</span>
           </label>;
         })}
-        {!visible.length && <p className="text-sm text-muted-foreground">{tags.length ? "No matching tags." : canCreateTags ? "Type a name to create your first shared tag." : "Tags used on shared work will appear here."}</p>}
+        {!visible.length && <p className="text-sm text-muted-foreground">{tags.length ? "No matching tags." : canCreateTags || canDraftLabel ? "Type a name to create your first tag." : "Tags used on shared work will appear here."}</p>}
+      </div>}
+      {canDraftLabel && unmatchedLabel && !loading && !error && <div className="space-y-1">
+        <button type="button" disabled={selectedCount >= 24 || newLabels.length >= 8}
+          onClick={() => { onNewLabelsChange?.([...newLabels, newLabel]); setQuery(""); }}
+          className="min-h-11 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">Add “{newLabel}” tag</button>
+        <p className="text-xs text-muted-foreground">Saved together with your {entityKind}.</p>
       </div>}
       {canOfferCreation && !loading && !error && <div className="space-y-2 rounded-lg border border-border p-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -123,13 +154,14 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
           </label>
           <button type="button" disabled={newColor === null} onClick={() => setNewColor(null)} className="min-h-11 text-sm underline">Use theme color</button>
         </div>
-        <button type="button" onClick={() => void createTag()} disabled={selected.length >= 24} className="min-h-11 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+        <button type="button" onClick={() => void createTag()} disabled={selectedCount >= 24} className="min-h-11 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">
           {creating ? "Creating tag…" : `Create “${newLabel}” tag`}
         </button>
         <p className="text-xs text-muted-foreground">Reusable by everyone in this Nest.</p>
       </div>}
       {createError && <p role="alert" className="text-sm text-destructive">{createError}</p>}
-      {selected.length >= 24 && <p role="status" className="text-sm text-muted-foreground">24 tags selected. Remove one to choose another.</p>}
+      {selectedCount >= 24 && <p role="status" className="text-sm text-muted-foreground">24 tags selected. Remove one to choose another.</p>}
+      {newLabels.length >= 8 && <p role="status" className="text-sm text-muted-foreground">Save these eight new tags before adding more.</p>}
     </fieldset>}
   </div>;
 }

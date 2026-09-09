@@ -22,6 +22,7 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
   const [error, setError] = useState("");
   const [saved, setSaved] = useState<ConversationLinkedTask[]>([]);
   const [selectedTags, setSelectedTags] = useState<NonNullable<ConversationLinkedTask["tags"]>>([]);
+  const [newTagLabels, setNewTagLabels] = useState<string[]>([]);
   const inFlight = useRef(false);
   const request = useRef<{ fingerprint: string; id: string } | null>(null);
   const linked = [...new Map([...saved, ...tasks].map(task => [task.id, task])).values()];
@@ -41,7 +42,7 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
     setError("");
     const normalized = title.trim();
     const tagIds = selectedTags.map(tag => tag.id).sort();
-    const fingerprint = JSON.stringify([engagementId, projectSlug, messageId, normalized, tagIds]);
+    const fingerprint = JSON.stringify([engagementId, projectSlug, messageId, normalized, tagIds, newTagLabels]);
     const intent = request.current?.fingerprint === fingerprint ? request.current : { fingerprint, id: crypto.randomUUID() };
     request.current = intent;
     try {
@@ -49,13 +50,14 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
       const response = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: "TASK", title: normalized, body, sourceMessageId: messageId, clientRequestId: intent.id,
-          ...(projectSlug ? { projectSlug } : {}), ...(tagIds.length ? { tags: { tagIds } } : {}) }),
+          ...(projectSlug ? { projectSlug } : {}), ...(tagIds.length || newTagLabels.length ? { tags: { tagIds, ...(newTagLabels.length ? {newTagLabels} : {}) } } : {}) }),
       });
       const result = await response.json();
       if (!response.ok || !result.ok || !result.entry?.id) throw new Error(result.error || "Could not create the task. Try again.");
       setSaved(current => [...current.filter(task => task.id !== result.entry.id), result.entry]);
       request.current = null;
       setSelectedTags([]);
+      setNewTagLabels([]);
       setOpen(false);
       window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", { detail: { engagementId } }));
     } catch (failure) {
@@ -88,7 +90,8 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
     {open && <form onSubmit={create} className="space-y-2 rounded-xl border border-border bg-card p-3">
       <label className="block text-sm font-semibold">Task title<input aria-label="Task title from message" value={title} onChange={event => setTitle(event.target.value)} maxLength={500} required disabled={pending}
         className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-background px-3 text-foreground" autoFocus /></label>
-      <WorkTagPicker engagementId={engagementId} projectSlug={projectSlug} selected={selectedTags} onChange={setSelectedTags} disabled={pending} onPendingChange={setTagPending} />
+      <WorkTagPicker engagementId={engagementId} projectSlug={projectSlug} selected={selectedTags} onChange={setSelectedTags} disabled={pending} onPendingChange={setTagPending}
+        newLabels={newTagLabels} onNewLabelsChange={engagementId ? setNewTagLabels : undefined} />
       <p className="text-xs text-muted-foreground">Shared in this space and linked to this message. You can change the task anytime.</p>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2"><button type="submit" disabled={pending || tagPending || !title.trim() || !canCreate} className="min-h-11 rounded-lg bg-primary px-3 font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Creating…" : "Add task"}</button>

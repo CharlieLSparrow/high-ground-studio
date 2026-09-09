@@ -27,6 +27,31 @@ const sharedTask = {
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it.each(["NOTE", "TASK", "GOAL"] as const)("saves client-created tags with a new %s and preserves them on retry", async kind => {
+    const entry = {...sharedTask, kind, tags: [{id: "writing", label: "Writing rhythm", hexColor: null, isActive: true}]};
+    const fetchMock = jest.fn().mockResolvedValueOnce({ok: true, json: async () => ({ok: true, canCreateTags: false, tags: []})})
+      .mockRejectedValueOnce(new Error("Reply lost"))
+      .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, entry})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="space" initialEntries={[]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.change(screen.getByLabelText("Type"), {target: {value: kind}});
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: entry.title}});
+    fireEvent.click(screen.getByRole("button", {name: "Add tags"}));
+    await screen.findByText("Type a name to create your first tag.");
+    fireEvent.change(screen.getByRole("searchbox", {name: `Find ${kind.toLowerCase()} tags`}), {target: {value: "Writing rhythm"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add “Writing rhythm” tag"}));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByText("Reply lost");
+    expect(screen.getByRole("button", {name: "Remove new Writing rhythm tag"})).toBeVisible();
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByRole("heading", {name: entry.title});
+    const saves = fetchMock.mock.calls.filter(([,options]) => options?.method === "POST");
+    expect(saves).toHaveLength(2);
+    expect(saves[1][1].body).toBe(saves[0][1].body);
+    expect(JSON.parse(saves[0][1].body)).toMatchObject({kind, tags: {tagIds: [], newTagLabels: ["Writing rhythm"]}});
+  });
+
   it("keeps long task text full-width and places completion below its reading content", () => {
     const entry = {...sharedTask, title: "A long writing outline for our next coaching conversation", body: `Source: https://example.test/${"long-source-name".repeat(20)}`};
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="client-1" canWrite />);

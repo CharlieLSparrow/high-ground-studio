@@ -55,7 +55,7 @@ test("failed inline creation retains the name and color, and retry uses the cano
   expect(screen.getByRole("button", {name: "Remove Research tag"})).toHaveStyle({ backgroundColor: "#23543a" });
 });
 
-test("client-space access alone does not offer shared Nest vocabulary creation", async () => {
+test("client-space access stages a new task tag without granting Nest vocabulary creation", async () => {
   globalThis.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, projectId: "nest", canCreateTags: false, tags: [] }) });
   render(<ConversationTaskAction {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Create task" }));
@@ -63,7 +63,56 @@ test("client-space access alone does not offer shared Nest vocabulary creation",
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Research" } });
   expect(screen.queryByLabelText("New tag color")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Create “Research” tag" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name: "Add “Research” tag"}));
+  expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", {name: "Remove new Research tag"})).toBeVisible();
+  fireEvent.click(screen.getByRole("button", {name: "Remove new Research tag"}));
+  expect(screen.queryByRole("button", {name: "Remove new Research tag"})).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add task" })).toBeEnabled();
+});
+
+test("saves a client's new chat tag atomically with the task and retains it across a lost reply", async () => {
+  const fetchMock = jest.fn().mockResolvedValueOnce({ok: true, json: async () => ({ok: true, canCreateTags: false, tags: []})})
+    .mockRejectedValueOnce(new Error("Reply lost"))
+    .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, entry: {id: "saved", title: props.body, status: "OPEN", tags: [{id: "new-tag", label: "Writing rhythm", hexColor: null, isActive: true}]}})});
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction {...props} />);
+  fireEvent.click(screen.getByRole("button", {name: "Create task"}));
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Add tags"}));});
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "Writing rhythm"}});
+  fireEvent.click(screen.getByRole("button", {name: "Add “Writing rhythm” tag"}));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Add task"}));});
+  expect(screen.getByRole("alert")).toHaveTextContent("Reply lost");
+  expect(screen.getByRole("button", {name: "Remove new Writing rhythm tag"})).toBeVisible();
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Add task"}));});
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({tags: {tagIds: [], newTagLabels: ["Writing rhythm"]}});
+  expect(fetchMock.mock.calls[2][1].body).toBe(fetchMock.mock.calls[1][1].body);
+  expect(screen.getByRole("link")).toHaveTextContent("Writing rhythm");
+});
+
+test("counts pending client labels toward tag limits without making separate writes", async () => {
+  globalThis.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, canCreateTags: false,
+    tags: Array.from({length: 17}, (_, index) => ({id: `tag-${index}`, label: `Existing ${index}`, hexColor: null, isActive: true})),
+  })});
+  render(<ConversationTaskAction {...props} />);
+  fireEvent.click(screen.getByRole("button", {name: "Create task"}));
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Add tags"}));});
+  for (let index = 0; index < 8; index++) {
+    fireEvent.change(screen.getByRole("searchbox"), {target: {value: `New ${index}`}});
+    fireEvent.click(screen.getByRole("button", {name: `Add “New ${index}” tag`}));
+  }
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "Ninth"}});
+  expect(screen.getByRole("button", {name: "Add “Ninth” tag"})).toBeDisabled();
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "new 0"}});
+  expect(screen.queryByRole("button", {name: "Add “new 0” tag"})).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: ""}});
+  for (let index = 0; index < 16; index++) fireEvent.click(screen.getByRole("checkbox", {name: `Existing ${index}`, exact: true}));
+  expect(screen.getByRole("button", {name: "Tags (24)"})).toBeVisible();
+  expect(screen.getByRole("checkbox", {name: "Existing 16", exact: true})).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", {name: "Remove new New 0 tag"}));
+  expect(screen.getByRole("checkbox", {name: "Existing 16", exact: true})).toBeEnabled();
+  expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 });
 
 test("creates a tagged task in the ordinary Nest conversation without a fake coaching space", async () => {
@@ -183,6 +232,8 @@ test("tag loading failure does not prevent task creation", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Create task" }));
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
   expect(screen.getByRole("status")).toHaveTextContent("You can still save your task");
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "Research"}});
+  expect(screen.queryByRole("button", {name: "Add “Research” tag"})).not.toBeInTheDocument();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
   expect(screen.getByRole("link", { name: /Prepare a first chapter/ })).toBeInTheDocument();
   expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty("tags");

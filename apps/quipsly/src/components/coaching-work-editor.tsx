@@ -13,11 +13,12 @@ export type CoachingWorkEdit = {
   visibility: string;
   status: string;
   tags: WorkTagOption[];
+  newTagLabels: string[];
 };
 
 const fieldLabels: Record<keyof CoachingWorkEdit, string> = {
   title: "name", body: "details", ownerUserId: "owner", targetAt: "target date",
-  visibility: "privacy", status: "status", tags: "tags",
+  visibility: "privacy", status: "status", tags: "tags", newTagLabels: "new tags",
 };
 
 export function workEditValues(entry: CoachingEngagementWorkEntry): CoachingWorkEdit {
@@ -25,6 +26,7 @@ export function workEditValues(entry: CoachingEngagementWorkEntry): CoachingWork
     title: entry.title ?? "", body: entry.body ?? "", ownerUserId: entry.owner?.id ?? "",
     targetAt: entry.dueAt ?? "", visibility: entry.visibility, status: entry.status ?? "",
     tags: (entry.tags ?? []).map(tag => ({ ...tag, hexColor: tag.hexColor ?? null, isActive: tag.isActive !== false })),
+    newTagLabels: [],
   };
 }
 
@@ -33,6 +35,12 @@ export function mergeCoachingWorkEdits(base: CoachingWorkEdit, draft: CoachingWo
   const values = {...latest};
   const conflicts: Array<keyof CoachingWorkEdit> = [];
   for (const key of Object.keys(fieldLabels) as Array<keyof CoachingWorkEdit>) {
+    if (key === "newTagLabels") {
+      // These labels belong to this unsaved edit; canonical tags arrive only
+      // after the work transaction resolves them.
+      values.newTagLabels = draft.newTagLabels;
+      continue;
+    }
     if (key === "tags") {
       const identity = (tags: WorkTagOption[]) => JSON.stringify(tags.map(tag => tag.id).sort());
       if (identity(draft.tags) !== identity(base.tags)) {
@@ -148,7 +156,8 @@ export function CoachingWorkEditor({entry, engagementId, members, busy, onSave}:
             ) : null}
           </div>
           {engagementId && <WorkTagPicker entityKind={entry.kind === "GOAL" ? "goal" : entry.kind === "NOTE" ? "note" : "task"} entityId={entry.id}
-            selected={draft.tags} onChange={tags => change("tags", tags)} disabled={busy} onPendingChange={setTagPending} />}
+            selected={draft.tags} onChange={tags => change("tags", tags)} disabled={busy} onPendingChange={setTagPending}
+            newLabels={draft.newTagLabels} onNewLabelsChange={labels => change("newTagLabels", labels)} />}
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#41624b] px-4 py-2 text-sm font-black text-white disabled:opacity-50">
               <Check size={15} aria-hidden="true" /> {busy ? "Saving…" : "Save changes"}

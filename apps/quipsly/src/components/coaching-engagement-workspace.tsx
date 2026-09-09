@@ -116,6 +116,7 @@ function CoachingEngagementWorkspaceContent({
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<CoachingWorkTag | null>(null);
   const [createTags, setCreateTags] = useState<WorkTagOption[]>([]);
+  const [createTagLabels, setCreateTagLabels] = useState<string[]>([]);
   const [createTagPending, setCreateTagPending] = useState(false);
   const searchRef = useRef("");
   const [nextCursor, setNextCursor] = useState(initialPage?.nextCursor ?? null);
@@ -388,7 +389,7 @@ function CoachingEngagementWorkspaceContent({
         ownerUserId: String(formData.get("ownerUserId") || defaultOwner),
         targetAt: String(formData.get("targetAt") || ""),
         visibility: String(formData.get("visibility") || "SHARED"),
-        tags: {tagIds: createTags.map(tag => tag.id).sort()},
+        tags: {tagIds: createTags.map(tag => tag.id).sort(), ...(createTagLabels.length ? {newTagLabels: createTagLabels} : {})},
       };
       const fingerprint = JSON.stringify(values);
       // A lost response does not mean the server failed to save. Retry the
@@ -421,6 +422,7 @@ function CoachingEngagementWorkspaceContent({
       setWorkFilter((current) => current === "ALL" ? current : savedKind);
       createRequest.current = null;
       setCreateTags([]);
+      setCreateTagLabels([]);
       createForm.current?.reset();
       setCreateOpen(false);
       const itemLabel =
@@ -455,6 +457,7 @@ function CoachingEngagementWorkspaceContent({
       visibility?: string;
       status?: string;
       tags?: WorkTagOption[];
+      newTagLabels?: string[];
     },
   ) {
     if (!beginOperation(entry.id)) return null;
@@ -472,9 +475,9 @@ function CoachingEngagementWorkspaceContent({
         visibility: values.visibility ?? entry.visibility,
         status: values.status ?? entry.status,
         expectedUpdatedAt: entry.updatedAt,
-        ...(values.tags
-          && JSON.stringify(values.tags.map(tag => tag.id).sort()) !== JSON.stringify((entry.tags ?? []).map(tag => tag.id).sort())
-          ? {tags: {tagIds: values.tags.map(tag => tag.id).sort()}} : {}),
+        ...((values.newTagLabels?.length || (values.tags
+          && JSON.stringify(values.tags.map(tag => tag.id).sort()) !== JSON.stringify((entry.tags ?? []).map(tag => tag.id).sort())))
+          ? {tags: {tagIds: (values.tags ?? entry.tags ?? []).map(tag => tag.id).sort(), ...(values.newTagLabels?.length ? {newTagLabels: values.newTagLabels} : {})}} : {}),
       };
       const fingerprint = JSON.stringify(changes);
       // An uncertain response must retry the same command, not create a new edit.
@@ -778,7 +781,8 @@ function CoachingEngagementWorkspaceContent({
               </label>
             ) : null}
             <WorkTagPicker entityKind={createKind === "GOAL" ? "goal" : createKind === "NOTE" ? "note" : "task"} engagementId={engagementId} selected={createTags}
-              onChange={setCreateTags} disabled={busyIds.has("create")} onPendingChange={setCreateTagPending} />
+              onChange={setCreateTags} disabled={busyIds.has("create")} onPendingChange={setCreateTagPending}
+              newLabels={createTagLabels} onNewLabelsChange={setCreateTagLabels} />
             <button
               type="submit"
               disabled={busyIds.has("create")}
