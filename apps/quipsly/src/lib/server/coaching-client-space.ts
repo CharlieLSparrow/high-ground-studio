@@ -46,13 +46,9 @@ export async function createCoachingClientSpace(input: {
       where: { id: input.actor.id }, select: { id: true, primaryEmail: true, isActive: true },
     });
     if (!actor?.isActive) throw new CoachingClientSpaceError("Your account is not available for this action.", 403);
-    const profile = await tx.coachProfile.findFirst({ where: { userId: actor.id, isActive: true }, select: { id: true } });
-    const membership = profile || input.actor.isStaff ? null : await tx.coachingEngagementMember.findFirst({
-      where: { userId: actor.id, role: "COACH", status: "ACTIVE" }, select: { id: true },
-    });
-    if (!profile && !membership && !input.actor.isStaff) {
-      throw new CoachingClientSpaceError("Set up your coaching profile before adding a client.", 403);
-    }
+    // Starting your own practice is self-service, just like scheduling a first
+    // Session. The relationship grants COACH only inside this new space; no
+    // profile, booking, global role, or access to another practice is required.
 
     // Match the identity reconciler's mailbox lock. Concurrent requests create
     // one account and one relationship, without manufacturing a booking.

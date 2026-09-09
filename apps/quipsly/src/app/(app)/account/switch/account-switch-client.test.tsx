@@ -7,6 +7,8 @@ import {
 
 import { auth } from "@/lib/firebase/firebase";
 import { AccountSwitchClient } from "./account-switch-client";
+import { signOutBrowserSession } from "@/lib/firebase/sign-out";
+jest.mock("@/lib/firebase/sign-out", () => ({signOutBrowserSession: jest.fn()}));
 
 const refresh = jest.fn();
 const push = jest.fn();
@@ -50,6 +52,7 @@ function firebaseUser(input: {
 describe("AccountSwitchClient provider continuity", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(signOutBrowserSession).mockReset().mockResolvedValue(undefined);
     push.mockReset();
     refresh.mockReset();
     (auth as any).currentUser = null;
@@ -79,6 +82,18 @@ describe("AccountSwitchClient provider continuity", () => {
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Admin users" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Diagnostics" })).not.toBeInTheDocument();
+  });
+
+  it.each(["Use another account", "Sign out"])("keeps %s recoverable and never navigates on failure", async (action) => {
+    jest.mocked(signOutBrowserSession).mockRejectedValueOnce(new Error("We couldn't sign you out. Check your connection and try again."));
+    render(<AccountSwitchClient callbackUrl="/coaching/engagements" currentUser={currentUser} />);
+    fireEvent.click(screen.getByRole("button", {name: action}));
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", {name: action})).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", {name: action}));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(action === "Sign out" ? "/" : "/login?callbackUrl=%2Fcoaching%2Fengagements"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows an already-connected Google credential without a duplicate link action", async () => {

@@ -20,6 +20,7 @@ export type CoachingClientPortfolioItem = {
   status: string;
   people: Array<{ label: string; role: string }>;
   primaryClientLabel: string;
+  displayLabel?: string;
   nextSession: {
     id: string;
     title: string;
@@ -82,11 +83,14 @@ export function CoachingClientPortfolio({
   clients,
   asOf,
   canAddClient = false,
+  audience = "coach",
 }: {
   clients: CoachingClientPortfolioItem[];
   asOf: string;
   canAddClient?: boolean;
+  audience?: "coach" | "participant";
 }) {
+  const participantView = audience === "participant";
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PortfolioFilter>(
     clients.some(
@@ -140,7 +144,7 @@ export function CoachingClientPortfolio({
         className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
       >
         {([
-          ["Active clients", summary.activeClients, UsersRound],
+          [participantView ? "Shared spaces" : "Active clients", summary.activeClients, UsersRound],
           ["Next 7 days", summary.upcomingThisWeek, CalendarDays],
           ["Follow-ups", summary.followUps, AlertCircle],
           ["Open commitments", summary.openCommitments, CheckCircle2],
@@ -164,7 +168,7 @@ export function CoachingClientPortfolio({
       <section className="mt-6 rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <label className="relative block flex-1">
-            <span className="sr-only">Search clients</span>
+            <span className="sr-only">{participantView ? "Search spaces" : "Search clients"}</span>
             <Search
               size={17}
               aria-hidden="true"
@@ -174,18 +178,18 @@ export function CoachingClientPortfolio({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search clients"
+              placeholder={participantView ? "Search spaces" : "Search clients"}
               className="min-h-12 w-full rounded-full border border-[#dccbad] bg-white pl-11 pr-4 text-sm font-semibold text-[#3d3122] outline-none placeholder:text-[#a08d72] focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
             />
           </label>
           <div
             className="flex gap-1 overflow-x-auto rounded-full bg-[#f3ebdc] p-1"
-            aria-label="Filter clients"
+            aria-label={participantView ? "Filter spaces" : "Filter clients"}
           >
             {([
               ["attention", "Needs attention"],
               ["upcoming", "Upcoming"],
-              ["all", "All clients"],
+              ["all", participantView ? "All spaces" : "All clients"],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -214,7 +218,7 @@ export function CoachingClientPortfolio({
             >
               <div className="flex items-start gap-4">
                 <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-violet-100 font-serif text-lg font-black text-violet-900">
-                  {initials(client.primaryClientLabel)}
+                  {initials(client.displayLabel ?? client.primaryClientLabel)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -223,7 +227,7 @@ export function CoachingClientPortfolio({
                         {client.status.toLowerCase()}
                       </p>
                       <h2 className="mt-1 truncate font-serif text-2xl font-black text-[#34291d]">
-                        {client.primaryClientLabel}
+                        {client.displayLabel ?? client.primaryClientLabel}
                       </h2>
                     </div>
                     {(client.followUpCount > 0 || client.overdueTaskCount > 0) && (
@@ -298,7 +302,7 @@ export function CoachingClientPortfolio({
                   href={`/coaching/engagements/${encodeURIComponent(client.id)}`}
                   className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] hover:bg-[#fff8eb]"
                 >
-                  Client space
+                  {participantView ? "Shared space" : "Client space"}
                 </Link>
               </div>
             </article>
@@ -308,7 +312,7 @@ export function CoachingClientPortfolio({
         <section className="mt-5 rounded-[1.75rem] border border-dashed border-[#cdbb9e] bg-[#fffaf0] p-8 text-center">
           <UsersRound className="mx-auto text-violet-800" />
           <h2 className="mt-4 font-serif text-2xl font-black text-[#3d3122]">
-            {clients.length ? "No clients match this view." : canAddClient ? "Add your first client." : "Your shared spaces will appear here."}
+            {clients.length ? participantView ? "No spaces match this view." : "No clients match this view." : canAddClient ? "Add your first client." : "Your shared spaces will appear here."}
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-[#765f40]">
             {clients.length

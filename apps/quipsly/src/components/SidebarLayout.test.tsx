@@ -4,10 +4,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { SidebarLayout } from "./SidebarLayout";
 import { createPersonalNote } from "./workspace-create-actions";
 import { CoachingSuiteNav } from "./coaching-suite-nav";
+import { signOutBrowserSession } from "@/lib/firebase/sign-out";
 
 jest.mock("next/navigation", () => ({ usePathname: jest.fn(() => "/today"), useRouter: jest.fn() }));
 jest.mock("@/lib/firebase/firebase", () => ({ auth: {} }));
 jest.mock("firebase/auth", () => ({ signOut: jest.fn() }));
+jest.mock("@/lib/firebase/sign-out", () => ({signOutBrowserSession: jest.fn()}));
 jest.mock("@/components/NestChatPanel", () => ({ NestChatPanel: () => null }));
 jest.mock("./workspace-create-actions", () => ({ createPersonalNote: jest.fn() }));
 
@@ -15,6 +17,7 @@ describe("Quipsly workspace navigation", () => {
   const push = jest.fn();
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(signOutBrowserSession).mockReset().mockResolvedValue(undefined);
     jest.mocked(usePathname).mockReturnValue("/today");
     jest.mocked(useRouter).mockReturnValue({ push, refresh: jest.fn() } as any);
   });
@@ -121,5 +124,17 @@ describe("Quipsly workspace navigation", () => {
     rerender(<SidebarLayout showProductOperations>Product</SidebarLayout>);
     expect(screen.getByRole("link", { name: "Product operations" })).toHaveAttribute("href", "/admin/product-ops");
     expect(screen.queryByRole("link", { name: "Customer support" })).not.toBeInTheDocument();
+  });
+
+  it("keeps failed sign-out visible and retryable without navigating away", async () => {
+    jest.mocked(signOutBrowserSession).mockRejectedValueOnce(new Error("Signing out took too long. Check your connection and try again."));
+    render(<SidebarLayout>My private work</SidebarLayout>);
+    openMenu("Your account");
+    fireEvent.click(screen.getByRole("button", {name: "Sign out"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Signing out took too long");
+    expect(push).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", {name: "Sign out"}));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    expect(signOutBrowserSession).toHaveBeenCalledTimes(2);
   });
 });

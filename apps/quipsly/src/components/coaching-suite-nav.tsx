@@ -29,9 +29,9 @@ const coachItems: ReadonlyArray<{
 ];
 
 const clientItems = coachItems
-  .filter((item) => item.label !== "Clients")
   .map((item) =>
-    item.label === "Sessions" ? { ...item, label: "My sessions" } : item,
+    item.label === "Clients" ? { ...item, label: "My spaces" }
+      : item.label === "Sessions" ? { ...item, label: "My sessions" } : item,
   );
 
 export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
@@ -72,6 +72,7 @@ export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
         {canSchedule ? (
           <Link
             href="/coaching#create-appointment"
+            aria-label="New session"
             className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-[linear-gradient(110deg,#284f47,#50775c)] px-4 text-sm font-black text-[#fff7e8] shadow-sm transition hover:saturate-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#477d6e]"
           >
             <Plus size={16} aria-hidden="true" />

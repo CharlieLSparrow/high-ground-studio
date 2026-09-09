@@ -299,8 +299,40 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     }
   });
 
-  it("rejects client-space creation by a non-coach and rejects self-coaching", async () => {
-    await expect(createCoachingClientSpace({ prisma, actor: { id: ids.outsider }, email: email("client") })).rejects.toMatchObject({ status: 403 });
+  it("lets a new coach create only their own private space without a profile or booking", async () => {
+    const actor = {id: ids.outsider, primaryEmail: email("outsider")};
+    expect(await prisma.coachProfile.count({where: {userId: actor.id}})).toBe(0);
+    const [first, retry] = await Promise.all([
+      createCoachingClientSpace({prisma, actor, email: email("client")}),
+      createCoachingClientSpace({prisma, actor, email: email("client")}),
+    ]);
+    const space = await prisma.coachingEngagement.findUniqueOrThrow({where: {id: first.id}, include: {members: true, bookings: true, callRooms: true}});
+    try {
+      expect(retry.id).toBe(first.id);
+      expect(space.projectId).not.toBe(ids.project);
+      expect(space.members.map(member => ({userId: member.userId, role: member.role}))).toEqual(expect.arrayContaining([
+        {userId: ids.outsider, role: "COACH"}, {userId: ids.client, role: "CLIENT"},
+      ]));
+      expect(space.members).toHaveLength(2);
+      expect(space.bookings).toHaveLength(0);
+      expect(space.callRooms).toHaveLength(0);
+      expect(await prisma.coachProfile.count({where: {userId: actor.id}})).toBe(0);
+      expect(await prisma.userRole.count({where: {userId: actor.id}})).toBe(0);
+      expect(await prisma.coachingEngagement.findFirst({where: coachingEngagementAccessWhere(engagementId, actor, "read")})).toBeNull();
+      expect(await prisma.coachingEngagement.findFirst({where: coachingEngagementAccessWhere(space.id, {id: ids.editor}, "read")})).toBeNull();
+    } finally {
+      await prisma.coachingEngagement.delete({where: {id: space.id}});
+      await prisma.studioProject.delete({where: {id: space.projectId}});
+    }
+  });
+
+  it("rejects inactive accounts, self-coaching, and invalid client emails", async () => {
+    await prisma.user.update({where: {id: ids.outsider}, data: {isActive: false}});
+    try {
+      await expect(createCoachingClientSpace({prisma, actor: {id: ids.outsider}, email: email("client")})).rejects.toMatchObject({status: 403});
+    } finally {
+      await prisma.user.update({where: {id: ids.outsider}, data: {isActive: true}});
+    }
     await expect(createCoachingClientSpace({ prisma, actor: { id: ids.coach }, email: email("coach") })).rejects.toMatchObject({ status: 400 });
     await expect(createCoachingClientSpace({ prisma, actor: { id: ids.coach }, email: "not-an-email" })).rejects.toMatchObject({ status: 400 });
   });

@@ -8,10 +8,10 @@ import {
   GoogleAuthProvider,
   linkWithPopup,
   onAuthStateChanged,
-  signOut as firebaseSignOut,
   unlink,
   type User,
 } from "firebase/auth";
+import { signOutBrowserSession } from "@/lib/firebase/sign-out";
 import {
   CheckCircle2,
   FlaskConical,
@@ -41,6 +41,7 @@ export function AccountSwitchClient({
   const [firebaseUser, setFirebaseUser] = useState<User | null>(auth.currentUser);
   const [firebaseStateReady, setFirebaseStateReady] = useState(false);
   const [identityMessage, setIdentityMessage] = useState("");
+  const [sessionError, setSessionError] = useState("");
   const router = useRouter();
   useEffect(() => onAuthStateChanged(auth, (user) => {
     setFirebaseUser(user);
@@ -129,19 +130,18 @@ export function AccountSwitchClient({
     }
   }
 
-  async function switchGoogleAccount() {
-    setStatus("switching");
-    await fetch("/api/auth/session", { method: "DELETE" });
-    await firebaseSignOut(auth);
-    router.push(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
-  }
-
-  async function signOut() {
-    setStatus("signing-out");
-    await fetch("/api/auth/session", { method: "DELETE" });
-    await firebaseSignOut(auth);
-    router.push("/");
-    router.refresh();
+  async function leaveAccount(mode: "switching" | "signing-out") {
+    setStatus(mode);
+    setSessionError("");
+    try {
+      await signOutBrowserSession();
+      router.push(mode === "switching" ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : "/");
+      router.refresh();
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "We couldn't sign you out. Please try again.");
+    } finally {
+      setStatus("idle");
+    }
   }
 
   return (
@@ -257,7 +257,7 @@ export function AccountSwitchClient({
           </Link>
           <button
             type="button"
-            onClick={switchGoogleAccount}
+            onClick={() => leaveAccount("switching")}
             disabled={status !== "idle"}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-[#ead8ba] bg-white px-5 py-3 text-sm font-black text-[#7b512d] transition hover:bg-[#fff8ec] disabled:cursor-wait disabled:opacity-60"
           >
@@ -268,13 +268,15 @@ export function AccountSwitchClient({
 
         <button
           type="button"
-          onClick={signOut}
+          onClick={() => leaveAccount("signing-out")}
           disabled={status !== "idle"}
           className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#ead8ba] bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#7b512d] transition hover:bg-[#fff8ec] disabled:cursor-wait disabled:opacity-60"
         >
           <LogOut className="h-4 w-4" />
           {status === "signing-out" ? "Signing out..." : "Sign out"}
         </button>
+
+        {sessionError && <p role="alert" className="mt-3 rounded-2xl border border-quipsly-divider bg-quipsly-surface px-4 py-3 text-sm text-quipsly-ink">{sessionError}</p>}
 
         {currentUser?.isStaff ? (
           <details className="mt-6 rounded-2xl border border-[#ead8ba] bg-[#fffaf3] px-4 py-3 text-sm text-[#6f5a43]">

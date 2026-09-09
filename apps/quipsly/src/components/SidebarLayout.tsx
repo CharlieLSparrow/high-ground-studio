@@ -3,9 +3,8 @@
 import { Suspense, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { signOut as firebaseSignOut } from "firebase/auth";
 import { Home, CalendarDays, FolderOpen, NotebookPen, UserRound, Search, Plus, Mic, FilePlus2, LogOut, Settings, LifeBuoy, LoaderCircle, type LucideIcon } from "lucide-react";
-import { auth } from "@/lib/firebase/firebase";
+import { signOutBrowserSession } from "@/lib/firebase/sign-out";
 import { cn } from "@/app/(app)/studio-ui";
 import { NestChatPanel } from "@/components/NestChatPanel";
 import { WorkspaceMenu } from "./WorkspaceMenu";
@@ -119,13 +118,11 @@ function AccountMenu({ currentUser, currentPath, operationalLinks }: { currentUs
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("/api/auth/session", { method: "DELETE" });
-      if (!response.ok) throw new Error("Session sign out failed");
-      await firebaseSignOut(auth);
+      await signOutBrowserSession();
       router.push("/");
       router.refresh();
-    } catch {
-      setError("We couldn't sign you out. Please try again.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "We couldn't sign you out. Please try again.");
       setBusy(false);
     }
   }

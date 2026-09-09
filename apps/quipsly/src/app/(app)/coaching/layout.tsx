@@ -14,21 +14,23 @@ export default async function CoachingLayout({
   if (session?.user && !canSchedule) {
     try {
       const prisma = getPrismaClient();
-      const [profile, coachMembership] = await Promise.all([
+      const [profile, memberships] = await Promise.all([
         prisma.coachProfile.findFirst({
           where: { userId: session.user.id, isActive: true },
           select: { id: true },
         }),
-        prisma.coachingEngagementMember.findFirst({
+        prisma.coachingEngagementMember.findMany({
           where: {
             userId: session.user.id,
             status: "ACTIVE",
-            role: "COACH",
           },
-          select: { id: true },
+          select: { role: true },
+          distinct: ["role"],
         }),
       ]);
-      canSchedule = Boolean(profile || coachMembership);
+      // A first-time coach has no profile or client relationship yet. Do not
+      // hide the entry to creating one behind the very setup it begins.
+      canSchedule = Boolean(profile || memberships.length === 0 || memberships.some(member => member.role === "COACH"));
     } catch {
       // Navigation remains usable when database readiness is temporarily held.
       // The coaching runway owns the visible retry/error state.

@@ -142,6 +142,7 @@ export default async function CoachingEngagementsPage() {
   const canSchedule = Boolean(
     session.user.isStaff ||
     coachProfile ||
+    engagements.length === 0 ||
     engagements.some((engagement) =>
       engagement.members.some(
         (member) =>
@@ -287,9 +288,10 @@ export default async function CoachingEngagementsPage() {
             };
           case "OPEN_RELATIONSHIP":
             return {
-              label: "Open client space",
-              detail:
-                "Review shared notes, active goals, commitments, and conversation—or schedule the next Session.",
+              label: coachView ? "Open client space" : "Open shared space",
+              detail: coachView
+                ? "Open shared notes, goals, tasks, and conversation—or schedule your next session."
+                : "Keep in touch with your coach and work on your shared notes, tasks, and goals.",
               href: relationshipHref,
               tone: priority.tone,
             };
@@ -307,6 +309,9 @@ export default async function CoachingEngagementsPage() {
         primaryClientLabel: primaryClient
           ? personLabel(primaryClient.user)
           : engagement.title,
+        displayLabel: coachView ? undefined : engagement.members
+          .filter(member => member.role === "COACH")
+          .map(member => personLabel(member.user)).join(", ") || engagement.title,
         nextSession: displayedNextRoom
           ? {
               id: displayedNextRoom.id,
@@ -356,13 +361,15 @@ export default async function CoachingEngagementsPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-800">
-                Coaching · Clients
+                {canSchedule ? "Coaching · Clients" : "Coaching · My spaces"}
               </p>
               <h1 className="mt-2 font-serif text-4xl font-black text-[#34291d] sm:text-5xl">
                 {canSchedule ? "Your clients" : "Your coaching spaces"}
               </h1>
               <p className="mt-3 max-w-3xl font-semibold leading-7 text-[#765f40]">
-                Keep conversations, notes, tasks, and sessions together in one private space for each client.
+                {canSchedule
+                  ? "Keep conversations, notes, tasks, and sessions together in one private space for each client."
+                  : "Your conversations, notes, tasks, and sessions with your coach, together in one place."}
               </p>
             </div>
           </div>
@@ -375,6 +382,7 @@ export default async function CoachingEngagementsPage() {
             clients={clients}
             asOf={new Date(now).toISOString()}
             canAddClient={canSchedule}
+            audience={canSchedule ? "coach" : "participant"}
           />
         </div>
 
