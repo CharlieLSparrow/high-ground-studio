@@ -385,6 +385,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  nest-conversation-draft)
+    TEST_CASE="testIPhoneConversationDraftSurvivesDismissalAndRelaunch"
+    if [[ -z "$TEST_PROJECT_NAME" ]]; then
+      echo "Nest conversation draft mode requires a writable synthetic Nest name." >&2
+      exit 2
+    fi
+    ;;
   nest-conversation)
     TEST_CASE="testIPhoneCreatesTaskFromNestConversation"
     if [[ -z "$TEST_PROJECT_NAME" || -z "$TEST_TAG_LABEL" ]]; then

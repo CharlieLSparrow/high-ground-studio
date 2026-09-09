@@ -9,6 +9,7 @@ xcrun swiftc \
   "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureDeepLink.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileCoachingEngagementWork.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/NestChatModels.swift" \
+  "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureConversationDraft.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureTagColor.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/Testing/CaptureDeepLinkHarness.swift" \
   -o "$temporary_dir/capture-deep-link-harness"

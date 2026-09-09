@@ -188,6 +188,10 @@ final class MobileEpisodeChatClient: ObservableObject {
     @Published private(set) var outboundLiveHint: MobileChatPersistedLiveHint?
     @Published private(set) var updatingTaskIDs: Set<String> = []
     @Published private(set) var taskErrors: [String: String] = [:]
+    @Published private(set) var composerDraft = CaptureConversationDraft()
+    @Published private(set) var draftErrorMessage: String?
+    private let draftStore = CaptureConversationDraftStore()
+    private var draftKey: CaptureConversationDraftKey?
 
     private let baseURL: URL
     let scope: MobileCollaborationChatScope
@@ -205,9 +209,6 @@ final class MobileEpisodeChatClient: ObservableObject {
     }
     private var pollingTask: Task<Void, Never>?
     private var accountCancellable: AnyCancellable?
-    private var pendingMessageBody: String?
-    private var pendingMessageSchedulingEvidence: String?
-    private var pendingMessageID: UUID?
     private var pollingDisabledForMissingThread = false
     private var lastReceivedLiveMessageID: String?
 
@@ -224,7 +225,28 @@ final class MobileEpisodeChatClient: ObservableObject {
         accountCancellable = NotificationCenter.default.publisher(
             for: .quipslyCaptureAccountIdentityDidChange
         ).sink { [weak self] _ in
-            Task { @MainActor in self?.reset() }
+            if Thread.isMainThread { MainActor.assumeIsolated { self?.reset() } }
+            else { Task { @MainActor in self?.reset() } }
+        }
+    }
+
+    func updateComposerDraft(_ body: String) {
+        guard let draftKey,
+              draftKey.ownerAccountID == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return }
+        composerDraft.body = body
+        _ = persistComposerDraft()
+    }
+
+    private func persistComposerDraft() -> Bool {
+        guard let draftKey,
+              draftKey.ownerAccountID == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return false }
+        do {
+            try draftStore.save(composerDraft, for: draftKey)
+            draftErrorMessage = nil
+            return true
+        } catch {
+            draftErrorMessage = "This device couldn't save your draft. Keep this conversation open and try again."
+            return false
         }
     }
 
@@ -359,6 +381,12 @@ final class MobileEpisodeChatClient: ObservableObject {
         if currentContextKey != context.key {
             reset()
             currentContextKey = context.key
+            if let owner = AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID {
+                let key = CaptureConversationDraftKey(ownerAccountID: owner, origin: baseURL.absoluteString, context: context.key)
+                draftKey = key
+                do { composerDraft = try draftStore.load(key) }
+                catch { draftErrorMessage = "This device couldn't open your saved draft. Try reopening this conversation." }
+            }
             _ = restoreProtectedCache(context: context)
         }
         if forceRefresh {
@@ -564,17 +592,9 @@ final class MobileEpisodeChatClient: ObservableObject {
             request: coachingScheduleRequest,
             decision: coachingScheduleDecision
         )
-        let requestID: UUID
-        if pendingMessageBody == trimmed,
-           pendingMessageSchedulingEvidence == schedulingEvidence,
-           let pendingMessageID {
-            requestID = pendingMessageID
-        } else {
-            requestID = UUID()
-            pendingMessageBody = trimmed
-            pendingMessageSchedulingEvidence = schedulingEvidence
-            pendingMessageID = requestID
-        }
+        let pendingSend = composerDraft.prepareSend(body: trimmed, schedulingEvidence: schedulingEvidence)
+        guard persistComposerDraft() else { return false }
+        let requestID = pendingSend.id
 
         invalidateOlderReads()
         isSending = true
@@ -635,9 +655,8 @@ final class MobileEpisodeChatClient: ObservableObject {
                 messages.append(message)
                 messages = Array(messages.suffix(200))
             }
-            pendingMessageBody = nil
-            pendingMessageSchedulingEvidence = nil
-            pendingMessageID = nil
+            composerDraft.acknowledge(pendingSend)
+            _ = persistComposerDraft()
             outboundLiveHint = MobileChatPersistedLiveHint(
                 schema: MobileChatPersistedLiveHint.schemaVersion,
                 threadKey: context.threadKey,
@@ -844,9 +863,9 @@ final class MobileEpisodeChatClient: ObservableObject {
         protectedCacheSavedAt = nil
         statusMessage = nil
         errorMessage = nil
-        pendingMessageBody = nil
-        pendingMessageSchedulingEvidence = nil
-        pendingMessageID = nil
+        composerDraft = CaptureConversationDraft()
+        draftKey = nil
+        draftErrorMessage = nil
         pollingDisabledForMissingThread = false
         outboundLiveHint = nil
         lastReceivedLiveMessageID = nil
@@ -1240,11 +1259,21 @@ struct MobileEpisodeChatThread: View {
     var nestTags: [MobileWorkTagLabel] = []
     var onOpenNestTask: (String) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
-    @State private var draft = ""
     @State private var workAction: MobileConversationWorkAction?
     @State private var workSourceMessageID: String?
     @State private var workReturnRevision = 0
     @FocusState private var composerIsFocused: Bool
+
+    init(client: MobileEpisodeChatClient, target: MobileCollaborationChatTarget, previewOnly: Bool,
+         onWorkChanged: @escaping @MainActor @Sendable () async -> Void = {},
+         nestTags: [MobileWorkTagLabel] = [], onOpenNestTask: @escaping (String) -> Void = { _ in }) {
+        self.client = client
+        self.target = target
+        self.previewOnly = previewOnly
+        self.onWorkChanged = onWorkChanged
+        self.nestTags = nestTags
+        self.onOpenNestTask = onOpenNestTask
+    }
 
     var body: some View {
         NavigationStack {
@@ -1470,6 +1499,13 @@ struct MobileEpisodeChatThread: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if client.composerDraft.body.trimmingCharacters(in: .whitespacesAndNewlines).count > 4_000 {
+                Text("Messages can contain up to 4,000 characters.")
+                    .font(.caption).foregroundStyle(CapturePalette.brass)
+            }
+            if let message = client.draftErrorMessage {
+                Text(message).font(.caption).foregroundStyle(CapturePalette.brass)
+            }
             if let errorMessage = client.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
@@ -1480,7 +1516,7 @@ struct MobileEpisodeChatThread: View {
                     client.canEdit
                         ? client.scope.composerPlaceholder
                         : "View-only \(client.scope.title.lowercased())",
-                    text: $draft,
+                    text: Binding(get: { client.composerDraft.body }, set: { client.updateComposerDraft($0) }),
                     axis: .vertical
                 )
                 .lineLimit(2 ... 6)
@@ -1490,11 +1526,9 @@ struct MobileEpisodeChatThread: View {
                 .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Composer")
 
                 Button {
-                    let body = draft
+                    let body = client.composerDraft.body
                     Task {
-                        if await target.send(with: client, body: body) {
-                            draft = ""
-                        }
+                        _ = await target.send(with: client, body: body)
                     }
                 } label: {
                     if client.isSending {
@@ -1505,7 +1539,8 @@ struct MobileEpisodeChatThread: View {
                 }
                 .captureProminentButton()
                 .disabled(
-                    draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    client.composerDraft.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || client.composerDraft.body.trimmingCharacters(in: .whitespacesAndNewlines).count > 4_000
                         || !client.canEdit
                         || client.isSending
                         || previewOnly

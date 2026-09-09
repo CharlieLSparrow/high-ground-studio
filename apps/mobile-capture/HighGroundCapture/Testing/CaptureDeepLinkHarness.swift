@@ -4,6 +4,7 @@ import Foundation
 struct CaptureDeepLinkHarness {
     @MainActor
     static func main() {
+        try! exerciseConversationDraftRecovery()
         expect(
             "quipsly://session/room-safe_42?mode=live",
             roomID: "room-safe_42",
@@ -235,6 +236,50 @@ struct CaptureDeepLinkHarness {
               parsed.mode == mode else {
             fatalError("Expected a valid Session link: \(value)")
         }
+    }
+
+    private static func exerciseConversationDraftRecovery() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("conversation-drafts-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = CaptureConversationDraftKey(ownerAccountID: "owner-A", origin: "http://localhost:3012", context: "nest|writing|default")
+        let store = CaptureConversationDraftStore(directory: directory)
+        var draft = CaptureConversationDraft()
+        draft.body = "  My unfinished thought\n"
+        let send = draft.prepareSend(body: draft.body, schedulingEvidence: "-|-" )
+        try store.save(draft, for: key)
+        let savedFiles = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        precondition(savedFiles.count == 1 && !savedFiles[0].lastPathComponent.contains("owner-A"))
+        let attributes = try FileManager.default.attributesOfItem(atPath: savedFiles[0].path)
+        precondition((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        var restored = try CaptureConversationDraftStore(directory: directory).load(key)
+        precondition(restored == draft, "Relaunch must retain exact text and send identity")
+        precondition(restored.prepareSend(body: restored.body, schedulingEvidence: "-|-") == send)
+        for otherKey in [
+            CaptureConversationDraftKey(ownerAccountID: "owner-B", origin: key.origin, context: key.context),
+            CaptureConversationDraftKey(ownerAccountID: key.ownerAccountID, origin: "https://nest.quipsly.com", context: key.context),
+            CaptureConversationDraftKey(ownerAccountID: key.ownerAccountID, origin: key.origin, context: "engagement|writing|private"),
+        ] {
+            let isolated = try store.load(otherKey)
+            precondition(isolated == CaptureConversationDraft(), "Never expose another account, server, or conversation draft")
+        }
+        restored.body = "The next thought typed during the send"
+        restored.acknowledge(send)
+        precondition(restored.pending == nil && restored.body == "The next thought typed during the send")
+        let nextSend = restored.prepareSend(body: restored.body, schedulingEvidence: "-|-")
+        precondition(nextSend.id != send.id)
+        restored.acknowledge(send)
+        precondition(restored.pending == nextSend, "A late acknowledgement cannot clear a newer attempt")
+        restored.acknowledge(nextSend)
+        try store.save(restored, for: key)
+        let cleared = try store.load(key)
+        precondition(cleared == CaptureConversationDraft(), "A confirmed send remains cleared after relaunch")
+        let blocked = directory.appendingPathComponent("not-a-directory")
+        try Data("fixture".utf8).write(to: blocked)
+        do {
+            try CaptureConversationDraftStore(directory: blocked).save(draft, for: key)
+            preconditionFailure("Storage failure must not be reported as a saved draft")
+        } catch { }
+        precondition(draft.body == "  My unfinished thought\n")
     }
 
     private static func expectRejected(_ value: String) {

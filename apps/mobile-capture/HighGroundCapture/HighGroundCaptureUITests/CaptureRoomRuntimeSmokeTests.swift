@@ -1283,7 +1283,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         add(attachment)
     }
 
-    private func replaceText(in element: XCUIElement, with value: String, app: XCUIApplication) {
+    private func replaceText(in element: XCUIElement, with value: String, app: XCUIApplication,
+                             dismissKeyboardAfterEditing: Bool = true) {
         XCTAssertTrue(element.waitForExistence(timeout: 8))
         // An empty writing body intentionally takes focus when a new document
         // opens. iOS then scrolls the Form far enough that its title remains in
@@ -1324,6 +1325,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // binding. Route the new text through the application so XCTest targets the
         // currently focused replacement instead of a stale element snapshot.
         app.typeText(value)
+        guard dismissKeyboardAfterEditing else { return }
         let packetNoteKeyboardDone = app.buttons["CapturePacketNoteKeyboardDone"].firstMatch
         let coachKeyboardDone = app.buttons["CaptureCoachFollowUpKeyboardDone"].firstMatch
         let weeklyPlanKeyboardDone = app.buttons["CaptureWeeklyPlanKeyboardDone"].firstMatch
@@ -4351,6 +4353,55 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The second canonical round trip should restore the starting tag choice."
         )
         app.buttons["Cancel"].firstMatch.tap()
+    }
+
+    func testIPhoneConversationDraftSurvivesDismissalAndRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let projectName = credentials.projectName else { throw XCTSkip("Requires a writable synthetic Nest") }
+        func openConversation(_ app: XCUIApplication) -> XCUIElement {
+            tapRootTab("Work", in: app)
+            let location = app.buttons["CaptureGlobalWorkLocation"].firstMatch
+            XCTAssertTrue(location.waitForExistence(timeout: 20))
+            location.tap()
+            let search = app.searchFields.firstMatch
+            XCTAssertTrue(search.waitForExistence(timeout: 10))
+            search.tap()
+            search.typeText(projectName)
+            let project = app.buttons[projectName].firstMatch
+            XCTAssertTrue(waitUntilHittable(project, timeout: 10))
+            project.tap()
+            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: search)
+            waitForExpectations(timeout: 10)
+            let open = app.buttons["CaptureNestConversationOpenButton"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 20, swipeAttempts: 8))
+            open.tap()
+            let composer = app.descendants(matching: .any)["CaptureNestConversationComposer"].firstMatch
+            XCTAssertTrue(composer.waitForExistence(timeout: 20))
+            expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: composer)
+            waitForExpectations(timeout: 20)
+            return composer
+        }
+        var app = try launchSignedInCaptureApp()
+        var composer = openConversation(app)
+        let message = "An unfinished chapter idea \(UUID().uuidString.prefix(8))"
+        replaceText(in: composer, with: message, app: app, dismissKeyboardAfterEditing: false)
+        XCTAssertEqual(composer.value as? String, message)
+        app.buttons["Done"].firstMatch.tap()
+        composer = openConversation(app)
+        XCTAssertEqual(composer.value as? String, message, "Closing conversation must retain unsent text")
+        app.terminate()
+        app = try launchSignedInCaptureApp()
+        composer = openConversation(app)
+        XCTAssertEqual(composer.value as? String, message, "Relaunch must restore the same private draft")
+        XCTAssertFalse(app.staticTexts[message].exists, "A saved draft must not publish itself")
+        app.buttons["CaptureNestConversationSendButton"].tap()
+        XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertNotEqual(composer.value as? String, message)
+        app.terminate()
+        app = try launchSignedInCaptureApp()
+        composer = openConversation(app)
+        XCTAssertNotEqual(composer.value as? String, message, "Confirmed text must not return as an unsent draft")
+        XCTAssertTrue(app.staticTexts[message].firstMatch.exists)
     }
 
     func testIPhoneCreatesTaskFromNestConversation() throws {
