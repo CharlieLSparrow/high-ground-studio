@@ -1647,10 +1647,9 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("CaptureTodayTaskSourceLink_")
       && workModelText.includes("readTranscriptDerivedTaskSource")
       && schedulePageText.includes("readTranscriptDerivedTaskSource")
-      && schedulePageText.includes("Reviewed transcript timestamp")
+      && schedulePageText.includes("parsedSourceAnchor?.roomId === task.room?.id")
       && schedulePlannerText.includes("Focus source · transcript")
       && todayRouteText.includes("readTranscriptDerivedTaskSource")
-      && todayRouteText.includes("Reviewed transcript follow-through")
       && todayRouteText.includes("tasksRankedForToday: true")
       && shellText.includes("task.todayReason?.nonempty")
       && webText.includes("Make this my task")
@@ -2446,9 +2445,9 @@ function checkTranscriptCorrectionContractSources() {
     "Session, Schedule, and linked Goals return to the same scoped Work task ID, including completed work hidden by the default filter.",
   );
   expect(
-    workModelText.includes('attentionReason: "Overdue commitment"')
-      && workModelText.includes('"Due within 24 hours" as const')
-      && workModelText.includes('"Reviewed transcript follow-through" as const')
+    workModelText.includes("const attentionReason = task.status")
+      && workModelText.includes("sourceAnchor !== null")
+      && workModelText.includes("attentionReason,")
       && workClientText.includes('initialFilter = "OPEN"')
       && workClientText.includes('filter === "ATTENTION"')
       && workPageText.includes('requestedFocus.view === "attention"'),

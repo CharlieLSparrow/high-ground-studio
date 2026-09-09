@@ -61,7 +61,7 @@ for (const missingBoundary of [null, "booking authentication", "packet authentic
   });
 }
 
-for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication"]) {
+for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication", "transcript task source binding", "task attention source"]) {
   test(`scheduling source checks tolerate presentation changes and detect ${missingBoundary || "intact wiring"}`, t => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-scheduling-source-gates-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -102,6 +102,17 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
       .replaceAll("Session time updated.", "Appointment updated.")
       .replaceAll("Booking canceled in Quipsly. Cancel external calendar/invite/payment evidence separately", "Canceled here. Provider status is separate.")
       .replaceAll("externalCalendarUpdated: false", missingBoundary === "calendar update status" ? "calendarFlagRemoved: false" : "externalCalendarUpdated: false"));
+    const schedulePage = path.join(fixture, "apps/quipsly/src/app/(app)/schedule/page.tsx");
+    writeFileSync(schedulePage, readFileSync(schedulePage, "utf8")
+      .replaceAll("Session transcript", "Recording transcript")
+      .replaceAll("parsedSourceAnchor?.roomId === task.room?.id",
+        missingBoundary === "transcript task source binding" ? "true" : "parsedSourceAnchor?.roomId === task.room?.id"));
+    const workModel = path.join(fixture, "apps/quipsly/src/app/(app)/work/work-model.ts");
+    writeFileSync(workModel, readFileSync(workModel, "utf8")
+      .replaceAll("From session transcript", "From recording")
+      .replaceAll("Overdue commitment", "Past due")
+      .replaceAll("Due within 24 hours", "Due soon")
+      .replaceAll("sourceAnchor !== null", missingBoundary === "task attention source" ? "true" : "sourceAnchor !== null"));
     const native = path.join(fixture, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift");
     writeFileSync(native, readFileSync(native, "utf8")
       .replaceAll("The client space and its existing work stay available.", "Your shared work stays here.")
@@ -112,11 +123,11 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
         cwd: fixture, encoding: "utf8", timeout: 15_000,
       });
       const expectedFailure = (script === scheduling && missingBoundary === "calendar update status")
-        || (script === capture && ["native scheduling command", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication"].includes(missingBoundary));
+        || (script === capture && ["native scheduling command", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication", "transcript task source binding", "task attention source"].includes(missingBoundary));
       assert.equal(result.status, expectedFailure ? 1 : 0, result.stdout + result.stderr);
       const report = JSON.parse(result.stdout);
       assert.deepEqual(report.checks.filter(check => check.status === "fail").map(check => check.id ?? check.name),
-        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary?.startsWith("search ") ? "permissionFilteredCanonicalWorkspaceSearch" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : missingBoundary === "tag assignment eligibility" ? "canonicalWorkSessionProjectTags" : "nativeCoachingSchedulingManagementParity"] : []);
+        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary === "transcript task source binding" ? "transcriptDerivedTaskExplicitSourceBoundary" : missingBoundary === "task attention source" ? "canonicalTaskAttentionProjection" : missingBoundary?.startsWith("search ") ? "permissionFilteredCanonicalWorkspaceSearch" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : missingBoundary === "tag assignment eligibility" ? "canonicalWorkSessionProjectTags" : "nativeCoachingSchedulingManagementParity"] : []);
     }
   });
 }
