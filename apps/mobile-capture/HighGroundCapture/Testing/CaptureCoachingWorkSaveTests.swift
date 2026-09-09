@@ -73,6 +73,67 @@ enum CaptureCoachingWorkSaveTests {
         expect(!CaptureTaskTagSelection(newTagLabels: [String(repeating: "x", count: 81)]).isValid, "long labels are rejected")
         expect(!CaptureTaskTagSelection(newTagLabels: ["  "]).isValid, "blank labels are rejected")
         testScheduleUpdates()
+        testTranscriptDrafts()
+    }
+
+    private static func testTranscriptDrafts() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("quipsly-transcript-drafts-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = CaptureTranscriptWorkDraftStore(directory: directory)
+        let scope = CaptureTranscriptWorkDraftScope(ownerAccountID: "alex", origin: "http://localhost:3012",
+            roomID: "session", segmentID: "passage", providerTextSha256: "source-hash")
+        var drafts = CaptureTranscriptWorkDrafts()
+        for kind in CaptureTranscriptWorkKind.allCases {
+            drafts[kind].start(title: "Source words", body: "Original thought")
+            drafts[kind].title = "My \(kind.rawValue) title"
+            drafts[kind].body = "My own writing"
+            drafts[kind].start(title: "Must not reset my title", body: "Must not reset my writing")
+            expect(drafts[kind].title == "My \(kind.rawValue) title", "reopening \(kind) retains the edited title")
+            expect(drafts[kind].body == "My own writing", "reopening \(kind) retains the body")
+        }
+        drafts.note.noteKind = "SUMMARY"
+        drafts.note.visibility = "PARTICIPANTS"
+        do {
+            try store.save(drafts, for: scope)
+            let relaunched = CaptureTranscriptWorkDraftStore(directory: directory)
+            let restored = try relaunched.load(scope)
+            expect(restored == drafts, "all writing, audience, purpose and request IDs survive a new store instance")
+            for otherScope in [
+                CaptureTranscriptWorkDraftScope(ownerAccountID: "morgan", origin: scope.origin, roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: "https://nest.quipsly.com", roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: scope.origin, roomID: "other-session", segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: scope.origin, roomID: scope.roomID, segmentID: "other-passage", providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: scope.origin, roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: "changed-source"),
+            ] {
+                let isolated = try relaunched.load(otherScope)
+                expect(!isolated.note.hasStarted && !isolated.task.hasStarted && !isolated.goal.hasStarted,
+                       "different account, server, session, passage or source cannot restore this writing")
+            }
+            for kind in CaptureTranscriptWorkKind.allCases {
+                let submitted = drafts[kind]
+                drafts[kind].body = "New writing while saving"
+                drafts.acknowledge(submitted, kind: kind)
+                expect(drafts[kind].body == "New writing while saving", "an older acknowledgement cannot discard a new \(kind) draft")
+                let current = drafts[kind]
+                drafts.acknowledge(current, kind: kind)
+                expect(!drafts[kind].hasStarted && drafts[kind].requestID != current.requestID,
+                       "successful \(kind) save clears only the acknowledged draft and renews its request ID")
+            }
+            try store.save(drafts, for: scope)
+            let afterSave = try relaunched.load(scope)
+            expect(afterSave == drafts, "acknowledged drafts do not reappear after relaunch")
+            let file = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)[0]
+            let corrupt = Data("unreadable retained draft".utf8)
+            try corrupt.write(to: file)
+            do {
+                _ = try relaunched.load(scope)
+                fatalError("A corrupt saved draft must not be reported as an empty successful load")
+            } catch {
+                let preserved = try Data(contentsOf: file)
+                expect(preserved == corrupt, "failed reads preserve the original file for recovery")
+            }
+        } catch { fatalError("Transcript draft persistence failed: \(error)") }
+        print("PASS transcript draft seeding, recovery, identity isolation, and acknowledgement checks")
     }
 
     private static func testScheduleUpdates() {

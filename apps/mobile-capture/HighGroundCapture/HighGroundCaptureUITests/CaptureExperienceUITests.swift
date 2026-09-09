@@ -5169,13 +5169,32 @@ final class CaptureExperienceUITests: XCTestCase {
             let field = app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             XCTAssertFalse((field.value as? String ?? "").isEmpty, "The passage should seed useful work, not an empty form.")
+            for otherKind in ["Note", "Task", "Goal"] where otherKind != kind {
+                XCTAssertFalse(app.textFields["CaptureTranscript\(otherKind)TitleField"].exists,
+                    "Only one work composer should be presented at a time.")
+            }
+            field.tap()
+            field.typeText(" - my retained draft")
+            let expectedTitle = field.value as? String
+            XCTAssertTrue(expectedTitle?.contains("my retained draft") == true,
+                "The composer must accept writing before recovery is evaluated.")
             let save = app.buttons["CaptureTranscriptCreate\(kind)Button"].firstMatch
             XCTAssertFalse(save.isEnabled, "Preview must not write to a real account.")
-            let cancel = kind == "Note"
-                ? app.buttons["CaptureTranscriptCancelNoteButton"].firstMatch
-                : app.buttons["Cancel"].firstMatch
-            reveal(cancel)
+            let cancel = app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch
+            XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+            // The focused composer is already materialized. XCTest can reveal
+            // its button for the tap; our lazy-list search scrolls underneath
+            // the keyboard and can never establish its own viewport condition.
             cancel.tap()
+            openTranscriptPassageCreationMenu()
+            let reopen = app.buttons["CaptureTranscriptMake\(kind)Button"].firstMatch
+            XCTAssertTrue(reopen.waitForExistence(timeout: 5))
+            reopen.tap()
+            let restored = app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch
+            XCTAssertTrue(restored.waitForExistence(timeout: 5))
+            XCTAssertEqual(restored.value as? String, expectedTitle,
+                "Closing and reopening must not replace writing with the original transcript.")
+            app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
         }
         let details = app.buttons["CaptureTranscriptSegmentDetails_preview-segment"].firstMatch
         reveal(details)
@@ -5574,7 +5593,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "Task capture should finish presenting before its preview-only controls are inspected."
         )
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateTaskButton"].isEnabled)
-        app.buttons["Cancel"].tap()
+        app.buttons["CaptureTranscriptCancelTaskButton"].tap()
 
         openTranscriptPassageCreationMenu()
         let makeGoal = app.buttons["CaptureTranscriptMakeGoalButton"]
