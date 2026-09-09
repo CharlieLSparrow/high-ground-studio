@@ -238,6 +238,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-task-save-retry)
+    TEST_CASE="testTranscriptTaskEditsRecoverAcrossTwoLostRepliesAndRelaunches"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" || "$BASE_URL" != "http://127.0.0.1:3014" ]]; then
+      echo "Transcript retry requires the local fault proxy, exact Session and passage, and two synthetic titles." >&2
+      exit 2
+    fi
+    ;;
   transcript-work-drafts)
     TEST_CASE="testTranscriptWorkDraftsRetainWritingAcrossSignedInRelaunch"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* ]]; then

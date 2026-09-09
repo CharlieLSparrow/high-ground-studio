@@ -391,6 +391,79 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
     });
   });
 
+  it("recovers successive lost task replies into one item while preserving tags, deadlines, and disjoint edits", async () => {
+    await withFixture(async (tx, f) => {
+      const original = { title: "First task wording", detail: "Original details" };
+      const command = { roomId: f.room.id, segmentId: f.segments[0]!.id,
+        expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID() };
+      const submit = async (revision: number, title: string, changes: Record<string, unknown> = {}) => {
+        const response = await createTask(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...command, ...original, title, save: { revision, original }, ...changes }),
+        }));
+        return { status: response.status, body: await response.json() };
+      };
+      const first = await submit(0, original.title);
+      expect(first.status).toBe(200);
+      const id = first.body.task.id;
+      const initial = await tx.actionItem.findUniqueOrThrow({ where: { id } });
+      const project = await tx.studioProject.create({ data: { slug: randomUUID(), name: "Writing",
+        workspace: { create: { slug: randomUUID(), name: "Synthetic Nest" } } } });
+      const tag = await tx.studioTag.create({ data: { projectId: project.id, slug: "writing", label: "Writing", hexColor: "#506b46" } });
+      const tagLink = await tx.actionItemTagLink.create({ data: { actionItemId: id, tagId: tag.id } });
+      const dueAt = new Date("2027-01-02T12:00:00Z");
+      const reminder = await tx.taskReminder.create({ data: { id: randomUUID(), actionItemId: id,
+        ownerUserId: f.owner.id, remindAt: new Date("2027-01-01T12:00:00Z") } });
+      await tx.actionItem.update({ where: { id }, data: { detail: "Details edited in the browser", dueAt } });
+      // The client has not received either successful response; each edit still targets the same ID.
+      for (const [revision, title] of [[1, "Second wording"], [2, "Third wording"]] as const) {
+        const saved = await submit(revision, title);
+        expect(saved).toMatchObject({ status: 200, body: { task: { id, title, detail: "Details edited in the browser" } } });
+      }
+      const current = await tx.actionItem.findUniqueOrThrow({ where: { id } });
+      expect(current).toMatchObject({ dueAt, status: "OPEN", assignedUserId: f.owner.id,
+        sourceJson: { materializationIntent: original, draftSave: { revision: 2, fields: { ...original, title: "Third wording" } },
+          segmentId: f.segments[0]!.id, recordingAssetId: f.asset.id } });
+      expect((current.sourceJson as any).governance).toEqual((initial.sourceJson as any).governance);
+      expect((current.sourceJson as any).editReceipts).toHaveLength(2);
+      expect(await tx.actionItemTagLink.findMany({ where: { actionItemId: id } })).toEqual([tagLink]);
+      expect(await tx.taskReminder.findUniqueOrThrow({ where: { id: reminder.id } })).toEqual(reminder);
+      const replay = await submit(2, "Third wording");
+      expect(replay).toMatchObject({ status: 200, body: { idempotentReplay: true, task: { id } } });
+      expect(await tx.actionItem.findUniqueOrThrow({ where: { id } })).toEqual(current);
+      for (const [revision, title, changes] of [
+        [1, "Second wording", {}], [2, "Reused revision", {}],
+        [3, "Third wording", { detail: "Conflicting browser details" }],
+        [3, "Third wording", { segmentId: f.segments[1]!.id, expectedProviderTextSha256: sha(f.segments[1]!.text) }],
+      ] as const) expect((await submit(revision, title, changes)).status).toBe(409);
+      f.actAs(f.outsider);
+      expect((await submit(3, "Unauthorized task")).status).toBe(404);
+      f.actAs(f.owner);
+      expect(await tx.actionItem.findMany({ where: { roomId: f.room.id } })).toEqual([current]);
+      await tx.actionItem.update({ where: { id }, data: { status: "DONE" } });
+      expect((await submit(3, "Do not reopen this task")).status).toBe(409);
+      expect((await submit(2, "Third wording")).status).toBe(200);
+      expect(await tx.recordingAsset.findUniqueOrThrow({ where: { id: f.asset.id } })).toEqual(f.asset);
+    });
+  });
+
+  it("saves the newest task revision when earlier requests never arrived", async () => {
+    await withFixture(async (tx, f) => {
+      const command = { roomId: f.room.id, segmentId: f.segments[0]!.id,
+        expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID(),
+        title: "Newest wording", detail: null, save: { revision: 4, original: { title: "Unsent wording", detail: null } } };
+      const submit = () => createTask(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(command),
+      }));
+      const first = await submit();
+      expect(first.status).toBe(200);
+      const { task } = await first.json();
+      const retry = await submit();
+      expect(await retry.json()).toMatchObject({ idempotentReplay: true, task: { id: task.id, title: "Newest wording" } });
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(1);
+    });
+  });
+
   it.each(["task", "goal", "note", "draft"] as const)("creates a %s from the selected older recording while a newer recording is processing", async (kind) => {
     await withFixture(async (tx, f) => {
       await existingWork(tx, f, "task");

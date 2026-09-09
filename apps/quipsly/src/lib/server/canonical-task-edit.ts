@@ -37,7 +37,7 @@ export async function editCanonicalTaskInTransaction(input: {
     dstResolution: string;
     timezone: string;
   } | null;
-  surface: "nest-work" | "ios-capture-today";
+  surface: "nest-work" | "ios-capture-today" | "ios-capture-transcript";
   now?: Date;
   receiptId?: string;
 }) {

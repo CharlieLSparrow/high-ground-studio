@@ -3362,6 +3362,82 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRecordingIdentity(proofID, name: "Retained transcript task draft save identity")
     }
 
+    func testTranscriptTaskEditsRecoverAcrossTwoLostRepliesAndRelaunches() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard credentials.baseURL == "http://127.0.0.1:3014",
+              let sessionID = credentials.sessionID, credentials.transcriptSegmentIDs.count == 1,
+              let originalTitle = credentials.taskEditSourceTitle,
+              let updatedTitle = credentials.taskEditUpdatedTitle else {
+            throw XCTSkip("Task save recovery requires the local fault proxy and exact synthetic identities.")
+        }
+        let segmentID = credentials.transcriptSegmentIDs[0]
+        func openTaskDraft(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let transcript = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(transcript, in: app, timeout: 30, swipeAttempts: 12))
+            transcript.tap()
+            XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+            let controls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(controls, in: app, timeout: 30, swipeAttempts: 12))
+            controls.buttons["Timeline"].firstMatch.tap()
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"].exists)
+            let create = app.buttons["CaptureTranscriptCreateFromPassage_\(segmentID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(create, in: app, timeout: 30, swipeAttempts: 14))
+            create.tap()
+            let action = app.buttons["CaptureTranscriptMakeTaskButton"].firstMatch
+            XCTAssertTrue(action.waitForExistence(timeout: 10))
+            action.tap()
+            XCTAssertTrue(app.textFields["CaptureTranscriptTaskTitleField"].waitForExistence(timeout: 15))
+        }
+        func replace(_ identifier: String, with text: String, in app: XCUIApplication) {
+            let field = app.textFields[identifier].firstMatch
+            field.tap()
+            if let existing = field.value as? String, !existing.isEmpty {
+                field.press(forDuration: 1.2)
+                let item = app.menuItems["Select All"].firstMatch
+                if item.waitForExistence(timeout: 3) { item.tap() }
+                else {
+                    let button = app.buttons["Select All"].firstMatch
+                    XCTAssertTrue(button.waitForExistence(timeout: 3))
+                    button.tap()
+                }
+            }
+            app.typeText(text)
+            XCTAssertEqual(field.value as? String, text)
+        }
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openTaskDraft(in: app)
+        let titles = [originalTitle, updatedTitle, updatedTitle + " final"]
+        for revision in 0...2 {
+            replace("CaptureTranscriptTaskTitleField", with: titles[revision], in: app)
+            replace("CaptureTranscriptTaskBodyField", with: "My writing revision \(revision)", in: app)
+            let save = app.buttons["CaptureTranscriptCreateTaskButton"].firstMatch
+            XCTAssertTrue(save.isHittable && save.isEnabled)
+            save.tap()
+            if revision < 2 {
+                let error = app.staticTexts["Test connection interrupted after saving revision \(revision). Try Save again."].firstMatch
+                XCTAssertTrue(error.waitForExistence(timeout: 30), "The server must persist before the proxy loses this reply.")
+                XCTAssertTrue(app.textFields["CaptureTranscriptTaskTitleField"].exists, "Failed replies must leave writing editable.")
+                attachRuntimeScreenshot(app, name: "Task writing retained after lost reply \(revision)")
+                XCUIDevice.shared.press(.home)
+                app.terminate()
+                app = try launchSignedInCaptureApp(initialTab: "record")
+                openTaskDraft(in: app)
+                XCTAssertEqual(app.textFields["CaptureTranscriptTaskTitleField"].value as? String, titles[revision])
+                XCTAssertEqual(app.textFields["CaptureTranscriptTaskBodyField"].value as? String, "My writing revision \(revision)")
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkComposer"].firstMatch.waitForNonExistence(timeout: 30))
+            }
+        }
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openTaskDraft(in: app)
+        let freshTitle = app.textFields["CaptureTranscriptTaskTitleField"].value as? String ?? ""
+        XCTAssertFalse(titles.contains(freshTitle), "Successful saving clears only the acknowledged draft.")
+        app.buttons["CaptureTranscriptCancelTaskButton"].firstMatch.tap()
+        attachRecordingIdentity(titles[2], name: "Recovered transcript task for independent API readback")
+    }
+
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,

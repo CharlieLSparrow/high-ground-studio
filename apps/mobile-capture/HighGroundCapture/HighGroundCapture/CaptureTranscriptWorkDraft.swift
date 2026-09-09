@@ -6,6 +6,19 @@ enum CaptureTranscriptWorkKind: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+struct CaptureTranscriptTaskFields: Codable, Equatable {
+    let title: String
+    let detail: String
+
+    var isValid: Bool { !title.isEmpty && title.utf16.count <= 500 && detail.utf16.count <= 5_000 }
+}
+
+struct CaptureTranscriptTaskSaveAttempt: Codable, Equatable {
+    let original: CaptureTranscriptTaskFields
+    let submitted: CaptureTranscriptTaskFields
+    let revision: Int
+}
+
 /// Unsent work and its retry identity, not another copy of canonical work.
 struct CaptureTranscriptWorkDraft: Codable, Equatable {
     var title = ""
@@ -14,6 +27,24 @@ struct CaptureTranscriptWorkDraft: Codable, Equatable {
     var visibility = "AUTHOR_PRIVATE"
     var hasStarted = false
     var requestID = "capture-transcript-work-\(UUID().uuidString)"
+    var taskSaveAttempt: CaptureTranscriptTaskSaveAttempt?
+
+    /// Persist this before sending. Identical retries keep their revision;
+    /// changed writing advances it without changing the task's identity.
+    mutating func prepareTaskSave() -> Bool {
+        let fields = CaptureTranscriptTaskFields(title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                detail: body.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard fields.isValid else { return false }
+        if let attempt = taskSaveAttempt {
+            if attempt.submitted != fields {
+                taskSaveAttempt = CaptureTranscriptTaskSaveAttempt(original: attempt.original,
+                    submitted: fields, revision: attempt.revision + 1)
+            }
+        } else {
+            taskSaveAttempt = CaptureTranscriptTaskSaveAttempt(original: fields, submitted: fields, revision: 0)
+        }
+        return true
+    }
 
     mutating func start(title: String, body: String) {
         guard !hasStarted else { return }

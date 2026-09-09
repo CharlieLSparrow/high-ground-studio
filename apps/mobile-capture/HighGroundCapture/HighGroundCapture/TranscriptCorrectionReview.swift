@@ -1654,6 +1654,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         title: String,
         detail: String,
         clientRequestID: String,
+        saveAttempt: CaptureTranscriptTaskSaveAttempt? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -1673,7 +1674,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            var command: [String: Any] = [
                 "roomId": roomID,
                 "segmentId": segment.id,
                 "clientRequestId": clientRequestID,
@@ -1681,15 +1682,20 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
                 "detail": detail.trimmingCharacters(in: .whitespacesAndNewlines),
                 "surface": "ios-capture-transcript-review",
-            ])
+            ]
+            if let saveAttempt {
+                command["save"] = ["revision": saveAttempt.revision,
+                    "original": ["title": saveAttempt.original.title, "detail": saveAttempt.original.detail]]
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: command)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(CaptureTranscriptTaskMutationResponse.self, from: data)
             guard response.statusCode < 400, payload.ok, let task = payload.task else {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "The task could not be created.")
             }
             message = payload.idempotentReplay == true
-                ? "That source-linked task was already created."
-                : "Task created in Today and Work: \(task.title)"
+                ? "Task saved: \(task.title)"
+                : "Task saved in Today and Work: \(task.title)"
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -7618,9 +7624,13 @@ private struct CaptureTranscriptSegmentCard: View {
 
     private func saveWorkDraft(_ kind: CaptureTranscriptWorkKind) {
         guard !client.isMutating else { return }
+        if kind == .task, !workDrafts.task.prepareTaskSave() {
+            workDraftError = "Use a title of up to 500 characters and details of up to 5,000 characters. Your writing is still here."
+            return
+        }
         let submitted = workDrafts[kind]
         let submittedScope = workDraftScope
-        persistWorkDrafts()
+        guard persistWorkDrafts() else { return }
         Task {
             let saved: Bool
             switch kind {
@@ -7634,7 +7644,7 @@ private struct CaptureTranscriptSegmentCard: View {
             case .task:
                 saved = await client.createTask(
                     roomID: roomID, segment: segment, title: submitted.title, detail: submitted.body,
-                    clientRequestID: submitted.requestID, previewOnly: previewOnly
+                    clientRequestID: submitted.requestID, saveAttempt: submitted.taskSaveAttempt, previewOnly: previewOnly
                 )
             case .goal:
                 saved = await client.createGoal(
@@ -7692,15 +7702,18 @@ private struct CaptureTranscriptSegmentCard: View {
         }
     }
 
-    private func persistWorkDrafts(allowInactiveScope: Bool = false) {
+    @discardableResult
+    private func persistWorkDrafts(allowInactiveScope: Bool = false) -> Bool {
         workDraftSaveTask?.cancel()
         guard !previewOnly, workDraftCanPersist, let scope = workDraftScope,
-              allowInactiveScope || scope.ownerAccountID == AuthManager.currentStoredOwnerID() else { return }
+              allowInactiveScope || scope.ownerAccountID == AuthManager.currentStoredOwnerID() else { return false }
         do {
             try workDraftStore.save(workDrafts, for: scope)
             workDraftError = nil
+            return true
         } catch {
             workDraftError = "This draft is still here, but could not be saved on your device. Keep this screen open and try again."
+            return false
         }
     }
 

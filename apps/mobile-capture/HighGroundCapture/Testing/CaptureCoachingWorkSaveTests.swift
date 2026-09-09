@@ -94,10 +94,35 @@ enum CaptureCoachingWorkSaveTests {
         drafts.note.noteKind = "SUMMARY"
         drafts.note.visibility = "PARTICIPANTS"
         do {
+            let requestID = drafts.task.requestID
+            expect(drafts.task.prepareTaskSave(), "valid task is ready to save")
+            let first = drafts.task.taskSaveAttempt!
+            expect(first.revision == 0, "first save starts at revision zero")
+            expect(drafts.task.prepareTaskSave() && drafts.task.taskSaveAttempt == first, "an exact retry retains its command")
             try store.save(drafts, for: scope)
             let relaunched = CaptureTranscriptWorkDraftStore(directory: directory)
             let restored = try relaunched.load(scope)
             expect(restored == drafts, "all writing, audience, purpose and request IDs survive a new store instance")
+            drafts = restored
+            drafts.task.title = "Second wording after a lost reply"
+            expect(drafts.task.prepareTaskSave(), "new writing after relaunch is ready")
+            expect(drafts.task.taskSaveAttempt?.revision == 1 && drafts.task.taskSaveAttempt?.original == first.original,
+                   "new wording advances the command but preserves its original")
+            try store.save(drafts, for: scope)
+            drafts = try relaunched.load(scope)
+            drafts.task.body = "Third wording after another lost reply"
+            expect(drafts.task.prepareTaskSave(), "another lost reply still permits editing")
+            expect(drafts.task.taskSaveAttempt?.revision == 2 && drafts.task.requestID == requestID,
+                   "all revisions target the same task")
+            let valid = drafts.task
+            drafts.task.title = String(repeating: "a", count: 501)
+            expect(!drafts.task.prepareTaskSave() && drafts.task.taskSaveAttempt == valid.taskSaveAttempt,
+                   "invalid input cannot poison the original save command or truncate writing")
+            drafts.task = valid
+            let legacyData = try JSONSerialization.data(withJSONObject: ["title": "Old draft", "body": "Writing",
+                "noteKind": "SESSION_NOTE", "visibility": "AUTHOR_PRIVATE", "hasStarted": true, "requestID": "old-request"])
+            let legacy = try JSONDecoder().decode(CaptureTranscriptWorkDraft.self, from: legacyData)
+            expect(legacy.taskSaveAttempt == nil && legacy.body == "Writing", "existing drafts decode without losing writing")
             for otherScope in [
                 CaptureTranscriptWorkDraftScope(ownerAccountID: "morgan", origin: scope.origin, roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),
                 CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: "https://nest.quipsly.com", roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),

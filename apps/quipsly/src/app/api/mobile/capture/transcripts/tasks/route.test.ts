@@ -69,6 +69,25 @@ describe("explicit transcript-derived task", () => {
     expect(recordSucceededTranscriptWorkAction).toHaveBeenCalledWith(tx, expect.objectContaining({ targetObjectType: "ActionItem", targetObjectId: expect.stringMatching(/^transcript-task-/), roomId: "room-1" }));
   });
 
+  it.each([
+    { label: "long title", changes: { title: "a".repeat(501) } },
+    { label: "long details", changes: { detail: "b".repeat(5001) } },
+    { label: "negative revision", changes: { save: { revision: -1, original: { title: "Task", detail: null } } } },
+    { label: "mismatched first command", changes: { save: { revision: 0, original: { title: "Different original", detail: null } } } },
+    { label: "invalid original", changes: { save: { revision: 1, original: { title: "a".repeat(501), detail: null } } } },
+  ])("rejects $label before persistence instead of truncating writing", async ({ changes }) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1" } } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "invalid-draft",
+        expectedProviderTextSha256: "a".repeat(64), title: "Task", ...changes }),
+    }));
+    expect(response.status).toBe(400);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(readTranscriptCorrectionDesk).not.toHaveBeenCalled();
+    expect(recordSucceededTranscriptWorkAction).not.toHaveBeenCalled();
+  });
+
   it("fails stale provider evidence without creating work", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);

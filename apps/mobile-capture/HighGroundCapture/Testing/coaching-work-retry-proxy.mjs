@@ -37,6 +37,23 @@ const server = createServer(async (req, res) => {
       redirect: 'manual', signal: AbortSignal.timeout(90_000),
     });
     const bytes = Buffer.from(await response.arrayBuffer());
+    if (req.url === '/api/mobile/capture/transcripts/tasks' && req.method === 'POST' && response.ok) {
+      const input = JSON.parse(body.toString());
+      const output = JSON.parse(bytes.toString());
+      if (input.save?.original?.title === title) {
+        const revision = input.save.revision;
+        const key = `${input.clientRequestId}:${revision}`;
+        createdIDs.add(output.task.id);
+        const lostReply = revision < 2 && !attempts.has(key);
+        console.log(JSON.stringify({method: 'POST', requestID: input.clientRequestId, entryID: output.task.id,
+          revision, distinctItems: createdIDs.size, lostReply, failureMode}));
+        if (lostReply) {
+          attempts.add(key);
+          loseReply(res, `saving revision ${revision}`);
+          return;
+        }
+      }
+    }
     const isWork = /^\/api\/coaching\/engagements\/[^/]+\/work$/.test(req.url);
     if (isWork && response.ok && ['POST', 'PATCH'].includes(req.method)) {
       const input = JSON.parse(body.toString());
