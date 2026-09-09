@@ -1,4 +1,5 @@
 "use client";
+import { SessionRecordingAudio } from "@/components/session-recording-audio";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -79,6 +80,7 @@ type TranscriptPlayback = {
   sourceId: string;
   url: string;
   kind: "audio" | "video";
+  contentType?: string;
   recordingAssetId: string;
   durationSeconds: number | null;
   label: string;
@@ -2323,7 +2325,7 @@ function TranscriptCorrectionDeskContent({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-black text-sky-900">Recording · {currentPlayback.label}</p>{(desk.sessionTranscript?.sources.length ?? 0) > 1 ? <div className="flex flex-wrap gap-1" role="group" aria-label="Participant recording source">{desk.sessionTranscript!.sources.filter((source) => source.playback).map((source, index) => <button key={source.recordingAssetId} type="button" aria-pressed={source.playback?.sourceId === currentPlayback.sourceId} onClick={() => source.playback && selectPlaybackSource(source.playback)} className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${source.playback?.sourceId === currentPlayback.sourceId ? "border-sky-700 bg-sky-800 text-white" : "border-sky-200 bg-white text-sky-900"}`}>Source {index + 1}</button>)}</div> : null}</div>
       {currentPlayback.kind === "video"
         ? <video key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
-        : <audio key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
+        : <SessionRecordingAudio contentType={currentPlayback.contentType} key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
       {playbackState === "loading" ? <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-white p-3 text-xs font-bold text-sky-900">Loading recording…</p> : null}
       {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">The original recording is unavailable, so audio checks are paused. Direct transcript edits remain available and stay linked to the original source moment.</p> : null}
     </div>

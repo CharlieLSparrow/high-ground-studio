@@ -192,6 +192,7 @@ function playbackFromAsset(
       sourceId: protectedBinding.recordingAssetId,
       url: protectedBinding.url,
       kind: protectedBinding.kind,
+      contentType: protectedBinding.contentType,
       recordingAssetId: protectedBinding.recordingAssetId,
       durationSeconds: typeof asset.durationSeconds === "number" ? asset.durationSeconds : null,
       label: text(asset.fileName) || "Session recording",

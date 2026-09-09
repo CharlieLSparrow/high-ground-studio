@@ -121,7 +121,7 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
 
       - name: Install and verify media test tools
-        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true' || steps.changes.outputs.media_processor == 'true'
         timeout-minutes: 5
         shell: bash
         run: |
@@ -235,7 +235,7 @@ jobs:
           pnpm --filter @high-ground/quipsly-media-processing --fail-if-no-match typecheck
           pnpm quipsly:media-processor:build
           pnpm quipsly:media-processor:test
-          node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test packages/quipsly-media-processing/src/session-audio-audition.test.ts apps/quipsly-media-processor/src/session-audio-audition-worker.test.ts apps/quipsly-media-processor/src/session-audio-audition-ffmpeg.test.ts
+          node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test packages/quipsly-media-processing/src/local-media-job-storage.test.ts packages/quipsly-media-processing/src/session-audio-audition.test.ts apps/quipsly-media-processor/src/session-audio-audition-worker.test.ts apps/quipsly-media-processor/src/session-audio-audition-ffmpeg.test.ts
 
       - name: Build and fault-test Quipsly transcript worker
         if: steps.changes.outputs.transcript_worker == 'true'

@@ -1,6 +1,8 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { captureAudioFrameDuration } from "@/lib/capture-source-duration";
+import { LocalMediaJobStorage } from "@high-ground/quipsly-media-processing/local-media-job-storage";
 
 import {
   SESSION_AUDIO_AUDITION_PROFILE,
@@ -19,6 +21,7 @@ import {
 } from "@high-ground/quipsly-media-processing";
 
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
+import { getMobileCaptureLocalVaultConfig, MOBILE_CAPTURE_LOCAL_VAULT_BUCKET } from "@/lib/server/mobile-capture-local-vault";
 import {
   mediaProcessorEnabled,
   mediaProcessorExecutionRequestIsRecent,
@@ -119,7 +122,7 @@ export async function reconcileSessionAudioAudition(input: {
 }): Promise<SessionAudioAuditionPublicState> {
   const context = await loadContext(input);
   if (!sessionRecordingNeedsAudioDerivative(context.playback.contentType)) return notRequired(context.playback);
-  const jobId = jobIdFor(context.playback);
+  const jobId = jobIdFor(context.playback, context.asset.durationSeconds);
   const row = await input.prisma.sessionAudioAuditionJob.findFirst({
     where: {
       id: jobId,
@@ -154,7 +157,7 @@ export async function reconcileSessionAudioAudition(input: {
       "The private media worker is not configured.",
     );
 
-  const bucket = getMediaBucket(manifest.source.bucketName);
+  const bucket = auditionStorage(manifest.source.bucketName);
   const storedManifest = await loadJson(
     bucket,
     buildSessionAudioAuditionManifestObjectName(manifest.jobId),
@@ -220,6 +223,20 @@ export async function reconcileSessionAudioAudition(input: {
       },
     },
   });
+  if (context.frameDuration) {
+    // The worker has now independently decoded and checked this frame duration.
+    // Upgrade the canonical timing without replacing source bytes or racing a
+    // concurrent metadata update from another analysis worker.
+    await input.prisma.recordingAsset.updateMany({
+      where: { id: context.asset.id, roomId: context.room.id, checksum: context.playback.sha256, updatedAt: context.asset.updatedAt },
+      data: { durationSeconds: context.frameDuration, localManifestJson: {
+        ...object(context.asset.localManifestJson),
+        durationEvidence: { source: "server-validated-audio-frames", durationSeconds: context.frameDuration,
+          decodedSourceDurationSeconds: result.output.metadata.sourceDurationSeconds,
+          provisionalUntilMediaDecode: false, jobId: manifest.jobId, sourceSha256: context.playback.sha256 },
+      } },
+    });
+  }
   return readyState(completed, result);
 }
 
@@ -237,7 +254,7 @@ export async function resolveSessionAudioAuditionBinding(input: {
       "This source already supports direct audio playback.",
     );
   const row = await input.prisma.sessionAudioAuditionJob.findUnique({
-    where: { id: jobIdFor(context.playback) },
+    where: { id: jobIdFor(context.playback, context.asset.durationSeconds) },
   });
   if (!row || row.status !== "completed")
     throw new SessionAudioAuditionError(
@@ -275,7 +292,7 @@ function desiredManifest(input: {
       "ACTOR_EMAIL_REQUIRED",
       "A verified account email is required.",
     );
-  const jobId = jobIdFor(input.playback);
+  const jobId = jobIdFor(input.playback, input.sourceDurationSeconds);
   const now = new Date().toISOString();
   return newSessionAudioAuditionManifest({
     jobId,
@@ -333,18 +350,23 @@ async function loadContext(input: {
           storageObjectPath: true,
           checksum: true,
           verifiedAt: true,
+          updatedAt: true,
           localManifestJson: true,
         },
       },
     },
   });
-  const asset = room?.recordingAssets?.[0];
+  let asset = room?.recordingAssets?.[0];
   if (!room || !asset)
     throw new SessionAudioAuditionError(
       404,
       "SOURCE_NOT_FOUND",
       "This private Session recording is unavailable.",
     );
+  const metadata = object(asset.localManifestJson);
+  const frameDuration = String(asset.contentType).startsWith("audio/") && object(metadata.durationEvidence).provisionalUntilMediaDecode === true
+    ? captureAudioFrameDuration(metadata.reportedSourceProfile) : null;
+  if (frameDuration) asset = { ...asset, durationSeconds: frameDuration };
   if (!Number.isFinite(asset.durationSeconds) || asset.durationSeconds <= 0)
     throw new SessionAudioAuditionError(
       409,
@@ -375,20 +397,21 @@ async function loadContext(input: {
       "SOURCE_EVIDENCE_MISMATCH",
       "The retained source no longer matches its exact finalization receipt.",
     );
-  if (playback.bucketName !== requireMediaBucketName())
+  if (playback.bucketName !== (playback.bucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET
+    ? getMobileCaptureLocalVaultConfig()?.bucketName : requireMediaBucketName()))
     throw new SessionAudioAuditionError(
       409,
       "SOURCE_VAULT_MISMATCH",
       "The retained source is outside the configured private media vault.",
     );
-  return { room, asset, receipt, playback };
+  return { room, asset, receipt, playback, frameDuration };
 }
 
 async function ensureCloudQueued(input: {
   prisma: any;
   manifest: SessionAudioAuditionManifest;
 }) {
-  const bucket = getMediaBucket(input.manifest.source.bucketName);
+  const bucket = auditionStorage(input.manifest.source.bucketName);
   const manifestObjectName = buildSessionAudioAuditionManifestObjectName(
     input.manifest.jobId,
   );
@@ -470,6 +493,10 @@ async function ensureCloudQueued(input: {
     canonical.status === "failed-terminal"
   )
     return { status: canonical.status, executionRequested: false };
+  // The existing local media worker drains the same durable queue. No cloud
+  // execution or credentials are needed for loopback development recordings.
+  if (bucket instanceof LocalMediaJobStorage)
+    return { status: canonical.status, executionRequested: false };
   if (!mediaProcessorEnabled())
     return {
       status: "configuration-required" as const,
@@ -506,8 +533,8 @@ async function ensureCloudQueued(input: {
   return { status: canonical.status, executionRequested: true };
 }
 
-function jobIdFor(binding: SessionProtectedPlaybackBinding) {
-  return `session_audition_${createHash("sha256").update([binding.roomId, binding.recordingAssetId, binding.generation, binding.sha256, SESSION_AUDIO_AUDITION_PROFILE].join("|")).digest("hex").slice(0, 40)}`;
+function jobIdFor(binding: SessionProtectedPlaybackBinding, durationSeconds: number) {
+  return `session_audition_${createHash("sha256").update([binding.roomId, binding.recordingAssetId, binding.generation, binding.sha256, durationSeconds, SESSION_AUDIO_AUDITION_PROFILE].join("|")).digest("hex").slice(0, 40)}`;
 }
 
 function assertManifestMatchesCurrentSource(
@@ -620,6 +647,7 @@ async function saveIfAbsent(
   value: unknown,
   metadata: Record<string, string>,
 ) {
+  if (bucket instanceof LocalMediaJobStorage) return bucket.saveJsonIfAbsent(name, value);
   try {
     await bucket
       .file(name)
@@ -645,6 +673,7 @@ async function saveIfAbsent(
 }
 
 async function loadJson(bucket: any, name: string) {
+  if (bucket instanceof LocalMediaJobStorage) return bucket.loadJson(name);
   const file = bucket.file(name);
   const [metadata] = await file.getMetadata();
   const generation = String(metadata.generation ?? "");
@@ -656,6 +685,13 @@ async function loadJson(bucket: any, name: string) {
     .file(name, { generation })
     .download({ validation: "crc32c" });
   return { value: JSON.parse(raw.toString("utf8")) as unknown, generation };
+}
+
+function auditionStorage(bucketName: string) {
+  if (bucketName !== MOBILE_CAPTURE_LOCAL_VAULT_BUCKET) return getMediaBucket(bucketName);
+  const config = getMobileCaptureLocalVaultConfig();
+  if (!config) throw new Error("Local Capture vault is not configured.");
+  return new LocalMediaJobStorage(config.root);
 }
 
 function object(value: unknown): Record<string, any> {

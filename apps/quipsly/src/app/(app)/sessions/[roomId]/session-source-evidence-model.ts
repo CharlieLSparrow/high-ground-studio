@@ -12,6 +12,7 @@ type RecordingAssetEvidenceRow = {
   id: string;
   roomId: string;
   fileName: string | null;
+  contentType?: string | null;
   kind: unknown;
   status: unknown;
   byteSize: bigint | number | string | null;
@@ -98,6 +99,7 @@ export type SessionSourceEvidence = {
       sourceId: string;
       url: string;
       kind: "audio" | "video";
+      contentType?: string | null;
       durationSeconds: number | null;
     } | null;
     audioMastery?: {
@@ -342,6 +344,7 @@ function protectedPlayback(
     sourceId,
     url: `/api/sessions/${encodeURIComponent(recording.roomId)}/recordings/${encodeURIComponent(recording.id)}/media`,
     kind: String(recording.kind).includes("VIDEO") ? "video" as const : "audio" as const,
+    contentType: recording.contentType ?? null,
     durationSeconds,
   };
 }

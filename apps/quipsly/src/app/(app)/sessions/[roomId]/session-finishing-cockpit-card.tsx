@@ -1,4 +1,5 @@
 "use client";
+import { SessionRecordingAudio } from "@/components/session-recording-audio";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -186,7 +187,7 @@ export function SessionFinishingCockpitCard(props: Props) {
             <p className="mb-2 text-[9px] font-black uppercase tracking-wide text-sky-800">Protected source player</p>
             {journey.protectedPlayback.kind === "video"
               ? <video controls preload="metadata" className="max-h-80 w-full rounded-xl bg-black" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</video>
-              : <audio controls preload="metadata" className="w-full" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</audio>}
+              : <SessionRecordingAudio controls preload="metadata" className="w-full" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</SessionRecordingAudio>}
             <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-600">This authenticated route is bound to the retained source. Playing it here is the runtime listening or viewing check; the original remains unchanged.</p>
           </div> : null}
           <ol className="mt-3 grid gap-2 md:grid-cols-6" aria-label={`${journey.label} source checkpoints`}>

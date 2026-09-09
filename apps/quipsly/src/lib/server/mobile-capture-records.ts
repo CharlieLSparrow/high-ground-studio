@@ -1,4 +1,5 @@
 import { captureDeviceTranscriptExpectation } from "@/lib/server/capture-device-transcript-expectation";
+import { captureAudioFrameDuration } from "@/lib/capture-source-duration";
 import { audibleEventDetectorReceiptMatchesSource, parseAudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 
 type MobileCaptureRecordInput = {
@@ -598,7 +599,10 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
     await findReusableRecordingAsset(input, room.id, participant.id, startedAt);
   const effectiveStartedAt = startedAt || existingRecordingAsset?.recordedStartedAt || null;
   const effectiveStoppedAt = stoppedAt || existingRecordingAsset?.recordedStoppedAt || null;
+  const decodedAudioDuration = recordingKind === "LOCAL_AUDIO"
+    ? captureAudioFrameDuration(metadataJson.reportedSourceProfile) : null;
   const reportedDurationSeconds =
+    decodedAudioDuration ||
     captureClockDurationSeconds(effectiveStartedAt, effectiveStoppedAt) ||
     existingRecordingAsset?.durationSeconds ||
     null;
@@ -639,7 +643,7 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
       consentId: consent?.id || null,
       durationEvidence: reportedDurationSeconds
         ? {
-            source: "recorded-boundary-clock",
+            source: decodedAudioDuration ? "device-decoded-audio-frames" : "recorded-boundary-clock",
             durationSeconds: reportedDurationSeconds,
             provisionalUntilMediaDecode: true,
           }

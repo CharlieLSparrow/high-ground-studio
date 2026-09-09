@@ -1,4 +1,5 @@
 "use client";
+import { SessionRecordingAudio } from "@/components/session-recording-audio";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, RefreshCw, RotateCcw, Scissors, Send, ShieldCheck, Undo2 } from "lucide-react";
@@ -591,7 +592,7 @@ export function SessionRecordingShareCard({
                       onError={() => setAuditionNotice("Quipsly could not open this protected participant master. Refresh after source preparation finishes.")}
                     />
                   ) : (
-                    <audio
+                    <SessionRecordingAudio
                       ref={(node) => { auditionMediaRef.current = node; }}
                       aria-label={`Source passage from ${auditionSource.participantLabel}`}
                       className="mt-3 w-full"
@@ -601,7 +602,7 @@ export function SessionRecordingShareCard({
                       onLoadedMetadata={beginAuditionPlayback}
                       onTimeUpdate={stopAtAuditionBoundary}
                       onError={() => setAuditionNotice("Quipsly could not open this protected participant master. Refresh after source preparation finishes.")}
-                    >Your browser cannot play this private participant recording.</audio>
+                    >Your browser cannot play this private participant recording.</SessionRecordingAudio>
                   )}
                   <p className="mt-2 text-[11px] font-bold leading-5 text-indigo-800">This plays the original passage. Create a preview to hear your edit; the original recording stays unchanged.</p>
                 </div>
@@ -682,11 +683,11 @@ export function SessionRecordingShareCard({
           aria-label={output.status === "RELEASED" ? "Shared video recording" : "Private video preview"}
           className="aspect-video w-full rounded-xl bg-black"
           controls playsInline preload="metadata" src={output.mediaUrl}
-        >Your browser cannot play this private video.</video> : <audio
+        >Your browser cannot play this private video.</video> : <SessionRecordingAudio
           ref={(node) => { previewMediaRef.current = node; }}
           aria-label={output.status === "RELEASED" ? "Shared recording" : "Private recording preview"}
           className="w-full" controls preload="metadata" src={output.mediaUrl}
-        >Your browser cannot play this private recording.</audio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex min-h-11 items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900"><Download className="mr-1.5" size={14} />Download recording</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
+        >Your browser cannot play this private recording.</SessionRecordingAudio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex min-h-11 items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900"><Download className="mr-1.5" size={14} />Download recording</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
         <details className="text-xs text-sky-800">
           <summary className="min-h-11 cursor-pointer py-3 font-semibold">File details</summary>
           <dl className="space-y-2 rounded-lg border border-sky-100 p-3">

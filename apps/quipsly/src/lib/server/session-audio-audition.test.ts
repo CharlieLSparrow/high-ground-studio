@@ -168,11 +168,28 @@ describe("Session audio audition durable outbox", () => {
         recordingAssetId,
         actor: { id: "coach-12345678", primaryEmail: "coach@example.com" },
       }),
-    ).rejects.toMatchObject<Partial<SessionAudioAuditionError>>({
-      code: "AUDITION_SOURCE_CHANGED",
-      status: 409,
+    ).resolves.toMatchObject({
+      state: "HELD",
+      derivative: null,
     });
     expect(prepared.jobId).toBeTruthy();
+  });
+
+  it("uses the audio frame duration instead of a rounded, pause-inclusive boundary clock", async () => {
+    prisma.asset.contentType = "audio/x-caf";
+    prisma.asset.durationSeconds = 10;
+    prisma.asset.localManifestJson = {
+      durationEvidence: { provisionalUntilMediaDecode: true },
+      reportedSourceProfile: { audioSignal: { schemaVersion: 1, algorithm: "quipsly-audio-signal-window-v1", sampleRate: 48000, analyzedFrameCount: 467968 } },
+    };
+    jest.mocked(sessionProtectedPlaybackBinding).mockReturnValue({
+      schema: "quipsly-session-protected-playback-v1", roomId, recordingAssetId,
+      url: `/api/sessions/${roomId}/recordings/${recordingAssetId}/media`, sha256: sourceSha,
+      byteSize: 4_000_000_000, bucketName: "quipsly-private-media", objectName: "media-vault/recordings/coaching/camera.caf",
+      generation: "101", kind: "audio", contentType: "audio/x-caf",
+    });
+    await prepareSessionAudioAudition({ prisma: prisma.client, roomId, recordingAssetId, actor: { id: "coach-12345678", email: "coach@example.com" } });
+    expect(prisma.created[0].inputJson.source.durationSeconds).toBe(467968 / 48000);
   });
 
   it("applies Session access before creating any derivative state", async () => {
