@@ -208,7 +208,7 @@ export type WorkTask = {
   updatedAt: string;
   isOverdue: boolean;
   historicalLocked?: boolean;
-  attentionReason: "Overdue commitment" | "Due within 24 hours" | "Reviewed transcript follow-through" | null;
+  attentionReason: "Overdue commitment" | "Due within 24 hours" | "From session transcript" | null;
   assigneeLabel: string | null;
   provenance: string;
   roomId: string | null;
@@ -383,7 +383,7 @@ export function taskProvenance(sourceValue: unknown) {
     return "Recurring task";
   }
   if (readTranscriptDerivedTaskSource(sourceValue)) {
-    return "Reviewed transcript timestamp";
+    return "Session transcript";
   }
   if (source.source === SESSION_CONTEXT_SOURCE && source.contextKind === "task") {
     return "Session context";
@@ -449,8 +449,8 @@ export function buildWorkSnapshot(input: {
           ? "Overdue commitment" as const
           : dueAtMs !== null && dueAtMs <= nowMs + 24 * 60 * 60 * 1000
             ? "Due within 24 hours" as const
-            : provenance === "Reviewed transcript timestamp" && new Date(createdAt).getTime() >= nowMs - 7 * 24 * 60 * 60 * 1000
-              ? "Reviewed transcript follow-through" as const
+            : sourceAnchor !== null && new Date(createdAt).getTime() >= nowMs - 7 * 24 * 60 * 60 * 1000
+              ? "From session transcript" as const
               : null;
       const recurrenceSeries = task.recurrenceOccurrence?.series;
       const recurrenceUnit = recurrenceSeries?.frequency === "DAILY" ? "day" : recurrenceSeries?.frequency === "WEEKLY" ? "week" : "month";

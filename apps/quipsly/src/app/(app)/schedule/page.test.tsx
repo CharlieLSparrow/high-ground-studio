@@ -220,7 +220,7 @@ describe("Schedule page truth states", () => {
 
     render(await SchedulePage());
 
-    expect(screen.getByText(/Source: Reviewed transcript timestamp/)).toBeInTheDocument();
+    expect(screen.getByText(/Source: Session transcript/)).toBeInTheDocument();
     expect(screen.getByText("Source: iPhone capture")).toBeInTheDocument();
     expect(screen.getByLabelText("Tags: Coaching follow-up")).toHaveTextContent("#Coaching follow-up");
     expect(screen.getByRole("link", { name: "Find all accessible work tagged Coaching follow-up" })).toHaveAttribute("href", "/find?tag=tag-1");

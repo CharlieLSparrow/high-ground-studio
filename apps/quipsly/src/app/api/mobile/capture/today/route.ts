@@ -324,7 +324,7 @@ export async function GET(request: Request) {
       const updatedAtMs = task.updatedAt.getTime();
       const isPlanned = plannedTaskIds.has(task.id);
       const isDueSoon = dueAtMs <= now.getTime() + 24 * 3_600_000;
-      const isRecentReviewedSource = Boolean(sourceAnchor) && updatedAtMs >= now.getTime() - 7 * 86_400_000;
+      const isRecentTranscriptSource = Boolean(sourceAnchor) && updatedAtMs >= now.getTime() - 7 * 86_400_000;
       const projectVisible = task.project && visibleProjectIds.includes(task.project.id);
       return {
         id: task.id,
@@ -367,13 +367,13 @@ export async function GET(request: Request) {
           ownerCanManage: task.recurrenceOccurrence.series.ownerUserId === userId,
         } : null,
         todayReason: isPlanned
-          ? sourceAnchor ? "Planned focus · reviewed transcript" : "Planned focus"
+          ? sourceAnchor ? "Planned focus · session transcript" : "Planned focus"
           : isDueSoon
             ? dueAtMs < now.getTime() ? "Overdue commitment" : "Due within 24 hours"
-            : isRecentReviewedSource
-              ? "Reviewed transcript follow-through"
+            : isRecentTranscriptSource
+              ? "From session transcript"
               : null,
-        _todayRank: isPlanned ? 0 : isDueSoon ? 1 : isRecentReviewedSource ? 2 : 3,
+        _todayRank: isPlanned ? 0 : isDueSoon ? 1 : isRecentTranscriptSource ? 2 : 3,
         _dueAtMs: dueAtMs,
         _updatedAtMs: updatedAtMs,
       };

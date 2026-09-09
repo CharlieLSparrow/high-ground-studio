@@ -713,35 +713,40 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
 
   function decide(nextStatus: WorkTaskStatus) {
     const missedOccurrence = nextStatus === "CANCELED" && task.isOverdue && Boolean(task.recurrence);
-    if (nextStatus === "CANCELED" && !window.confirm(missedOccurrence
-      ? "Skip this missed occurrence? Quipsly will preserve it as skipped and continue the canonical series. No reminder, calendar event, message, delivery, or publication will occur."
-      : task.recurrence?.cadence === "COMPLETION"
-        ? "Skip this occurrence? The task stays in the audit trail and the next occurrence will be scheduled from now. No external action will be taken."
-        : task.recurrence
-          ? "Skip this occurrence? The task stays in the audit trail and the canonical series continues. No external action will be taken."
-          : "Cancel this task? The task stays in the audit trail and no external action will be taken.")) return;
-    setMessage(null);
+    if (nextStatus === "CANCELED" && task.recurrence && !window.confirm(
+      task.recurrence.cadence === "COMPLETION"
+        ? "Skip this occurrence? The next repeat will be scheduled from now."
+        : "Skip this occurrence? The next repeat will follow its usual schedule."
+    )) return;
+    setMessage("Saving…");
     startTransition(async () => {
-      const result = await updateWorkTaskStatus({
-        taskId: task.id,
-        nextStatus,
-        expectedUpdatedAt: task.updatedAt,
-        ...(missedOccurrence ? { decisionReason: "MISSED_OCCURRENCE_SKIPPED" as const } : {}),
-      });
-      if (!result.ok) {
-        setMessage(result.error);
-        if (result.code === "CONFLICT") onConflict();
-        return;
+      try {
+        const result = await updateWorkTaskStatus({
+          taskId: task.id,
+          nextStatus,
+          expectedUpdatedAt: task.updatedAt,
+          ...(missedOccurrence ? { decisionReason: "MISSED_OCCURRENCE_SKIPPED" as const } : {}),
+        });
+        if (!result.ok) {
+          setMessage(result.error);
+          if (result.code === "CONFLICT") onConflict();
+          return;
+        }
+        const notice = nextStatus === "DONE"
+          ? result.nextOccurrenceTaskId ? "Task completed. Next repeat ready." : "Task completed."
+          : nextStatus === "OPEN" ? "Task reopened."
+            : task.recurrence ? "Occurrence skipped." : "Task canceled.";
+        setMessage(null);
+        onSaved(task.id, nextStatus, result.updatedAt, notice);
+      } catch {
+        setMessage("Couldn't save this change. Please try again.");
       }
-      const notice = nextStatus === "DONE" ? result.nextOccurrenceTaskId ? "Marked done. The next canonical occurrence was created; no reminder or provider event was scheduled." : "Marked done. A private status receipt was saved." : nextStatus === "OPEN" ? "Reopened. A private status receipt was saved." : missedOccurrence ? result.nextOccurrenceTaskId ? "Missed occurrence preserved as skipped. The next canonical occurrence was created; no external action occurred." : "Missed occurrence preserved as skipped. No external action occurred." : result.nextOccurrenceTaskId ? "Occurrence skipped. The next canonical occurrence was created; no reminder or provider event was scheduled." : "Canceled. The audit trail was preserved.";
-      setMessage(notice);
-      onSaved(task.id, nextStatus, result.updatedAt, notice);
     });
   }
 
   function decideRecurrence(nextStatus: "ACTIVE" | "PAUSED" | "ENDED") {
     const verb = nextStatus === "ENDED" ? "end" : nextStatus === "PAUSED" ? "pause" : "resume";
-    if (nextStatus === "ENDED" && !window.confirm("End this repeat permanently? Existing task occurrences stay in the audit trail, and no provider calendar event or reminder will be changed.")) return;
+    if (nextStatus === "ENDED" && !window.confirm("Stop future repeats for this task?")) return;
     setMessage(null);
     startRecurrenceTransition(async () => {
       if (!task.recurrence) return;
@@ -1020,6 +1025,9 @@ export function WorkClient({
   const [creatingGoal, startCreatingGoal] = useTransition();
   const [goalMessage, setGoalMessage] = useState<string | null>(null);
   const [taskDecisionMessage, setTaskDecisionMessage] = useState<string | null>(null);
+  const [taskUndo, setTaskUndo] = useState<{ taskId: string; status: WorkTaskStatus; updatedAt: string } | null>(null);
+  const taskUndoRef = useRef<typeof taskUndo>(null);
+  const [undoPending, startUndo] = useTransition();
   const router = useRouter();
   const createFormRef = useRef<HTMLFormElement>(null);
   const goalFormRef = useRef<HTMLFormElement>(null);
@@ -1135,6 +1143,15 @@ export function WorkClient({
 
   function onTaskSaved(taskId: string, nextStatus: WorkTaskStatus, updatedAt: string, notice: string) {
     setTaskDecisionMessage(notice);
+    const previous = snapshot.tasks.find((task) => task.id === taskId);
+    const undo = previous && !previous.recurrence && previous.status !== nextStatus
+      ? { taskId, status: previous.status, updatedAt } : null;
+    taskUndoRef.current = undo;
+    setTaskUndo(undo);
+    applyTaskStatus(taskId, nextStatus, updatedAt);
+  }
+
+  function applyTaskStatus(taskId: string, nextStatus: WorkTaskStatus, updatedAt: string) {
     setSnapshot((current) => {
       const tasks = current.tasks.map((task) => task.id === taskId ? {
         ...task,
@@ -1148,8 +1165,8 @@ export function WorkClient({
             ? "Overdue commitment" as const
             : task.dueAt && new Date(task.dueAt).getTime() <= Date.now() + 24 * 60 * 60 * 1000
               ? "Due within 24 hours" as const
-              : task.provenance === "Reviewed transcript timestamp" && new Date(task.createdAt).getTime() >= Date.now() - 7 * 24 * 60 * 60 * 1000
-                ? "Reviewed transcript follow-through" as const
+              : Boolean(task.sourceAnchor) && new Date(task.createdAt).getTime() >= Date.now() - 7 * 24 * 60 * 60 * 1000
+                ? "From session transcript" as const
                 : null,
       } : task);
       return {
@@ -1166,17 +1183,41 @@ export function WorkClient({
     });
   }
 
+  function undoTaskChange() {
+    const undo = taskUndoRef.current;
+    if (!undo || undoPending) return;
+    startUndo(async () => {
+      try {
+        const result = await updateWorkTaskStatus({ taskId: undo.taskId, nextStatus: undo.status, expectedUpdatedAt: undo.updatedAt });
+        if (!result.ok) {
+          if (taskUndoRef.current === undo) {
+            setTaskDecisionMessage(result.error);
+            if (result.code === "CONFLICT") {
+              taskUndoRef.current = null;
+              setTaskUndo(null);
+              router.refresh();
+            }
+          }
+          return;
+        }
+        applyTaskStatus(undo.taskId, undo.status, result.updatedAt);
+        if (taskUndoRef.current === undo) {
+          taskUndoRef.current = null;
+          setTaskUndo(null);
+          setTaskDecisionMessage("Change undone.");
+        }
+      } catch {
+        if (taskUndoRef.current === undo) setTaskDecisionMessage("Couldn't undo this change. Please try again.");
+      }
+    });
+  }
+
   function changeView(next: WorkView) {
     setView(next);
     setFocusTaskOnly(false);
     setFocusGoalOnly(false);
     router.replace(next === "tasks" ? "/work" : `/work?view=${next}`, { scroll: false });
   }
-  const activeTagCount = projectOptions.reduce(
-    (count, project) => count + project.tags.filter((tag) => tag.isActive !== false).length,
-    0,
-  );
-
   if (manageTags) {
     return (
       <main className="mx-auto max-w-[1080px] space-y-6 px-2 py-2 text-[#3d3122]">
@@ -1199,7 +1240,7 @@ export function WorkClient({
       {focusTaskOnly || focusGoalOnly ? <h1 className="sr-only">{focusTaskOnly ? "Task" : "Goal"}</h1> : <header className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h1 className="font-serif text-3xl font-bold tracking-tight">Tasks & goals</h1><p className="mt-1 text-sm text-muted-foreground">Your next steps, with the people and ideas behind them.</p></div>
-          <Link href="/work?manage=tags" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d6bf97] bg-white/80 px-4 text-[10px] font-black uppercase tracking-wide text-[#6f573b]"><Tags size={15} aria-hidden="true" />Manage {activeTagCount} tag{activeTagCount === 1 ? "" : "s"}</Link>
+          <Link href="/work?manage=tags" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d6bf97] bg-white/80 px-4 text-[10px] font-black uppercase tracking-wide text-[#6f573b]"><Tags size={15} aria-hidden="true" />Manage tags</Link>
         </div>
         <div role="group" aria-label="Work views" className="flex flex-wrap gap-2 border-b border-border pb-3">
           {([['tasks', 'Tasks', snapshot.counts.openTasks], ['goals', 'Goals', snapshot.counts.activeGoals], ['weekly', 'Weekly planning', null]] as const).map(([key, label, count]) => <button key={key} type="button" aria-label={label} aria-pressed={view === key} onClick={() => changeView(key)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-semibold ${view === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}{count !== null && <span aria-hidden="true" className="rounded-full bg-current/10 px-2 text-xs">{count}</span>}</button>)}
@@ -1251,7 +1292,10 @@ export function WorkClient({
             {(["ATTENTION", "OPEN", "DONE", "ALL"] as const).map((value) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-wide ${filter === value ? "bg-[#3e2f21] text-white" : "text-[#765f40]"}`}>{humanize(value)}</button>)}
           </div>}
         </div>
-        {taskDecisionMessage && <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{taskDecisionMessage}</p>}
+        {taskDecisionMessage && <div className="mt-4 flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-sm">
+          <p role="status" className="flex-1">{taskDecisionMessage}</p>
+          {taskUndo && <button type="button" onClick={undoTaskChange} disabled={undoPending} className="min-h-11 rounded-lg px-3 font-semibold underline underline-offset-4 disabled:opacity-50">{undoPending ? "Undoing…" : "Undo"}</button>}
+        </div>}
         {visibleTasks.length ? <div className={focusTaskOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleTasks.map((task) => <TaskCard key={task.id} task={task} focused={task.id === focusTaskId} managesRecurrence={recurrenceManagerTaskIds.has(task.id)} projectOptions={projectOptions} onSaved={onTaskSaved} onConflict={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">{filter === "ATTENTION" ? "You're all caught up." : filter === "OPEN" ? "No open tasks. Add your next step above." : filter === "DONE" ? "Completed tasks will appear here." : "No tasks yet. Add your first one above."}</div>}
       </section>}
 

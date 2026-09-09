@@ -39,7 +39,7 @@ const snapshot: WorkSnapshot = {
   tasks: [{
     id: "task-1", title: "Finish episode notes", detail: "Use transcript evidence", status: "OPEN", dueAt: null, reminderAt: "2026-07-19T12:00:00.000Z", reminderId: "reminder-1", reminderStatus: "ACTIVE", reminderUpdatedAt: "2026-07-18T18:00:00.000Z", completedAt: null,
     createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:00:00.000Z", isOverdue: false, assigneeLabel: null,
-    provenance: "Reviewed transcript timestamp", attentionReason: "Reviewed transcript follow-through", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
+    provenance: "Session transcript", attentionReason: "From session transcript", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
     project: null, tags: [], canEdit: true, canManageTags: true, canManageReminder: true,
     sourceAnchor: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", speakerAuthority: "source-binding", sourceBoundParticipantId: "participant-charlie", acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", playbackSourceId: "source-1" },
     lastMergedTranscriptEvidence: null,
@@ -710,7 +710,7 @@ describe("Work Queue interactions", () => {
   it("opens the derived attention lens without creating an unread notification state", () => {
     render(<WorkClient initialSnapshot={snapshot} initialFilter="ATTENTION" />);
     expect(screen.getByRole("button", { name: "Attention" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Reviewed transcript follow-through")).toBeInTheDocument();
+    expect(screen.getByText("From session transcript")).toBeInTheDocument();
     expect(screen.getByText("Finish episode notes")).toBeInTheDocument();
   });
 
@@ -720,7 +720,7 @@ describe("Work Queue interactions", () => {
     ] };
     const { rerender } = render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
     expect(screen.queryByRole("heading", { name: "Shared tags" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage 1 tag" })).toHaveAttribute("href", "/work?manage=tags");
+    expect(screen.getByRole("link", { name: "Manage tags" })).toHaveAttribute("href", "/work?manage=tags");
 
     rerender(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
     expect(screen.getByRole("heading", { name: "Tags", level: 1 })).toBeInTheDocument();
@@ -1275,6 +1275,93 @@ describe("Work Queue interactions", () => {
     expect(await screen.findByRole("button", { name: "Mark done" })).toBeInTheDocument();
   });
 
+  it.each(["Mark done", "Cancel"])("undoes %s without losing shared tags or transcript context", async action => {
+    const confirm = jest.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: action === "Cancel" ? "CANCELED" : "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "change" })
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "OPEN", updatedAt: "2026-07-18T19:01:00.000Z", receiptId: "undo" });
+    const tag = { id: "writing", label: "Writing", slug: "writing", category: "topic", projectId: "project-1", hexColor: "#805a3b" };
+    render(<WorkClient initialSnapshot={{ ...snapshot, tasks: [{ ...snapshot.tasks[0]!, tags: [tag] }] }} />);
+    await user.click(screen.getByRole("button", { name: action }));
+    expect(confirm).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:00:00.000Z" });
+    expect(await screen.findByText("Change undone.")).toBeInTheDocument();
+    const card = screen.getByRole("article");
+    expect(within(card).getByRole("heading", { name: "Finish episode notes" })).toBeVisible();
+    expect(within(card).getByRole("link", { name: "Find all accessible work tagged Writing" })).toHaveStyle({ backgroundColor: "#805a3b" });
+    expect(within(card).getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1");
+    expect(within(card).getByRole("button", { name: "Mark done" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("does not overwrite a newer task change when Undo conflicts", async () => {
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "change" })
+      .mockResolvedValueOnce({ ok: false, code: "CONFLICT", error: "This task changed. Refresh to see the latest version." });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Mark done" }));
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("This task changed. Refresh to see the latest version.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Finish episode notes" })).not.toBeInTheDocument();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(updateWorkTaskStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps Undo available after a failed connection and retries the same saved revision", async () => {
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "change" })
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "OPEN", updatedAt: "2026-07-18T19:01:00.000Z", receiptId: "undo" });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Mark done" }));
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Couldn't undo this change. Please try again.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Change undone.")).toBeInTheDocument();
+    expect(jest.mocked(updateWorkTaskStatus).mock.calls.slice(1)).toEqual([
+      [{ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:00:00.000Z" }],
+      [{ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:00:00.000Z" }],
+    ]);
+  });
+
+  it("keeps the task usable after a failed status save", async () => {
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Mark done" }));
+    expect(await screen.findByText("Couldn't save this change. Please try again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark done" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("does not let an older Undo response erase the next task's Undo", async () => {
+    const user = userEvent.setup();
+    let finishUndo!: (result: Awaited<ReturnType<typeof updateWorkTaskStatus>>) => void;
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "first-change" })
+      .mockImplementationOnce(() => new Promise(resolve => { finishUndo = resolve; }))
+      .mockResolvedValueOnce({ ok: true, taskId: "task-2", status: "CANCELED", updatedAt: "2026-07-18T19:02:00.000Z", receiptId: "second-change" })
+      .mockResolvedValueOnce({ ok: true, taskId: "task-2", status: "OPEN", updatedAt: "2026-07-18T19:03:00.000Z", receiptId: "second-undo" });
+    render(<WorkClient initialSnapshot={{ ...snapshot, tasks: [snapshot.tasks[0]!, { ...snapshot.tasks[0]!, id: "task-2", title: "Write the next chapter" }] }} />);
+    await user.click(within(document.getElementById("work-task-task-1")!).getByRole("button", { name: "Mark done" }));
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    await user.click(within(document.getElementById("work-task-task-2")!).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(updateWorkTaskStatus).toHaveBeenCalledTimes(3));
+    finishUndo({ ok: true, taskId: "task-1", status: "OPEN", updatedAt: "2026-07-18T19:01:00.000Z", receiptId: "first-undo" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled());
+    expect(screen.getByRole("status")).toHaveTextContent("Task canceled.");
+    expect(screen.getByRole("heading", { name: "Finish episode notes" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({ taskId: "task-2", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:02:00.000Z" });
+    expect(await screen.findByRole("heading", { name: "Write the next chapter" })).toBeVisible();
+  });
+
   it("explicitly preserves an overdue recurring occurrence as missed instead of silently canceling it", async () => {
     const confirm = jest.spyOn(window, "confirm").mockReturnValue(true);
     jest.mocked(updateWorkTaskStatus).mockResolvedValue({ ok: true, taskId: "task-1", status: "CANCELED", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "missed-receipt", nextOccurrenceTaskId: "task-next" });
@@ -1302,14 +1389,15 @@ describe("Work Queue interactions", () => {
     const user = userEvent.setup();
     render(<WorkClient initialSnapshot={recurring} />);
     await user.click(screen.getByRole("button", { name: "Skip missed" }));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("preserve it as skipped"));
+    expect(window.confirm).toHaveBeenCalledWith("Skip this occurrence? The next repeat will follow its usual schedule.");
     expect(updateWorkTaskStatus).toHaveBeenCalledWith({
       taskId: "task-1",
       nextStatus: "CANCELED",
       expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
       decisionReason: "MISSED_OCCURRENCE_SKIPPED",
     });
-    expect(await screen.findByText(/Missed occurrence preserved as skipped/i)).toBeInTheDocument();
+    expect(await screen.findByText("Occurrence skipped.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     confirm.mockRestore();
   });
 

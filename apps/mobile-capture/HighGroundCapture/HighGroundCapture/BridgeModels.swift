@@ -5026,7 +5026,7 @@ final class CaptureTodayClient: ObservableObject {
                         playbackSourceId: "preview-playback-source"
                     )
                 ),
-                todayReason: "Planned focus · reviewed transcript",
+                todayReason: "Planned focus · session transcript",
                 recurrence: MobileCaptureTodayRecurrence(
                     seriesId: "preview-series",
                     occurrenceKey: "2026-07-20T09:00[America/Denver]",

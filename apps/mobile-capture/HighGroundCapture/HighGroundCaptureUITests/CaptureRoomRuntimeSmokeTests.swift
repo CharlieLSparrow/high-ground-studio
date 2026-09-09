@@ -3933,10 +3933,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The task-edit journey requires one exact non-recurring open task ID plus distinct source and temporary titles.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
+        openTaskList(in: app)
         XCTAssertTrue(
             waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 25, swipeAttempts: 12),
             "Today should expose the exact canonical source title before editing."
@@ -3945,12 +3942,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let originalDueLabel = originalDue.exists ? originalDue.label : nil
 
         func replaceTitle(with value: String) {
-            let field = app.textFields["CaptureTaskEditTitle"].firstMatch
+            let field = app.descendants(matching: .any)["CaptureTaskEditTitle"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 6))
-            field.tap()
-            field.typeKey("a", modifierFlags: .command)
-            field.typeKey(.delete, modifierFlags: [])
-            field.typeText(value)
+            replaceText(in: field, with: value, app: app)
             XCTAssertFalse(app.descendants(matching: .any)["CaptureTaskEditBoundary"].exists)
             XCTAssertFalse(app.textFields["CaptureTaskEditTimezone"].exists)
             XCTAssertTrue(app.buttons["CaptureTaskEditRemove"].exists)
@@ -3961,6 +3955,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         let edit = app.buttons["CaptureTodayTaskEdit_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 15, swipeAttempts: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: edit)
+        guard XCTWaiter.wait(for: [ready], timeout: 40) == .completed else {
+            attachRecordingIdentity(app.debugDescription, name: "Task edit unavailable after refresh")
+            attachRuntimeScreenshot(app, name: "Task edit unavailable after refresh")
+            XCTFail("The task stayed read-only after sign-in; wait for the authorized Today refresh before editing.")
+            return
+        }
         edit.tap()
         replaceTitle(with: updatedTitle)
         XCTAssertTrue(

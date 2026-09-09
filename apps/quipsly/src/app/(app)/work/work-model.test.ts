@@ -71,12 +71,13 @@ describe("Work Queue model", () => {
     };
     const snapshot = buildWorkSnapshot({ now, tasks: [task({ sourceJson })], goals: [], commitments: [] });
     expect(snapshot.tasks[0]).toMatchObject({
-      provenance: "Reviewed transcript timestamp",
+      provenance: "Session transcript",
       attentionReason: "Overdue commitment",
       sourceAnchor: { segmentId: "segment-1", startSeconds: 3.66, recordingAssetId: "asset-1" },
     });
-    const mismatch = buildWorkSnapshot({ now, tasks: [task({ sourceJson: { ...sourceJson, roomId: "other-room" } })], goals: [], commitments: [] });
+    const mismatch = buildWorkSnapshot({ now, tasks: [task({ dueAt: null, createdAt: now, sourceJson: { ...sourceJson, roomId: "other-room" } })], goals: [], commitments: [] });
     expect(mismatch.tasks[0].sourceAnchor).toBeNull();
+    expect(mismatch.tasks[0].attentionReason).toBeNull();
   });
 
   it("projects an immutable source-card task anchor only while the project remains visible", () => {
@@ -129,7 +130,7 @@ describe("Work Queue model", () => {
     expect(hiddenProject.tasks[0].sourceCardAnchor).toBeNull();
   });
 
-  it("derives attention from deadlines and recent reviewed transcript work without an unread ledger", () => {
+  it("surfaces recent transcript work without claiming or requiring human review", () => {
     const transcriptSource = {
       schema: "quipsly-transcript-derived-task-v1",
       roomId: "room-1",
@@ -157,7 +158,7 @@ describe("Work Queue model", () => {
       ["overdue", "Overdue commitment"],
       ["soon", "Due within 24 hours"],
       ["later", null],
-      ["reviewed", "Reviewed transcript follow-through"],
+      ["reviewed", "From session transcript"],
     ]);
     expect(snapshot.counts.attentionTasks).toBe(3);
   });
