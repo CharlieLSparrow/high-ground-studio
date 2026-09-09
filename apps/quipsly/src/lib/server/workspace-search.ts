@@ -14,6 +14,7 @@ const TAG_RESULT_SELECT = {
   projectId: true,
   slug: true,
   label: true,
+  hexColor: true,
   description: true,
   category: true,
   isPrivate: true,
@@ -219,7 +220,7 @@ export async function searchWorkspace(
     where: { tag: { projectId: { in: projectIds } } },
     orderBy: { createdAt: "asc" as const },
     take: 12,
-    select: { tag: { select: { id: true, slug: true, label: true, isActive: true } } },
+    select: { tag: { select: { id: true, slug: true, label: true, hexColor: true, isActive: true } } },
   };
   const [taskRows, goals, sessions, noteRows, sources, documents, annotations, mediaClips, tags] = await Promise.all([
     prisma.actionItem.findMany({

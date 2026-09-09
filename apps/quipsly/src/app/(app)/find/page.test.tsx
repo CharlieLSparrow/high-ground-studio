@@ -27,11 +27,11 @@ describe("Search All page", () => {
     jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "Person@Example.com" } } as any);
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{ id: "project-1", slug: "high-ground", name: "High Ground" }] as any);
     jest.mocked(getPrismaClient).mockReturnValue({
-      actionItem: { findMany: jest.fn().mockResolvedValue([{ id: "task-1", title: "Episode proof-listen", detail: null, status: "OPEN", dueAt: null, sourceJson: {}, room: { id: "room-1", title: "Episode review" }, project: { id: "project-1", name: "High Ground", slug: "high-ground" }, tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", isActive: true } }] }]) },
+      actionItem: { findMany: jest.fn().mockResolvedValue([{ id: "task-1", title: "Episode proof-listen", detail: null, status: "OPEN", dueAt: null, sourceJson: {}, room: { id: "room-1", title: "Episode review" }, project: { id: "project-1", name: "High Ground", slug: "high-ground" }, tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", hexColor: "#506b46", isActive: true } }] }]) },
       goal: { findMany: jest.fn().mockResolvedValue([{ id: "goal-1", title: "Episode quality", description: null, status: "ACTIVE", project: { id: "project-1", name: "High Ground", slug: "high-ground" }, room: null, tagLinks: [] }]) },
       callRoom: { findMany: jest.fn().mockResolvedValue([{ id: "room-1", title: "Episode review", purpose: "PODCAST", status: "ENDED", projectSlug: "high-ground", scheduledStart: null, project: { id: "project-1", name: "High Ground", slug: "high-ground" }, tagLinks: [] }]) },
-      coachingNote: { findMany: jest.fn().mockResolvedValue([{ id: "note-1", title: "Episode insight", body: "Keep the opening honest.", kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE", updatedAt: new Date(), room: { id: "room-1", title: "Episode review" }, tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", isActive: true } }] }]) },
-      studioDocument: { findMany: jest.fn().mockResolvedValue([{ id: "document-1", title: "Episode outline", sourceLabel: "document-kind:note", projectionStatus: "private", project: { name: "High Ground", slug: "high-ground" }, blocks: [{ id: "block-1", title: null, body: "The opening needs a human proof-listen." }], tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", isActive: true } }] }]) },
+      coachingNote: { findMany: jest.fn().mockResolvedValue([{ id: "note-1", title: "Episode insight", body: "Keep the opening honest.", kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE", updatedAt: new Date(), room: { id: "room-1", title: "Episode review" }, tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", hexColor: "#506b46", isActive: true } }] }]) },
+      studioDocument: { findMany: jest.fn().mockResolvedValue([{ id: "document-1", title: "Episode outline", sourceLabel: "document-kind:note", projectionStatus: "private", project: { name: "High Ground", slug: "high-ground" }, blocks: [{ id: "block-1", title: null, body: "The opening needs a human proof-listen." }], tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", hexColor: "#506b46", isActive: true } }] }]) },
       studioSourceUnit: { findMany: jest.fn().mockResolvedValue([{ id: "source-1", title: "Episode transcript", kind: "transcript", author: "Charlie", project: { name: "High Ground", slug: "high-ground" } }]) },
       studioSourceAnnotation: { findMany: jest.fn().mockResolvedValue([{ id: "annotation-1", kind: "quote", body: "Episode evidence", exactText: "Episode exact words", visibility: "private", sourceUnit: { title: "Episode transcript" }, project: { name: "High Ground", slug: "high-ground" } }]) },
       mediaClip: { findMany: jest.fn().mockResolvedValue([]) },
@@ -46,8 +46,12 @@ describe("Search All page", () => {
     expect(screen.getByRole("link", { name: "Episode outline The opening needs a human proof-listen. High Ground · note · private Tags: Episode seed" })).toHaveAttribute("href", "/notes/document-1#note-block-block-1");
     expect(screen.getByRole("link", { name: "Episode transcript High Ground · transcript · Charlie" })).toHaveAttribute("href", "/research?query=Episode%20transcript");
     expect(screen.getByRole("link", { name: "Episode exact words Episode transcript · High Ground · private" })).toHaveAttribute("href", "/research?query=Episode%20exact%20words");
-    expect(screen.getByRole("link", { name: "Episode seed High Ground · source · private taxonomy Material for a future episode" })).toHaveAttribute("href", "/find?tag=tag-1");
-    expect(screen.getByRole("status")).toHaveTextContent("8 accessible results. Searched 1 accessible Nest.");
+    expect(screen.getByRole("link", { name: "Episode seed High Ground · Tag Material for a future episode" })).toHaveAttribute("href", "/find?tag=tag-1");
+    expect(screen.getByRole("status")).toHaveTextContent("Showing 8 results across 1 Nest.");
+    expect(screen.queryByText(/Search is read-only|private taxonomy|Permission-filtered/)).not.toBeInTheDocument();
+    for (const chip of screen.getAllByText("#Episode seed")) expect(chip).toHaveStyle({ backgroundColor: "#506b46", color: "#ffffff" });
+    const prisma = getPrismaClient();
+    expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ tagLinks: expect.objectContaining({ select: { tag: { select: expect.objectContaining({ hexColor: true }) } } }) }) }));
   });
 
   it("renders an exact canonical tag focus without converting identity back to label search", async () => {
@@ -101,13 +105,35 @@ describe("Search All page", () => {
     render(await FindPage({ searchParams: Promise.resolve({ tag: "tag-1" }) }));
 
     expect(screen.getByRole("heading", { name: "#Episode production" })).toBeInTheDocument();
-    expect(screen.getByText(/Same-label tags in other Nests are not mixed in/)).toBeInTheDocument();
+    expect(screen.getByText("Work tagged #Episode production in High Ground.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Episode production High Ground/ })).toHaveAttribute("href", "/find?tag=tag-1");
     expect(screen.getByRole("link", { name: "Opening reaction A precise reusable beat. episode-reference.mp4 · 4.00s–12.00s" })).toHaveAttribute(
       "href",
       "/media/asset-1?source=find&tag=tag-1&clip=clip-1#clip-clip-1",
     );
-    expect(screen.getByRole("status")).toHaveTextContent("2 accessible results. Searched 2 accessible Nests.");
+    expect(screen.getByRole("status")).toHaveTextContent("Showing 2 results.");
+    expect(screen.queryByRole("heading", { name: "Goals" })).not.toBeInTheDocument();
+    expect(screen.queryByText("No matches.")).not.toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveValue("");
+  });
+  it("offers a direct retry that retains the requested tag when results cannot load", async () => {
+    jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "Person@Example.com" } } as any);
+    jest.mocked(listProjectsVisibleToEmail).mockRejectedValueOnce(new Error("Database unavailable"));
+    const log = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(await FindPage({ searchParams: Promise.resolve({ tag: "tag-1" }) }));
+      expect(screen.getByRole("heading", { name: "Search is unavailable" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/find?tag=tag-1");
+      expect(screen.queryByText(/unavailable persistence|nothing was changed/)).not.toBeInTheDocument();
+    } finally { log.mockRestore(); }
+  });
+  it("shows one useful empty state instead of a grid of empty categories", async () => {
+    jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "Person@Example.com" } } as any);
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
+    const empty = jest.fn().mockResolvedValue([]);
+    jest.mocked(getPrismaClient).mockReturnValue({ actionItem: { findMany: empty }, goal: { findMany: empty }, callRoom: { findMany: empty }, coachingNote: { findMany: empty } } as any);
+    render(await FindPage({ searchParams: Promise.resolve({ q: "unmatched" }) }));
+    expect(screen.getByRole("heading", { name: "No results found" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Tasks" })).not.toBeInTheDocument();
   });
 });
