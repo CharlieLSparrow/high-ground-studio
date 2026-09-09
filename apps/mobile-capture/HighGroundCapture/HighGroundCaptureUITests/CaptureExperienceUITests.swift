@@ -3129,7 +3129,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(soundCheckBoundary.label.contains("deleted automatically"))
 
         let runCheck = app.buttons["CaptureRehearsalRunCheck"]
-        reveal(runCheck)
+        // This fixture intentionally disables device checks. Verify the
+        // visible disabled state, not an impossible interactive hit target.
+        XCTAssertTrue(reveal(runCheck, requireHittable: false),
+            "The disabled device check must actually be visible without exhausting the scroll search.")
         XCTAssertTrue(runCheck.exists)
         XCTAssertFalse(
             runCheck.isEnabled,
@@ -5960,7 +5963,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
-        reveal(localOnly)
+        XCTAssertTrue(app.navigationBars["Choose session"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(reveal(localOnly, requireHittable: false))
         openLocalRecorderIfNeeded()
         let confirmConsent = app.buttons["CapturePersistentRecorderConsentButton"]
         XCTAssertTrue(confirmConsent.waitForExistence(timeout: 5))
@@ -6070,8 +6074,16 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         app.launch()
 
+        let location = app.buttons["CaptureGlobalWorkLocation"]
+        XCTAssertTrue(location.waitForExistence(timeout: 5))
+        XCTAssertEqual(location.value as? String, "High Ground Odyssey, Coaching with Homer")
+        XCTAssertLessThan(location.frame.height, app.frame.height * 0.2,
+            "The pinned location selector must leave room to work at the largest text size; full names remain available in its accessibility value and switcher.")
+
+        // Materialize the lazy row, then let XCTest scroll its tap target fully
+        // into view. The large-text recording dock can obscure part of a row.
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
-        reveal(localOnly)
+        XCTAssertTrue(reveal(localOnly, requireHittable: false))
         openLocalRecorderIfNeeded()
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
         reveal(modePicker)
@@ -6820,21 +6832,33 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    @discardableResult
     private func reveal(
         _ element: XCUIElement,
         searchAboveFirst: Bool = true,
         requireHittable: Bool = true
-    ) {
+    ) -> Bool {
         let sourceFilingForm = app.descendants(matching: .any)["CaptureSourceFilingForm"].firstMatch
-        let navigationBar = app.navigationBars.firstMatch
+        // Dismissed sheets and inactive tabs can retain navigation bars in
+        // the tree. Their offscreen frames are not the current scroll inset.
+        let navigationBar = app.navigationBars.allElementsBoundByIndex.first {
+            $0.isHittable && $0.frame.intersects(app.frame)
+        }
         let visibleTop = max(
             app.frame.minY + 72,
-            navigationBar.exists ? navigationBar.frame.maxY + 4 : app.frame.minY + 72
+            navigationBar.map { $0.frame.maxY + 4 } ?? app.frame.minY + 72
         )
         let recordingDock = app.otherElements["CapturePersistentRecorderDock"].firstMatch
+        let dockIsVisible = recordingDock.exists && recordingDock.isHittable
+        let tabBar = app.tabBars.firstMatch
+        let tabBarIsVisible = tabBar.exists && tabBar.isHittable
+        // Presented tools cover the recorder dock and main tab bar. Their
+        // retained accessibility nodes must not shrink the sheet's usable
+        // viewport; controls near its bottom cannot scroll above hidden chrome.
         let visibleBottom = min(
-            app.frame.maxY - (sourceFilingForm.exists ? 12 : 96),
-            recordingDock.exists ? recordingDock.frame.minY - 4 : app.frame.maxY
+            app.frame.maxY - 12,
+            tabBarIsVisible ? tabBar.frame.minY - 4 : app.frame.maxY,
+            dockIsVisible ? recordingDock.frame.minY - 4 : app.frame.maxY
         )
         let elementIsReachable = {
             element.exists && (!requireHittable || element.isHittable)
@@ -6842,14 +6866,14 @@ final class CaptureExperienceUITests: XCTestCase {
         // Native navigation controls live above the scrollable content by
         // design. Do not scroll the entire document looking for an already
         // reachable toolbar button (for example, the current Nest switcher).
-        if elementIsReachable(), navigationBar.exists,
+        if elementIsReachable(), let navigationBar,
            !element.frame.isEmpty,
            navigationBar.frame.contains(element.frame) {
-            return
+            return true
         }
-        if elementIsReachable(), recordingDock.exists,
+        if elementIsReachable(), dockIsVisible,
            !element.frame.isEmpty, recordingDock.frame.contains(element.frame) {
-            return
+            return true
         }
         let elementHasRequiredVisibleFrame = {
             if requireHittable {
@@ -6864,11 +6888,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 && element.frame.minY < visibleBottom
         }
         if sourceFilingForm.exists, elementIsReachable() {
-            return
+            return true
         }
         if elementIsReachable(),
            elementHasRequiredVisibleFrame() {
-            return
+            return true
         }
         // On iPad, an iPhone-first app can run inside a movable window whose
         // origin does not match the SpringBoard screen. A gesture synthesized
@@ -6953,14 +6977,15 @@ final class CaptureExperienceUITests: XCTestCase {
                 }
                 if sourceFilingForm.exists {
                     if elementIsReachable() {
-                        return
+                        return true
                     }
                 } else if elementIsReachable(),
                           elementHasRequiredVisibleFrame() {
-                    return
+                    return true
                 }
             }
         }
+        return false
     }
 
     func testAccountMakesOwnerNestBackupAndPreviewFirstRestoreReachable() throws {

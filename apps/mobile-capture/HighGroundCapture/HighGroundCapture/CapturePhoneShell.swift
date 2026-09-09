@@ -18509,19 +18509,29 @@ private struct SessionListRow: View {
 }
 
 private struct SessionChooserButton: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let session: MobileCaptureSession?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: session?.capturePurposeIcon ?? "calendar")
-                    .foregroundStyle(CapturePalette.accent)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: session?.capturePurposeIcon ?? "calendar")
+                        .foregroundStyle(CapturePalette.accent)
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("SESSION")
-                        .font(.caption2.weight(.bold))
-                        .tracking(1)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("SESSION")
+                            .font(.caption2.weight(.bold))
+                            .tracking(1)
+                            .foregroundStyle(.secondary)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            Spacer(minLength: 8)
+                            chooserIndicator
+                        }
+                    }
                     Text(session?.displayTitle ?? "Choose a session")
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -18541,16 +18551,24 @@ private struct SessionChooserButton: View {
                             .accessibilityIdentifier("CaptureSessionProject_\(session.id)")
                     }
                 }
-                Spacer()
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    chooserIndicator
+                }
             }
             .padding(14)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("CaptureSessionChooser")
+    }
+
+    private var chooserIndicator: some View {
+        Image(systemName: "chevron.up.chevron.down")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
     }
 }
 
@@ -20978,8 +20996,13 @@ private struct ProviderRoomControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(
-                    callPermanentlyClosed
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Image(systemName: model.providerRoom.isConnected
+                            ? "person.2.wave.2.fill" : "person.2.wave.2")
+                            .accessibilityHidden(true)
+                    }
+                    Text(callPermanentlyClosed
                         ? "Call ended"
                         : model.providerRoom.isReconnecting
                         ? "Reconnecting"
@@ -20987,18 +21010,18 @@ private struct ProviderRoomControls: View {
                             ? "Call in progress"
                             : canRejoinSession
                                 ? "Call disconnected"
-                                : "Ready to join",
-                    systemImage: model.providerRoom.isConnected
-                        ? "person.2.wave.2.fill"
-                        : "person.2.wave.2"
-                )
+                                : "Ready to join")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                     .font(.headline)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureProviderRoomState")
-                Spacer()
-                Text("Call")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(model.providerRoom.isConnected ? CapturePalette.success : Color.secondary)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer()
+                    Text("Call")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(model.providerRoom.isConnected ? CapturePalette.success : Color.secondary)
+                }
             }
 
             if canRejoinSession {
@@ -21014,10 +21037,13 @@ private struct ProviderRoomControls: View {
             }
 
             if usesCallAudioForPresentation {
-                HStack(alignment: .center, spacing: 12) {
+                audioRouteLayout {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Image(systemName: "mic.fill")
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Image(systemName: "mic.fill")
+                                    .accessibilityHidden(true)
+                            }
                             Text("Microphone · \(inputRoute)")
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -21037,13 +21063,15 @@ private struct ProviderRoomControls: View {
                         .accessibilityLabel("Output, \(callAudioSession.currentOutputRouteName)")
                         .accessibilityIdentifier("CaptureCallOutputRoute")
                     }
-                    Spacer(minLength: 8)
-                    if #available(iOS 26.0, *) {
-                        CaptureSystemAudioInputPicker()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 12) {
+                        if #available(iOS 26.0, *) {
+                            CaptureSystemAudioInputPicker()
+                                .frame(width: 44, height: 44)
+                        }
+                        CaptureSystemAudioRoutePicker()
                             .frame(width: 44, height: 44)
                     }
-                    CaptureSystemAudioRoutePicker()
-                        .frame(width: 44, height: 44)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -21454,6 +21482,15 @@ private struct ProviderRoomControls: View {
 
     private var canRejoinSession: Bool {
         model.providerRoom.canRejoin(callRoomID: session.callRoomId)
+    }
+
+    private var audioRouteLayout: AnyLayout {
+        // Route names need the full line at accessibility sizes. Keep the
+        // system device controls together below them instead of forcing
+        // microphone names into a narrow column beside two fixed buttons.
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
     }
 
     private var usesCallAudioForPresentation: Bool {
@@ -24083,13 +24120,15 @@ private struct CaptureWorkLocationBar: View {
                     Text(nestName)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(CapturePalette.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .black))
                             .accessibilityHidden(true)
                         Text(spaceName)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CapturePalette.secondaryText)
@@ -24120,6 +24159,9 @@ private struct CaptureWorkLocationBar: View {
         .buttonStyle(.plain)
         .disabled(switchDisabled)
         .accessibilityLabel("Work location")
+        // Keep full names available without letting persistent navigation
+        // consume the work area. The switcher shows the unabridged names;
+        // Dynamic Type still scales both visible breadcrumb lines normally.
         .accessibilityValue("\(nestName), \(spaceName)")
         .accessibilityHint(
             switchDisabled
