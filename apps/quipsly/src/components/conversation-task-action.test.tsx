@@ -182,7 +182,7 @@ test("tag loading failure does not prevent task creation", async () => {
   render(<ConversationTaskAction {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Create task" }));
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add tags" })); });
-  expect(screen.getByRole("status")).toHaveTextContent("You can still add your task");
+  expect(screen.getByRole("status")).toHaveTextContent("You can still save your task");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
   expect(screen.getByRole("link", { name: /Prepare a first chapter/ })).toBeInTheDocument();
   expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty("tags");

@@ -21,22 +21,21 @@ const RECEIPT_LIMIT = 24;
 
 type WorkKind = "NOTE" | "TASK" | "GOAL";
 
-class TaskTagSaveError extends Error {
+class WorkTagSaveError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-async function saveTaskTags(tx: Prisma.TransactionClient, task: { id: string; updatedAt: Date },
+async function saveWorkTags(tx: Prisma.TransactionClient, work: { id: string; updatedAt: Date },
   actor: { id: string; primaryEmail?: string | null; email?: string | null },
-  selection: NonNullable<ReturnType<typeof parseWorkTagSelection>>) {
+  selection: NonNullable<ReturnType<typeof parseWorkTagSelection>>, entityKind: "task" | "goal") {
   const result = await replaceWorkEntityTags({
     prisma: getPrismaClient(), transaction: tx, actorUserId: actor.id,
-    actorEmail: actor.primaryEmail || actor.email || "", entityKind: "task", entityId: task.id,
-    expectedUpdatedAt: task.updatedAt, ...selection,
+    actorEmail: actor.primaryEmail || actor.email || "", entityKind, entityId: work.id,
+    expectedUpdatedAt: work.updatedAt, ...selection,
   });
-  // Abort the owning work transaction too: no task-only or tag-only save.
-  if (!result.ok) throw new TaskTagSaveError(result.error,
+  // Work and tags are one save, including retries after a lost response.
+  if (!result.ok) throw new WorkTagSaveError(result.error,
     result.code === "CONFLICT" ? 409 : result.code === "NOT_FOUND" ? 404 : 400);
-  return tx.actionItem.findUniqueOrThrow({ where: { id: task.id }, select: TASK_SELECT });
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -272,8 +271,8 @@ export async function POST(
   const workKind = kind(input.kind);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
   const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
-  if (input.tags !== undefined && (workKind !== "TASK" || !tagSelection)) {
-    return NextResponse.json({ ok: false, error: "Choose up to 24 task tags." }, { status: 400 });
+  if (input.tags !== undefined && ((workKind !== "TASK" && workKind !== "GOAL") || !tagSelection)) {
+    return NextResponse.json({ ok: false, error: "Choose up to 24 tags." }, { status: 400 });
   }
   const sourceMessageId = input.sourceMessageId == null ? null : input.sourceMessageId;
   if (sourceMessageId !== null && (typeof sourceMessageId !== "string" || !/^[a-zA-Z0-9_-]{1,240}$/.test(sourceMessageId))) {
@@ -455,9 +454,10 @@ export async function POST(
             },
             select: TASK_SELECT,
           });
+          if (tagSelection) await saveWorkTags(tx, created, session.user, tagSelection, "task");
           return {
             kind: "saved" as const,
-            entry: taskPayload(tagSelection ? await saveTaskTags(tx, created, session.user, tagSelection) : created),
+            entry: taskPayload(tagSelection ? await tx.actionItem.findUniqueOrThrow({ where: { id }, select: TASK_SELECT }) : created),
             replay: false,
           };
         }
@@ -489,9 +489,10 @@ export async function POST(
           },
           select: GOAL_SELECT,
         });
+        if (tagSelection) await saveWorkTags(tx, created, session.user, tagSelection, "goal");
         return {
           kind: "saved" as const,
-          entry: goalPayload(created),
+          entry: goalPayload(tagSelection ? await tx.goal.findUniqueOrThrow({ where: { id }, select: GOAL_SELECT }) : created),
           replay: false,
         };
       },
@@ -542,7 +543,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    if (error instanceof TaskTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    if (error instanceof WorkTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("Coaching engagement work creation failed", error);
     return NextResponse.json(
       { ok: false, error: "Quipsly could not save this coaching work." },
@@ -568,8 +569,8 @@ export async function PATCH(
   const id = text(input.id, 240);
   const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
-  if ((input.tags !== undefined && (workKind !== "TASK" || !tagSelection)) || (clientRequestId && !REQUEST_ID.test(clientRequestId))) {
-    return NextResponse.json({ ok: false, error: "Choose valid task tags and retry this save." }, { status: 400 });
+  if ((input.tags !== undefined && ((workKind !== "TASK" && workKind !== "GOAL") || !tagSelection)) || (clientRequestId && !REQUEST_ID.test(clientRequestId))) {
+    return NextResponse.json({ ok: false, error: "Choose valid tags and retry this save." }, { status: 400 });
   }
   const title = text(input.title, 500);
   const detail = text(input.body, 20_000, true);
@@ -694,19 +695,17 @@ export async function PATCH(
                 select: { ...TASK_SELECT, sourceJson: true },
               })
             : await tx.goal.findFirst({
-                where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                where: { id, engagementId, ...sharedCoachingWorkVisibilityWhere() },
                 select: { ...GOAL_SELECT, sourceJson: true },
               });
         if (!current) return { kind: "conflict" as const };
         const source = record(current.sourceJson);
-        if (workKind === "TASK") {
-          const replay = clientRequestId && priorReceipts(source).map(record).find(receipt =>
-            receipt.clientRequestId === clientRequestId && receipt.actorUserId === session.user.id);
-          if (replay) return replay.requestFingerprint === requestFingerprint
-            ? { kind: "saved" as const, entry: taskPayload(current) }
-            : { kind: "conflict" as const };
-          if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { kind: "conflict" as const };
-        }
+        const replay = clientRequestId && priorReceipts(source).map(record).find(receipt =>
+          receipt.clientRequestId === clientRequestId && receipt.actorUserId === session.user.id);
+        if (replay) return replay.requestFingerprint === requestFingerprint
+          ? { kind: "saved" as const, entry: workKind === "TASK" ? taskPayload(current) : goalPayload(current) }
+          : { kind: "conflict" as const };
+        if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { kind: "conflict" as const };
         const editReceipt = {
           id: randomUUID(),
           schema: "quipsly-coaching-engagement-work-edit-v1",
@@ -754,7 +753,8 @@ export async function PATCH(
             },
             select: TASK_SELECT,
           });
-          return { kind: "saved" as const, entry: taskPayload(tagSelection ? await saveTaskTags(tx, updated, session.user, tagSelection) : updated) };
+          if (tagSelection) await saveWorkTags(tx, updated, session.user, tagSelection, "task");
+          return { kind: "saved" as const, entry: taskPayload(tagSelection ? await tx.actionItem.findUniqueOrThrow({ where: { id }, select: TASK_SELECT }) : updated) };
         }
         const updated = await tx.goal.update({
           where: { id },
@@ -769,7 +769,8 @@ export async function PATCH(
           },
           select: GOAL_SELECT,
         });
-        return { kind: "saved" as const, entry: goalPayload(updated) };
+        if (tagSelection) await saveWorkTags(tx, updated, session.user, tagSelection, "goal");
+        return { kind: "saved" as const, entry: goalPayload(tagSelection ? await tx.goal.findUniqueOrThrow({ where: { id }, select: GOAL_SELECT }) : updated) };
       },
       { isolationLevel: "Serializable" },
     ));
@@ -817,7 +818,7 @@ export async function PATCH(
       },
     });
   } catch (error) {
-    if (error instanceof TaskTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    if (error instanceof WorkTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("Coaching engagement work update failed", error);
     return NextResponse.json(
       { ok: false, error: "Quipsly could not update this coaching work." },

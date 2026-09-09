@@ -31,9 +31,12 @@ type GoalRow = Prisma.GoalGetPayload<{ select: typeof GOAL_SELECT }>;
 
 /** The page, refreshes, and mutation responses must show the same canonical work. */
 function sharedPayload(row: NoteRow | TaskRow | GoalRow) {
+  const conversationHref = conversationWorkSourceHref(row.engagementId, row.sourceJson);
+  const recordingHref = sessionWorkSourceHref(row.roomId, row.sourceJson);
   return {
     id: row.id, title: row.title,
-    sourceHref: conversationWorkSourceHref(row.engagementId, row.sourceJson) ?? sessionWorkSourceHref(row.roomId, row.sourceJson),
+    sourceHref: conversationHref ?? recordingHref,
+    sourceKind: conversationHref ? "conversation" as const : recordingHref ? "recording" as const : null,
     tags: (row.tagLinks ?? []).map(link => link.tag),
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
   };

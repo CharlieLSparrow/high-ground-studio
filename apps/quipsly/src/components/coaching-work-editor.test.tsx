@@ -21,10 +21,10 @@ it("preserves unrelated tag updates and identifies conflicting tag choices by id
     {...base, tags: [{...research, hexColor: "#000000"}, next]}).conflicts).toEqual([]);
 });
 
-it("edits task tags with its wording, retaining both after a failed save and allowing archived tag removal", async () => {
+it.each(["TASK", "GOAL"] as const)("edits %s tags with its wording, retaining both after a failed save and allowing archived tag removal", async (kind) => {
   const tag = {id: "research", label: "Research", hexColor: "#23543a", isActive: true};
   const old = {...tag, id: "old", label: "Old topic", isActive: false};
-  const initial = {...entry, tags: [old]};
+  const initial = {...entry, kind, status: kind === "TASK" ? "OPEN" : "ACTIVE", tags: [old]};
   const onSave = jest.fn().mockResolvedValueOnce(null).mockResolvedValue({...entry, tags: [tag], body: "New wording"});
   const originalFetch = globalThis.fetch;
   globalThis.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, tags: [tag]})});
@@ -34,11 +34,12 @@ it("edits task tags with its wording, retaining both after a failed save and all
     fireEvent.click(screen.getByRole("button", {name: "Remove Old topic tag"}));
     fireEvent.click(screen.getByRole("button", {name: "Add tags"}));
     fireEvent.click(await screen.findByRole("checkbox", {name: "Research"}));
-    fireEvent.change(screen.getByLabelText("task details"), {target: {value: "New wording"}});
+    expect(globalThis.fetch).toHaveBeenCalledWith(`/api/work/tags?entityKind=${kind.toLowerCase()}&entityId=${entry.id}`, expect.anything());
+    fireEvent.change(screen.getByLabelText(`${kind.toLowerCase()} details`), {target: {value: "New wording"}});
     fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("checkbox", {name: "Research"})).toBeChecked();
-    expect(screen.getByLabelText("task details")).toHaveValue("New wording");
+    expect(screen.getByLabelText(`${kind.toLowerCase()} details`)).toHaveValue("New wording");
     fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
     expect(onSave.mock.calls[1]).toEqual([initial, {...workEditValues(initial), body: "New wording", tags: [tag]}]);

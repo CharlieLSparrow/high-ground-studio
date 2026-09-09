@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { tagChipColors } from "@/lib/tag-color";
-import { TaskTagPicker } from "./task-tag-picker";
+import { WorkTagPicker } from "./work-tag-picker";
 
 export type ConversationLinkedTask = {
   id: string; title: string; status: string;
@@ -86,7 +86,7 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
     {open && <form onSubmit={create} className="space-y-2 rounded-xl border border-border bg-card p-3">
       <label className="block text-sm font-semibold">Task title<input aria-label="Task title from message" value={title} onChange={event => setTitle(event.target.value)} maxLength={500} required disabled={pending}
         className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-background px-3 text-foreground" autoFocus /></label>
-      <TaskTagPicker engagementId={engagementId} projectSlug={projectSlug} selected={selectedTags} onChange={setSelectedTags} disabled={pending} onPendingChange={setTagPending} />
+      <WorkTagPicker engagementId={engagementId} projectSlug={projectSlug} selected={selectedTags} onChange={setSelectedTags} disabled={pending} onPendingChange={setTagPending} />
       <p className="text-xs text-muted-foreground">Shared in this space and linked to this message. You can change the task anytime.</p>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2"><button type="submit" disabled={pending || tagPending || !title.trim() || !canCreate} className="min-h-11 rounded-lg bg-primary px-3 font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Creating…" : "Add task"}</button>

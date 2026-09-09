@@ -164,7 +164,7 @@ if (enabled) {
     const foreignMessage = await prisma.studioNestChatMessage.create({ data: { projectId, threadId: foreignThread.id, body: "Private other conversation" } });
     const command = { kind: "TASK", title: "Practice my introduction", body: message.body, sourceMessageId: message.id, clientRequestId: randomUUID() };
     const first = await act("POST", command);
-    expect(first).toMatchObject({ status: 200, body: { ok: true, entry: { kind: "TASK", visibility: "SHARED",
+    expect(first).toMatchObject({ status: 200, body: { ok: true, entry: { kind: "TASK", visibility: "SHARED", sourceKind: "conversation",
       sourceHref: `/coaching/engagements/${engagementId}?message=${message.id}#relationship-conversation` } } });
     const retry = await act("POST", command);
     expect(retry.body.entry.id).toBe(first.body.entry.id);
@@ -173,7 +173,7 @@ if (enabled) {
     const tag = await prisma.studioTag.create({data: {projectId, slug: `conversation-${nonce}`, label: "Preparation", hexColor: "#23543a"}});
     await prisma.actionItem.update({where: {id: persisted.id}, data: {tagLinks: {create: {tagId: tag.id}}}});
     const coachRead = await act("GET", {}, coach!);
-    expect(coachRead.body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ canEdit: true, title: command.title });
+    expect(coachRead.body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ canEdit: true, title: command.title, sourceKind: "conversation" });
     // Native chat opens by canonical item ID, not by scanning the latest work page.
     await prisma.actionItem.update({where: {id: persisted.id}, data: {updatedAt: new Date("2000-01-01T00:00:00Z")}});
     expect((await act("GET", {}, coach!, "pageSize=1")).body.engagement.entries.some((entry: {id: string}) => entry.id === persisted.id)).toBe(false);
@@ -231,27 +231,28 @@ if (enabled) {
       .toMatchObject({id: completed.id, status: "OPEN", title: completed.title, tags: completed.tags});
   });
 
-  it("saves a task draft and its canonical tags together, with retries and all-or-nothing failure", async () => {
-    const command = {kind: "TASK", clientRequestId: randomUUID(), title: "Prepare together", ownerUserId: client!.id,
-      tags: {tagIds: [], newTagLabels: [`Writing ${nonce}`]}};
+  it.each(["TASK", "GOAL"] as const)("saves a %s draft and its canonical tags together, with retries and all-or-nothing failure", async (kind) => {
+    const writingLabel = `Writing ${kind} ${nonce}`;
+    const command = {kind, clientRequestId: randomUUID(), title: "Prepare together", ownerUserId: client!.id,
+      tags: {tagIds: [], newTagLabels: [writingLabel]}};
     const created = await act("POST", command);
-    expect(created).toMatchObject({status: 200, body: {entry: {title: command.title, tags: [{label: `Writing ${nonce}`} ]}}});
+    expect(created).toMatchObject({status: 200, body: {entry: {kind, title: command.title, tags: [{label: writingLabel} ]}}});
     expect((await act("POST", command)).body.entry).toEqual(created.body.entry);
     const task = created.body.entry;
     const tagId = task.tags[0].id;
-    const hiddenTag = await prisma.studioTag.create({data: {projectId, slug: `hidden-draft-${nonce}`, label: "Another client's private work"}});
+    const hiddenTag = await prisma.studioTag.create({data: {projectId, slug: `hidden-draft-${kind.toLowerCase()}-${nonce}`, label: `Another client's private ${kind}`}});
     await prisma.studioTag.update({where: {id: tagId}, data: {hexColor: "#23543a"}});
     const scoped = (actor: typeof client) => ({prisma, actorUserId: actor!.id, actorEmail: actor!.primaryEmail, engagementId});
     for (const actor of [coach, client]) {
       const catalog = await readNewCoachingTaskTagContext(scoped(actor));
       expect(catalog).toMatchObject({tags: expect.arrayContaining([
-        {id: tagId, label: `Writing ${nonce}`, hexColor: "#23543a", isActive: true},
+        {id: tagId, label: writingLabel, hexColor: "#23543a", isActive: true},
       ])});
       expect(catalog!.tags.some(tag => tag.id === hiddenTag.id)).toBe(false);
     }
     for (const actor of [observer, guest, outsider]) expect(await readNewCoachingTaskTagContext(scoped(actor))).toBeNull();
-    const update = {kind: "TASK", id: task.id, clientRequestId: randomUUID(), expectedUpdatedAt: task.updatedAt,
-      title: "Write the opening scene", ownerUserId: coach!.id, status: "OPEN", tags: {tagIds: [tagId], newTagLabels: ["Next chapter"]}};
+    const update = {kind, id: task.id, clientRequestId: randomUUID(), expectedUpdatedAt: task.updatedAt,
+      title: "Write the opening scene", ownerUserId: coach!.id, status: kind === "TASK" ? "OPEN" : "ACTIVE", tags: {tagIds: [tagId], newTagLabels: ["Next chapter"]}};
     const saved = await act("PATCH", update);
     expect(saved).toMatchObject({status: 200, body: {entry: {title: update.title, tags: expect.arrayContaining([
       expect.objectContaining({id: tagId, hexColor: "#23543a"}), expect.objectContaining({label: "Next chapter"}),
@@ -261,16 +262,19 @@ if (enabled) {
     expect((await act("PATCH", {...update, clientRequestId: randomUUID()})).status).toBe(409);
     expect((await act("PATCH", {...update, clientRequestId: randomUUID(), expectedUpdatedAt: saved.body.entry.updatedAt,
       tags: {tagIds: [hiddenTag.id]}, title: "Must not gain private vocabulary"})).status).toBe(400);
-    const archivedLabel = `Archived atomic ${nonce}`;
+    const archivedLabel = `Archived atomic ${kind} ${nonce}`;
     await prisma.studioTag.create({data: {projectId, slug: workTagSlug(archivedLabel), label: archivedLabel, isActive: false}});
-    const tags = {tagIds: [], newTagLabels: [`Must roll back ${nonce}`, archivedLabel]};
+    const rollbackLabel = `Must roll back ${kind} ${nonce}`;
+    const tags = {tagIds: [], newTagLabels: [rollbackLabel, archivedLabel]};
     const rejected = await act("PATCH", {...update, clientRequestId: randomUUID(), expectedUpdatedAt: saved.body.entry.updatedAt, title: "Must not save", tags});
     expect(rejected.status).toBe(400);
-    expect((await act("GET", {}, coach!, `kind=TASK&item=${task.id}`)).body.engagement.entries[0]).toEqual(saved.body.entry);
-    expect(await prisma.studioTag.count({where: {projectId, label: `Must roll back ${nonce}`}})).toBe(0);
+    expect((await act("GET", {}, coach!, `kind=${kind}&item=${task.id}`)).body.engagement.entries[0]).toEqual(saved.body.entry);
+    expect(await prisma.studioTag.count({where: {projectId, label: rollbackLabel}})).toBe(0);
     const failedCreate = {...command, clientRequestId: randomUUID(), title: `Must not exist ${nonce}`, tags};
     expect((await act("POST", failedCreate)).status).toBe(400);
-    expect(await prisma.actionItem.count({where: {engagementId, title: failedCreate.title}})).toBe(0);
+    expect(kind === "TASK"
+      ? await prisma.actionItem.count({where: {engagementId, title: failedCreate.title}})
+      : await prisma.goal.count({where: {engagementId, title: failedCreate.title}})).toBe(0);
     for (const actor of [observer!, guest!, outsider!]) expect((await act("PATCH", update, actor)).status).toBe(404);
   });
 
@@ -306,15 +310,15 @@ if (enabled) {
     expect((await act("GET", {}, client!, `kind=TASK&item=${task.id}`)).body.engagement.entries[0]).toEqual(removed.body.entry);
   });
 
-  it("converges concurrent tagged saves and refuses retries after membership removal", async () => {
-    const created = await act("POST", {kind: "TASK", clientRequestId: randomUUID(), title: "One shared draft"});
-    const command = {kind: "TASK", id: created.body.entry.id, clientRequestId: randomUUID(),
+  it.each(["TASK", "GOAL"] as const)("converges concurrent tagged %s saves and refuses retries after membership removal", async (kind) => {
+    const created = await act("POST", {kind, clientRequestId: randomUUID(), title: "One shared draft"});
+    const command = {kind, id: created.body.entry.id, clientRequestId: randomUUID(),
       expectedUpdatedAt: created.body.entry.updatedAt, title: "One saved result", ownerUserId: client!.id,
-      status: "OPEN", tags: {tagIds: [], newTagLabels: [`Concurrent ${nonce}`]}};
+      status: kind === "TASK" ? "OPEN" : "ACTIVE", tags: {tagIds: [], newTagLabels: [`Concurrent ${kind} ${nonce}`]}};
     const saves = await Promise.all([act("PATCH", command), act("PATCH", command)]);
     expect(saves.map(result => result.status)).toEqual([200, 200]);
     expect(saves[0].body.entry).toEqual(saves[1].body.entry);
-    expect(await prisma.studioTag.count({where: {projectId, label: `Concurrent ${nonce}`}})).toBe(1);
+    expect(await prisma.studioTag.count({where: {projectId, label: `Concurrent ${kind} ${nonce}`}})).toBe(1);
     await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: client!.id}, data: {status: "REMOVED"}});
     try {
       expect((await act("PATCH", command)).status).toBe(404);

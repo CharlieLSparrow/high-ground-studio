@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Pencil } from "lucide-react";
 import type { CoachingEngagementWorkEntry, CoachingEngagementWorkMember } from "./coaching-engagement-workspace";
-import { TaskTagPicker, type TaskTagOption } from "./task-tag-picker";
+import { WorkTagPicker, type WorkTagOption } from "./work-tag-picker";
 
 export type CoachingWorkEdit = {
   title: string;
@@ -12,7 +12,7 @@ export type CoachingWorkEdit = {
   targetAt: string;
   visibility: string;
   status: string;
-  tags: TaskTagOption[];
+  tags: WorkTagOption[];
 };
 
 const fieldLabels: Record<keyof CoachingWorkEdit, string> = {
@@ -34,7 +34,7 @@ export function mergeCoachingWorkEdits(base: CoachingWorkEdit, draft: CoachingWo
   const conflicts: Array<keyof CoachingWorkEdit> = [];
   for (const key of Object.keys(fieldLabels) as Array<keyof CoachingWorkEdit>) {
     if (key === "tags") {
-      const identity = (tags: TaskTagOption[]) => JSON.stringify(tags.map(tag => tag.id).sort());
+      const identity = (tags: WorkTagOption[]) => JSON.stringify(tags.map(tag => tag.id).sort());
       if (identity(draft.tags) !== identity(base.tags)) {
         if (identity(latest.tags) !== identity(base.tags) && identity(latest.tags) !== identity(draft.tags)) conflicts.push(key);
         values.tags = draft.tags;
@@ -145,7 +145,7 @@ export function CoachingWorkEditor({entry, engagementId, members, busy, onSave}:
                 className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm" aria-label={entry.kind === "TASK" ? "Due date" : "Target date"} />
             ) : null}
           </div>
-          {entry.kind === "TASK" && engagementId && <TaskTagPicker engagementId={engagementId}
+          {entry.kind !== "NOTE" && engagementId && <WorkTagPicker entityKind={entry.kind === "GOAL" ? "goal" : "task"} entityId={entry.id}
             selected={draft.tags} onChange={tags => change("tags", tags)} disabled={busy} onPendingChange={setTagPending} />}
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#41624b] px-4 py-2 text-sm font-black text-white disabled:opacity-50">

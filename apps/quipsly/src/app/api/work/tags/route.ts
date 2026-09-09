@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     const engagementId = text(query.get("engagementId"));
     const projectSlug = text(query.get("projectSlug"));
     const entityKind = query.get("entityKind");
-    if (!["task", "goal"].includes(entityKind || "") || (entityKind === "goal" && !entityId)
+    if (!["task", "goal"].includes(entityKind || "")
       || [entityId, engagementId, projectSlug].filter(Boolean).length !== 1) return NextResponse.json({ ok: false, error: "Choose a task, goal, client space, or Nest." }, { status: 400, headers });
     const actor = { prisma: getPrismaClient(), actorUserId: session.user.id, actorEmail };
     const context = entityId ? await (entityKind === "goal" ? readGoalTagContext : readTaskTagContext)({ ...actor, entityId })

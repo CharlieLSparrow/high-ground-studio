@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { CalendarDays, MessageCircle, NotebookPen, UsersRound } from "lucide-react";
 
 const sections = [
@@ -18,6 +19,7 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
   people?: ReactNode;
 }) {
   const [active, setActive] = useState<Section>("work");
+  const search = useSearchParams()?.toString() ?? "";
   // The server cannot read the saved URL hash. Do not accept a click against
   // its default section before hydration restores the actual navigation.
   const [ready, setReady] = useState(false);
@@ -34,15 +36,30 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
     restoreSection();
     setReady(true);
     window.addEventListener("hashchange", restoreSection);
-    return () => window.removeEventListener("hashchange", restoreSection);
-  }, [people]);
+    window.addEventListener("popstate", restoreSection);
+    return () => {
+      window.removeEventListener("hashchange", restoreSection);
+      window.removeEventListener("popstate", restoreSection);
+    };
+    // Next links can change a message query and hash without a hashchange event.
+  }, [people, search]);
 
   function select(section: typeof sections[number]) {
     setActive(section.id);
     window.history.replaceState(window.history.state, "", section.hash);
   }
 
-  return <div className="mt-5 min-w-0">
+  return <div className="mt-5 min-w-0" onClickCapture={(event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!(link instanceof HTMLAnchorElement) || (link.target && link.target !== "_self") || link.hasAttribute("download")) return;
+    const target = new URL(link.href, window.location.href);
+    if (target.origin !== window.location.origin || target.pathname !== window.location.pathname) return;
+    const section = available.find(section => section.hash === target.hash);
+    // A same-page source link must reveal its panel even if the router already
+    // holds that query and does not emit a search/hash navigation update.
+    if (section) setActive(section.id);
+  }}>
     <div role="tablist" aria-label="Client space" className="grid grid-flow-col auto-cols-fr gap-1 rounded-2xl border border-[#dfcfb4] bg-[#fffdf8] p-1.5">
       {available.map((section, index) => <button
         key={section.id}

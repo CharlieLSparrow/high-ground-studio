@@ -81,22 +81,22 @@ describe("authenticated shared work tags route", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(readGoalTagContext).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "client", actorEmail: "client@example.test", entityId: "goal" }));
     expect(readTaskTagContext).not.toHaveBeenCalled();
-    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=goal&engagementId=space"))).status).toBe(400);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=goal&engagementId=space&entityId=goal"))).status).toBe(400);
     jest.mocked(readGoalTagContext).mockResolvedValue(null);
     expect((await GET(new Request("http://localhost/api/work/tags?entityKind=goal&entityId=goal"))).status).toBe(404);
   });
 
-  it("loads a new task's client-space vocabulary without inventing a task or accepting ambiguous scopes", async () => {
+  it.each(["task", "goal"])("loads a new %s's client-space vocabulary without inventing work or accepting ambiguous scopes", async (kind) => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "client@example.test"}} as any);
     jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue({projectId: "nest", canCreateTags: false, selectedTagIds: [], tags: []});
-    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&engagementId=space"));
+    const response = await GET(new Request(`http://localhost/api/work/tags?entityKind=${kind}&engagementId=space`));
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(readNewCoachingTaskTagContext).toHaveBeenCalledWith(expect.objectContaining({actorUserId: "client", engagementId: "space"}));
     expect(readTaskTagContext).not.toHaveBeenCalled();
-    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&engagementId=space&entityId=task"))).status).toBe(400);
+    expect((await GET(new Request(`http://localhost/api/work/tags?entityKind=${kind}&engagementId=space&entityId=work`))).status).toBe(400);
     jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue(null);
-    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&engagementId=private-space"))).status).toBe(404);
+    expect((await GET(new Request(`http://localhost/api/work/tags?entityKind=${kind}&engagementId=private-space`))).status).toBe(404);
   });
 
   it("rejects before database access when signed out", async () => {

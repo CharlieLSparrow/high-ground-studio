@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { CoachingWorkEditor } from "./coaching-work-editor";
 import { CoachingWorkCollection } from "./coaching-work-collection";
-import { TaskTagPicker, type TaskTagOption } from "./task-tag-picker";
+import { WorkTagPicker, type WorkTagOption } from "./work-tag-picker";
 
 export type CoachingEngagementWorkEntry = {
   id: string;
@@ -25,6 +25,7 @@ export type CoachingEngagementWorkEntry = {
   title: string | null;
   body: string | null;
   sourceHref?: string | null;
+  sourceKind?: "conversation" | "recording" | null;
   tags?: Array<{ id: string; label: string; hexColor?: string | null; isActive?: boolean }>;
   status: string | null;
   owner: { id: string; label: string } | null;
@@ -54,6 +55,11 @@ function activeStatus(entry: CoachingEngagementWorkEntry) {
 
 function statusLabel(value: string | null) {
   return (value || "saved").toLowerCase().replaceAll("_", " ");
+}
+
+function sourceLabel(entry: CoachingEngagementWorkEntry) {
+  return entry.sourceKind === "conversation" ? "From conversation"
+    : entry.sourceKind === "recording" ? "From recording" : "View source";
 }
 
 function entryIcon(kind: CoachingEngagementWorkEntry["kind"]) {
@@ -97,6 +103,7 @@ function CoachingEngagementWorkspaceContent({
   const [refreshing, setRefreshing] = useState(false);
   const refreshController = useRef<AbortController | null>(null);
   const mutationRevision = useRef(0);
+  const editRequests = useRef(new Map<string, {fingerprint: string; body: string}>());
   const workspace = useRef<HTMLElement>(null);
   const defaultOwner =
     members.find((member) => member.role === "CLIENT")?.id ||
@@ -106,7 +113,7 @@ function CoachingEngagementWorkspaceContent({
   const [entries, setEntries] = useState(initialEntries);
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<CoachingWorkTag | null>(null);
-  const [createTags, setCreateTags] = useState<TaskTagOption[]>([]);
+  const [createTags, setCreateTags] = useState<WorkTagOption[]>([]);
   const [createTagPending, setCreateTagPending] = useState(false);
   const searchRef = useRef("");
   const [nextCursor, setNextCursor] = useState(initialPage?.nextCursor ?? null);
@@ -362,7 +369,7 @@ function CoachingEngagementWorkspaceContent({
         ownerUserId: String(formData.get("ownerUserId") || defaultOwner),
         targetAt: String(formData.get("targetAt") || ""),
         visibility: String(formData.get("visibility") || "SHARED"),
-        ...(formData.get("kind") === "TASK" ? {tags: {tagIds: createTags.map(tag => tag.id).sort()}} : {}),
+        ...(["TASK", "GOAL"].includes(String(formData.get("kind"))) ? {tags: {tagIds: createTags.map(tag => tag.id).sort()}} : {}),
       };
       const fingerprint = JSON.stringify(values);
       // A lost response does not mean the server failed to save. Retry the
@@ -428,7 +435,7 @@ function CoachingEngagementWorkspaceContent({
       targetAt?: string;
       visibility?: string;
       status?: string;
-      tags?: TaskTagOption[];
+      tags?: WorkTagOption[];
     },
   ) {
     if (!beginOperation(entry.id)) return null;
@@ -436,25 +443,35 @@ function CoachingEngagementWorkspaceContent({
     setNotice(null);
     setLastRemoved(null);
     try {
+      const changes = {
+        id: entry.id,
+        kind: entry.kind,
+        title: values.title ?? entry.title ?? "",
+        body: values.body ?? entry.body ?? "",
+        ownerUserId: values.ownerUserId ?? entry.owner?.id ?? currentUserId,
+        targetAt: values.targetAt ?? entry.dueAt ?? "",
+        visibility: values.visibility ?? entry.visibility,
+        status: values.status ?? entry.status,
+        expectedUpdatedAt: entry.updatedAt,
+        ...(entry.kind !== "NOTE" && values.tags
+          && JSON.stringify(values.tags.map(tag => tag.id).sort()) !== JSON.stringify((entry.tags ?? []).map(tag => tag.id).sort())
+          ? {tags: {tagIds: values.tags.map(tag => tag.id).sort()}} : {}),
+      };
+      const fingerprint = JSON.stringify(changes);
+      let body = fingerprint;
+      if (entry.kind !== "NOTE") {
+        // An uncertain response must retry the same command, not create a new edit.
+        const previous = editRequests.current.get(entry.id);
+        body = previous?.fingerprint === fingerprint ? previous.body
+          : JSON.stringify({...changes, clientRequestId: crypto.randomUUID()});
+        editRequests.current.set(entry.id, {fingerprint, body});
+      }
       const response = await fetch(
         `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            id: entry.id,
-            kind: entry.kind,
-            title: values.title ?? entry.title ?? "",
-            body: values.body ?? entry.body ?? "",
-            ownerUserId: values.ownerUserId ?? entry.owner?.id ?? currentUserId,
-            targetAt: values.targetAt ?? entry.dueAt ?? "",
-            visibility: values.visibility ?? entry.visibility,
-            status: values.status ?? entry.status,
-            expectedUpdatedAt: entry.updatedAt,
-            ...(entry.kind === "TASK" && values.tags
-              && JSON.stringify(values.tags.map(tag => tag.id).sort()) !== JSON.stringify((entry.tags ?? []).map(tag => tag.id).sort())
-              ? {tags: {tagIds: values.tags.map(tag => tag.id).sort()}} : {}),
-          }),
+          body,
         },
       );
       const payload = (await response.json()) as {
@@ -463,9 +480,11 @@ function CoachingEngagementWorkspaceContent({
         entry?: CoachingEngagementWorkEntry;
       };
       if (!response.ok || !payload.ok || !payload.entry) {
+        if (response.status >= 400 && response.status < 500) editRequests.current.delete(entry.id);
         needsRefresh = [401, 403, 404, 409].includes(response.status);
         throw new Error(payload.error || "The coaching work was not updated.");
       }
+      editRequests.current.delete(entry.id);
       replaceEntry(payload.entry);
       setNotice(`${payload.entry.title || "Item"} is up to date.`);
       return payload.entry;
@@ -742,7 +761,7 @@ function CoachingEngagementWorkspaceContent({
                 </span>
               </label>
             ) : null}
-            {createKind === "TASK" && <TaskTagPicker engagementId={engagementId} selected={createTags}
+            {createKind !== "NOTE" && <WorkTagPicker entityKind={createKind === "GOAL" ? "goal" : "task"} engagementId={engagementId} selected={createTags}
               onChange={setCreateTags} disabled={busyIds.has("create")} onPendingChange={setCreateTagPending} />}
             <button
               type="submit"
@@ -807,9 +826,9 @@ function CoachingEngagementWorkspaceContent({
                       <Link
                         href={entry.sourceHref}
                         className="mt-2 inline-flex min-h-11 items-center rounded-md px-1 text-sm font-bold text-[#41624b] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                        aria-label={`From recording: ${entry.title || "Untitled note"}`}
+                        aria-label={`${sourceLabel(entry)}: ${entry.title || "Untitled note"}`}
                       >
-                        From recording
+                        {sourceLabel(entry)}
                       </Link>
                     ) : null}
                     <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-[#8a7354]">
