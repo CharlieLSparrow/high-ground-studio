@@ -367,6 +367,7 @@ export function BrowserSourceRecorder({
   const [roomStatus, setRoomStatus] = useState<string | null>(null);
   const [canControlRoom, setCanControlRoom] = useState(false);
   const [vaultAvailable, setVaultAvailable] = useState(false);
+  const [vaultChecked, setVaultChecked] = useState(false);
   const [vaultPersistent, setVaultPersistent] = useState(false);
   const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
   const [usageBytes, setUsageBytes] = useState<number | null>(null);
@@ -711,6 +712,7 @@ export function BrowserSourceRecorder({
         const savedChoiceCoversDefault =
           sessionKind === "episode" ? savedVideoConsent : savedAudioConsent;
         setVaultAvailable(vault.available);
+        setVaultChecked(true);
         setVaultPersistent(vault.persistent);
         setQuotaBytes(vault.quotaBytes);
         setUsageBytes(vault.usageBytes);
@@ -3195,7 +3197,7 @@ export function BrowserSourceRecorder({
             {directiveError}
           </p>
         ) : null}
-        {status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? (
+        {vaultChecked && status !== "checking" && status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? (
           <p
             data-testid="recording-readiness-message"
             role="status"
@@ -3292,24 +3294,26 @@ export function BrowserSourceRecorder({
         <details
           className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]"
           open={
-            !vaultAvailable ||
+            (vaultChecked && !vaultAvailable) ||
             Boolean(preflightStorageIssue) ||
             Boolean(operationalIssue)
           }
         >
           <summary className="cursor-pointer">
             Recording health ·{" "}
-            {vaultAvailable && !preflightStorageIssue && !operationalIssue
+            {!vaultChecked
+              ? status === "error" ? "Not checked" : "Checking…"
+              : vaultAvailable && !preflightStorageIssue && !operationalIssue
               ? "Ready"
               : "Needs attention"}
           </summary>
-          <p className="mt-2">
+          {vaultChecked ? <p className="mt-2">
             On-device protection {vaultAvailable ? "ready" : "unavailable"} ·{" "}
             {vaultPersistent
               ? "persistent storage granted"
               : "browser-managed retention"}{" "}
             · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}
-          </p>
+          </p> : <p className="mt-2">Recording setup has not finished yet.</p>}
           {operationalIssue?.technicalDetail ? (
             <p
               className="mt-2 break-words font-mono font-medium"

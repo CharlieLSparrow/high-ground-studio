@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { BrowserSourceRecorder } from "./browser-source-recorder";
 import type { BrowserCaptureStudioHandoff } from "@/lib/browser-capture-studio-handoff";
 import { issueBrowserRecordingDirective } from "@/lib/browser-recording-directive";
+import { browserSourceVaultReadiness } from "@/lib/browser-source-vault";
 
 let mockHandoff: BrowserCaptureStudioHandoff | null = null;
 jest.mock("@/lib/browser-capture-studio-handoff", () => ({
@@ -66,6 +67,49 @@ describe("browser recorder before recording", () => {
     expect(screen.queryByTestId("recording-readiness-message")).not.toBeInTheDocument();
     expect(screen.queryByText("Recording processing")).not.toBeInTheDocument();
     expect(screen.queryByText(/Allow recording above/)).not.toBeInTheDocument();
+  });
+
+  it("shows preparation rather than a storage failure while readiness is still loading", async () => {
+    let finishStorageCheck!: (value: Awaited<ReturnType<typeof browserSourceVaultReadiness>>) => void;
+    jest.mocked(browserSourceVaultReadiness).mockImplementationOnce(() => new Promise((resolve) => {
+      finishStorageCheck = resolve;
+    }));
+    render(<BrowserSourceRecorder {...props} />);
+    expect(screen.getByText("Getting recording ready…")).toBeInTheDocument();
+    expect(screen.getByText(/Recording health · Checking/)).toBeInTheDocument();
+    expect(screen.queryByText(/Needs attention/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/On-device protection unavailable/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("recording-readiness-message")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
+    await act(async () => {
+      finishStorageCheck({ available: true, persistent: true, quotaBytes: 10 ** 10, usageBytes: 0 });
+    });
+    expect(await screen.findByRole("button", { name: "Allow recording" })).toBeEnabled();
+    expect(screen.getByText(/Recording health · Ready/)).toBeInTheDocument();
+  });
+
+  it("still explains a confirmed storage failure and does not offer recording", async () => {
+    jest.mocked(browserSourceVaultReadiness).mockResolvedValueOnce({
+      available: false, persistent: false, quotaBytes: null, usageBytes: null,
+    });
+    render(<BrowserSourceRecorder {...props} />);
+    expect(await screen.findByTestId("recording-readiness-message")).toHaveTextContent(/storage.*unavailable/i);
+    expect(screen.getByText(/Recording health · Needs attention/)).toBeInTheDocument();
+    expect(screen.getByText(/Recording is not supported in this browser/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
+  });
+
+  it("does not mislabel a failed session setup request as unavailable browser storage", async () => {
+    const normalFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => url.includes("/consent")
+      ? Promise.resolve({ ok: false, status: 403, json: async () => ({ error: "This session is not available to your account." }) })
+      : normalFetch(url, init));
+    render(<BrowserSourceRecorder {...props} />);
+    expect(await screen.findByText("This session is not available to your account.")).toBeInTheDocument();
+    expect(screen.getByText(/Recording health · Not checked/)).toBeInTheDocument();
+    expect(screen.queryByText(/On-device protection unavailable/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("recording-readiness-message")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
   });
 
   it("does not silently turn off a new participant's transcript choice during background refresh", async () => {
