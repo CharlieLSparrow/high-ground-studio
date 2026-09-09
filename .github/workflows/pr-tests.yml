@@ -163,6 +163,7 @@ jobs:
             src/lib/server/session-transcript-analysis-job.integration.test.ts
             src/lib/server/capture-transcript-follow-through-worker.integration.test.ts
             src/lib/server/work-queue-task-access.integration.test.ts
+            src/lib/server/shared-goal-tags.integration.test.ts
             src/lib/server/task-recurrence.integration.test.ts
             'src/app/(app)/work/creation.integration.test.ts'
             src/app/api/mobile/capture/transcripts/packet/transcript-work.integration.test.ts

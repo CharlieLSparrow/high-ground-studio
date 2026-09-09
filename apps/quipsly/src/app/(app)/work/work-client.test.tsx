@@ -52,6 +52,39 @@ const snapshot: WorkSnapshot = {
 describe("Work Queue interactions", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it.each(["task", "goal"] as const)("keeps shared colors and retained archived tags when editing %s tags", async entityKind => {
+    const user = userEvent.setup();
+    const archived = { id: "earlier", label: "Earlier focus", slug: "earlier", category: "topic", projectId: "project-1",
+      hexColor: "#506b46", isActive: false, archivedAt: "2026-09-08T00:00:00.000Z", updatedAt: "2026-09-08T00:00:00.000Z", aliases: [] };
+    const active = { ...archived, id: "research", label: "Research", slug: "research", isActive: true, archivedAt: null, hexColor: "#805a3b" };
+    const unusedArchived = { ...archived, id: "retired", label: "Retired elsewhere" };
+    const project = { id: "project-1", name: "Shared coaching", slug: "shared-coaching", role: "EDITOR", canWrite: true, tags: [archived, active, unusedArchived] };
+    const goal = { id: "goal-1", title: "Prepare together", description: null, status: "ACTIVE" as const,
+      targetAt: null, achievedAt: null, progressPercent: null, progressNote: null, provenance: "Canonical goal" as const,
+      updatedAt: "2026-09-09T00:00:00.000Z", roomId: null, sessionTitle: null, sessionStart: null,
+      project, tags: [archived], canEdit: true, canManageTags: true, parent: null, childCount: 0, linkedTasks: [], sourceAnchor: null };
+    let finish!: (value: never) => void;
+    jest.mocked(replaceWorkTags).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    render(<WorkClient initialSnapshot={{ ...snapshot, tasks: [{ ...snapshot.tasks[0]!, project, tags: [archived] }], goals: [goal] }}
+      initialView={entityKind === "goal" ? "goals" : "tasks"} projectOptions={[project]} />);
+    const card = document.getElementById(`work-${entityKind}-${entityKind}-1`)!;
+    await user.click(within(card).getByText("Edit Shared coaching tags"));
+    const retained = screen.getByRole("checkbox", { name: "Earlier focus (archived)" });
+    const research = screen.getByRole("checkbox", { name: "Research" });
+    expect(retained).toBeChecked();
+    expect(retained.closest("label")).toHaveStyle({ backgroundColor: "#506b46" });
+    expect(research.closest("label")).toHaveStyle({ backgroundColor: "#805a3b" });
+    expect(screen.queryByRole("checkbox", { name: /Retired elsewhere/ })).not.toBeInTheDocument();
+    await user.click(research);
+    await user.click(screen.getByRole("button", { name: "Save tags" }));
+    expect(replaceWorkTags).toHaveBeenCalledWith(expect.objectContaining({ entityKind, tagIds: ["earlier", "research"] }));
+    expect(screen.getByRole("button", { name: "Create & apply" })).toBeDisabled();
+    expect(retained).toBeDisabled();
+    finish({ ok: true } as never);
+    await screen.findByText("Tags saved.");
+    expect(refresh).toHaveBeenCalled();
+  });
+
   it("starts with tasks and preserves writing when switching optional work views", async () => {
     const user = userEvent.setup();
     render(<WorkClient initialSnapshot={snapshot} />);

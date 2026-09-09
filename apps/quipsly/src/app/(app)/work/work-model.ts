@@ -546,7 +546,8 @@ export function buildWorkSnapshot(input: {
         tags: (goal.tagLinks ?? []).map((link) => link.tag),
         canEdit: Boolean(input.actorUserId)
           && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true),
-        canManageTags: Boolean(input.actorUserId) && goal.ownerUserId === input.actorUserId,
+        canManageTags: Boolean(input.actorUserId)
+          && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true),
         parent: goal.parent ? { id: goal.parent.id, title: goal.parent.title } : null,
         childCount: goal._count?.children ?? 0,
         linkedTasks: (goal.taskLinks ?? []).map((link) => ({ relationship: link.relationship, task: link.actionItem })),

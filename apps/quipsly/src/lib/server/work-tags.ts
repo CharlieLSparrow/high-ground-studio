@@ -7,7 +7,7 @@ import { listProjectsVisibleToEmail } from "./home-nest";
 import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 import { personalOrSharedSessionTaskAccessWhere, nestMemberProjectWhere } from "./task-access";
 import { activeCoachingWorkWhere } from "./coaching-work-page";
-import { activeCoachingEngagementParticipantWhere, sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
+import { activeCoachingEngagementParticipantWhere, personalOrSharedCoachingGoalAccessWhere, sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
 import { coachingEngagementAccessWhere } from "./coaching-engagement";
 
 export { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
@@ -427,7 +427,7 @@ function entityWhere(
         { OR: [{ engagementId: null }, { engagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } }] },
       ] }
     : entityKind === "goal"
-      ? { id: entityId, ownerUserId: actorUserId }
+      ? { id: entityId, OR: personalOrSharedCoachingGoalAccessWhere(actorUserId, "write") }
       : entityKind === "note"
         ? {
             id: entityId,
@@ -483,6 +483,7 @@ function entitySourceField(entityKind: WorkTagEntityKind) {
 
 function entityMutationLabel(entityKind: WorkTagEntityKind) {
   if (entityKind === "task") return "task editor";
+  if (entityKind === "goal") return "goal editor";
   if (entityKind === "document") return "Nest editor";
   if (entityKind === "note") return "note author or Nest editor";
   return `${entityKind} owner`;
@@ -1126,7 +1127,7 @@ export async function replaceWorkEntityTags(input: {
     const update = input.entityKind === "task"
       ? await tx.actionItem.updateMany({ where: { ...entityWhere("task", entityId, actorUserId, actorEmail), projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
       : input.entityKind === "goal"
-        ? await tx.goal.updateMany({ where: { id: entityId, ownerUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+        ? await tx.goal.updateMany({ where: { ...entityWhere("goal", entityId, actorUserId, actorEmail), projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
         : input.entityKind === "note"
           ? await tx.coachingNote.updateMany({ where: { ...entityWhere("note", entityId, actorUserId, actorEmail), room: { projectId: entity.projectId }, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
           : await tx.callRoom.updateMany({ where: { id: entityId, createdByUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { metadataJson: { ...safeRecord(entity.metadataJson), lastTagReceipt: receipt } } });

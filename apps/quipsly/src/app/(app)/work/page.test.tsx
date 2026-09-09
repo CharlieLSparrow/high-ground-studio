@@ -85,7 +85,7 @@ describe("Work Queue page truth states", () => {
     render(await WorkPage({}));
     expect(screen.getByText("Persisted work queue")).toBeInTheDocument();
     expect(jest.mocked(WorkClient).mock.calls[0]![0].initialSnapshot.goals).toEqual([
-      expect.objectContaining({ id: "goal", canEdit: editable }),
+      expect.objectContaining({ id: "goal", canEdit: editable, canManageTags: editable }),
     ]);
     expect(prisma.coachingBooking.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: coachingBookingParticipantWhere("member") }));
     expect(prisma.callRoom.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: sessionActorAccessWhere({ id: "member" }) }));

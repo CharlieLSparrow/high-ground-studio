@@ -89,11 +89,11 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
   const [message, setMessage] = useState<string | null>(null);
   if (!project || !canManage || !project.canWrite) return <TagChips tags={tags} />;
   const selectedIds = new Set(tags.map((tag) => tag.id));
-  const activeTags = project.tags.filter((tag) => tag.isActive !== false);
+  const activeTags = project.tags.filter((tag) => tag.isActive !== false || selectedIds.has(tag.id));
   return <div className="mt-3">
     <TagChips tags={tags} />
-    <details className="mt-2 rounded-xl border border-sky-100 bg-sky-50/40 p-3">
-      <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-sky-900"><Tags className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Edit {project.name} tags</summary>
+    <details className="mt-2 rounded-xl border border-border bg-card p-3">
+      <summary className="min-h-8 cursor-pointer text-sm font-semibold text-foreground"><Tags className="mr-1.5 inline h-4 w-4" aria-hidden="true" />Edit {project.name} tags</summary>
       {activeTags.length ? <form key={`${updatedAt}-${tags.map((tag) => tag.id).join("-")}`} action={(formData) => {
         setMessage(null);
         startTransition(async () => {
@@ -103,9 +103,9 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
           onRefresh();
         });
       }} className="mt-3 space-y-3">
-        <fieldset className="flex flex-wrap gap-2"><legend className="sr-only">Choose tags</legend>{activeTags.map((tag) => <label key={tag.id} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-bold text-sky-950"><input type="checkbox" name="tagId" value={tag.id} defaultChecked={selectedIds.has(tag.id)} />{tag.label}</label>)}</fieldset>
-        <button type="submit" disabled={pending} className="rounded-full bg-sky-800 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">{pending ? "Saving…" : "Save tags"}</button>
-      </form> : <p className="mt-2 text-xs font-semibold text-sky-900">This Nest has no active tags yet. Create the first reusable tag below.</p>}
+        <fieldset disabled={pending || creating} className="flex flex-wrap gap-2"><legend className="sr-only">Choose tags</legend>{activeTags.map((tag) => <label key={tag.id} style={tagChipColors(tag.hexColor)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-border bg-muted px-3 py-2 text-sm font-semibold text-foreground"><input type="checkbox" name="tagId" value={tag.id} defaultChecked={selectedIds.has(tag.id)} />{tag.label}{tag.isActive === false ? " (archived)" : ""}</label>)}</fieldset>
+        <button type="submit" disabled={pending || creating} className="min-h-11 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : "Save tags"}</button>
+      </form> : <p className="mt-2 text-sm text-muted-foreground">This Nest has no active tags yet. Create the first reusable tag below.</p>}
       <form action={(formData) => {
         setMessage(null);
         startCreating(async () => {
@@ -121,15 +121,15 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
             : `Existing #${result.tag.label} was applied here; no duplicate tag was created.`);
           onRefresh();
         });
-      }} className="mt-4 border-t border-sky-100 pt-4">
-        <label htmlFor={`new-tag-${entityKind}-${entityId}`} className="block text-[10px] font-black uppercase tracking-wide text-sky-900">New reusable tag</label>
+      }} className="mt-4 border-t border-border pt-4">
+        <label htmlFor={`new-tag-${entityKind}-${entityId}`} className="block text-sm font-semibold text-foreground">New reusable tag</label>
         <div className="mt-1 flex flex-col gap-2 sm:flex-row">
-          <input id={`new-tag-${entityKind}-${entityId}`} name="newTagLabel" required maxLength={80} placeholder="e.g. Product development" aria-describedby={`new-tag-help-${entityKind}-${entityId}`} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-sky-950" />
-          <button type="submit" disabled={creating} className="min-h-11 rounded-full border border-sky-700 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-sky-900 disabled:opacity-50">{creating ? "Creating…" : "Create & apply"}</button>
+          <input id={`new-tag-${entityKind}-${entityId}`} name="newTagLabel" disabled={pending || creating} required maxLength={80} placeholder="e.g. Product development" aria-describedby={`new-tag-help-${entityKind}-${entityId}`} className="min-h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm text-foreground" />
+          <button type="submit" disabled={creating || pending} className="min-h-11 rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-50">{creating ? "Creating…" : "Create & apply"}</button>
         </div>
-        <p id={`new-tag-help-${entityKind}-${entityId}`} className="mt-2 text-[11px] font-semibold leading-5 text-sky-800">Reuse this tag across {project.name}.</p>
+        <p id={`new-tag-help-${entityKind}-${entityId}`} className="mt-2 text-xs text-muted-foreground">Reuse this tag across {project.name}.</p>
       </form>
-      {message && <p role="status" className="mt-2 text-xs font-bold text-sky-950">{message}</p>}
+      {message && <p role="status" className="mt-2 text-sm text-muted-foreground">{message}</p>}
     </details>
   </div>;
 }
