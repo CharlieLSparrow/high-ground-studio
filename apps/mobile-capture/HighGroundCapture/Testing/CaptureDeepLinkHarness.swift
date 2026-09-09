@@ -36,6 +36,23 @@ struct CaptureDeepLinkHarness {
         }
         let recap = CaptureTranscriptWorkLink(href: "/sessions/room-1?mode=transcript")
         precondition(recap?.roomID == "room-1" && recap?.recordingAssetID == nil && recap?.sourceSeconds == nil)
+        let conversationHref = "/coaching/engagements/space-1?message=chat_idea-42#relationship-conversation"
+        precondition(CaptureConversationWorkLink(href: conversationHref, engagementID: "space-1")?.messageID == "chat_idea-42")
+        precondition(CaptureConversationWorkLink(href: conversationHref, engagementID: "other-space") == nil,
+                     "A task cannot route a client into a different relationship's conversation.")
+        for href in [
+            "https://evil.example" + conversationHref, "//evil.example" + conversationHref,
+            "/coaching/engagements/space-1?message=#relationship-conversation",
+            "/coaching/engagements/space-1?message=one&message=two#relationship-conversation",
+            "/coaching/engagements/space-1?message=one&token=secret#relationship-conversation",
+            "/coaching/engagements/space-1?message=one%2Ftwo#relationship-conversation",
+            "/coaching/engagements/space-1?message=%20one#relationship-conversation",
+            "/coaching/engagements/space-1?message=one#wrong",
+            "/coaching/engagements/space-1?message=\(String(repeating: "a", count: 241))#relationship-conversation",
+        ] {
+            precondition(CaptureConversationWorkLink(href: href, engagementID: "space-1") == nil,
+                         "Only a canonical source message may choose the destination: \(href)")
+        }
         let workspaceJSON = #"""
         {"id":"space-1","title":"Our coaching space","status":"ACTIVE","canWrite":false,
          "currentUserId":"client-1","members":[],"entries":[

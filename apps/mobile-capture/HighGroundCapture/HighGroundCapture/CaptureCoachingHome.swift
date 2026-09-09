@@ -362,7 +362,9 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                     body: "Return to what we discussed, then choose the next step.", status: "OPEN",
                     owner: nil, visibility: "SHARED", dueAt: nil, canEdit: true,
                     canChangeVisibility: false, createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z",
-                    sourceHref: "/sessions/room-preview-coaching-ready?mode=transcript&source=preview-recording-asset&at=3.66",
+                    sourceHref: ProcessInfo.processInfo.arguments.contains("--capture-conversation-history-preview")
+                        ? "/coaching/engagements/\(engagementID)?message=preview-work-idea#relationship-conversation"
+                        : "/sessions/room-preview-coaching-ready?mode=transcript&source=preview-recording-asset&at=3.66",
                     tags: [
                         MobileWorkTagLabel(id: "research", label: "Research and source material", hexColor: "#23543a", isActive: true),
                         MobileWorkTagLabel(id: "next", label: "Next conversation", hexColor: "#f2e4c5", isActive: true),
@@ -3337,7 +3339,11 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
     @State private var workSearch = ""
     @State private var selectedTag: MobileWorkTagLabel?
-    @State private var showsConversation = false
+    private struct ConversationDestination: Identifiable {
+        let messageID: String?
+        var id: String { messageID ?? "latest" }
+    }
+    @State private var conversationDestination: ConversationDestination?
 
     init(
         engagement: MobileCaptureCoachingEngagement,
@@ -3468,7 +3474,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showsConversation = true
+                    conversationDestination = ConversationDestination(messageID: nil)
                 } label: {
                     Label("Conversation", systemImage: "bubble.left.and.bubble.right")
                 }
@@ -3513,12 +3519,13 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             }
         }
         .onDisappear { conversation.stopPolling() }
-        .sheet(isPresented: $showsConversation) {
+        .sheet(item: $conversationDestination, onDismiss: { conversation.clearMessageFocus() }) { destination in
             MobileEpisodeChatThread(
                 client: conversation,
                 target: .engagement(engagement),
                 previewOnly: previewOnly,
-                onWorkChanged: { if !previewOnly { await client.load(force: true) } }
+                onWorkChanged: { if !previewOnly { await client.load(force: true) } },
+                focusMessageID: destination.messageID
             )
         }
         .sheet(item: $newWorkDraft) { draft in
@@ -4009,7 +4016,19 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            if let source = entry.sourceLink {
+            if let href = entry.sourceHref,
+               let source = CaptureConversationWorkLink(href: href, engagementID: engagement.id) {
+                Button {
+                    conversationDestination = ConversationDestination(messageID: source.messageID)
+                } label: {
+                    Label("From conversation", systemImage: "bubble.left.and.bubble.right")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .tint(CapturePalette.accent)
+                .accessibilityLabel("From conversation: \(entry.displayTitle)")
+                .accessibilityIdentifier("CaptureCoachingWorkSource_\(entry.id)")
+            } else if let source = entry.sourceLink {
                 NavigationLink {
                     CaptureTranscriptReviewView(
                         roomID: source.roomID,

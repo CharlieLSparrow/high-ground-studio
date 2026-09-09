@@ -211,6 +211,20 @@ final class MobileEpisodeChatClient: ObservableObject {
     private var accountCancellable: AnyCancellable?
     private var pollingDisabledForMissingThread = false
     private var lastReceivedLiveMessageID: String?
+    private var focusedMessageID: String?
+
+    func focusMessage(_ messageID: String, engagement: MobileCaptureCoachingEngagement) async {
+        guard CaptureConversationWorkLink(
+            href: "/coaching/engagements/\(engagement.id)?message=\(messageID)#relationship-conversation",
+            engagementID: engagement.id)?.messageID == messageID,
+            let context = context(for: engagement) else { return }
+        invalidateOlderReads()
+        await load(context: context, forceRefresh: true, quietly: false, focusMessageID: messageID)
+    }
+
+    func clearMessageFocus() {
+        focusedMessageID = nil
+    }
 
     init(scope: MobileCollaborationChatScope = .episode) {
         self.scope = scope
@@ -298,8 +312,15 @@ final class MobileEpisodeChatClient: ObservableObject {
         message.linkedTasks = [NestChatLinkedTask(id: "preview-linked-task", title: "Review the final cut", status: "OPEN",
             tags: [MobileWorkTagLabel(id: "research", label: "Research and source material", hexColor: "#23543a", isActive: true)])]
         messages = [message]
+        if ProcessInfo.processInfo.arguments.contains("--capture-conversation-history-preview") {
+            messages += (1...55).map { index in
+                NestChatMessage(id: "preview-newer-\(index)", authorEmail: "coach@example.test",
+                    authorName: "Charlie", body: "Later conversation update \(index).",
+                    gifUrl: nil, createdAt: "2026-09-09T12:00:00Z")
+            }
+        }
         canEdit = true
-        statusMessage = "1 message"
+        statusMessage = "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
     }
 
     func loadPreview(project: MobileCaptureWorkProject) {
@@ -376,7 +397,8 @@ final class MobileEpisodeChatClient: ObservableObject {
     private func load(
         context: Context,
         forceRefresh: Bool,
-        quietly: Bool
+        quietly: Bool,
+        focusMessageID: String? = nil
     ) async {
         if currentContextKey != context.key {
             reset()
@@ -389,6 +411,7 @@ final class MobileEpisodeChatClient: ObservableObject {
             }
             _ = restoreProtectedCache(context: context)
         }
+        if let focusMessageID { focusedMessageID = focusMessageID }
         if forceRefresh {
             pollingDisabledForMissingThread = false
         } else if quietly, pollingDisabledForMissingThread {
@@ -427,6 +450,9 @@ final class MobileEpisodeChatClient: ObservableObject {
                     value: scope == .episode ? context.scopeKey : context.threadKey
                 ),
             ]
+            if let focusedMessageID {
+                components?.queryItems?.append(URLQueryItem(name: "message", value: focusedMessageID))
+            }
             guard let url = components?.url else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
@@ -869,6 +895,7 @@ final class MobileEpisodeChatClient: ObservableObject {
         pollingDisabledForMissingThread = false
         outboundLiveHint = nil
         lastReceivedLiveMessageID = nil
+        focusedMessageID = nil
         updatingTaskIDs = []
         taskErrors = [:]
     }
@@ -1258,21 +1285,26 @@ struct MobileEpisodeChatThread: View {
     var onWorkChanged: @MainActor @Sendable () async -> Void = {}
     var nestTags: [MobileWorkTagLabel] = []
     var onOpenNestTask: (String) -> Void = { _ in }
+    let focusMessageID: String?
     @Environment(\.dismiss) private var dismiss
     @State private var workAction: MobileConversationWorkAction?
     @State private var workSourceMessageID: String?
     @State private var workReturnRevision = 0
+    @State private var didFocusSource = false
+    @State private var sourceLoadFinished = false
     @FocusState private var composerIsFocused: Bool
 
     init(client: MobileEpisodeChatClient, target: MobileCollaborationChatTarget, previewOnly: Bool,
          onWorkChanged: @escaping @MainActor @Sendable () async -> Void = {},
-         nestTags: [MobileWorkTagLabel] = [], onOpenNestTask: @escaping (String) -> Void = { _ in }) {
+         nestTags: [MobileWorkTagLabel] = [], onOpenNestTask: @escaping (String) -> Void = { _ in },
+         focusMessageID: String? = nil) {
         self.client = client
         self.target = target
         self.previewOnly = previewOnly
         self.onWorkChanged = onWorkChanged
         self.nestTags = nestTags
         self.onOpenNestTask = onOpenNestTask
+        self.focusMessageID = focusMessageID
     }
 
     var body: some View {
@@ -1282,6 +1314,12 @@ struct MobileEpisodeChatThread: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
                             if client.isUsingProtectedCache { boundary }
+                            if let focusMessageID, sourceLoadFinished, !client.isLoading,
+                               !client.messages.contains(where: { $0.id == focusMessageID }) {
+                                Text("The source message isn't available right now. You can still use this conversation or try refreshing.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("CaptureConversationSourceUnavailable")
+                            }
                             if client.isLoading && client.messages.isEmpty {
                                 ProgressView("Loading conversation…")
                                     .frame(maxWidth: .infinity)
@@ -1295,14 +1333,23 @@ struct MobileEpisodeChatThread: View {
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .onAppear {
-                        if let last = client.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                        scrollConversation(proxy)
                     }
                     .onChange(of: workReturnRevision) {
                         if let workSourceMessageID { proxy.scrollTo(workSourceMessageID, anchor: .center) }
                     }
                     .onChange(of: client.messages.count) {
-                        guard let last = client.messages.last else { return }
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        scrollConversation(proxy)
+                    }
+                    .onChange(of: client.messages.contains(where: { $0.id == focusMessageID })) {
+                        scrollConversation(proxy)
+                    }
+                    .onChange(of: client.outboundLiveHint?.messageId) {
+                        // Reading an old source must not jump on incoming polls,
+                        // but a reply you just sent should be visible immediately.
+                        if let messageID = client.outboundLiveHint?.messageId {
+                            proxy.scrollTo(messageID, anchor: .bottom)
+                        }
                     }
                 }
 
@@ -1334,6 +1381,12 @@ struct MobileEpisodeChatThread: View {
             }
         }
         .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Thread")
+        .task(id: focusMessageID) {
+            if let focusMessageID, !previewOnly, case let .engagement(engagement) = target {
+                await client.focusMessage(focusMessageID, engagement: engagement)
+            }
+            sourceLoadFinished = true
+        }
         .sheet(item: $workAction, onDismiss: {
             guard !previewOnly else { return }
             // Return to the source when the editor closes, not after network
@@ -1359,6 +1412,16 @@ struct MobileEpisodeChatThread: View {
         }
     }
 
+    private func scrollConversation(_ proxy: ScrollViewProxy) {
+        if let focusMessageID {
+            guard !didFocusSource, client.messages.contains(where: { $0.id == focusMessageID }) else { return }
+            proxy.scrollTo(focusMessageID, anchor: .center)
+            didFocusSource = true
+        } else if let last = client.messages.last {
+            proxy.scrollTo(last.id, anchor: .bottom)
+        }
+    }
+
     private var boundary: some View {
         VStack(alignment: .leading, spacing: 5) {
             Label(
@@ -1381,6 +1444,11 @@ struct MobileEpisodeChatThread: View {
 
     private func messageCard(_ message: NestChatMessage) -> some View {
         VStack(alignment: .leading, spacing: 7) {
+            if message.id == focusMessageID {
+                Label("Source message", systemImage: "arrow.turn.down.right")
+                    .font(.caption.weight(.semibold)).foregroundStyle(CapturePalette.accent)
+                    .accessibilityIdentifier("CaptureConversationSourceMessage_\(message.id)")
+            }
             HStack(alignment: .firstTextBaseline) {
                 Text(message.authorName ?? message.authorEmail ?? "Collaborator")
                     .font(.subheadline.weight(.bold))

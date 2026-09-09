@@ -1891,6 +1891,49 @@ final class CaptureExperienceUITests: XCTestCase {
         exerciseCoachingGoalTags()
     }
 
+    func testCoachingTaskReturnsToOriginalConversationMessage() {
+        exerciseCoachingConversationSource()
+    }
+
+    func testCoachingTaskReturnsToOriginalConversationMessageOnRegularWidthIPad() {
+        exerciseCoachingConversationSource()
+    }
+
+    private func exerciseCoachingConversationSource() {
+        relaunchCoachingPreview(role: "coach", additionalArguments: [
+            "--capture-coaching-work-source-preview", "--capture-conversation-history-preview",
+        ])
+        openRootDestination("Home")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
+        reveal(relationship)
+        relationship.tap()
+        let source = app.buttons["CaptureCoachingWorkSource_preview-linked-task"]
+        reveal(source, searchAboveFirst: false)
+        XCTAssertTrue(source.isHittable)
+        XCTAssertEqual(source.label, "From conversation: Review the final cut")
+        source.tap()
+        let original = app.staticTexts["CaptureConversationSourceMessage_preview-work-idea"]
+        XCTAssertTrue(original.waitForExistence(timeout: 5))
+        XCTAssertTrue(original.isHittable, "The source opens in view even with 55 newer messages, without manual scrolling.")
+        XCTAssertTrue(app.buttons["CaptureConversationTask_preview-linked-task"].isHittable)
+        XCTAssertFalse(app.staticTexts["CaptureConversationSourceUnavailable"].exists)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "coaching-task-conversation-source.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
+        app.buttons["CaptureCoachingConversationToolbarButton"].tap()
+        let latest = app.otherElements["CaptureCoachingConversationMessage_preview-newer-55"]
+            .staticTexts["Later conversation update 55."]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        XCTAssertTrue(latest.isHittable, "Opening conversation normally returns to the latest messages, not the old source.")
+        app.buttons["Done"].tap()
+    }
+
     func testCoachingGoalDraftKeepsSharedTagsAndWritingTogetherOnRegularWidthIPad() {
         exerciseCoachingGoalTags()
     }
