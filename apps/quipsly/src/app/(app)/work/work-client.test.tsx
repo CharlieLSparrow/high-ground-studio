@@ -50,7 +50,9 @@ const snapshot: WorkSnapshot = {
 };
 
 describe("Work Queue interactions", () => {
-  beforeEach(() => jest.clearAllMocks());
+  // Reset implementations and queued one-shot replies too: a failed test must
+  // not feed its unused response into an unrelated task/goal scenario.
+  beforeEach(() => jest.resetAllMocks());
 
   it.each(["task", "goal"] as const)("lets a client tag a shared %s without a Nest grant, and retry a failed palette read", async entityKind => {
     const user = userEvent.setup();
@@ -154,11 +156,11 @@ describe("Work Queue interactions", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Could not save");
     expect(title).toHaveValue("Capture this before I forget");
     expect(title).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Retry save" }));
+    await user.click(await screen.findByRole("button", { name: "Retry save" }));
     await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(2));
     expect(createWorkTask).toHaveBeenNthCalledWith(2, jest.mocked(createWorkTask).mock.calls[0]![0]);
     await waitFor(() => expect(title).toHaveValue(""));
-    expect(title).toBeEnabled();
+    await waitFor(() => expect(title).toBeEnabled());
     await user.type(title, "A deliberately new task");
     await user.click(screen.getByRole("button", { name: "Add task" }));
     expect(jest.mocked(createWorkTask).mock.calls[2]![0].clientRequestId).not.toBe(jest.mocked(createWorkTask).mock.calls[0]![0].clientRequestId);
@@ -195,7 +197,7 @@ describe("Work Queue interactions", () => {
     await user.type(title, "First draft");
     await user.click(screen.getByRole("button", { name: "Add task" }));
     expect(await screen.findByRole("status")).toHaveTextContent("different Nest");
-    expect(title).toBeEnabled();
+    await waitFor(() => expect(title).toBeEnabled());
     await user.clear(title);
     await user.type(title, "Corrected draft");
     await user.click(screen.getByRole("button", { name: "Add task" }));

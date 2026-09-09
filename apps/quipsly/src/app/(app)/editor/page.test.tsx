@@ -581,7 +581,7 @@ describe("CloudEditor production truth UX", () => {
     fireEvent.timeUpdate(protectedSource);
     await user.click(screen.getByRole("checkbox", { name: /I listened inside this exact source range/i }));
     await user.click(screen.getByRole("button", { name: "Record proof-listen" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listened through the exact protected Capture recording/i);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Proof-listened through the exact protected Capture recording/i));
     expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Apply proposal" }));
