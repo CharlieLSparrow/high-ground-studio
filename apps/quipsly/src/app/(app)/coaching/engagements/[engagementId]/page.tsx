@@ -382,9 +382,13 @@ export default async function CoachingEngagementPage({
                       >
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div>
-                            <p className="font-black text-[#3d3122]">
-                              {room.title || "Coaching Session"}
-                            </p>
+                            <h3>
+                              <Link href={`/sessions/${encodeURIComponent(room.id)}?mode=overview`}
+                                aria-label={`Open session: ${room.title || "Coaching Session"}`}
+                                className="inline-flex min-h-11 items-center font-black text-[#3d3122] underline-offset-4 hover:underline focus-visible:underline">
+                                {room.title || "Coaching Session"}
+                              </Link>
+                            </h3>
                             <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#8a7354]">
                               {room.scheduledStart
                                 ? <LocalDateTime value={room.scheduledStart.toISOString()} mode="appointment" />

@@ -82,6 +82,16 @@ describe("client space page behavior", () => {
     expect(screen.getAllByRole("link", { name: /Prepare session/i }).length).toBeGreaterThan(0);
   });
 
+  it.each(["PLANNED", "OPEN", "RECORDING", "ENDED"])("opens a %s session's work independently of joining or reviewing its call", async status => {
+    const room = {id: "my-session", title: "Our next conversation", status, scheduledStart: new Date("2026-09-10T16:00:00Z"), scheduledEnd: null,
+      createdAt: new Date(), transcriptJobs: [], outputs: [], _count: {recordingAssets: 0}};
+    arrange("CLIENT", false, {callRooms: [room]});
+    render(await Page({params}));
+    expect(screen.getByRole("link", {name: "Open session: Our next conversation"}))
+      .toHaveAttribute("href", "/sessions/my-session?mode=overview");
+    expect(screen.queryByRole("link", {name: "Schedule session"})).not.toBeInTheDocument();
+  });
+
   it("projects notes, tasks, and goals back to their stored session without inventing manual-note sources", async () => {
     const common = {roomId: "room-1", createdAt: new Date(), updatedAt: new Date(),
       sourceJson: {origin: "quipsly-session-follow-through", roomId: "room-1", recordingAssetId: "asset-1", sourceStartSeconds: 4},

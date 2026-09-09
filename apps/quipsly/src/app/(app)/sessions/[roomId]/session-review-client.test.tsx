@@ -4,7 +4,7 @@ jest.mock("../../work/actions", () => ({
   editWorkGoal: jest.fn(), editWorkTask: jest.fn(),
   updateWorkGoalStatus: jest.fn(), updateWorkTaskStatus: jest.fn(),
 }));
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
@@ -889,6 +889,51 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByText("Permission details")).not.toBeInTheDocument();
   });
 
+  it("keeps the transcript editor mounted through a failed refresh and retry", async () => {
+    let finishRead!: (response: unknown) => void;
+    const fetchMock = jest.fn().mockResolvedValueOnce(jsonResponse(packet()))
+      .mockReturnValueOnce(new Promise(resolve => {finishRead = resolve;}))
+      .mockResolvedValueOnce(jsonResponse(packet()));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{total: 2, granted: 2, transcriptionPermitted: 2}} />);
+    const desk = await screen.findByText("Exact transcript desk");
+    fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"}));
+    expect(screen.getByRole("button", {name: "Refresh transcript"})).toBeDisabled();
+    expect(screen.getByText("Exact transcript desk")).toBe(desk);
+    expect(screen.queryByText("Reading the Session’s transcript evidence…")).not.toBeInTheDocument();
+    await act(async () => finishRead(jsonResponse({ok: false, error: "Temporary read failure"}, 503)));
+    expect(screen.getByText("Temporary read failure")).toBeVisible();
+    expect(screen.getByText("Exact transcript desk")).toBe(desk);
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"})));
+    expect(screen.getByText("Exact transcript desk")).toBe(desk);
+    expect(screen.queryByText("Temporary read failure")).not.toBeInTheDocument();
+  });
+
+  it("bounds a stalled transcript read and leaves Refresh available to retry", async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn().mockImplementationOnce((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), {once: true});
+    })).mockResolvedValueOnce(jsonResponse(packet())) as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{total: 2, granted: 2, transcriptionPermitted: 2}} />);
+    await act(async () => {jest.advanceTimersByTime(30_000);});
+    expect(screen.getByText("The transcript is taking too long to load. Try Refresh transcript again.")).toBeVisible();
+    expect(screen.getByRole("button", {name: "Refresh transcript"})).toBeEnabled();
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"})));
+    expect(screen.getByText("Exact transcript desk")).toBeVisible();
+  });
+
+  it.each([401, 403, 404, "wrong-session"])("removes loaded transcript work when refresh returns %s", async status => {
+    const denied = typeof status === "number"
+      ? {ok: false, status, json: async () => {throw new Error("Non-JSON denial");}}
+      : jsonResponse({...packet(), room: {...packet().room, id: "another-room"}});
+    global.fetch = jest.fn().mockResolvedValueOnce(jsonResponse(packet())).mockResolvedValueOnce(denied) as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{total: 2, granted: 2, transcriptionPermitted: 2}} />);
+    await screen.findByText("Exact transcript desk");
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"})));
+    expect(screen.queryByText("Exact transcript desk")).not.toBeInTheDocument();
+    expect(screen.getByText("This transcript is no longer available. Return to your session workspace.")).toBeVisible();
+  });
+
   it("updates a running transcript to completed without a manual refresh", async () => {
     jest.useFakeTimers();
     const running = packetReadyToBuild();
@@ -1109,6 +1154,7 @@ describe("Session review goal candidates", () => {
   it("ignores an old Session response after navigating to another Session", async () => {
     let finishFirst!: (response: Response) => void;
     const next = packet();
+    next.room!.id = "room-2";
     next.packet!.summary!.title = "Second Session recap";
     const fetchMock = jest.fn().mockImplementationOnce(() => new Promise<Response>(resolve => { finishFirst = resolve; }))
       .mockResolvedValue(jsonResponse(next));
@@ -1427,6 +1473,7 @@ describe("Session review goal candidates", () => {
 
     expect(screen.getByRole("heading", { name: "Coaching Session" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue in this browser" })).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Session workspace"})).toHaveAttribute("href", "/sessions/room-live-coaching?mode=overview");
     expect(screen.queryByTestId("session-consent-control")).not.toBeInTheDocument();
     expect(screen.getByText(/choose whether to record after you join/i)).toBeInTheDocument();
     expect(screen.queryByText("Recording status")).not.toBeInTheDocument();

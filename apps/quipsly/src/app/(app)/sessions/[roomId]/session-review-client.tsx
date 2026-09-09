@@ -3854,6 +3854,8 @@ export function SessionReviewClient({
       const controller = new AbortController();
       const generation = ++readGeneration.current;
       activeRead.current = controller;
+      let timedOut = false;
+      const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 30_000);
       if (!background) {
         setLoading(true);
         setMessage(null);
@@ -3866,22 +3868,32 @@ export function SessionReviewClient({
           `/api/mobile/capture/transcripts/packet?${packetParams.toString()}`,
           { cache: "no-store", signal: controller.signal },
         );
+        if (generation !== readGeneration.current || currentReadScope.current !== readScope) return;
+        if ([401, 403, 404].includes(response.status)) {
+          setPacket(null);
+          throw new Error("This transcript is no longer available. Return to your session workspace.");
+        }
         const body = (await response.json()) as SessionReviewPacket;
         if (generation !== readGeneration.current || currentReadScope.current !== readScope) return;
+        if (response.ok && body.ok && body.room?.id !== roomId) {
+          setPacket(null);
+          throw new Error("This transcript is no longer available. Return to your session workspace.");
+        }
         if (!response.ok || !body.ok)
           throw new Error(
             body.error || "Quipsly could not read this session packet.",
           );
         setPacket(body);
       } catch (error) {
-        if (controller.signal.aborted || generation !== readGeneration.current || currentReadScope.current !== readScope) return;
-        if (!background) setPacket(null);
+        if ((controller.signal.aborted && !timedOut) || generation !== readGeneration.current || currentReadScope.current !== readScope) return;
         setMessage(
-          error instanceof Error
+          timedOut ? "The transcript is taking too long to load. Try Refresh transcript again."
+          : error instanceof Error
             ? error.message
             : "Quipsly could not read this session packet.",
         );
       } finally {
+        window.clearTimeout(timeout);
         if (generation === readGeneration.current) {
           activeRead.current = null;
           if (!background) setLoading(false);
@@ -4194,6 +4206,17 @@ export function SessionReviewClient({
               </div>
             </section>
           ) : (
+            <>
+            <nav aria-label="Session work" className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+              {parentWorkspaceHref ? <Link href={parentWorkspaceHref}
+                className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-quipsly-ink underline underline-offset-4">
+                <ArrowLeft size={16} aria-hidden="true" /> {parentWorkspaceTitle}
+              </Link> : null}
+              <Link href={sessionWorkspaceHref(roomId, "overview")}
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-quipsly-ink underline underline-offset-4">
+                Session workspace
+              </Link>
+            </nav>
             <CaptureAppHandoff
               roomId={roomId}
               sessionTitle={sessionTitle}
@@ -4203,6 +4226,7 @@ export function SessionReviewClient({
               onContinueInBrowser={() => liveDock.open(liveDockConfig)}
               allowAutomaticBrowserEntry={liveDock.dismissedCallRoomId !== roomId}
             />
+            </>
           )}
 
         </div>
@@ -4525,7 +4549,7 @@ export function SessionReviewClient({
       ) : null}
 
       {mode === "transcript" ? (
-        loading ? (
+        loading && !packet ? (
           <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]">
             <LoaderCircle
               className="mr-2 inline animate-spin"

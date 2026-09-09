@@ -227,7 +227,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 </div>
               </div>
               <nav aria-label="Live Session work" className="mt-3 flex gap-2 overflow-x-auto pb-1 text-[10px] font-black uppercase tracking-wide">
-                {callIsActive(status) ? <><Link href={sessionHref} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Overview</Link>
+                <Link href={sessionHref} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Session workspace</Link>
+                {callIsActive(status) ? <>
                 <Link href={`${sessionHref.replace("mode=overview", "mode=transcript")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Transcript</Link>
                 <Link href={`${sessionHref.replace("mode=overview", "mode=notes")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Notes</Link>
                 <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Goals & tasks</Link></> : null}

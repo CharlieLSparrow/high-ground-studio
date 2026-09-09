@@ -133,7 +133,19 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
   });
 
-  it.each(["Notes", "Transcript", "Goals & tasks", "Episode Room"])("reveals %s while retaining the connected room", async (name) => {
+  it("opens the session workspace from the lobby without joining or discarding the prepared room", async () => {
+    mockRoomLifecycle.initialStatus = "ready";
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    const link = screen.getByRole("link", {name: "Session workspace"});
+    expect(link).toHaveAttribute("href", "/sessions/coaching-session-2?mode=overview");
+    await user.click(link);
+    expect(screen.getByLabelText("Minimized live call")).toHaveTextContent("Ready to join");
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+  });
+
+  it.each(["Session workspace", "Notes", "Transcript", "Goals & tasks", "Episode Room"])("reveals %s while retaining the connected room", async (name) => {
     const user = userEvent.setup();
     render(<LiveSessionDockProvider><LiveSessionDockLauncher config={episodeConfig} autoOpen /></LiveSessionDockProvider>);
     await user.click(screen.getByRole("link", { name }));
