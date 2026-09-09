@@ -532,6 +532,7 @@ export function LiveSessionRoom({
   const [joinMuted, setJoinMuted] = useState(false);
   const [microphoneMuted, setMicrophoneMuted] = useState(false);
   const [microphoneRecoveryHeld, setMicrophoneRecoveryHeld] = useState(false);
+  const microphoneToggleInFlightRef = useRef(false);
   const [cameraMuted, setCameraMuted] = useState(false);
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
@@ -1100,6 +1101,14 @@ export function LiveSessionRoom({
               : "Camera disconnected. Connect or choose another camera, or join with camera off.");
         }
       } else if (room) {
+        // Permission can first arrive after a deliberately muted join. Select
+        // the newly exposed input for both call and recording, without opening
+        // it or changing the participant's mute choice.
+        if (!previousMicrophoneId && nextMicrophoneId && !sourceLockedRef.current) {
+          microphoneIdRef.current = nextMicrophoneId;
+          setMicrophoneId(nextMicrophoneId);
+          setMicrophoneRecoveryHeld(false);
+        }
         if (microphoneDisconnected) {
           if (sourceLockedRef.current) {
             await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
@@ -1846,13 +1855,18 @@ export function LiveSessionRoom({
 
   const toggleMicrophone = useCallback(async () => {
     const room = roomRef.current;
-    if (!room) return;
-    if (microphoneMuted && microphoneRecoveryHeld) {
+    if (!room || microphoneToggleInFlightRef.current) return;
+    if (microphoneMuted && microphoneRecoveryHeld && sourceLockedRef.current) {
       setMessage("Choose a working microphone in settings before unmuting.");
       return;
     }
     const nextMuted = !microphoneMuted;
+    microphoneToggleInFlightRef.current = true;
     try {
+      if (!nextMuted && (!microphoneIdRef.current || microphoneRecoveryHeld)) {
+        const prepared = await refreshDevices("microphone", "manual");
+        if (!prepared || !microphoneIdRef.current || roomRef.current !== room || room.state === ConnectionState.Disconnected) return;
+      }
       const selectedMicrophoneId = microphoneIdRef.current;
       const publication = await room.localParticipant.setMicrophoneEnabled(
         !nextMuted,
@@ -1878,8 +1892,10 @@ export function LiveSessionRoom({
         ? "The microphone couldn't mute. Try again or leave the call."
         : "The microphone couldn't start. Choose another microphone in settings and try again.");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a microphone error.");
+    } finally {
+      microphoneToggleInFlightRef.current = false;
     }
-  }, [microphoneMuted, microphoneRecoveryHeld, startAudioMeter, stopAudioMeter]);
+  }, [microphoneMuted, microphoneRecoveryHeld, refreshDevices, startAudioMeter, stopAudioMeter]);
 
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
@@ -2299,7 +2315,7 @@ export function LiveSessionRoom({
           {connected ? (
             <div className="flex flex-wrap gap-2" aria-label="Call controls">
               {callAudioMode === "this-device" ? <>
-                <button type="button" onClick={() => void toggleMicrophone()} disabled={microphoneMuted && microphoneRecoveryHeld} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-45 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
+                <button type="button" onClick={() => void toggleMicrophone()} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-45 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
                 <LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} />
               </> : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black uppercase tracking-wide text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
               <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
@@ -2368,7 +2384,7 @@ export function LiveSessionRoom({
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            {!connected && ((callAudioMode === "this-device" && !microphoneId) || (cameraWanted && !cameraId)) ? <>
+            {!sourceLocked && ((callAudioMode === "this-device" && !microphoneId) || (!connected && cameraWanted && !cameraId)) ? <>
               <button type="button" aria-label={callAudioMode === "this-device" ? `Allow microphone${cameraWanted ? " and camera" : ""}` : "Allow camera"} onClick={() => void refreshDevices(callAudioMode === "this-device" ? (cameraWanted ? "media" : "microphone") : "camera")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : callAudioMode === "this-device" ? <Mic size={15} /> : <Camera size={15} />} {callAudioMode === "this-device" ? `Use microphone${cameraWanted ? " and camera" : ""}` : "Use camera"}</button>
             </> : null}
             {!connected ? <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={(callAudioMode === "this-device" && !microphoneId) || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Preview</button> : null}

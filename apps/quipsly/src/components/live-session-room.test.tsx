@@ -88,6 +88,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
   BrowserSourceRecorder: ({
     captureGroupId,
     projectSlug,
+    microphoneId,
     conversationConnected,
     conversationEnded,
     callTransportInterrupted,
@@ -97,6 +98,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
   }: {
     captureGroupId: string;
     projectSlug?: string | null;
+    microphoneId?: string;
     conversationConnected?: boolean;
     conversationEnded?: boolean;
     callTransportInterrupted?: boolean;
@@ -110,6 +112,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     return <div>
       <span data-testid="browser-source-capture-group">{captureGroupId}</span>
       <span data-testid="browser-source-project">{projectSlug || "unbound"}</span>
+      <span data-testid="browser-source-microphone">{microphoneId || "unselected"}</span>
       <span data-testid="browser-source-conversation">{conversationConnected ? "connected" : "lobby"}</span>
       <span data-testid="browser-source-ended">{conversationEnded ? "ended" : "active"}</span>
       <span data-testid="browser-source-call-transport">{callTransportInterrupted ? "interrupted" : "available"}</span>
@@ -253,10 +256,17 @@ describe("LiveSessionRoom", () => {
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     expect(screen.getByText(/You joined muted/i)).toBeInTheDocument();
     expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
-    expect(screen.getByRole("button", { name: "Unmute" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unmute" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/You joined muted/i);
     expect(screen.getByTestId("call-status-message")).not.toHaveTextContent(/recording choice is saved/i);
+    getUserMedia.mockRejectedValueOnce(new DOMException("Microphone denied", "NotAllowedError"));
+    fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/Device access couldn't be completed/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unmute" })).toBeEnabled();
+    expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
   });
 
   it("uses Join as the bounded permission boundary even when device ids are already visible", async () => {
@@ -566,6 +576,70 @@ describe("LiveSessionRoom", () => {
     expect(joinBody).toMatchObject({ endpointRole: "companion", clientKind: "web" });
     expect(JSON.parse(window.localStorage.getItem("quipsly-live-preferred-devices-v3") || "{}"))
       .toMatchObject({ callAudioMode: "other-device" });
+  });
+
+  it.each(["Allow microphone", "Unmute", "Leave during Unmute"])("handles %s after joining without device access", async (action) => {
+    let granted = false;
+    const stop = jest.fn();
+    let finishPermission!: () => void;
+    const pendingPermission = new Promise<void>((resolve) => { finishPermission = resolve; });
+    const getUserMedia = jest.fn(async () => {
+      if (action === "Leave during Unmute") await pendingPermission;
+      granted = true;
+      return { getTracks: () => [{ stop }] };
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn(async () => granted
+          ? [{ kind: "audioinput", deviceId: "new-mic", label: "New microphone" }]
+          : []),
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => ({
+      ok: true, status: 200,
+      json: async () => String(input).includes("/api/mobile/capture/rooms/join")
+        ? { ok: true, canJoin: true, serverUrl: "wss://live.test", participantToken: "test-token", recordingConsentGranted: true }
+        : { ok: true },
+    })) as unknown as typeof fetch;
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-late-microphone" captureGroupId="55555555-5555-4555-8555-555555555540" sessionTitle="Late microphone" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mic on" }));
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Unmute" })).toBeEnabled();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByTestId("browser-source-microphone")).toHaveTextContent("unselected");
+    if (action === "Allow microphone") fireEvent.click(screen.getByText("Audio and video settings"));
+    fireEvent.click(screen.getByRole("button", { name: action === "Leave during Unmute" ? "Unmute" : action }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false }));
+    if (action === "Leave during Unmute") {
+      fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      expect(await screen.findByText("You left the call.")).toBeInTheDocument();
+      await act(async () => { finishPermission(); });
+      expect(stop).toHaveBeenCalled();
+      expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
+      expect(screen.queryByRole("button", { name: "Mute" })).not.toBeInTheDocument();
+      return;
+    }
+    expect(stop).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("new-mic"));
+    expect(screen.getByTestId("browser-source-microphone")).toHaveTextContent("new-mic");
+    expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+    if (action === "Allow microphone") {
+      expect(screen.getByRole("button", { name: "Unmute" })).toBeEnabled();
+      expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
+    } else {
+      expect(await screen.findByRole("button", { name: "Mute" })).toBeEnabled();
+      expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenLastCalledWith(true, {
+        deviceId: "new-mic", echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      });
+    }
   });
 
   it("turns off live provider audio before moving an active call to another device", async () => {
