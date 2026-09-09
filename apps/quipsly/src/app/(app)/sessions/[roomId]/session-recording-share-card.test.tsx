@@ -50,6 +50,25 @@ describe("SessionRecordingShareCard", () => {
     Reflect.deleteProperty(global, "fetch");
   });
 
+  it("switches recording attempts without combining their sources or gaps", async () => {
+    const takes = [{id: "start:latest", startedAt: "2026-09-09T12:00:00Z", sourceCount: 1},
+      {id: "start:earlier", startedAt: "2026-09-09T11:00:00Z", sourceCount: 1}];
+    const latest = {...snapshot, available: {...snapshot.available, takes, selectedTakeId: "start:latest"}};
+    const earlier = {...snapshot, available: {...snapshot.available, takes, selectedTakeId: "start:earlier", programDurationSeconds: 20,
+      sources: [{...snapshot.available.sources[0]!, id: "earlier-source", stoppedAt: "2026-08-22T12:00:20.000Z"}], transcriptSegments: []}};
+    const fetchMock = jest.fn(async (url: string) => response(url.includes("start%3Aearlier") ? earlier : latest));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const selector = await screen.findByRole("combobox", {name: /Recording attempt/});
+    expect(selector).toHaveValue("start:latest");
+    await userEvent.selectOptions(selector, "start:earlier");
+    await waitFor(() => expect(selector).toHaveValue("start:earlier"));
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("20");
+    expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/sessions/session_room_0001/recording-share?takeId=start%3Aearlier", expect.anything());
+  });
+
   it("shows loading rather than a permission failure while the workspace is being read", () => {
     global.fetch = jest.fn(() => new Promise<Response>(() => {}));
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
@@ -168,6 +187,21 @@ describe("SessionRecordingShareCard", () => {
     await screen.findByText("Access removed");
     expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
     expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+  });
+
+  it("can recover when a previously selected recording attempt is no longer available", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response({...snapshot,
+      available: {...snapshot.available, selectedTakeId: "start:removed"},
+    })).mockResolvedValueOnce({ok: false, status: 404, json: async () => ({ok: false, error: "Recording attempt unavailable"})})
+      .mockResolvedValueOnce(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", {name: "Create private preview"});
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    await screen.findByText("Recording attempt unavailable");
+    await userEvent.click(screen.getByRole("button", {name: "Try again"}));
+    await screen.findByRole("button", {name: "Create private preview"});
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain("takeId=start%3Aremoved");
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toBe("/api/sessions/session_room_0001/recording-share");
   });
 
   it("shows automatic sync quality without making it another required workflow", async () => {

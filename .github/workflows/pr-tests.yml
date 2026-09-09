@@ -158,6 +158,7 @@ jobs:
             src/lib/server/coaching-engagement.integration.test.ts
             src/app/api/coaching/runway/route.integration.test.ts
             src/lib/server/session-access.integration.test.ts
+            src/lib/server/session-recording-attempts.integration.test.ts
             src/lib/server/session-work.integration.test.ts
             src/lib/server/workspace-search.integration.test.ts
             src/lib/server/session-transcript-analysis-job.integration.test.ts

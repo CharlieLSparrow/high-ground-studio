@@ -70,6 +70,8 @@ type Snapshot = {
   role?: "COACH" | "CLIENT" | "COLLABORATOR";
   room?: { id: string; title: string; client: { id: string; label: string }; coach: { id: string; label: string } | null };
   available?: {
+    selectedTakeId?: string | null;
+    takes?: Array<{id: string; startedAt: string; sourceCount: number}>;
     programDurationSeconds: number;
     timeline?: {
       authority: "single-source-origin" | "reviewed-waveform-placement" | "capture-clock-proposal" | "reported-wall-clock-fallback";
@@ -249,22 +251,28 @@ export function SessionRecordingShareCard({
   const requestFingerprints = useRef<Partial<Record<"PREPARE" | "RELEASE" | "REVOKE", string>>>({});
   const draftRoom = useRef<string | null>(null);
   const draftTouched = useRef(false);
+  const selectedTake = useRef<{roomId: string; id: string} | null>(null);
 
-  const load = useCallback(async (quiet = false, resetDraft = false) => {
+  const load = useCallback(async (quiet = false, resetDraft = false, takeId?: string) => {
     if (!quiet) { setBusy("LOAD"); setNotice(null); }
     try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-share`, { cache: "no-store" });
+      const requestedTakeId = takeId ?? (selectedTake.current?.roomId === roomId ? selectedTake.current.id : "");
+      const query = requestedTakeId ? `?${new URLSearchParams({takeId: requestedTakeId})}` : "";
+      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-share${query}`, { cache: "no-store" });
       if ([401, 403, 404].includes(response.status)) {
         setSnapshot(null);
         setEditing(false);
         draftRoom.current = null;
         draftTouched.current = false;
+        selectedTake.current = null;
         requestIds.current = {};
         requestFingerprints.current = {};
       }
       const payload = await response.json() as Snapshot;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Quipsly could not load the recording workspace.");
       setSnapshot(payload);
+      selectedTake.current = payload.available?.selectedTakeId ? {roomId, id: payload.available.selectedTakeId} : null;
+      if (takeId) { setEditing(false); setAudition(null); setAuditionNotice(null); }
       // Refresh and render polling update availability, not the person's draft.
       // Untouched defaults can follow arriving sources; changed drafts stay put.
       const initializeDraft = draftRoom.current !== roomId || resetDraft || !draftTouched.current;
@@ -569,6 +577,18 @@ export function SessionRecordingShareCard({
 
       {notice ? <p className="mt-4 rounded-xl border border-sky-200 bg-white p-3 text-sm font-bold text-sky-950" role="status">{notice}</p> : null}
 
+      {coach && (snapshot.available?.takes?.length || 0) > 1 ? <label className="mt-4 block text-sm font-semibold text-sky-950">
+        Recording attempt
+        <select value={snapshot.available?.selectedTakeId || ""} disabled={Boolean(busy)}
+          onChange={event => void load(false, true, event.target.value)}
+          className="mt-1 block min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm">
+          {snapshot.available?.takes?.map((take, index) => <option key={take.id} value={take.id}>
+            {index === 0 ? "Latest · " : ""}{new Date(take.startedAt).toLocaleString(undefined, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})} · {take.sourceCount} track{take.sourceCount === 1 ? "" : "s"}
+          </option>)}
+        </select>
+        <span className="mt-1 block text-xs font-normal">Separate recordings stay separate. Reconnected devices stay with their original attempt.</span>
+      </label> : null}
+
       {coach && (!output || editing) ? (
         <fieldset disabled={Boolean(busy)} onChange={() => { draftTouched.current = true; }} onClick={() => { draftTouched.current = true; }} aria-label="Recording edit" className="mt-5 min-w-0 space-y-5">
           {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
@@ -577,7 +597,7 @@ export function SessionRecordingShareCard({
           {timeline && timeline.precision !== "unavailable" ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3" data-testid="recording-timeline-status"><p className="text-xs font-black text-emerald-950">{timeline.authority === "capture-clock-proposal" ? "Synced automatically from device clocks" : timeline.authority === "reported-wall-clock-fallback" ? "Placed automatically from recording start times" : timeline.authority === "reviewed-waveform-placement" ? "Synced from measured audio" : "Recording timeline ready"}{maximumTimingUncertainty > 0 ? ` · estimated within ±${maximumTimingUncertainty.toFixed(0)} ms` : ""}</p><p className="mt-1 text-[11px] font-semibold leading-5 text-emerald-900">{timeline.reason}</p></div> : null}
           <div className="rounded-2xl border border-sky-200 bg-white p-4 sm:p-5" aria-label="Trim recording">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h3 className="text-sm font-black text-sky-950">Trim the beginning and end</h3><p className="mt-1 text-xs font-semibold text-sky-800">Quipsly already selected one high-quality track for each person.</p></div>
+              <div><h3 className="text-sm font-black text-sky-950">Trim the beginning and end</h3><p className="mt-1 text-xs font-semibold text-sky-800">Quipsly selected the high-quality tracks for this recording, including any reconnects.</p></div>
               <button type="button" onClick={() => { draftTouched.current = true; setStartSeconds(0); setEndSeconds(duration); }} disabled={!duration || (startSeconds === 0 && endSeconds === duration)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-45"><RotateCcw className="mr-1 inline" size={12} />Use full recording</button>
             </div>
             <div className="mt-5 space-y-5">
