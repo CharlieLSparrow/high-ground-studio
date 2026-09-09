@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { RoomServiceClient } from "livekit-server-sdk";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { listSharedClientSpaces } from "./shared-client-spaces";
 import { createCoachingClientSpace, coachingClientSchedulingContext } from "./coaching-client-space";
 import {
   coachingEngagementAccessWhere,
@@ -122,6 +123,23 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  it("discovers only current client memberships independently of Nest roles, with revocation and restore", async () => {
+    const visible = async (userId: string) => (await listSharedClientSpaces(prisma, userId)).spaces.map(space => space.id);
+    expect(await visible(ids.client)).toContain(engagementId);
+    expect(await visible(ids.coach)).toContain(engagementId);
+    for (const userId of [ids.outsider, ids.editor, ids.viewer, ids.invitee]) {
+      expect(await visible(userId)).not.toContain(engagementId);
+    }
+    const key = { engagementId_userId: { engagementId, userId: ids.client } };
+    await prisma.coachingEngagementMember.update({ where: key, data: { status: "REMOVED" } });
+    try {
+      expect(await visible(ids.client)).not.toContain(engagementId);
+    } finally {
+      await prisma.coachingEngagementMember.update({ where: key, data: { status: "ACTIVE" } });
+    }
+    expect(await visible(ids.client)).toContain(engagementId);
   });
 
   it("selects the real next appointment beyond history limits without exposing another client space", async () => {
