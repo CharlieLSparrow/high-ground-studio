@@ -486,7 +486,7 @@ describe("LiveSessionRoom", () => {
       video: expect.objectContaining({ deviceId: { exact: "remembered-camera" } }),
     }));
     expect(query).toHaveBeenCalledWith({ name: "camera" });
-    expect(screen.getByText("Devices checked")).toBeInTheDocument();
+    expect(screen.getByText("Preview ready")).toBeInTheDocument();
   });
 
   it("does not open devices automatically when a first-time browser still needs permission", async () => {
@@ -972,6 +972,7 @@ describe("LiveSessionRoom", () => {
   });
 
   it("promotes remote video to the main stage and keeps the local camera in picture-in-picture", async () => {
+    window.localStorage.setItem("quipsly-live-preferred-devices-v3", JSON.stringify({ cameraWanted: true }));
     const livekit = jest.requireActual("livekit-client") as typeof import("livekit-client");
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -1001,7 +1002,6 @@ describe("LiveSessionRoom", () => {
     await act(async () => {
       render(<LiveSessionRoom callRoomId="room-video-stage" captureGroupId="55555555-5555-4555-8555-555555555545" sessionTitle="Coaching call" kind="coaching" />);
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Camera off" }));
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
 
@@ -1041,6 +1041,7 @@ describe("LiveSessionRoom", () => {
   });
 
   it("keeps the call connected when a requested camera cannot start", async () => {
+    window.localStorage.setItem("quipsly-live-preferred-devices-v3", JSON.stringify({ cameraWanted: true }));
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -1075,7 +1076,6 @@ describe("LiveSessionRoom", () => {
     await act(async () => {
       render(<LiveSessionRoom callRoomId="room-camera-fallback" captureGroupId="55555555-5555-4555-8555-555555555544" sessionTitle="Camera fallback" kind="coaching" />);
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Camera off" }));
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
 
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
@@ -1435,8 +1435,15 @@ describe("LiveSessionRoom", () => {
     expect(joinRequests).toBe(2);
   });
 
-  it("keeps camera permission independent from an audio-only coaching join", async () => {
-    const permissionStream = { getTracks: () => [{ stop: jest.fn() }] };
+  it("opens the lobby camera directly without asking for microphone access", async () => {
+    const videoTrack = {
+      kind: "video", label: "Canon EOS R8", stop: jest.fn(),
+      getSettings: () => ({ deviceId: "canon-r8", width: 1920, height: 1080, frameRate: 30 }),
+    };
+    const permissionStream = {
+      getTracks: () => [videoTrack], getVideoTracks: () => [videoTrack], getAudioTracks: () => [],
+      removeTrack: jest.fn(),
+    };
     const getUserMedia = jest.fn().mockResolvedValue(permissionStream);
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -1457,14 +1464,107 @@ describe("LiveSessionRoom", () => {
     expect(screen.queryByRole("button", { name: /Allow camera/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Camera off/i }));
-    expect(getUserMedia).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Test selected setup/i }));
-    await act(async () => undefined);
+    await waitFor(() => expect(screen.getByText("Preview ready")).toBeInTheDocument());
 
     expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({
-      audio: expect.objectContaining({ deviceId: { exact: "mv7i" } }),
+      audio: false,
       video: expect.objectContaining({ deviceId: { exact: "canon-r8" } }),
     }));
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", permissionStream);
+    expect(screen.queryByTestId("prejoin-microphone-activity")).not.toBeInTheDocument();
+    expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Camera on" }));
+    expect(videoTrack.stop).toHaveBeenCalledTimes(1);
+    expect(permissionStream.removeTrack).toHaveBeenCalledWith(videoTrack);
+    expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it.each(["camera-off", "unmount"])("closes a late camera grant after %s", async (cancel) => {
+    let resolveCamera!: (stream: unknown) => void;
+    const getUserMedia = jest.fn().mockReturnValue(new Promise((resolve) => { resolveCamera = resolve; }));
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([]), getUserMedia,
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    } });
+    let unmount!: () => void;
+    await act(async () => {
+      ({ unmount } = render(<LiveSessionRoom callRoomId="camera-cancel" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Camera check" kind="coaching" />));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Camera off" }));
+    expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: false }));
+    if (cancel === "unmount") unmount();
+    else fireEvent.click(screen.getByRole("button", { name: "Camera on" }));
+    const stop = jest.fn();
+    await act(async () => { resolveCamera({ getTracks: () => [{ stop }] }); });
+    expect(stop).toHaveBeenCalledTimes(1);
+    if (cancel === "camera-off") {
+      expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
+      expect(screen.queryByText("Preview ready")).not.toBeInTheDocument();
+    }
+  });
+
+  it("keeps microphone preview running when the lobby camera is enabled and disabled", async () => {
+    const audio = { kind: "audio", label: "Mic", stop: jest.fn(), getSettings: () => ({ channelCount: 1 }) };
+    const video = { kind: "video", label: "Camera", stop: jest.fn(), getSettings: () => ({ deviceId: "camera", width: 1280, height: 720 }) };
+    const secondVideo = { ...video, label: "Other camera", stop: jest.fn(), getSettings: () => ({ deviceId: "second-camera", width: 1920, height: 1080 }) };
+    const tracks: Array<typeof audio | typeof video> = [audio];
+    const microphoneStream = {
+      getTracks: () => tracks,
+      getAudioTracks: () => tracks.filter((track) => track.kind === "audio"),
+      getVideoTracks: () => tracks.filter((track) => track.kind === "video"),
+      addTrack: (track: typeof video) => tracks.push(track),
+      removeTrack: (track: typeof video) => tracks.splice(tracks.indexOf(track), 1),
+    };
+    const cameraStream = { getTracks: () => [video], getVideoTracks: () => [video], getAudioTracks: () => [] };
+    const getUserMedia = jest.fn().mockResolvedValueOnce(microphoneStream).mockResolvedValueOnce(cameraStream)
+      .mockResolvedValueOnce({ getTracks: () => [secondVideo], getVideoTracks: () => [secondVideo], getAudioTracks: () => [] });
+    Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: jest.fn().mockResolvedValue({ state: "prompt" }) } });
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([
+        { kind: "audioinput", deviceId: "mic", label: "Mic" },
+        { kind: "videoinput", deviceId: "camera", label: "Camera" },
+        { kind: "videoinput", deviceId: "second-camera", label: "Other camera" },
+      ]),
+      getUserMedia, addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    } });
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="camera-audio" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Camera check" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Test selected setup" }));
+    await waitFor(() => expect(screen.getByText("Preview ready")).toBeInTheDocument());
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Camera off" })); });
+    expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", microphoneStream);
+    expect(tracks).toEqual([audio, video]);
+    await act(async () => {
+      fireEvent.change(screen.getByRole("combobox", { name: "Camera" }), { target: { value: "second-camera" } });
+    });
+    expect(tracks).toEqual([audio, secondVideo]);
+    expect(getUserMedia).toHaveBeenLastCalledWith(expect.objectContaining({ audio: false, video: expect.objectContaining({ deviceId: { exact: "second-camera" } }) }));
+    fireEvent.click(screen.getByRole("button", { name: "Camera on" }));
+    expect(tracks).toEqual([audio]);
+    expect(audio.stop).not.toHaveBeenCalled();
+    expect(video.stop).toHaveBeenCalledTimes(1);
+    expect(secondVideo.stop).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledTimes(3);
+    expect(screen.getByTestId("prejoin-microphone-activity")).toBeInTheDocument();
+  });
+
+  it("keeps a denied camera off and leaves joining available", async () => {
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([]),
+      getUserMedia: jest.fn().mockRejectedValue(new DOMException("Denied", "NotAllowedError")),
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    } });
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="camera-denied" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Camera check" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Camera off" }));
+    expect(await screen.findByText(/Camera couldn't start/)).toBeInTheDocument();
+    expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled();
   });
 
   it("joins with camera off when the browser exposes no usable camera id", async () => {

@@ -592,6 +592,7 @@ export function LiveSessionRoom({
   const meterCleanupRef = useRef<(() => void) | null>(null);
   const audioMeterGenerationRef = useRef(0);
   const automaticPreviewAttemptedRef = useRef(false);
+  const previewRequestGenerationRef = useRef(0);
   const lastLeaveRequestVersionRef = useRef(leaveRequestVersion);
   const providerRecordingRequestIdsRef = useRef<Record<"START_EGRESS" | "STOP_EGRESS", string | undefined>>({
     START_EGRESS: undefined,
@@ -743,6 +744,7 @@ export function LiveSessionRoom({
   }, []);
 
   const clearPreflightPreview = useCallback(() => {
+    previewRequestGenerationRef.current += 1;
     stopAudioMeter();
     stopStream(preflightStreamRef.current);
     preflightStreamRef.current = null;
@@ -1224,7 +1226,7 @@ export function LiveSessionRoom({
       } else if ((permission === "camera" || permission === "media") && !nextCameras.length) {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("error");
-        setMessage("Camera access did not expose a usable device. Open this site's camera controls, choose the Canon or desired camera, then try again—or turn off Join with camera.");
+        setMessage("No camera is available. Check its connection and browser permission, or join with camera off.");
       } else if (permission === "camera" || permission === "media") {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("ready");
@@ -1243,15 +1245,15 @@ export function LiveSessionRoom({
       } else if (cameraWantedRef.current && !nextCameras.length) {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("preflight");
-        setMessage("Microphone names are visible. Allow and choose a camera, or turn off Join with camera for an audio-only call.");
+        setMessage("Your microphone is ready. You can turn on a camera or join with camera off.");
       } else {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("ready");
         if (preserveLiveConnection) {
           if (cause !== "devicechange") setMessage("Call devices refreshed. The conversation stayed connected.");
         } else setMessage(microphoneNamesVisible
-            ? "Microphone names are visible. Choose the exact source, then run the confidence check before joining."
-            : "Microphone access is available. Use the confidence check to verify the selected source.");
+            ? "Your microphone is ready. You can join now or try the optional sound check."
+            : "Microphone access is available. Choose your device or join now.");
       }
       setTechnicalMessage(null);
       return true;
@@ -1281,13 +1283,14 @@ export function LiveSessionRoom({
     const useCallAudioHere = callAudioModeRef.current === "this-device";
     if (!audioOnly && cameraWanted && !cameraId) {
       setStatus("error");
-      setMessage("Choose a usable camera or turn off Join with camera before testing this setup.");
+      setMessage("Choose a camera or turn Camera off to preview your microphone.");
       return;
     }
     setStatus("checking");
     setMessage("Opening the selected studio devices…");
+    clearPreflightPreview();
+    const generation = previewRequestGenerationRef.current;
     try {
-      clearPreflightPreview();
       const stream = await getUserMediaWithTimeout({
         audio: useCallAudioHere ? {
           ...(microphoneId ? { deviceId: { exact: microphoneId } } : {}),
@@ -1302,11 +1305,16 @@ export function LiveSessionRoom({
           frameRate: { ideal: 30 },
         } : false,
       });
+      if (generation !== previewRequestGenerationRef.current) {
+        stopStream(stream);
+        return null;
+      }
       preflightStreamRef.current = stream;
       if (!audioOnly && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         await localVideoRef.current.play().catch(() => undefined);
       }
+      if (generation !== previewRequestGenerationRef.current) return null;
       const videoTrack = audioOnly ? undefined : stream.getVideoTracks()[0];
       setCameraEvidence(videoTrack
         ? studioCameraInputEvidence(
@@ -1316,6 +1324,7 @@ export function LiveSessionRoom({
         : null);
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) await startAudioMeter(audioTrack);
+      if (generation !== previewRequestGenerationRef.current) return null;
       setStatus("ready");
       setPreviewTested(true);
       setTechnicalMessage(null);
@@ -1327,6 +1336,7 @@ export function LiveSessionRoom({
           : "Camera preview is live. Call audio stays on your other device; nothing is sent or recorded.");
       return stream;
     } catch (error) {
+      if (generation !== previewRequestGenerationRef.current) return null;
       setStatus("error");
       setCameraEvidence(null);
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a preview error.");
@@ -1334,6 +1344,79 @@ export function LiveSessionRoom({
       return null;
     }
   }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId, startAudioMeter]);
+
+  const previewLobbyCamera = useCallback(async (enabled: boolean) => {
+    automaticPreviewAttemptedRef.current = true;
+    const generation = ++previewRequestGenerationRef.current;
+    setShowCallNotice(false);
+    cameraWantedRef.current = enabled;
+    setCameraWanted(enabled);
+    cameraMutedRef.current = !enabled;
+    setCameraMuted(!enabled);
+    const existing = preflightStreamRef.current;
+    // Camera controls must not close an already-open microphone preview.
+    existing?.getVideoTracks().forEach((track) => {
+      track.stop();
+      existing.removeTrack(track);
+    });
+    setCameraEvidence(null);
+    if (!enabled) {
+      setPreviewTested(Boolean(existing?.getAudioTracks().length));
+      setStatus("ready");
+      setMessage("Camera off.");
+      return;
+    }
+    setStatus("checking");
+    setMessage("Opening your camera…");
+    try {
+      const stream = await getUserMediaWithTimeout({
+        audio: false,
+        video: {
+          ...(cameraIdRef.current ? { deviceId: { exact: cameraIdRef.current } } : {}),
+          width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 },
+        },
+      });
+      if (generation !== previewRequestGenerationRef.current) {
+        stopStream(stream);
+        return;
+      }
+      const track = stream.getVideoTracks()[0];
+      if (!track) {
+        stopStream(stream);
+        throw new Error("The browser did not return a camera track.");
+      }
+      const preview = preflightStreamRef.current ?? stream;
+      if (preview !== stream) preview.addTrack(track);
+      preflightStreamRef.current = preview;
+      const settings = track.getSettings();
+      if (settings.deviceId) {
+        cameraIdRef.current = settings.deviceId;
+        setCameraId(settings.deviceId);
+        setCameras((current) => current.some((device) => device.deviceId === settings.deviceId)
+          ? current : [...current, { deviceId: settings.deviceId!, label: track.label || "Camera" }]);
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = preview;
+        await localVideoRef.current.play().catch(() => undefined);
+      }
+      if (generation !== previewRequestGenerationRef.current) return;
+      setCameraEvidence(studioCameraInputEvidence(track.label || "Camera", settings));
+      setPreviewTested(true);
+      setTechnicalMessage(null);
+      setStatus("ready");
+      setMessage("Camera preview is live. Nothing is sent or recorded.");
+    } catch (error) {
+      if (generation !== previewRequestGenerationRef.current) return;
+      cameraWantedRef.current = false;
+      setCameraWanted(false);
+      setCameraMuted(true);
+      cameraMutedRef.current = true;
+      setStatus("ready");
+      setShowCallNotice(true);
+      setTechnicalMessage(error instanceof Error ? error.message : "Camera preview failed.");
+      setMessage("Camera couldn't start. Check its connection and browser permission, or join with camera off.");
+    }
+  }, []);
 
   useEffect(() => {
     automaticPreviewAttemptedRef.current = false;
@@ -1351,6 +1434,7 @@ export function LiveSessionRoom({
     if ((useCallAudioHere && !microphoneId) || (cameraWanted && !cameraId)) return;
     automaticPreviewAttemptedRef.current = true;
 
+    const generation = previewRequestGenerationRef.current;
     const reopenRememberedSetup = async () => {
       const requiredPermissions = [
         useCallAudioHere ? "microphone" as const : null,
@@ -1360,7 +1444,7 @@ export function LiveSessionRoom({
       const states = await Promise.all(
         requiredPermissions.map((name) => retainedMediaPermissionState(name)),
       );
-      if (states.every((state) => state === "granted")) {
+      if (generation === previewRequestGenerationRef.current && states.every((state) => state === "granted")) {
         await startSelectedPreview();
       }
     };
@@ -1435,6 +1519,9 @@ export function LiveSessionRoom({
   }, [leave, leaveRequestVersion]);
 
   const join = useCallback(async () => {
+    // A remembered-preview permission check may still be resolving. From
+    // this point onward the join attempt owns device setup, not the lobby.
+    previewRequestGenerationRef.current += 1;
     const joinAttempt = ++joinAttemptGenerationRef.current;
     const attemptCancelled = () => joinAttempt !== joinAttemptGenerationRef.current;
     let attemptRoom: Room | null = null;
@@ -2028,12 +2115,11 @@ export function LiveSessionRoom({
       }
       setCameraId(nextId);
       cameraIdRef.current = nextId;
-      if (!connected) {
-        clearPreflightPreview();
-        setStatus("preflight");
-      } else {
-        setCameraEvidence(null);
+      if (!connected && cameraWantedRef.current) {
+        await previewLobbyCamera(true);
+        return;
       }
+      setCameraEvidence(null);
       const label = cameras.find((device) => device.deviceId === nextId)?.label || "selected camera";
       setMessage(connected ? `Camera switched to ${label}.` : `Camera selected: ${label}.`);
     } catch (error) {
@@ -2041,7 +2127,7 @@ export function LiveSessionRoom({
       cameraIdRef.current = previousId;
       setMessage(error instanceof Error ? `Camera switch failed: ${error.message}` : "Camera switch failed.");
     }
-  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted, cameras, clearPreflightPreview, connected, sourceLocked]);
+  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted, cameras, connected, previewLobbyCamera, sourceLocked]);
 
   const chooseOutput = useCallback((nextId: string) => {
     suppressPreferenceWriteRef.current = false;
@@ -2056,7 +2142,7 @@ export function LiveSessionRoom({
       selectAudioOutput?: () => Promise<MediaDeviceInfo>;
     };
     if (!mediaDevices.selectAudioOutput) {
-      setMessage("Choose the MV7i or other headphone output in macOS Sound settings for this browser.");
+      setMessage("Choose your headphones in your device’s sound settings for this browser.");
       return;
     }
     try {
@@ -2091,6 +2177,7 @@ export function LiveSessionRoom({
     return () => {
       deviceRefreshGenerationRef.current += 1;
       joinAttemptGenerationRef.current += 1;
+      previewRequestGenerationRef.current += 1;
       if (refreshTimer) clearTimeout(refreshTimer);
       navigator.mediaDevices?.removeEventListener?.("devicechange", changed);
       meterCleanupRef.current?.();
@@ -2257,7 +2344,7 @@ export function LiveSessionRoom({
                     {cameraEnabledForNextJoin ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
                   </p>
                 </div>
-                {previewTested ? <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-950">Devices checked</span> : null}
+                {previewTested ? <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-950">Preview ready</span> : null}
               </div>
               <div className="mt-4">{callVideoStage}</div>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -2280,15 +2367,17 @@ export function LiveSessionRoom({
                 <button
                   type="button"
                   onClick={() => {
-                    if (callRecoveryAvailable) {
+                    if (callRecoveryAvailable || sourceLocked) {
                       const nextEnabled = !cameraEnabledForNextJoin;
                       setCameraWanted(nextEnabled);
+                      cameraWantedRef.current = nextEnabled;
                       setCameraMuted(!nextEnabled);
                       cameraMutedRef.current = !nextEnabled;
                       return;
                     }
-                    setCameraWanted((current) => !current);
+                    void previewLobbyCamera(!cameraEnabledForNextJoin);
                   }}
+                  disabled={status === "joining"}
                   className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${cameraEnabledForNextJoin ? "border border-violet-200 bg-white text-violet-950" : "bg-rose-100 text-rose-950"}`}
                   aria-pressed={cameraEnabledForNextJoin}
                 >
@@ -2298,7 +2387,7 @@ export function LiveSessionRoom({
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
                 </button>
               </div>
-              {callAudioMode === "this-device" && previewTested ? (
+              {callAudioMode === "this-device" && previewTested && Boolean(preflightStreamRef.current?.getAudioTracks().length) ? (
                 <PreJoinMicrophoneActivity
                   evidence={meterEvidence}
                   muted={mutedForNextJoin}
@@ -2378,7 +2467,7 @@ export function LiveSessionRoom({
                   <option value="">System default</option>{outputs.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                 </select>
               </label>
-              {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-[#8a7354]">This browser uses the macOS or system output. Choose the MV7i headphones there.</span> : null}
+              {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-[#8a7354]">This browser uses your system audio output. Choose your headphones in your device’s sound settings.</span> : null}
               {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-black normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
               <StudioSpeakerTest
                 outputId={outputId}
@@ -2488,7 +2577,7 @@ export function LiveSessionRoom({
           </div>
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-bold leading-5 text-amber-950">
             <Headphones aria-hidden="true" />
-            <p className="mt-2">For your MV7i: choose it as microphone and choose its headphone output here when supported. Safari may require selecting it in macOS Sound instead.</p>
+            <p className="mt-2">Using a USB microphone or audio interface? Select it as your microphone and choose its headphone output. If your browser cannot change the output, use your device’s sound settings.</p>
           </div>
             </div>
           </details>
