@@ -508,27 +508,17 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         errorMessage = nil
         lastSavedEntry = nil
         do {
-            var requestBody: [String: Any] = [
-                "id": entry.id,
-                "kind": entry.kind,
-                "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
-                "body": body.trimmingCharacters(in: .whitespacesAndNewlines),
-                "expectedUpdatedAt": entry.updatedAt,
-            ]
-            if entry.kind == "NOTE" {
-                requestBody["visibility"] = visibility
-            } else {
-                requestBody["ownerUserId"] = ownerUserID
-                requestBody["status"] = status
-                requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()
-            }
-            if ["TASK", "GOAL"].contains(entry.kind), let tags { requestBody["tags"] = tags.body }
+            let draft = CaptureCoachingWorkDraft(
+                kind: entry.kind, title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                body: body.trimmingCharacters(in: .whitespacesAndNewlines), visibility: visibility,
+                ownerUserID: ownerUserID, status: status,
+                targetAt: targetAt.map(coachingISO8601String), tags: tags
+            )
+            var requestBody = draft.updateBody(entryID: entry.id, expectedUpdatedAt: entry.updatedAt)
             let identity = try JSONSerialization.data(withJSONObject: requestBody, options: [.sortedKeys])
-            if ["TASK", "GOAL"].contains(entry.kind) {
-                let requestID = workUpdateRequestIDs[identity] ?? UUID().uuidString.lowercased()
-                workUpdateRequestIDs[identity] = requestID
-                requestBody["clientRequestId"] = requestID
-            }
+            let requestID = workUpdateRequestIDs[identity] ?? UUID().uuidString.lowercased()
+            workUpdateRequestIDs[identity] = requestID
+            requestBody["clientRequestId"] = requestID
             let (payload, response) = try await request(method: "PATCH", body: requestBody)
             guard response.statusCode < 400, payload.ok, let savedEntry = payload.entry,
                   savedEntry.id == entry.id, savedEntry.kind == entry.kind else {
@@ -618,7 +608,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     }
 
     func loadWorkTags(kind: String, entryID: String?) async throws -> [MobileWorkTagLabel] {
-        guard ["TASK", "GOAL"].contains(kind) else { throw coachingClientError("Choose a task or goal first.") }
+        guard ["NOTE", "TASK", "GOAL"].contains(kind) else { throw coachingClientError("Choose a note, task, or goal first.") }
         guard var components = URLComponents(string: "\(baseURL)/api/work/tags") else {
             throw coachingClientError("Tags couldn't open.")
         }
@@ -4238,11 +4228,10 @@ struct MobileCoachingWorkEditorSheet: View {
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (kind == "NOTE" || !ownerUserID.isEmpty)
-            && (kind == "NOTE" || tagSelection.isValid)
+            && tagSelection.isValid
     }
 
     private var editedTags: CaptureTaskTagSelection? {
-        guard ["TASK", "GOAL"].contains(kind) else { return nil }
         let original = CaptureTaskTagSelection(tagIDs: (entry?.tags ?? []).map(\.id).sorted())
         return tagSelection == original ? nil : tagSelection
     }
@@ -4290,10 +4279,10 @@ struct MobileCoachingWorkEditorSheet: View {
                         .accessibilityIdentifier("CaptureCoachingWorkDetail")
                 }
 
-                if ["TASK", "GOAL"].contains(kind) {
+                if ["NOTE", "TASK", "GOAL"].contains(kind) {
                     Section {
                         NavigationLink {
-                            CaptureTaskTagPicker(tags: tagCatalog, selection: $tagSelection, workLabel: kind == "GOAL" ? "goal" : "task")
+                            CaptureTaskTagPicker(tags: tagCatalog, selection: $tagSelection, workLabel: kind.lowercased())
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 Label("Tags", systemImage: "tag")
@@ -4454,7 +4443,7 @@ struct MobileCoachingWorkEditorSheet: View {
             Text("It will disappear from this coaching space. Undo is available when you return.")
         }
         .interactiveDismissDisabled(client.isSaving)
-        .task(id: kind) { if ["TASK", "GOAL"].contains(kind) { await loadTags() } }
+        .task(id: kind) { await loadTags() }
         .accessibilityIdentifier("CaptureCoachingWorkEditor")
     }
 }

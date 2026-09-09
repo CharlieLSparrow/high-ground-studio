@@ -12,11 +12,21 @@ enum CaptureCoachingWorkSaveTests {
             var tagged = original
             tagged.tags = CaptureTaskTagSelection(tagIDs: ["research"], newTagLabels: ["Writing"])
             let taggedBody = tagged.createBody(requestID: "tagged-command")
-            if kind == "TASK" || kind == "GOAL" {
-                let tags = taggedBody["tags"] as? [String: Any]
-                expect(tags?["tagIds"] as? [String] == ["research"], "\(kind) creation retains canonical selections")
-                expect(tags?["newTagLabels"] as? [String] == ["Writing"], "\(kind) creation includes new labels in its single save")
-            } else { expect(taggedBody["tags"] == nil, "work tags do not bleed into note creation") }
+            let tags = taggedBody["tags"] as? [String: Any]
+            expect(tags?["tagIds"] as? [String] == ["research"], "\(kind) creation retains canonical selections")
+            expect(tags?["newTagLabels"] as? [String] == ["Writing"], "\(kind) creation includes new labels in its single save")
+            let update = tagged.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")
+            expect((update["tags"] as? [String: Any])?["tagIds"] as? [String] == ["research"], "\(kind) edits use the same canonical tags")
+            expect(update["id"] as? String == "saved-item", "updates retain item identity")
+            expect(update["expectedUpdatedAt"] as? String == "saved-revision", "updates retain their revision guard")
+            expect(original.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")["tags"] == nil, "editing text alone does not replace tags")
+            tagged.tags = CaptureTaskTagSelection()
+            let cleared = tagged.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")["tags"] as? [String: Any]
+            expect(cleared?["tagIds"] as? [String] == [], "explicit removal clears tags for \(kind)")
+            if kind == "NOTE" {
+                expect(update["visibility"] as? String == "PRIVATE", "tagging does not widen note visibility")
+                expect(update["ownerUserId"] == nil && update["targetAt"] == nil, "tagging does not turn a note into assigned work")
+            }
             var edited = original
             edited.title = "A clearer first step"
             expect(attempt.body["title"] as? String == original.title, "retry retains submitted content")

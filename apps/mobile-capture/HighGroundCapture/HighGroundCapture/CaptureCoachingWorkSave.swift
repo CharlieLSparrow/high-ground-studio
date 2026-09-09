@@ -41,7 +41,18 @@ struct CaptureCoachingWorkDraft: Equatable {
             values["ownerUserId"] = ownerUserID
             values["targetAt"] = targetAt.map { $0 as Any } ?? NSNull()
         }
-        if ["TASK", "GOAL"].contains(kind), let tags { values["tags"] = tags.body }
+        if let tags { values["tags"] = tags.body }
+        return values
+    }
+
+    func updateBody(entryID: String, expectedUpdatedAt: String) -> [String: Any] {
+        var values: [String: Any] = fields.mapValues { $0 as Any }
+        values["id"] = entryID
+        values["kind"] = kind
+        values["expectedUpdatedAt"] = expectedUpdatedAt
+        if kind != "NOTE" { values["targetAt"] = targetAt.map { $0 as Any } ?? NSNull() }
+        // Omitted tags preserve the current selection; an explicit empty list clears it.
+        if let tags { values["tags"] = tags.body }
         return values
     }
 

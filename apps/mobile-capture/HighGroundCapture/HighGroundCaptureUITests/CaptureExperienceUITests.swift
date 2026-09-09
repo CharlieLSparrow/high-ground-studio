@@ -1887,8 +1887,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
     }
 
-    func testCoachingGoalDraftKeepsSharedTagsAndWritingTogether() {
-        exerciseCoachingGoalTags()
+    func testCoachingWorkDraftKeepsSharedTagsAndWritingTogether() {
+        exerciseCoachingWorkTags()
     }
 
     func testCoachingTaskReturnsToOriginalConversationMessage() {
@@ -1934,11 +1934,11 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["Done"].tap()
     }
 
-    func testCoachingGoalDraftKeepsSharedTagsAndWritingTogetherOnRegularWidthIPad() {
-        exerciseCoachingGoalTags()
+    func testCoachingWorkDraftKeepsSharedTagsAndWritingTogetherOnRegularWidthIPad() {
+        exerciseCoachingWorkTags()
     }
 
-    private func exerciseCoachingGoalTags() {
+    private func exerciseCoachingWorkTags() {
         relaunchCoachingPreview(role: "coach", additionalArguments: ["--capture-coaching-work-source-preview"])
         openRootDestination("Home")
         let coaching = app.buttons["CaptureOpenCoachingHome"]
@@ -1947,17 +1947,17 @@ final class CaptureExperienceUITests: XCTestCase {
         let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
         reveal(relationship)
         relationship.tap()
-        let addGoal = app.buttons["CaptureCoachingQuickAdd_GOAL"]
-        reveal(addGoal, searchAboveFirst: true)
-        XCTAssertTrue(addGoal.isHittable)
-        addGoal.tap()
+        let addNote = app.buttons["CaptureCoachingQuickAdd_NOTE"]
+        reveal(addNote, searchAboveFirst: true)
+        XCTAssertTrue(addNote.isHittable)
+        addNote.tap()
         let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         title.tap()
         title.typeText("Make writing feel easier")
         let tags = app.buttons["CaptureCoachingWorkTags"]
         reveal(tags)
-        XCTAssertTrue(tags.isHittable, "A goal should use the same visible tag picker as a task.")
+        XCTAssertTrue(tags.isHittable, "Notes, tasks, and goals should use the same visible tag picker.")
         tags.tap()
         let research = app.buttons["CaptureTaskTagChoice_research"]
         XCTAssertTrue(research.waitForExistence(timeout: 5))
@@ -1967,12 +1967,22 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(newLabel)
         newLabel.tap()
         newLabel.typeText("Writing practice")
+        XCTAssertTrue(app.staticTexts["Tags are saved with the note. An existing name reuses the same tag and color."].exists)
         app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
         XCTAssertEqual(title.value as? String, "Make writing feel easier")
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_research"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_new-Writing practice"].exists)
+        let kindPicker = app.segmentedControls["CaptureCoachingWorkKind"]
+        reveal(kindPicker, searchAboveFirst: true)
+        kindPicker.buttons["Goal"].tap()
+        XCTAssertEqual(title.value as? String, "Make writing feel easier", "Changing a draft's kind keeps its writing.")
+        reveal(tags)
+        tags.tap()
+        XCTAssertEqual(research.value as? String, "Selected", "Changing a note draft to a goal keeps its canonical tags.")
+        XCTAssertEqual(newLabel.value as? String, "Writing practice")
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        screenshot.name = "coaching-goal-tags-draft.png"
+        screenshot.name = "coaching-note-to-goal-tags-draft.png"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         XCTAssertFalse(app.buttons["CaptureCoachingSaveWork"].isEnabled,
