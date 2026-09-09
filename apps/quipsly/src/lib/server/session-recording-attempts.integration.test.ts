@@ -4,6 +4,9 @@ jest.mock("@/auth", () => ({auth: jest.fn()}));
 import {randomUUID} from "node:crypto";
 import {getPrismaClient} from "@/lib/prisma";
 import {readSessionRecordingShare} from "./session-recording-share";
+import {readSessionRecordingAttempts} from "./session-recording-attempts";
+import {selectSessionTranscriptSources} from "./session-transcript-source-selection";
+import {assembleSessionTranscriptProgramClock} from "./session-transcript-assembly";
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
 if (enabled) {
@@ -73,5 +76,19 @@ if (enabled) {
     expect(client.output).toBeNull();
     await expect(readSessionRecordingShare(prisma, {roomId: id("room"), actor: actor("outsider")})).rejects.toMatchObject({status: 404});
     await expect(readSessionRecordingShare(prisma, {roomId: id("room"), actor: actor("coach"), takeId: `start:${randomUUID()}`})).rejects.toMatchObject({status: 404});
+  });
+
+  it("uses persisted START receipts for transcript lanes and resets the later recording clock", async () => {
+    const assets = await prisma.recordingAsset.findMany({where: {roomId: id("room")}, orderBy: {recordedStartedAt: "asc"}});
+    const rows = assets.map(asset => ({...asset, recordedStartedAt: asset.recordedStartedAt!,
+      transcriptJobs: [{id: `transcript-${asset.id}`, createdAt: asset.createdAt}]}));
+    const attempts = await readSessionRecordingAttempts(prisma, id("room"), rows);
+    const later = selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: id("source-3")}).filter(row => row !== null);
+    expect(later.map(row => row.id)).toEqual([id("source-3")]);
+    const clock = assembleSessionTranscriptProgramClock(later.map(row => ({recordingAssetId: row.id,
+      transcriptJobId: row.transcriptJobs[0]!.id, captureGroupId: group, recordedStartedAt: row.recordedStartedAt})));
+    expect(clock.sources.map(row => row.programOffsetSeconds)).toEqual([0]);
+    const earlier = selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: id("source-0")}).filter(row => row !== null);
+    expect(new Set(earlier.map(row => row.id))).toEqual(new Set([0, 1, 2].map(n => id(`source-${n}`))));
   });
 });

@@ -94,6 +94,52 @@ describe("Session transcript correction desk", () => {
     jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValue([]),
   );
 
+  it("does not pull an earlier Record/Stop into the current transcript in the same room group", async () => {
+    const captureIds = [
+      "50000000-0000-4000-8000-000000000001",
+      "50000000-0000-4000-8000-000000000002",
+    ];
+    const rows = captureIds.map((captureId, index) => ({
+      id: `source-${index}`,
+      participantId: "coach",
+      kind: "LOCAL_AUDIO",
+      checksum: "a".repeat(64),
+      recordedStartedAt: new Date(`2026-09-09T0${index + 1}:00:00Z`),
+      recordedStoppedAt: new Date(`2026-09-09T0${index + 1}:00:12Z`),
+      localManifestJson: { captureGroupId: "same-room-group", captureId },
+      transcriptJobs: [{ id: `job-${index}`, createdAt: new Date(`2026-09-09T0${index + 1}:01:00Z`) }],
+    }));
+    const latest = desk({
+      participantId: "coach", recordingAssetId: "source-1", transcriptJobId: "job-1",
+      sha: "a".repeat(64), segmentId: "latest-turn", startSeconds: 0,
+      text: "This belongs to the later twelve-second recording.",
+    });
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(latest as any);
+    const prisma = {
+      recordingAsset: { findMany: jest.fn(async () => rows) },
+      callRecordingEndpointReceipt: { findMany: jest.fn(async () => rows.map((row, index) => ({
+        captureId: captureIds[index], participantId: row.participantId,
+        directive: { id: `start-${index}`, issuedAt: row.recordedStartedAt },
+      }))) },
+    };
+
+    const result = await readSessionTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+
+    if (!("sessionTranscript" in result)) throw new Error("Expected a source-bound Session transcript.");
+    expect(result.sessionTranscript).toMatchObject({
+      status: "single-source", sourceCount: 1,
+      sources: [{ recordingAssetId: "source-1", programOffsetSeconds: 0 }],
+    });
+    expect(result.segments).toEqual(latest.segments);
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledTimes(2);
+    expect(readTranscriptCorrectionDesk).toHaveBeenLastCalledWith(expect.objectContaining({
+      recordingAssetId: "source-1", transcriptJobId: "job-1",
+    }));
+    expect(prisma.callRecordingEndpointReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { roomId: "room-1", captureId: { in: captureIds }, state: "STARTED", directive: { roomId: "room-1", action: "START" } },
+    }));
+  });
+
   it("returns an exact transcript job without assembling newer Session sources", async () => {
     const exact = desk({
       participantId: "coach",

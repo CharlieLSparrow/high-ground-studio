@@ -1,6 +1,8 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
+import { readSessionRecordingAttempts as loadRecordingAttempts } from "./session-recording-attempts";
+export { recordingShareAttempts } from "./session-recording-attempts";
 
 import {
   newSessionRecordingShareJob,
@@ -527,48 +529,7 @@ async function loadSources(
   // A capture group is the durable call boundary. Unlike a start-time
   // cluster it deliberately survives long calls and crash/reconnect segments.
   // The bounded clock fallback exists only for legacy sources without groups.
-  return recordingShareSourcesForTake(verified, preferredCaptureGroupId);
-}
-
-type RecordingAttemptReceipt = {
-  captureId: string | null;
-  participantId: string;
-  directive: { id: string; issuedAt: Date };
-};
-
-// A capture group can outlive several explicit Record/Stop actions. A START
-// directive identifies an attempt, including all of its crash/rejoin segments.
-// Do not infer a new attempt from a pause or a device's drifting wall clock.
-export function recordingShareAttempts<T extends {
-  id: string; participantId: string; recordedStartedAt: Date; localManifestJson?: unknown;
-}>(sources: T[], receipts: RecordingAttemptReceipt[]) {
-  const byCapture = new Map<string, RecordingAttemptReceipt>();
-  for (const receipt of [...receipts].sort((a, b) => a.directive.issuedAt.getTime() - b.directive.issuedAt.getTime())) {
-    const key = `${receipt.participantId}:${receipt.captureId}`;
-    if (receipt.captureId && !byCapture.has(key)) byCapture.set(key, receipt);
-  }
-  const groups = new Map<string, {id: string; startedAt: Date; sources: T[]}>();
-  for (const source of sources) {
-    const manifest = object(source.localManifestJson);
-    const receipt = byCapture.get(`${source.participantId}:${clean(manifest.captureId, 80)}`);
-    const id = receipt ? `start:${receipt.directive.id}` : `group:${recordingShareCaptureGroupId(manifest) || "unbound"}`;
-    const startedAt = receipt?.directive.issuedAt || source.recordedStartedAt;
-    const group = groups.get(id) || {id, startedAt, sources: []};
-    if (startedAt < group.startedAt) group.startedAt = startedAt;
-    group.sources.push(source);
-    groups.set(id, group);
-  }
-  return [...groups.values()].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime() || a.id.localeCompare(b.id));
-}
-
-async function loadRecordingAttempts(client: RestoreClient, roomId: string, sources: any[]) {
-  const captureIds = [...new Set(sources.map(source => clean(object(source.localManifestJson).captureId, 80)))]
-    .filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
-  const receipts: RecordingAttemptReceipt[] = captureIds.length ? await client.callRecordingEndpointReceipt.findMany({
-    where: {roomId, captureId: {in: captureIds}, state: "STARTED", directive: {roomId, action: "START"}},
-    select: {captureId: true, participantId: true, directive: {select: {id: true, issuedAt: true}}},
-  }) : [];
-  return recordingShareAttempts(sources, receipts);
+  return recordingShareSourcesForTake<any>(verified, preferredCaptureGroupId);
 }
 
 async function exactCloudBindings(

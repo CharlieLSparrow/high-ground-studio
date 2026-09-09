@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readSessionRecordingAttempts } from "./session-recording-attempts";
 import type { Prisma } from "@prisma/client";
 import {
   TRANSCRIPT_ACTION_CANDIDATE_KIND,
@@ -830,6 +831,7 @@ export async function resolveSessionPacketTranscript(input: {
   })) as PacketSourceCandidate[];
   const selected = selectSessionTranscriptSources({
     rows,
+    attempts: await readSessionRecordingAttempts(input.prisma, anchor.roomId, rows),
     anchorRecordingAssetId: cleanText(anchor.assetId || anchor.asset?.id),
   }).filter((source): source is PacketSourceCandidate => Boolean(source));
   if (selected.length < 2) return single;

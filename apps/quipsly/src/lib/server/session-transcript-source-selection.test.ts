@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { selectSessionTranscriptSources } from "./session-transcript-source-selection";
+import { recordingShareAttempts } from "./session-recording-attempts";
 
 function source(input: {
   id: string;
@@ -23,6 +24,29 @@ function source(input: {
 }
 
 describe("Session transcript source selection", () => {
+  it("uses START identity rather than merging separate recordings in the same capture group", () => {
+    const rows = [0, 1, 2, 3].map(n => ({...source({id: `source-${n}`, participantId: n === 1 ? "client" : "coach",
+      startedAt: new Date(Date.parse("2026-09-09T12:00:00Z") + [0, 1000, 1200000, 3600000][n]!).toISOString(),
+      stoppedAt: new Date(Date.parse("2026-09-09T12:00:00Z") + [1190000, 1800000, 1800000, 3612000][n]!).toISOString(),
+      captureGroupId: "one-room"}), localManifestJson: {captureGroupId: "one-room", captureId: `capture-${n}`}}));
+    const receipts = rows.map((row, n) => ({captureId: `capture-${n}`, participantId: row.participantId,
+      directive: {id: n === 3 ? "later" : "earlier", issuedAt: rows[n === 3 ? 3 : 0]!.recordedStartedAt}}));
+    const attempts = recordingShareAttempts(rows, receipts);
+    expect(selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: "source-3"}).map(row => row?.id)).toEqual(["source-3"]);
+    expect(selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: "source-0"}).map(row => row?.id))
+      .toEqual(["source-0", "source-2", "source-1"]);
+    expect(selectSessionTranscriptSources({rows, attempts, participantIds: ["coach", "client"], anchorRecordingAssetId: "source-3"}).map(row => row?.id))
+      .toEqual(["source-3", undefined]);
+  });
+
+  it("does not borrow a track missing START evidence from another known attempt", () => {
+    const rows = [0, 1].map(n => ({...source({id: `source-${n}`, participantId: n ? "client" : "coach",
+      startedAt: "2026-09-09T12:00:00Z", captureGroupId: "one-room"}), localManifestJson: {captureGroupId: "one-room", captureId: `capture-${n}`}}));
+    const attempts = recordingShareAttempts(rows, [{captureId: "capture-0", participantId: "coach", directive: {id: "start", issuedAt: rows[0]!.recordedStartedAt}}]);
+    expect(selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: "source-0"}).map(row => row?.id)).toEqual(["source-0"]);
+    expect(selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: "source-1"}).map(row => row?.id)).toEqual(["source-1"]);
+  });
+
   it("keeps an anchored capture group isolated from nearby takes", () => {
     const selected = selectSessionTranscriptSources({
       rows: [
