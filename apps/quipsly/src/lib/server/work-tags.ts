@@ -724,6 +724,21 @@ export function readNoteTagContext(input: Parameters<typeof readWorkEntityTagCon
   return readWorkEntityTagContext(input, "note");
 }
 
+export async function readDocumentTagContext(input: Parameters<typeof readWorkEntityTagContext>[0]) {
+  const entity = await findOwnedTagEntity(input.prisma, "document", input.entityId, input.actorUserId, input.actorEmail);
+  if (!entity?.projectId) return null;
+  const projects = await writableProjectIds(input.prisma, input.actorEmail);
+  if (!projects.has(entity.projectId)) return null;
+  const tags = await input.prisma.studioTag.findMany({
+    where: { projectId: entity.projectId },
+    orderBy: [{ label: "asc" }, { id: "asc" }],
+    select: { id: true, label: true, hexColor: true, isActive: true },
+  });
+  return { entityId: entity.id, projectId: entity.projectId, updatedAt: entity.updatedAt.toISOString(),
+    tagRevision: entity.tagRevision as number, selectedTagIds: entity.tagLinks.map((link: { tagId: string }) => link.tagId),
+    tags, canCreateTags: true };
+}
+
 export async function readNewCoachingTaskTagContext(input: {
   prisma: PrismaClient; actorUserId: string; actorEmail: string; engagementId: string;
 }) {

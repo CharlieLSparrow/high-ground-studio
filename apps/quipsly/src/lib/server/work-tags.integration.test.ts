@@ -10,7 +10,9 @@ import {
   createWorkTagTaxonomy,
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
+  readDocumentTagContext,
 } from "./work-tags";
+import { readCanonicalDocumentNoteForActor } from "./canonical-document-note-edit";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -100,6 +102,37 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  it("reads document tag colors without exposing private writing or changing its content revision", async () => {
+    const document = await prisma.studioDocument.create({ data: { projectId, stableId: `tagged-writing-${nonce}`,
+      title: "A morning idea", sourceLabel: "document-kind:note", personalOwnerUserId: actorUserId, isPrivate: true,
+      blocks: { create: { stableId: `tagged-writing-block-${nonce}`, order: 0, body: "An idea worth keeping." } } } });
+    const actor = { prisma, actorUserId, actorEmail, entityId: document.id };
+    const before = await readCanonicalDocumentNoteForActor({ userId: actorUserId, email: actorEmail }, document.id, prisma);
+    const initial = await readDocumentTagContext(actor);
+    expect(initial).toMatchObject({ tagRevision: 0, selectedTagIds: [], projectId });
+    const saved = await replaceWorkEntityTags({ ...actor, entityKind: "document", tagIds: [tagId],
+      expectedUpdatedAt: document.updatedAt, expectedTagRevision: 0, clientRequestId: randomUUID() });
+    expect(saved.ok).toBe(true);
+    const current = await readDocumentTagContext(actor);
+    expect(current).toMatchObject({ tagRevision: 1, selectedTagIds: [tagId], tags: expect.arrayContaining([
+      expect.objectContaining({ id: tagId, label: "Proof listen", hexColor: null }),
+    ]) });
+    expect((await readCanonicalDocumentNoteForActor({ userId: actorUserId, email: actorEmail }, document.id, prisma))?.contentRevision).toBe(before?.contentRevision);
+    expect(before).not.toBeNull();
+    const otherEmail = `work-tags-other-${nonce}@example.test`;
+    const outsider = { ...actor, actorUserId: otherUserId, actorEmail: otherEmail };
+    expect(await readDocumentTagContext(outsider)).toBeNull();
+    const grant = await prisma.studioProjectAccessGrant.create({ data: { projectId, email: otherEmail, role: "EDITOR", status: "ACTIVE" } });
+    try {
+      expect(await readDocumentTagContext(outsider)).toBeNull();
+      await prisma.studioDocument.update({ where: { id: document.id }, data: { isPrivate: false } });
+      expect(await readDocumentTagContext(outsider)).toMatchObject({ selectedTagIds: [tagId] });
+      await prisma.studioProjectAccessGrant.update({ where: { id: grant.id }, data: { status: "REVOKED" } });
+      expect(await readDocumentTagContext(outsider)).toBeNull();
+    } finally { await prisma.studioProjectAccessGrant.delete({ where: { id: grant.id } }); }
+    expect(await readDocumentTagContext({ ...actor, entityId: "missing-document" })).toBeNull();
   });
 
   it("persists explicit same-Nest joins for a document, task, goal, session, and note", async () => {

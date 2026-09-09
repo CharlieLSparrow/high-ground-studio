@@ -10,6 +10,7 @@ import {
   readTaskTagContext,
   readGoalTagContext,
   readNoteTagContext,
+  readDocumentTagContext,
   readNewCoachingTaskTagContext,
   readNewNestTaskTagContext,
   type WorkTagEntityKind,
@@ -38,10 +39,11 @@ export async function GET(request: Request) {
     const engagementId = text(query.get("engagementId"));
     const projectSlug = text(query.get("projectSlug"));
     const entityKind = query.get("entityKind");
-    if (!["task", "goal", "note"].includes(entityKind || "")
+    if (!["task", "goal", "note", "document"].includes(entityKind || "")
+      || (entityKind === "document" && !entityId)
       || [entityId, engagementId, projectSlug].filter(Boolean).length !== 1) return NextResponse.json({ ok: false, error: "Choose a note, task, goal, client space, or Nest." }, { status: 400, headers });
     const actor = { prisma: getPrismaClient(), actorUserId: session.user.id, actorEmail };
-    const context = entityId ? await (entityKind === "goal" ? readGoalTagContext : entityKind === "note" ? readNoteTagContext : readTaskTagContext)({ ...actor, entityId })
+    const context = entityId ? await (entityKind === "document" ? readDocumentTagContext : entityKind === "goal" ? readGoalTagContext : entityKind === "note" ? readNoteTagContext : readTaskTagContext)({ ...actor, entityId })
       : engagementId ? await readNewCoachingTaskTagContext({ ...actor, engagementId })
         : await readNewNestTaskTagContext({ ...actor, projectSlug });
     return context ? NextResponse.json({ ok: true, ...context }, { headers })

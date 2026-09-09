@@ -40,7 +40,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { VoiceWritingRichText } from "@/lib/voice-writing-contract";
-import { TagSearchChips, type NavigableTag } from "@/components/tag-search-chips";
+import type { NavigableTag } from "@/components/tag-search-chips";
+import { DocumentTags } from "@/components/document-tags";
 import { writingSaveRetryDelay } from "./voice-writing-save-retry";
 import {
   tiptapToVoiceWritingRichText,
@@ -256,7 +257,7 @@ function SaveStatus({ state, updatedAt }: { state: SaveState; updatedAt?: string
   </span>;
 }
 
-export function VoiceWritingEditor({ draftId }: { draftId: string }) {
+export function VoiceWritingEditor({ draftId, actorId }: { draftId: string; actorId: string }) {
   const router = useRouter();
   const [draft, setDraft] = useState<WritingDraft | null>(null);
   const [title, setTitle] = useState("");
@@ -848,7 +849,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#87663d]">{audience.eyebrow} · {draft.projectName}</p>
           <input value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={320} aria-label="Writing title" className="mt-1 w-full border-0 bg-transparent p-0 font-serif text-3xl font-black leading-tight text-[#33281d] outline-none placeholder:text-[#a18b6c] sm:text-4xl" placeholder="Give this a title" />
-          <TagSearchChips tags={draft.tags} label="Writing tags" />
+          <DocumentTags key={`${actorId}:${draft.projectId}:${draft.documentId}`} actorId={actorId} documentId={draft.documentId} projectId={draft.projectId} />
         </div>
       </div>
     </header>

@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { VoiceWritingEditor } from "./voice-writing-editor";
+jest.mock("@/components/document-tags", () => ({ DocumentTags: ({ documentId, actorId }: { documentId: string; actorId: string }) => <div data-testid="document-tags" data-document={documentId} data-actor={actorId} /> }));
 
 const router = { replace: jest.fn(), refresh: jest.fn() };
 const chain = new Proxy({ run: () => true }, {
@@ -34,7 +35,7 @@ describe("VoiceWritingEditor save recovery", () => {
       }) };
     });
     globalThis.fetch = fetchMock;
-    render(<VoiceWritingEditor draftId={draftId} />);
+    render(<VoiceWritingEditor draftId={draftId} actorId="writer" />);
     await screen.findByLabelText("Writing title");
     fireEvent.change(screen.getByLabelText("Writing title"), { target: { value: "Keep these new words" } });
     await advance(900);
@@ -89,7 +90,7 @@ describe("VoiceWritingEditor save recovery", () => {
         options.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       }));
     globalThis.fetch = fetchMock;
-    render(<VoiceWritingEditor draftId={draftId} />);
+    render(<VoiceWritingEditor draftId={draftId} actorId="writer" />);
     await screen.findByLabelText("Writing title");
     fireEvent.change(screen.getByLabelText("Writing title"), {target: {value: "Keep this thought through a stalled connection"}});
     await advance(900);
@@ -136,7 +137,7 @@ describe("VoiceWritingEditor save recovery", () => {
       .mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }))
       .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, draft: {...payload.drafts[0], serverRevision: 4, contentRevision: "revision-4"}})});
     globalThis.fetch = fetchMock;
-    render(<VoiceWritingEditor draftId={draftId} />);
+    render(<VoiceWritingEditor draftId={draftId} actorId="writer" />);
     await screen.findByLabelText("Writing title");
     fireEvent.change(screen.getByLabelText("Writing title"), {target: {value: "First thought"}});
     await advance(900);
@@ -228,19 +229,16 @@ function loadPayload(text = "Home is finishing his PhD.", acceptedCorrectionId: 
 }
 
 describe("VoiceWritingEditor transcript correction", () => {
-  it("keeps shared tag colors and exact tag navigation beside a spoken-writing draft", async () => {
+  it("connects spoken writing to the same actor-scoped document tag editor as notes", async () => {
     const payload = loadPayload();
     globalThis.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({...payload, drafts: [{...payload.drafts[0], tags: [
       {id: "research", slug: "research", label: "Research", hexColor: "#506b46", isActive: true},
       {id: "earlier", slug: "earlier", label: "Earlier focus", hexColor: "#866c52", isActive: false},
     ]}]})});
-    render(<VoiceWritingEditor draftId={draftId} />);
-    const research = await screen.findByRole("link", {name: "Find all accessible work tagged Research"});
-    expect(research).toHaveAttribute("href", "/find?tag=research");
-    expect(research).toHaveStyle({backgroundColor: "#506b46"});
-    const earlier = screen.getByRole("link", {name: "Find all accessible work tagged Earlier focus (archived)"});
-    expect(earlier).toHaveAttribute("href", "/find?tag=earlier");
-    expect(earlier).toHaveStyle({backgroundColor: "#866c52"});
+    render(<VoiceWritingEditor draftId={draftId} actorId="writer" />);
+    const tags = await screen.findByTestId("document-tags");
+    expect(tags).toHaveAttribute("data-document", payload.drafts[0].documentId);
+    expect(tags).toHaveAttribute("data-actor", "writer");
     expect(screen.getByLabelText("Writing title")).toHaveValue("Dissertation opening");
   });
 
@@ -271,7 +269,7 @@ describe("VoiceWritingEditor transcript correction", () => {
       json: async () => loadPayload(),
     }) as unknown as typeof fetch;
 
-    render(<VoiceWritingEditor draftId={draftId} />);
+    render(<VoiceWritingEditor draftId={draftId} actorId="writer" />);
 
     const passage = await screen.findByRole("button", { name: "Play passage at 0:04–0:08" });
     const audio = screen.getByLabelText("Original recording 1") as HTMLAudioElement;
@@ -307,7 +305,7 @@ describe("VoiceWritingEditor transcript correction", () => {
       });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    render(<VoiceWritingEditor draftId={draftId} />);
+    render(<VoiceWritingEditor draftId={draftId} actorId="writer" />);
 
     expect(await screen.findByText("Home is finishing his PhD.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Correct words" }));

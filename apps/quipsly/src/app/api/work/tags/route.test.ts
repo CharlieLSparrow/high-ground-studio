@@ -10,6 +10,7 @@ import {
   readTaskTagContext,
   readGoalTagContext,
   readNoteTagContext,
+  readDocumentTagContext,
   readNewCoachingTaskTagContext,
   readNewNestTaskTagContext,
 } from "@/lib/server/work-tags";
@@ -26,6 +27,7 @@ jest.mock("@/lib/server/work-tags", () => ({
   readTaskTagContext: jest.fn(),
   readGoalTagContext: jest.fn(),
   readNoteTagContext: jest.fn(),
+  readDocumentTagContext: jest.fn(),
   readNewCoachingTaskTagContext: jest.fn(),
   readNewNestTaskTagContext: jest.fn(),
 }));
@@ -40,6 +42,22 @@ function patchRequest(body: unknown) {
 
 describe("authenticated shared work tags route", () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it("reads document colors and the independent tag revision through document access", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "writer", primaryEmail: "Writer@Example.test" } } as any);
+    const context = { entityId: "document", projectId: "nest", updatedAt: "2026-09-09T00:00:00Z", tagRevision: 3,
+      selectedTagIds: ["research"], tags: [{ id: "research", label: "Research", hexColor: "#506b46", isActive: true }], canCreateTags: true };
+    jest.mocked(readDocumentTagContext).mockResolvedValue(context);
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=document&entityId=document"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ ok: true, ...context });
+    expect(readDocumentTagContext).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "writer", actorEmail: "writer@example.test", entityId: "document" }));
+    expect(readNoteTagContext).not.toHaveBeenCalled();
+    jest.mocked(readDocumentTagContext).mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=document&entityId=private"))).status).toBe(404);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=document&projectSlug=nest"))).status).toBe(400);
+  });
 
   it("reads note tags through the note authorization boundary", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "client@example.test"}} as any);

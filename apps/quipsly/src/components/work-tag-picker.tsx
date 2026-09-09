@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { tagChipColors } from "@/lib/tag-color";
+import { TagSearchChips } from "./tag-search-chips";
 
 export type WorkTagOption = { id: string; label: string; hexColor: string | null; isActive: boolean };
 
-export function WorkTagPicker({ entityKind = "task", entityId, engagementId, projectSlug, selected, onChange, disabled, onPendingChange }: {
-  entityKind?: "task" | "goal" | "note";
+export function WorkTagPicker({ entityKind = "task", entityId, engagementId, projectSlug, selected, onChange, disabled, onPendingChange, navigateSelected = false }: {
+  entityKind?: "task" | "goal" | "note" | "document";
   entityId?: string;
   engagementId?: string;
   projectSlug?: string;
@@ -14,6 +15,7 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
   onChange: (tags: WorkTagOption[]) => void;
   disabled: boolean;
   onPendingChange: (pending: boolean) => void;
+  navigateSelected?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [tags, setTags] = useState<WorkTagOption[]>([]);
@@ -86,18 +88,18 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
   const visible = tags.filter(tag => tag.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const newLabel = query.trim();
   const canOfferCreation = canCreateTags && projectId && newLabel && !tags.some(tag => tag.label.normalize("NFKC").toLocaleLowerCase() === newLabel.normalize("NFKC").toLocaleLowerCase());
-  return <div className="min-w-0 space-y-2">
+  return <div className={navigateSelected && !expanded ? "flex min-w-0 flex-wrap items-center gap-x-3" : "min-w-0 space-y-2"}>
     <button type="button" disabled={disabled || creating} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
       className="min-h-11 text-sm font-semibold text-primary underline underline-offset-4">
       {selected.length ? `Tags (${selected.length})` : "Add tags"}
     </button>
-    {selected.length > 0 && <div className="flex flex-wrap gap-1" aria-label="Selected tags">
+    {navigateSelected && !expanded ? <TagSearchChips tags={selected} label="Document tags" className="" /> : selected.length > 0 && <div className="flex flex-wrap gap-1" aria-label="Selected tags">
       {selected.map(tag => <button key={tag.id} type="button" disabled={disabled || creating}
         aria-label={`Remove ${tag.label} tag`} onClick={() => onChange(selected.filter(value => value.id !== tag.id))}
         style={tagChipColors(tag.hexColor)} className="min-h-11 max-w-full rounded-full border px-3 py-1 text-xs [overflow-wrap:anywhere]"><span>{tag.label}</span>{!tag.isActive && " · archived"} <span aria-hidden="true">×</span></button>)}
     </div>}
     {expanded && <fieldset disabled={disabled || creating} className="min-w-0 space-y-2">
-      <legend className="sr-only">{entityKind === "goal" ? "Goal tags" : entityKind === "note" ? "Note tags" : "Task tags"}</legend>
+      <legend className="sr-only">{entityKind === "document" ? "Document tags" : entityKind === "goal" ? "Goal tags" : entityKind === "note" ? "Note tags" : "Task tags"}</legend>
       <input type="search" aria-label={`Find ${entityKind} tags`} value={query} maxLength={80} onChange={event => { setQuery(event.target.value); setCreateError(""); }} placeholder={canCreateTags ? "Find or create a tag…" : "Find a tag…"}
         className="block min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
       {loading && <p role="status" className="text-sm text-muted-foreground">Loading tags…</p>}
