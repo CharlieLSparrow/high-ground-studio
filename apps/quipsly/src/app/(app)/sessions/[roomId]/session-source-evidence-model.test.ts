@@ -680,6 +680,25 @@ describe("Session source evidence", () => {
     expect(JSON.stringify(result)).not.toContain("gs://private-import");
   });
 
+  it.each([
+    ["LOCAL_AUDIO", "audio/mp4", "audio"],
+    ["LOCAL_VIDEO", "video/quicktime", "video"],
+  ])("preserves %s playback type from the verified recording", (kind, contentType, playbackKind) => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+    input.recordingAssets[0].kind = kind;
+    input.recordingAssets[0].contentType = contentType;
+    (input.recordingAssets[0].localManifestJson as any).promotion.contentType = "application/octet-stream";
+
+    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toEqual({
+      sourceId: "asset-1",
+      url: "/api/sessions/room-1/recordings/asset-1/media",
+      kind: playbackKind,
+      contentType,
+      durationSeconds: null,
+    });
+  });
+
   it("ignores an external promotion URL and keeps Session playback on its protected route", () => {
     const input = fixture();
     markAsAuditedRecoveryReplica(input);
@@ -689,6 +708,7 @@ describe("Session source evidence", () => {
       sourceId: "asset-1",
       url: "/api/sessions/room-1/recordings/asset-1/media",
       kind: "video",
+      contentType: null,
       durationSeconds: null,
     });
   });
@@ -703,6 +723,7 @@ describe("Session source evidence", () => {
       sourceId: "asset-1",
       url: "/api/sessions/room-1/recordings/asset-1/media",
       kind: "video",
+      contentType: null,
       durationSeconds: null,
     });
   });
