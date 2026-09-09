@@ -17,8 +17,8 @@ import { buildWorkSnapshot, sharedWorkRoomIds, type WorkProjectOption } from "./
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Work Queue - Quipsly",
-  description: "Review actor-scoped tasks, session goals, and weekly commitments with honest provenance.",
+  title: "Tasks & goals - Quipsly",
+  description: "Your next steps, shared goals, and weekly plans in one place.",
 };
 
 function safeDatabaseMessage(error: unknown) {
@@ -251,9 +251,19 @@ function focusId(value: string | string[] | undefined) {
 export default async function WorkPage({ searchParams }: WorkPageProps) {
   const requestedFocus = await (searchParams ?? Promise.resolve<NonNullable<Awaited<WorkPageProps["searchParams"]>>>({}));
   const attentionRequested = requestedFocus.view === "attention";
+  const initialView = requestedFocus.view === "goals" || requestedFocus.view === "weekly" ? requestedFocus.view : "tasks";
   const manageTags = requestedFocus.manage === "tags";
   const session = await getQuipslySession();
-  if (!session?.user?.id) return <StudioAccessShell mode="signed-out" redirectTo={attentionRequested ? "/work?view=attention" : manageTags ? "/work?manage=tags" : "/work"} />;
+  if (!session?.user?.id) {
+    const destination = new URLSearchParams();
+    if (attentionRequested || initialView !== "tasks") destination.set("view", attentionRequested ? "attention" : initialView);
+    if (manageTags) destination.set("manage", "tags");
+    for (const key of ["task", "goal", "project"] as const) {
+      const value = focusId(requestedFocus[key]);
+      if (value) destination.set(key, value);
+    }
+    return <StudioAccessShell mode="signed-out" redirectTo={`/work${destination.size ? `?${destination}` : ""}`} />;
+  }
   try {
     const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
     const projectOptions = actorEmail ? await loadProjectOptions(actorEmail) : [];
@@ -267,6 +277,7 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
       initialSnapshot={initialSnapshot}
       projectOptions={projectOptions}
       initialFilter={attentionRequested ? "ATTENTION" : "OPEN"}
+      initialView={initialView}
       focusTaskId={requestedTaskIsAvailable ? requestedTaskId : null}
       focusGoalId={requestedGoalIsAvailable ? requestedGoalId : null}
       unavailableFocusKind={requestedTaskId && !requestedTaskIsAvailable

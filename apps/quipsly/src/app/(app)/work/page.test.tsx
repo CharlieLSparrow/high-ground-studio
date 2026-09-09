@@ -38,6 +38,20 @@ describe("Work Queue page truth states", () => {
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
+  it.each(["goals", "weekly"])("preserves the %s workspace view through sign-in", async view => {
+    jest.mocked(getQuipslySession).mockResolvedValue(null as any);
+    render(await WorkPage({ searchParams: Promise.resolve({ view }) }));
+    expect(screen.getByText(`signed-out:/work?view=${view}`)).toBeInTheDocument();
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("preserves a specific conversation task through sign-in without fetching it anonymously", async () => {
+    jest.mocked(getQuipslySession).mockResolvedValue(null as any);
+    render(await WorkPage({ searchParams: Promise.resolve({ task: "task-from-chat" }) }));
+    expect(screen.getByText("signed-out:/work?task=task-from-chat")).toBeInTheDocument();
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
   it("shows an honest unavailable state instead of sample work", async () => {
     jest.mocked(getQuipslySession).mockResolvedValue({ user: { id: "user-1" } } as any);
     jest.mocked(getPrismaClient).mockReturnValue({

@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Archive, BellRing, CalendarClock, Check, CircleSlash2, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
 
 import LocalDateTime from "@/components/LocalDateTime";
 import { WorkTaskEditor as TaskEditor } from "@/components/work-task-editor";
@@ -17,6 +16,7 @@ import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndA
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTagCandidate, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
+export type WorkView = "tasks" | "goals" | "weekly";
 
 type WorkClientProps = {
   initialSnapshot: WorkSnapshot;
@@ -25,12 +25,21 @@ type WorkClientProps = {
   focusGoalId?: string | null;
   unavailableFocusKind?: "task" | "goal" | null;
   initialFilter?: "ATTENTION" | "OPEN";
+  initialView?: WorkView;
   manageTags?: boolean;
   initialProjectId?: string | null;
 };
 
 function humanize(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function resetDraftKeepingNest(form: HTMLFormElement | null, fieldName: string) {
+  if (!form) return;
+  const nest = form.elements.namedItem(fieldName);
+  const projectId = nest instanceof HTMLSelectElement ? nest.value : null;
+  form.reset();
+  if (nest instanceof HTMLSelectElement && projectId !== null) nest.value = projectId;
 }
 
 function formatUtcOptionDate(value: string) {
@@ -713,14 +722,14 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
   }
 
   return (
-    <article id={`work-task-${task.id}`} tabIndex={-1} aria-current={focused ? "true" : undefined} className={`scroll-mt-24 rounded-2xl border bg-white p-5 shadow-sm outline-none ${focused ? "border-sky-400 ring-4 ring-sky-100" : "border-[#e4d3b3]"}`}>
+    <article id={`work-task-${task.id}`} tabIndex={-1} aria-current={focused ? "true" : undefined} className={`min-w-0 scroll-mt-24 rounded-2xl border bg-card p-5 shadow-sm outline-none ${focused ? "border-primary ring-2 ring-primary/20" : "border-border"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${task.status === "DONE" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : task.status === "CANCELED" ? "border-stone-200 bg-stone-100 text-stone-600" : task.isOverdue ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{task.isOverdue ? "Overdue" : humanize(task.status)}</span>
             {task.provenance !== "Manual or legacy task" && <span className="text-[10px] font-black uppercase tracking-wide text-[#92754f]">{task.provenance}</span>}
           </div>
-          <h3 className={`mt-2 text-lg font-black text-[#3d3122] ${task.status !== "OPEN" ? "line-through decoration-[#bca98d]" : ""}`}>{task.title}</h3>
+          <h3 className={`mt-2 break-words text-lg font-bold text-foreground ${task.status !== "OPEN" ? "line-through decoration-muted-foreground" : ""}`}>{task.title}</h3>
           {task.attentionReason && <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-800"><BellRing size={13} aria-hidden="true" />{task.attentionReason}</p>}
           {task.recurrence && <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
             <p className="flex items-center gap-2 text-xs font-black text-violet-950"><Repeat2 size={15} aria-hidden="true" />{task.recurrence.label}</p>
@@ -732,9 +741,7 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
             {task.recurrence.status !== "ENDED" && managesRecurrence && <TaskRecurrenceEditor task={task} onRefresh={onConflict} />}
             {task.recurrence.status !== "ENDED" && !managesRecurrence && <p className="mt-2 text-[11px] font-semibold text-violet-800">Manage this series from its next open occurrence.</p>}
           </div>}
-          <TaskEditor task={task} onRefresh={onConflict} />
-          <TaskReminderEditor task={task} onRefresh={onConflict} />
-          {task.detail && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}
+          {task.detail && task.detail !== task.title && <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{task.detail}</p>}
           {task.conversationSourceHref && <Link href={task.conversationSourceHref} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-primary underline">View conversation</Link>}
           <TagEditor entityKind="task" entityId={task.id} project={projectOptions.find((project) => project.id === task.project?.id) ?? null} tags={task.tags} updatedAt={task.updatedAt} canManage={task.canManageTags} onRefresh={onConflict} />
           {task.sourceCardAnchor && sourceCardHref && (
@@ -783,6 +790,8 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
         {task.status !== "OPEN" && task.historicalLocked && <span className="inline-flex min-h-11 items-center rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-stone-600">Historical · replacement exists</span>}
         {task.status !== "CANCELED" && <button type="button" disabled={pending} onClick={() => decide("CANCELED")} className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-700 disabled:opacity-50"><CircleSlash2 size={14} aria-hidden="true" />{task.recurrence ? task.isOverdue ? "Skip missed" : "Skip occurrence" : "Cancel"}</button>}
       </div>}
+      <TaskEditor task={task} onRefresh={onConflict} />
+      <TaskReminderEditor task={task} onRefresh={onConflict} />
       {message && <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{message}</p>}
     </article>
   );
@@ -859,8 +868,8 @@ function GoalCard({ goal, focused, availableTasks, projectOptions, onRefresh }: 
   }
 
   const tone = goal.status === "ACHIEVED" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : goal.status === "PAUSED" ? "border-amber-200 bg-amber-50 text-amber-800" : goal.status === "ARCHIVED" ? "border-stone-200 bg-stone-100 text-stone-600" : "border-violet-200 bg-violet-50 text-violet-800";
-  return <article id={`work-goal-${goal.id}`} tabIndex={-1} aria-current={focused ? "true" : undefined} className={`scroll-mt-24 rounded-2xl border bg-white p-5 shadow-sm outline-none ${focused ? "border-sky-400 ring-4 ring-sky-100" : "border-violet-200"}`}>
-    <div className="flex flex-wrap items-start justify-between gap-3"><Target className="text-violet-700" aria-hidden="true" /><div className="flex flex-wrap gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tone}`}>{humanize(goal.status)}</span><span className="rounded-full border border-[#e4d3b3] px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{goal.provenance}</span>{goal.restoredFromPortableBackup && <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-sky-800">Restored copy</span>}</div></div>
+  return <article id={`work-goal-${goal.id}`} tabIndex={-1} aria-current={focused ? "true" : undefined} className={`min-w-0 scroll-mt-24 rounded-2xl border bg-card p-5 shadow-sm outline-none ${focused ? "border-primary ring-2 ring-primary/20" : "border-border"}`}>
+    <div className="flex flex-wrap items-start justify-between gap-3"><Target className="text-violet-700" aria-hidden="true" /><div className="flex flex-wrap gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tone}`}>{humanize(goal.status)}</span>{!canonical && <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">From session notes</span>}{goal.restoredFromPortableBackup && <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-sky-800">Restored copy</span>}</div></div>
     <h3 className="mt-3 text-xl font-black" aria-label={goal.restoredFromPortableBackup ? `${goal.title} — Restored copy` : undefined}>{goal.title}</h3>
     {goal.restoredFromPortableBackup && <p className="mt-2 rounded-xl border border-sky-100 bg-sky-50/70 p-3 text-xs font-semibold leading-5 text-sky-950">Restored from a portable Nest backup. This copy keeps its own Quipsly identity and history; compare it with similarly named current work before changing either one.</p>}
     {goal.description && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{goal.description}</p>}
@@ -873,10 +882,10 @@ function GoalCard({ goal, focused, availableTasks, projectOptions, onRefresh }: 
     {goal.linkedTasks.length > 0 && <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">Linked work</p><ul className="mt-2 space-y-2">{goal.linkedTasks.map((link) => <li key={link.task.id} className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-[#765f40]"><Link href={`/work?task=${encodeURIComponent(link.task.id)}`} className="rounded-sm hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">{humanize(link.relationship)} · {link.task.title} · {humanize(link.task.status)}</Link>{canonical && goal.canEdit && <button type="button" disabled={pending} onClick={() => disconnectTask(link.task.id)} className="text-[10px] font-black uppercase tracking-wide text-rose-700 hover:underline">Disconnect</button>}</li>)}</ul></div>}
     <div className="mt-4 flex flex-wrap gap-3 text-xs font-black uppercase tracking-wide">{goal.roomId && <Link href={`/sessions/${goal.roomId}`} className="text-violet-700 hover:underline">Open source session</Link>}{goal.project && <Link href={`/nests/${goal.project.slug}`} className="text-violet-700 hover:underline">Open project</Link>}</div>
     {canonical && goal.canEdit ? <>
-      <form action={recordProgress} className="mt-4 grid gap-2 rounded-xl border border-violet-100 bg-violet-50/40 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-end"><label className="text-[10px] font-black uppercase tracking-wide text-violet-900">Progress<select aria-label="Progress" key={String(goal.progressPercent ?? 0)} name="progressPercent" defaultValue={String(goal.progressPercent ?? 0)} className="mt-1 block rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-bold">{[0, 25, 50, 75, 100].map((value) => <option key={value} value={value}>{value}%</option>)}</select></label><label className="text-[10px] font-black uppercase tracking-wide text-violet-900">Evidence note<input aria-label="Evidence note" name="progressNote" maxLength={2000} placeholder="What changed or what is blocking it?" className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal" /></label><button type="submit" disabled={pending} className="rounded-lg bg-violet-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Save progress</button></form>
-      {linkableTasks.length > 0 && <details className="mt-3 rounded-xl border border-[#e4d3b3] bg-[#fffaf0] p-3"><summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#6f573b]">Connect another committed task</summary><form action={connectTask} className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end"><label className="text-[10px] font-black uppercase tracking-wide text-[#6f573b]">Committed task<select name="taskId" required defaultValue="" className="mt-1 block w-full rounded-lg border border-[#d9c7a5] bg-white px-3 py-2 text-xs font-bold"><option value="" disabled>Choose committed work</option>{linkableTasks.map((task) => <option key={task.id} value={task.id}>{task.title} · {task.dueAt ? `${formatUtcOptionDate(task.dueAt)} UTC` : "No due date"} · {humanize(task.status)}</option>)}</select></label><label className="text-[10px] font-black uppercase tracking-wide text-[#6f573b]">Relationship<select name="relationship" defaultValue="CONTRIBUTES" className="mt-1 block rounded-lg border border-[#d9c7a5] bg-white px-3 py-2 text-xs font-bold"><option value="CONTRIBUTES">Contributes</option><option value="BLOCKS">Blocks</option><option value="OUTCOME">Outcome</option></select></label><button type="submit" disabled={pending} className="rounded-lg border border-[#d9c7a5] bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">Connect</button></form></details>}
+      <form action={recordProgress} className="mt-4 grid gap-2 rounded-xl border border-violet-100 bg-violet-50/40 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-end"><label className="text-[10px] font-black uppercase tracking-wide text-violet-900">Progress<select aria-label="Progress" key={String(goal.progressPercent ?? 0)} name="progressPercent" defaultValue={String(goal.progressPercent ?? 0)} className="mt-1 block rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-bold">{[0, 25, 50, 75, 100].map((value) => <option key={value} value={value}>{value}%</option>)}</select></label><label className="text-[10px] font-black uppercase tracking-wide text-violet-900">Progress note<input aria-label="Progress note" name="progressNote" maxLength={2000} placeholder="What changed or what is blocking it?" className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold normal-case tracking-normal" /></label><button type="submit" disabled={pending} className="rounded-lg bg-violet-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Save progress</button></form>
+      {linkableTasks.length > 0 && <details className="mt-3 rounded-xl border border-[#e4d3b3] bg-[#fffaf0] p-3"><summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#6f573b]">Connect a task</summary><form action={connectTask} className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end"><label className="text-[10px] font-black uppercase tracking-wide text-[#6f573b]">Task<select name="taskId" required defaultValue="" className="mt-1 block w-full rounded-lg border border-[#d9c7a5] bg-white px-3 py-2 text-xs font-bold"><option value="" disabled>Choose a task</option>{linkableTasks.map((task) => <option key={task.id} value={task.id}>{task.title} · {task.dueAt ? `${formatUtcOptionDate(task.dueAt)} UTC` : "No due date"} · {humanize(task.status)}</option>)}</select></label><label className="text-[10px] font-black uppercase tracking-wide text-[#6f573b]">Relationship<select name="relationship" defaultValue="CONTRIBUTES" className="mt-1 block rounded-lg border border-[#d9c7a5] bg-white px-3 py-2 text-xs font-bold"><option value="CONTRIBUTES">Contributes</option><option value="BLOCKS">Blocks</option><option value="OUTCOME">Outcome</option></select></label><button type="submit" disabled={pending} className="rounded-lg border border-[#d9c7a5] bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">Connect</button></form></details>}
       <div className="mt-3 flex flex-wrap gap-2">{goal.status === "ACTIVE" && <button type="button" disabled={pending} onClick={() => decide("PAUSED")} className="rounded-full border border-amber-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-amber-800">Pause</button>}{(goal.status === "PAUSED" || goal.status === "ACHIEVED") && <button type="button" disabled={pending} onClick={() => decide("ACTIVE")} className="rounded-full border border-violet-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-violet-800">Make active</button>}{goal.status !== "ACHIEVED" && <button type="button" disabled={pending} onClick={() => decide("ACHIEVED")} className="rounded-full bg-emerald-700 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white">Mark achieved</button>}{goal.status !== "ARCHIVED" && <button type="button" disabled={pending} onClick={() => decide("ARCHIVED")} className="rounded-full border border-stone-300 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-stone-700">Archive</button>}</div>
-    </> : canonical ? <p className="mt-4 text-xs font-semibold leading-5 text-[#806a4d]">This goal is visible here for context. Its owner or coaching collaborators can update it.</p> : <p className="mt-4 text-xs font-semibold leading-5 text-[#806a4d]">This legacy Session Plan goal remains readable. Save the Session Plan again after the canonical Goal migration to promote it without losing its source note.</p>}
+    </> : canonical ? <p className="mt-4 text-xs font-semibold leading-5 text-[#806a4d]">This goal is visible here for context. Its owner or coaching collaborators can update it.</p> : <p className="mt-4 text-xs font-semibold leading-5 text-[#806a4d]">This goal comes from session notes. Open its session to update it.</p>}
     {message && <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{message}</p>}
   </article>;
 }
@@ -901,23 +910,22 @@ function WeeklyCommitmentEditor({ commitments, onRefresh }: { commitments: WorkC
         expectedUpdatedAt: current?.updatedAt ?? null,
       });
       if (!result.ok) { setMessage(result.error); if (result.code === "CONFLICT") onRefresh(); return; }
-      setMessage("Weekly plan saved with a private receipt. No messages or calendar events were created.");
+      setMessage("Weekly plan saved.");
       onRefresh();
     });
   }
 
   return <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/35 p-4">
-    <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">Your week of {weekStartsOn}</p><h3 className="mt-1 text-xl font-black text-[#3d3122]">Choose less. Follow through better.</h3></div><span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">{current ? "Saved plan" : "New plan"}</span></div>
-    <form key={current?.updatedAt ?? weekStartsOn} action={save} className="mt-4 grid gap-3 lg:grid-cols-2">
+    <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">Your week of {weekStartsOn}</p><h3 className="mt-1 text-xl font-black text-[#3d3122]">Your priorities this week</h3></div><span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">{current ? "Saved plan" : "New plan"}</span></div>
+    <form key={current?.updatedAt ?? weekStartsOn} onSubmit={(event) => { event.preventDefault(); save(new FormData(event.currentTarget)); }} className="mt-4 grid gap-3 lg:grid-cols-2">
       <label className="text-xs font-black uppercase tracking-wide text-emerald-900">First commitment<input name="commitmentOne" required maxLength={1000} defaultValue={current?.commitments[0] ?? ""} placeholder="The one thing that matters most" className="mt-1 block w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label>
       <label className="text-xs font-black uppercase tracking-wide text-emerald-900">Second, only if useful<input name="commitmentTwo" maxLength={1000} defaultValue={current?.commitments[1] ?? ""} placeholder="A second concrete outcome" className="mt-1 block w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label>
-      <label className="text-xs font-black uppercase tracking-wide text-emerald-900">Third, only if honest<input name="commitmentThree" maxLength={1000} defaultValue={current?.commitments[2] ?? ""} placeholder="Leave blank if two is enough" className="mt-1 block w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label>
+      <label className="text-xs font-black uppercase tracking-wide text-emerald-900">Third commitment (optional)<input name="commitmentThree" maxLength={1000} defaultValue={current?.commitments[2] ?? ""} placeholder="Another priority, if you'd like" className="mt-1 block w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label>
       <label className="text-xs font-black uppercase tracking-wide text-emerald-900">Support or blocker<input name="supportNeeded" maxLength={3000} defaultValue={current?.supportNeeded ?? ""} placeholder="What help, decision, or resource is needed?" className="mt-1 block w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label>
       <label className="text-xs font-black uppercase tracking-wide text-emerald-900 lg:col-span-2">Weekly reflection<textarea name="progressNotes" maxLength={5000} defaultValue={current?.progressNotes ?? ""} placeholder="What moved, what did not, and what did you learn from doing the work?" rows={3} className="mt-1 block w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label>
-      <label className="flex items-start gap-2 text-xs font-bold leading-5 text-[#765f40] lg:col-span-2"><input name="clientReviewed" type="checkbox" defaultChecked={Boolean(current?.clientReviewedAt)} className="mt-1" />I reviewed this against what actually happened. This records my reflection; it does not mark linked goals or tasks complete.</label>
+      <label className="flex items-start gap-2 text-xs font-bold leading-5 text-[#765f40] lg:col-span-2"><input name="clientReviewed" type="checkbox" defaultChecked={Boolean(current?.clientReviewedAt)} className="mt-1" />Mark reflection complete (optional)</label>
       <div className="lg:col-span-2"><button type="submit" disabled={pending} className="rounded-xl bg-emerald-800 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{pending ? "Saving…" : current ? "Update weekly plan" : "Save weekly plan"}</button></div>
     </form>
-    <p className="mt-3 text-[11px] font-semibold text-[#927b5b]">This is your Quipsly planning record. Coach review remains separate, and nothing is messaged, scheduled externally, or completed by implication.</p>
     {message && <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{message}</p>}
   </div>;
 }
@@ -938,19 +946,19 @@ function WeeklyReviewCard({ review }: { review: WorkSnapshot["weeklyReviews"][nu
   } as const;
   return <article className="rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm md:p-6">
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">{review.relationship === "coach-review" ? `Coach view · ${review.subjectLabel ?? "Client"}` : "Your evidence-backed week"}</p><h3 className="mt-1 font-serif text-2xl font-black">Week of <LocalDateTime value={review.weekStartsAt} mode="date" /></h3><p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">Quipsly summarizes saved evidence. It never guesses unrecorded work or marks a goal healthy by itself.</p></div>
-      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-900">{humanize(review.reviewState)}</span>
+      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">{review.relationship === "coach-review" ? `Coach view · ${review.subjectLabel ?? "Client"}` : "Your week"}</p><h3 className="mt-1 font-serif text-2xl font-black">Week of <LocalDateTime value={review.weekStartsAt} mode="date" /></h3><p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">Based on your saved tasks, sessions, and focus time.</p></div>
+      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-900">{review.reviewState === "reviewed" ? "Reflection complete" : review.reviewState === "draft" ? "Plan saved" : "No plan yet"}</span>
     </div>
     <div className="mt-5 grid gap-3 sm:grid-cols-3">
       <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4"><p className="text-2xl font-black text-sky-950">{formatReviewMinutes(review.plannedMinutes)}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-sky-800">Planned focus</p></div>
-      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4"><p className="text-2xl font-black text-emerald-950">{formatReviewMinutes(review.actualMinutes)}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">Explicit actual time</p></div>
+      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4"><p className="text-2xl font-black text-emerald-950">{formatReviewMinutes(review.actualMinutes)}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">Recorded focus time</p></div>
       <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4"><p className="text-2xl font-black text-stone-800">{review.completedBlocksWithoutActualMinutes}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-stone-600">Completed · time not recorded</p></div>
     </div>
-    {review.goals.length ? <div className="mt-5 grid gap-3 lg:grid-cols-2">{review.goals.map((goal) => <section key={goal.id} className="rounded-2xl border border-[#e4d3b3] bg-[#fffdf8] p-4"><div className="flex flex-wrap items-start justify-between gap-2"><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="min-h-11 flex-1 py-2 text-base font-black underline decoration-[#c7ad7a] decoration-2 underline-offset-4">{goal.title}</Link><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${healthTone[goal.health]}`}>{goal.healthLabel}</span></div><div className="mt-3 flex flex-wrap gap-3 text-xs font-bold text-[#765f40]"><span>{goal.progressPercent === null ? "No percentage" : `${goal.progressPercent}% reported`}</span><span>{goal.completedTaskCount}/{goal.linkedTaskCount} linked tasks done</span><span>{formatReviewMinutes(goal.actualMinutes)} actual</span></div>{goal.latestEvidence ? <p className="mt-3 rounded-xl bg-white p-3 text-xs font-semibold leading-5 text-[#5f4b32]"><strong>Latest evidence:</strong> {goal.latestEvidence}</p> : <p className="mt-3 text-xs font-semibold text-stone-600">No recent evidence receipt. Add a check-in, complete linked work, or record actual focus time.</p>}{goal.blockers.length ? <p className="mt-3 text-xs font-bold text-amber-900"><strong>Blocking:</strong> {goal.blockers.join(" · ")}</p> : null}{goal.nextTask ? <Link href={`/work?task=${encodeURIComponent(goal.nextTask.id)}`} className="mt-3 inline-flex min-h-11 items-center text-xs font-black text-violet-900 underline">Next task · {goal.nextTask.title}</Link> : null}</section>)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-stone-200 bg-stone-50 p-4 text-sm font-semibold text-stone-700">No active or recently achieved canonical goals are available for this review yet.</p>}
+    {review.goals.length ? <div className="mt-5 grid gap-3 lg:grid-cols-2">{review.goals.map((goal) => <section key={goal.id} className="rounded-2xl border border-[#e4d3b3] bg-[#fffdf8] p-4"><div className="flex flex-wrap items-start justify-between gap-2"><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="min-h-11 flex-1 py-2 text-base font-black underline decoration-[#c7ad7a] decoration-2 underline-offset-4">{goal.title}</Link><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${healthTone[goal.health]}`}>{goal.healthLabel}</span></div><div className="mt-3 flex flex-wrap gap-3 text-xs font-bold text-[#765f40]"><span>{goal.progressPercent === null ? "No progress update" : `${goal.progressPercent}% reported`}</span><span>{goal.completedTaskCount}/{goal.linkedTaskCount} linked tasks done</span><span>{formatReviewMinutes(goal.actualMinutes)} actual</span></div>{goal.latestEvidence ? <p className="mt-3 rounded-xl bg-white p-3 text-xs font-semibold leading-5 text-[#5f4b32]"><strong>Latest evidence:</strong> {goal.latestEvidence}</p> : <p className="mt-3 text-xs font-semibold text-stone-600">Progress will appear here as you work on this goal.</p>}{goal.blockers.length ? <p className="mt-3 text-xs font-bold text-amber-900"><strong>Blocking:</strong> {goal.blockers.join(" · ")}</p> : null}{goal.nextTask ? <Link href={`/work?task=${encodeURIComponent(goal.nextTask.id)}`} className="mt-3 inline-flex min-h-11 items-center text-xs font-black text-violet-900 underline">Next task · {goal.nextTask.title}</Link> : null}</section>)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-stone-200 bg-stone-50 p-4 text-sm font-semibold text-stone-700">Add a goal to see its progress here.</p>}
     <div className="mt-5 grid gap-4 lg:grid-cols-3">
       <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Blockers & support</p>{review.blockers.length ? <ul className="mt-2 space-y-2">{review.blockers.map((blocker) => <li key={blocker} className="rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">{blocker}</li>)}</ul> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">No blocker is recorded.</p>}</section>
-      <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Next commitments</p>{review.nextCommitments.length ? <ol className="mt-2 space-y-2">{review.nextCommitments.map((item, index) => <li key={`${item.kind}:${item.id}`} className="text-xs font-bold leading-5"><span className="mr-2 text-emerald-800">{index + 1}.</span>{item.kind === "task" ? <Link href={`/work?task=${encodeURIComponent(item.id)}`} className="underline">{item.title}</Link> : item.title}</li>)}</ol> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">Choose the next commitment in the weekly plan below.</p>}</section>
-      <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Session contribution</p>{review.sessionContributions.length ? <ul className="mt-2 space-y-2">{review.sessionContributions.map((session) => <li key={session.roomId}><Link href={`/sessions/${encodeURIComponent(session.roomId)}`} className="inline-flex min-h-11 items-center text-xs font-black text-sky-900 underline">{session.title} · {session.evidenceCount} receipt{session.evidenceCount === 1 ? "" : "s"}</Link></li>)}</ul> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">No session-linked evidence landed this week.</p>}</section>
+      <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Next commitments</p>{review.nextCommitments.length ? <ol className="mt-2 space-y-2">{review.nextCommitments.map((item, index) => <li key={`${item.kind}:${item.id}`} className="text-xs font-bold leading-5"><span className="mr-2 text-emerald-800">{index + 1}.</span>{item.kind === "task" ? <Link href={`/work?task=${encodeURIComponent(item.id)}`} className="underline">{item.title}</Link> : item.title}</li>)}</ol> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">Add a priority to your weekly plan.</p>}</section>
+      <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Session contribution</p>{review.sessionContributions.length ? <ul className="mt-2 space-y-2">{review.sessionContributions.map((session) => <li key={session.roomId}><Link href={`/sessions/${encodeURIComponent(session.roomId)}`} className="inline-flex min-h-11 items-center text-xs font-black text-sky-900 underline">{session.title} · {session.evidenceCount} receipt{session.evidenceCount === 1 ? "" : "s"}</Link></li>)}</ul> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">No session updates this week.</p>}</section>
     </div>
     {review.reflection ? <p className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-sm font-semibold leading-6 text-emerald-950"><strong>Reflection:</strong> {review.reflection}</p> : null}
   </article>;
@@ -963,10 +971,12 @@ export function WorkClient({
   focusGoalId = null,
   unavailableFocusKind = null,
   initialFilter = "OPEN",
+  initialView = "tasks",
   manageTags = false,
   initialProjectId = null,
 }: WorkClientProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
+  const [view, setView] = useState<WorkView>(initialView);
   const focusedTask = focusTaskId ? initialSnapshot.tasks.find((task) => task.id === focusTaskId) : null;
   const focusedGoal = focusGoalId ? initialSnapshot.goals.find((goal) => goal.id === focusGoalId) : null;
   const [filter, setFilter] = useState<TaskFilter>(focusedTask ? focusedTask.status !== "OPEN" ? "ALL" : "OPEN" : initialFilter);
@@ -982,6 +992,7 @@ export function WorkClient({
   const router = useRouter();
   const createFormRef = useRef<HTMLFormElement>(null);
   const goalFormRef = useRef<HTMLFormElement>(null);
+  const taskDetailsRef = useRef<HTMLDetailsElement>(null);
   const visibleTasks = useMemo(() => {
     if (focusTaskOnly && focusTaskId) return snapshot.tasks.filter((task) => task.id === focusTaskId);
     return filter === "ALL"
@@ -1010,6 +1021,7 @@ export function WorkClient({
     if (focusGoalId && initialSnapshot.goals.some((goal) => goal.id === focusGoalId)) setFocusGoalOnly(true);
   }, [focusGoalId, focusTaskId, initialSnapshot]);
   useEffect(() => setBrowserTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"), []);
+  useEffect(() => setView(initialView), [initialView]);
   useEffect(() => {
     const targetId = focusTaskId && focusTaskOnly ? `work-task-${focusTaskId}` : focusGoalId && focusGoalOnly ? `work-goal-${focusGoalId}` : null;
     if (!targetId) return;
@@ -1042,8 +1054,8 @@ export function WorkClient({
         setCreateMessage(result.error);
         return;
       }
-      setCreateMessage(result.recurrenceSeriesId ? `Repeat created with ${result.occurrenceCount} canonical occurrence${result.occurrenceCount === 1 ? "" : "s"}. No reminder or provider event was scheduled.` : "Personal task created and assigned to you. Nothing was sent or scheduled elsewhere.");
-      createFormRef.current?.reset();
+      setCreateMessage(result.recurrenceSeriesId ? `Repeating task added · ${result.occurrenceCount} upcoming occurrence${result.occurrenceCount === 1 ? "" : "s"}.` : "Task added.");
+      resetDraftKeepingNest(createFormRef.current, "projectId");
       setRepeatCadence("NEVER");
       router.refresh();
     });
@@ -1060,8 +1072,8 @@ export function WorkClient({
         projectId: String(formData.get("goalProjectId") || "") || null,
       });
       if (!result.ok) { setGoalMessage(result.error); return; }
-      setGoalMessage("Private goal created. No tasks or calendar events were added automatically.");
-      goalFormRef.current?.reset();
+      setGoalMessage("Goal added.");
+      resetDraftKeepingNest(goalFormRef.current, "goalProjectId");
       router.refresh();
     });
   }
@@ -1099,14 +1111,12 @@ export function WorkClient({
     });
   }
 
-  const overview: Array<[string, number, LucideIcon]> = [
-    ["Open tasks", snapshot.counts.openTasks, Circle],
-    ["Needs attention", snapshot.counts.attentionTasks, BellRing],
-    ["Overdue", snapshot.counts.overdueTasks, Flag],
-    ["Completed", snapshot.counts.completedTasks, Check],
-    ["Active goals", snapshot.counts.activeGoals, Target],
-    ["Active commitments", snapshot.counts.activeCommitments, UsersRound],
-  ];
+  function changeView(next: WorkView) {
+    setView(next);
+    setFocusTaskOnly(false);
+    setFocusGoalOnly(false);
+    router.replace(next === "tasks" ? "/work" : `/work?view=${next}`, { scroll: false });
+  }
   const activeTagCount = projectOptions.reduce(
     (count, project) => count + project.tags.filter((tag) => tag.isActive !== false).length,
     0,
@@ -1130,18 +1140,17 @@ export function WorkClient({
   }
 
   return (
-    <main className="mx-auto max-w-[1280px] space-y-8 px-2 py-2 text-[#3d3122]">
-      {focusTaskOnly || focusGoalOnly ? <h1 className="sr-only">{focusTaskOnly ? "Task" : "Goal"}</h1> : <section className="overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#f4d799,_transparent_40%),linear-gradient(135deg,#fffaf0,#f8edda)] p-6 shadow-sm md:p-8">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9a6b2f]">Follow-through, in one place</p>
-        <h1 className="mt-2 font-serif text-4xl font-black tracking-tight md:text-5xl">Work Queue</h1>
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
-          <p className="max-w-3xl text-sm font-semibold leading-6 text-[#715a3e]">Your tasks and goals, together with useful follow-ups from your sessions. Adjust anything as your plans change.</p>
+    <main className="mx-auto max-w-[1280px] space-y-6 px-2 py-2 text-foreground">
+      {focusTaskOnly || focusGoalOnly ? <h1 className="sr-only">{focusTaskOnly ? "Task" : "Goal"}</h1> : <header className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h1 className="font-serif text-3xl font-bold tracking-tight">Tasks & goals</h1><p className="mt-1 text-sm text-muted-foreground">Your next steps, with the people and ideas behind them.</p></div>
           <Link href="/work?manage=tags" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d6bf97] bg-white/80 px-4 text-[10px] font-black uppercase tracking-wide text-[#6f573b]"><Tags size={15} aria-hidden="true" />Manage {activeTagCount} tag{activeTagCount === 1 ? "" : "s"}</Link>
         </div>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Work overview">
-          {overview.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm"><Icon className="h-5 w-5 text-[#9a6b2f]" aria-hidden="true" /><p className="mt-3 text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}
+        <div role="group" aria-label="Work views" className="flex flex-wrap gap-2 border-b border-border pb-3">
+          {([['tasks', 'Tasks', snapshot.counts.openTasks], ['goals', 'Goals', snapshot.counts.activeGoals], ['weekly', 'Weekly planning', null]] as const).map(([key, label, count]) => <button key={key} type="button" aria-label={label} aria-pressed={view === key} onClick={() => changeView(key)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-semibold ${view === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}{count !== null && <span aria-hidden="true" className="rounded-full bg-current/10 px-2 text-xs">{count}</span>}</button>)}
+          {snapshot.counts.overdueTasks > 0 && <button type="button" onClick={() => { changeView('tasks'); setFilter('ATTENTION'); }} className="ml-auto min-h-11 px-3 text-sm font-semibold text-amber-800">{snapshot.counts.overdueTasks} overdue</button>}
         </div>
-      </section>}
+      </header>}
 
       {unavailableFocusKind && (
         <section
@@ -1156,66 +1165,64 @@ export function WorkClient({
             That {unavailableFocusKind} is not available to this account. It may have moved, been deleted, or belong to another Nest.
           </p>
           <p className="mt-2 text-xs font-semibold text-amber-800">
-            Your accessible Work Queue is shown below. Nothing was changed.
+            Your other tasks and goals are still available below. Nothing was changed.
           </p>
         </section>
       )}
 
-      {!focusTaskOnly && !focusGoalOnly && <section aria-labelledby="weekly-review-heading">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">Review what actually happened</p>
-        <h2 id="weekly-review-heading" className="mt-1 font-serif text-3xl font-black">Weekly review</h2>
-        <div className="mt-4 grid gap-4">{snapshot.weeklyReviews.map((review) => <WeeklyReviewCard key={`${review.subjectUserId}:${review.weekStartsAt}`} review={review} />)}</div>
-      </section>}
-
-      {!focusTaskOnly && !focusGoalOnly && <section aria-labelledby="new-task-heading" className="rounded-3xl border border-[#dfcba6] bg-white p-5 shadow-sm md:p-6">
-        <div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-2 text-amber-800"><ListChecks aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quick capture</p><h2 id="new-task-heading" className="font-serif text-2xl font-black">Add a personal task</h2><p className="mt-1 text-sm font-semibold text-[#765f40]">This explicitly assigns the new task to your signed-in account.</p></div></div>
-        <form ref={createFormRef} action={submitNewTask} className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-6 xl:items-end">
-          <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Task title<input name="title" required maxLength={500} placeholder="The next concrete thing" className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
+      {!focusTaskOnly && !focusGoalOnly && <section hidden={view !== "tasks"} aria-labelledby="new-task-heading" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <h2 id="new-task-heading" className="sr-only">Add a personal task</h2>
+        <form ref={createFormRef} onSubmit={(event) => { event.preventDefault(); submitNewTask(new FormData(event.currentTarget)); }} className="space-y-3" onInvalidCapture={(event) => { if (taskDetailsRef.current?.contains(event.target as Node)) taskDetailsRef.current.open = true; }}>
+          <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm font-semibold">Task title<input name="title" required maxLength={500} placeholder="What would you like to do?" className="mt-1 block min-h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" /></label><button type="submit" disabled={creating} className="min-h-11 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{creating ? "Saving…" : "Add task"}</button></div>
+          <details ref={taskDetailsRef}><summary className="min-h-8 cursor-pointer text-sm font-medium text-muted-foreground">Details, date & repeat</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Useful detail<input name="detail" maxLength={5000} placeholder="Context, definition of done, or source" className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Due {repeatCadence === "NEVER" ? "(optional)" : "(required)"}<input name="dueAt" type="datetime-local" required={repeatCadence !== "NEVER"} className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Repeat<select name="recurrenceCadence" value={repeatCadence} onChange={(event) => setRepeatCadence(event.target.value as typeof repeatCadence)} className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"><option value="NEVER">Does not repeat</option><option value="FIXED">Fixed schedule</option><option value="COMPLETION">After completion</option></select></label>
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Nest (optional)<select name="projectId" defaultValue="" className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"><option value="">Personal / unfiled</option>{projectOptions.filter((project) => project.canWrite).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-          <button type="submit" disabled={creating} className="rounded-xl bg-[#3e2f21] px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{creating ? "Saving…" : "Add task"}</button>
-          {repeatCadence !== "NEVER" && <fieldset className="grid gap-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-4 lg:col-span-2 xl:col-span-6 xl:grid-cols-[auto_auto_minmax(16rem,1fr)] xl:items-end"><legend className="px-2 text-xs font-black uppercase tracking-wide text-violet-900">Repeat rule</legend>
+          {repeatCadence !== "NEVER" && <fieldset className="grid min-w-0 gap-3 rounded-2xl border border-border bg-muted/40 p-4 sm:col-span-2 lg:col-span-4 lg:grid-cols-[auto_auto_minmax(0,1fr)] lg:items-end"><legend className="px-2 text-xs font-black uppercase tracking-wide">Repeat rule</legend>
             <label className="text-xs font-black uppercase tracking-wide text-violet-900">Every<input name="recurrenceInterval" type="number" min={1} max={365} defaultValue={1} required className="mt-1 block w-24 rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label>
             <label className="text-xs font-black uppercase tracking-wide text-violet-900">Unit<select name="recurrenceFrequency" defaultValue="WEEKLY" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal"><option value="DAILY">Day(s)</option><option value="WEEKLY">Week(s)</option><option value="MONTHLY">Month(s)</option></select></label>
             <label className="text-xs font-black uppercase tracking-wide text-violet-900">Timezone<input name="timezone" aria-label="Timezone" aria-describedby="task-repeat-timezone-help" required value={browserTimezone} onChange={(event) => setBrowserTimezone(event.target.value)} className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /><span id="task-repeat-timezone-help" className="mt-1 block text-[11px] font-semibold normal-case tracking-normal text-violet-800">The wall-clock time stays in this IANA zone across daylight-saving changes.</span></label>
           </fieldset>}
+          </div>{repeatCadence !== "NEVER" && <p className="mt-3 text-xs text-muted-foreground">Fixed schedule keeps regular dates. After completion sets the next date when you finish.</p>}</details>
         </form>
-        <p className="mt-3 text-[11px] font-semibold text-[#927b5b]">Fixed schedule keeps independent dates; after completion schedules the next occurrence from when you finish. Neither mode sends a message, schedules a reminder, creates a provider calendar event, or publishes anything.</p>
         {createMessage && <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{createMessage}</p>}
       </section>}
 
-      {!focusGoalOnly && <section aria-labelledby="tasks-heading">
+      {!focusGoalOnly && <section hidden={!focusTaskOnly && view !== "tasks"} aria-labelledby="tasks-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">{focusTaskOnly ? "Opened from its source" : "Committed work"}</p><h2 id="tasks-heading" className="mt-1 font-serif text-3xl font-black">{focusTaskOnly ? "Focused task" : "Tasks"}</h2></div>
-          {focusTaskOnly ? <button type="button" onClick={() => { setFocusTaskOnly(false); setFilter("ALL"); }} className="min-h-11 rounded-full border border-[#dcc8a5] bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#765f40]">Show full task queue</button> : <div className="flex rounded-full border border-[#dcc8a5] bg-white p-1" aria-label="Task filter">
+          <div><h2 id="tasks-heading" className="font-serif text-2xl font-bold">{focusTaskOnly ? "Focused task" : "Tasks"}</h2></div>
+          {focusTaskOnly ? <button type="button" onClick={() => { changeView("tasks"); setFilter("ALL"); }} className="min-h-11 rounded-full border border-[#dcc8a5] bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#765f40]">Show full task queue</button> : <div className="flex flex-wrap rounded-full border border-[#dcc8a5] bg-white p-1" aria-label="Task filter">
             {(["ATTENTION", "OPEN", "DONE", "ALL"] as const).map((value) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-wide ${filter === value ? "bg-[#3e2f21] text-white" : "text-[#765f40]"}`}>{humanize(value)}</button>)}
           </div>}
         </div>
         {taskDecisionMessage && <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{taskDecisionMessage}</p>}
-        {visibleTasks.length ? <div className={focusTaskOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleTasks.map((task) => <TaskCard key={task.id} task={task} focused={task.id === focusTaskId} managesRecurrence={recurrenceManagerTaskIds.has(task.id)} projectOptions={projectOptions} onSaved={onTaskSaved} onConflict={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">{filter === "ATTENTION" ? "Nothing currently needs attention. Quipsly has not invented an unread notification state." : `No ${filter === "ALL" ? "committed" : filter.toLowerCase()} tasks are in your scoped queue.`}</div>}
+        {visibleTasks.length ? <div className={focusTaskOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleTasks.map((task) => <TaskCard key={task.id} task={task} focused={task.id === focusTaskId} managesRecurrence={recurrenceManagerTaskIds.has(task.id)} projectOptions={projectOptions} onSaved={onTaskSaved} onConflict={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">{filter === "ATTENTION" ? "You're all caught up." : filter === "OPEN" ? "No open tasks. Add your next step above." : filter === "DONE" ? "Completed tasks will appear here." : "No tasks yet. Add your first one above."}</div>}
       </section>}
 
-      {!focusTaskOnly && <section aria-labelledby="goals-heading">
+      {!focusTaskOnly && <section hidden={!focusGoalOnly && view !== "goals"} aria-labelledby="goals-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">{focusGoalOnly ? "Opened from its source" : "Durable direction"}</p><h2 id="goals-heading" className="mt-1 font-serif text-3xl font-black">{focusGoalOnly ? "Focused goal" : "Goals"}</h2></div>
-          {focusGoalOnly && <button type="button" onClick={() => setFocusGoalOnly(false)} className="min-h-11 rounded-full border border-[#dcc8a5] bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#765f40]">Show all goals</button>}
+          <div><h2 id="goals-heading" className="font-serif text-2xl font-bold">{focusGoalOnly ? "Focused goal" : "Goals"}</h2></div>
+          {focusGoalOnly && <button type="button" onClick={() => changeView("goals")} className="min-h-11 rounded-full border border-[#dcc8a5] bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#765f40]">Show all goals</button>}
         </div>
-        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Goals have their own identity, owner, progress evidence, project/session context, and exact links to committed work.</p>
-        {!focusGoalOnly && <form ref={goalFormRef} action={submitNewGoal} className="mt-4 grid gap-3 rounded-2xl border border-violet-200 bg-violet-50/40 p-4 lg:grid-cols-[1.1fr_1.5fr_auto_auto_auto] lg:items-end"><label className="text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input name="goalTitle" required maxLength={500} placeholder="What does better look like?" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Why or definition of success<input name="goalDescription" maxLength={5000} placeholder="Enough context to recognize meaningful progress" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Target (optional)<input name="targetAt" type="date" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Nest (optional)<select name="goalProjectId" defaultValue="" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal"><option value="">Personal / unfiled</option>{projectOptions.filter((project) => project.canWrite).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><button type="submit" disabled={creatingGoal} className="rounded-xl bg-violet-700 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{creatingGoal ? "Saving…" : "Add goal"}</button></form>}
+        <p className="mt-2 text-sm text-muted-foreground">Set a direction, connect your next steps, and track your progress.</p>
+        {!focusGoalOnly && <form ref={goalFormRef} onSubmit={(event) => { event.preventDefault(); submitNewGoal(new FormData(event.currentTarget)); }} className="mt-4 grid gap-3 rounded-2xl border border-violet-200 bg-violet-50/40 p-4 lg:grid-cols-[1.1fr_1.5fr_auto_auto_auto] lg:items-end"><label className="text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input name="goalTitle" required maxLength={500} placeholder="What does better look like?" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Why or definition of success<input name="goalDescription" maxLength={5000} placeholder="Enough context to recognize meaningful progress" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Target (optional)<input name="targetAt" type="date" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Nest (optional)<select name="goalProjectId" defaultValue="" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal"><option value="">Personal / unfiled</option>{projectOptions.filter((project) => project.canWrite).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><button type="submit" disabled={creatingGoal} className="rounded-xl bg-violet-700 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{creatingGoal ? "Saving…" : "Add goal"}</button></form>}
         {goalMessage && <p role="status" className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-900">{goalMessage}</p>}
-        {visibleGoals.length ? <div className={focusGoalOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleGoals.map((goal) => <GoalCard key={goal.id} goal={goal} focused={goal.id === focusGoalId} availableTasks={snapshot.tasks} projectOptions={projectOptions} onRefresh={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">No canonical or legacy Session Plan goals are available to this account.</div>}
+        {visibleGoals.length ? <div className={focusGoalOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleGoals.map((goal) => <GoalCard key={goal.id} goal={goal} focused={goal.id === focusGoalId} availableTasks={snapshot.tasks} projectOptions={projectOptions} onRefresh={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">What would you like to work toward? Add a goal above.</div>}
       </section>}
 
-      {!focusTaskOnly && !focusGoalOnly && <section aria-labelledby="commitments-heading">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Coaching cadence</p>
+      {!focusTaskOnly && !focusGoalOnly && <section hidden={view !== "weekly"} aria-labelledby="commitments-heading">
         <h2 id="commitments-heading" className="mt-1 font-serif text-3xl font-black">Weekly commitments</h2>
         <WeeklyCommitmentEditor commitments={snapshot.commitments} onRefresh={() => router.refresh()} />
-        {snapshot.commitments.length ? <div className="mt-4 grid gap-4 lg:grid-cols-2">{snapshot.commitments.map((commitment) => <article key={commitment.id} className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-black uppercase tracking-wide text-emerald-800">Week of <LocalDateTime value={commitment.weekStartsAt} mode="date" /></p><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">{humanize(commitment.status)}</span></div><ol className="mt-4 space-y-3">{commitment.commitments.map((item, index) => <li key={`${commitment.id}-${index}`} className="flex gap-3 text-sm font-bold leading-6"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-50 text-xs text-emerald-800">{index + 1}</span>{item}</li>)}</ol>{commitment.supportNeeded && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900"><strong>Support needed:</strong> {commitment.supportNeeded}</p>}{commitment.progressNotes && <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]"><strong>Progress:</strong> {commitment.progressNotes}</p>}{commitment.clientReviewedAt && <p className="mt-3 text-xs font-black text-emerald-800">Client reflection recorded <LocalDateTime value={commitment.clientReviewedAt} /></p>}{commitment.coachNotes && <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]"><strong>Coach note:</strong> {commitment.coachNotes}</p>}<p className="mt-4 text-[11px] font-bold text-[#927b5b]">{commitment.clientLabel ? `Client: ${commitment.clientLabel}` : "Private weekly record"}{commitment.reviewerLabel ? ` · Reviewed by ${commitment.reviewerLabel}` : ""}</p></article>)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">No persisted weekly commitments are available to this account.</div>}
+        {snapshot.commitments.length ? <div className="mt-4 grid gap-4 lg:grid-cols-2">{snapshot.commitments.map((commitment) => <article key={commitment.id} className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-black uppercase tracking-wide text-emerald-800">Week of <LocalDateTime value={commitment.weekStartsAt} mode="date" /></p><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">{humanize(commitment.status)}</span></div><ol className="mt-4 space-y-3">{commitment.commitments.map((item, index) => <li key={`${commitment.id}-${index}`} className="flex gap-3 text-sm font-bold leading-6"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-50 text-xs text-emerald-800">{index + 1}</span>{item}</li>)}</ol>{commitment.supportNeeded && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900"><strong>Support needed:</strong> {commitment.supportNeeded}</p>}{commitment.progressNotes && <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]"><strong>Progress:</strong> {commitment.progressNotes}</p>}{commitment.clientReviewedAt && <p className="mt-3 text-xs font-black text-emerald-800">Client reflection recorded <LocalDateTime value={commitment.clientReviewedAt} /></p>}{commitment.coachNotes && <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]"><strong>Coach note:</strong> {commitment.coachNotes}</p>}<p className="mt-4 text-[11px] font-bold text-[#927b5b]">{commitment.clientLabel ? `Client: ${commitment.clientLabel}` : "Private weekly record"}{commitment.reviewerLabel ? ` · Reviewed by ${commitment.reviewerLabel}` : ""}</p></article>)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">Add a priority above to start your weekly plan.</div>}
       </section>}
 
-      {snapshot.tasks.length >= snapshot.boundaries.taskLimit && <p role="status" className="text-sm text-[#765f40]">Showing up to {snapshot.boundaries.taskLimit} tasks. Choose a Nest to narrow your view.</p>}
+      {!focusTaskOnly && !focusGoalOnly && <section hidden={view !== "weekly"} aria-labelledby="weekly-review-heading">
+        <h2 id="weekly-review-heading" className="mt-1 font-serif text-3xl font-black">Weekly review</h2>
+        <div className="mt-4 grid gap-4">{snapshot.weeklyReviews.map((review) => <WeeklyReviewCard key={`${review.subjectUserId}:${review.weekStartsAt}`} review={review} />)}</div>
+      </section>}
+
+      {view === "tasks" && snapshot.tasks.length >= snapshot.boundaries.taskLimit && <p role="status" className="text-sm text-muted-foreground">Showing up to {snapshot.boundaries.taskLimit} tasks. <Link href="/find" className="underline">Search for a specific task</Link>.</p>}
     </main>
   );
 }
