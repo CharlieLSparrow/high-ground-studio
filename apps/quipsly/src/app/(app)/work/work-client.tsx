@@ -87,17 +87,48 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
   const [pending, startTransition] = useTransition();
   const [creating, startCreating] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  if (!project || !canManage || !project.canWrite) return <TagChips tags={tags} />;
-  const selectedIds = new Set(tags.map((tag) => tag.id));
-  const activeTags = project.tags.filter((tag) => tag.isActive !== false || selectedIds.has(tag.id));
+  const [expanded, setExpanded] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [context, setContext] = useState<{
+    tags: Array<Pick<WorkTag, "id" | "label" | "hexColor" | "isActive">>;
+    selectedTagIds: string[]; updatedAt: string;
+  } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!expanded || !canManage || project?.canWrite) return;
+    const controller = new AbortController();
+    setContext(null);
+    setLoadError(null);
+    void (async () => {
+      try {
+        const query = new URLSearchParams({ entityKind, entityId });
+        const response = await fetch(`/api/work/tags?${query}`, { cache: "no-store", signal: controller.signal });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body?.ok || !Array.isArray(body.tags) || !Array.isArray(body.selectedTagIds) || !body.updatedAt) {
+          if (!controller.signal.aborted) setLoadError(body?.error || "Tags couldn't load. Try again.");
+          return;
+        }
+        if (!controller.signal.aborted) setContext(body);
+      } catch {
+        if (!controller.signal.aborted) setLoadError("Tags couldn't load. Try again.");
+      }
+    })();
+    return () => controller.abort();
+  }, [expanded, canManage, project?.canWrite, entityKind, entityId, updatedAt, retry]);
+  if (!canManage) return <TagChips tags={tags} />;
+  const ready = Boolean(project?.canWrite || context);
+  const selectedIds = new Set(context?.selectedTagIds ?? tags.map((tag) => tag.id));
+  const activeTags = (project?.canWrite ? project.tags : context?.tags ?? []).filter((tag) => tag.isActive !== false || selectedIds.has(tag.id));
+  const tagVersion = context?.updatedAt ?? updatedAt;
   return <div className="mt-3">
     <TagChips tags={tags} />
-    <details className="mt-2 rounded-xl border border-border bg-card p-3">
-      <summary className="min-h-8 cursor-pointer text-sm font-semibold text-foreground"><Tags className="mr-1.5 inline h-4 w-4" aria-hidden="true" />Edit {project.name} tags</summary>
-      {activeTags.length ? <form key={`${updatedAt}-${tags.map((tag) => tag.id).join("-")}`} action={(formData) => {
+    <details onToggle={event => setExpanded(event.currentTarget.open)} className="mt-2 rounded-xl border border-border bg-card p-3">
+      <summary className="min-h-8 cursor-pointer text-sm font-semibold text-foreground"><Tags className="mr-1.5 inline h-4 w-4" aria-hidden="true" />{project?.canWrite ? `Edit ${project.name} tags` : "Edit tags"}</summary>
+      {expanded && !ready && (loadError ? <div className="mt-2"><p role="status" className="text-sm text-muted-foreground">{loadError}</p><button type="button" onClick={() => setRetry(value => value + 1)} className="min-h-11 text-sm font-semibold">Try again</button></div> : <p role="status" className="mt-2 text-sm text-muted-foreground">Loading tags…</p>)}
+      {ready && (activeTags.length ? <form key={`${tagVersion}-${[...selectedIds].join("-")}`} action={(formData) => {
         setMessage(null);
         startTransition(async () => {
-          const result = await replaceWorkTags({ entityKind, entityId, tagIds: formData.getAll("tagId").map(String), expectedUpdatedAt: updatedAt });
+          const result = await replaceWorkTags({ entityKind, entityId, tagIds: formData.getAll("tagId").map(String), expectedUpdatedAt: tagVersion });
           if (!result.ok) { setMessage(result.error); if (result.code === "CONFLICT") onRefresh(); return; }
           setMessage("Tags saved.");
           onRefresh();
@@ -105,8 +136,8 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
       }} className="mt-3 space-y-3">
         <fieldset disabled={pending || creating} className="flex flex-wrap gap-2"><legend className="sr-only">Choose tags</legend>{activeTags.map((tag) => <label key={tag.id} style={tagChipColors(tag.hexColor)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-border bg-muted px-3 py-2 text-sm font-semibold text-foreground"><input type="checkbox" name="tagId" value={tag.id} defaultChecked={selectedIds.has(tag.id)} />{tag.label}{tag.isActive === false ? " (archived)" : ""}</label>)}</fieldset>
         <button type="submit" disabled={pending || creating} className="min-h-11 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : "Save tags"}</button>
-      </form> : <p className="mt-2 text-sm text-muted-foreground">This Nest has no active tags yet. Create the first reusable tag below.</p>}
-      <form action={(formData) => {
+      </form> : <p className="mt-2 text-sm text-muted-foreground">{project?.canWrite ? "This Nest has no active tags yet. Create the first reusable tag below." : "Tags used on shared tasks and goals will appear here."}</p>)}
+      {project?.canWrite && <form action={(formData) => {
         setMessage(null);
         startCreating(async () => {
           const result = await createAndAssignWorkTag({
@@ -128,7 +159,7 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
           <button type="submit" disabled={creating || pending} className="min-h-11 rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-50">{creating ? "Creating…" : "Create & apply"}</button>
         </div>
         <p id={`new-tag-help-${entityKind}-${entityId}`} className="mt-2 text-xs text-muted-foreground">Reuse this tag across {project.name}.</p>
-      </form>
+      </form>}
       {message && <p role="status" className="mt-2 text-sm text-muted-foreground">{message}</p>}
     </details>
   </div>;

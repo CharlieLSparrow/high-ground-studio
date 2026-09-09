@@ -67,7 +67,12 @@ describe("Work Queue page truth states", () => {
     jest.mocked(getQuipslySession).mockResolvedValue({ user: { id: "member" } } as never);
     const goal = { id: "goal", ownerUserId: "coach", title: "Shared appointment goal", status: "ACTIVE",
       createdAt: new Date(), updatedAt: new Date(), sourceJson: { visibility: "SESSION_SHARED" },
-      booking: { id: "booking" }, engagement: null, taskLinks: [], tagLinks: [] };
+      booking: { id: "booking" }, engagement: null, taskLinks: [],
+      project: { id: "private-nest", name: "Private Nest", slug: "private-nest" },
+      tagLinks: [
+        { tag: { id: "shared-tag", projectId: "private-nest", label: "Research", hexColor: "#506b46" } },
+        { tag: { id: "cross-project-tag", projectId: "different-nest", label: "Unrelated" } },
+      ] };
     const prisma = {
       coachingBooking: { findMany: jest.fn().mockResolvedValue([{ id: "booking" }]) },
       callRoom: { findMany: jest.fn().mockResolvedValue([
@@ -85,7 +90,8 @@ describe("Work Queue page truth states", () => {
     render(await WorkPage({}));
     expect(screen.getByText("Persisted work queue")).toBeInTheDocument();
     expect(jest.mocked(WorkClient).mock.calls[0]![0].initialSnapshot.goals).toEqual([
-      expect.objectContaining({ id: "goal", canEdit: editable, canManageTags: editable }),
+      expect.objectContaining({ id: "goal", canEdit: editable, canManageTags: editable, project: null,
+        tags: [expect.objectContaining({ id: "shared-tag", label: "Research", hexColor: "#506b46" })] }),
     ]);
     expect(prisma.coachingBooking.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: coachingBookingParticipantWhere("member") }));
     expect(prisma.callRoom.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: sessionActorAccessWhere({ id: "member" }) }));

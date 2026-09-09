@@ -8,6 +8,7 @@ import {
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
   readTaskTagContext,
+  readGoalTagContext,
   readNewCoachingTaskTagContext,
   readNewNestTaskTagContext,
 } from "@/lib/server/work-tags";
@@ -22,6 +23,7 @@ jest.mock("@/lib/server/work-tags", () => ({
   mutateWorkTagTaxonomy: jest.fn(),
   replaceWorkEntityTags: jest.fn(),
   readTaskTagContext: jest.fn(),
+  readGoalTagContext: jest.fn(),
   readNewCoachingTaskTagContext: jest.fn(),
   readNewNestTaskTagContext: jest.fn(),
 }));
@@ -36,6 +38,18 @@ function patchRequest(body: unknown) {
 
 describe("authenticated shared work tags route", () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it("returns a retryable JSON response when the identity database is temporarily unavailable", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
+    const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await GET(new Request("http://localhost/api/work/tags?entityKind=goal&entityId=goal"));
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(await response.json()).toEqual({ ok: false, error: "Tags couldn't load. Try again." });
+      expect(readGoalTagContext).not.toHaveBeenCalled();
+    } finally { errorLog.mockRestore(); }
+  });
 
   it("reads the authorized task tag context without caching private vocabulary", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "Client@Example.test"}} as any);
@@ -56,6 +70,20 @@ describe("authenticated shared work tags route", () => {
     expect((await GET(new Request("http://localhost/api/work/tags?entityKind=unknown&entityId=private-task"))).status).toBe(400);
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
     expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=private-task"))).status).toBe(401);
+  });
+
+  it("reads a goal's scoped catalog and rejects ambiguous or unavailable contexts", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "client", primaryEmail: "Client@Example.test" } } as never);
+    jest.mocked(readGoalTagContext).mockResolvedValue({ entityId: "goal", projectId: "nest", canCreateTags: false,
+      updatedAt: "2026-09-09T00:00:00Z", selectedTagIds: [], tags: [] });
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=goal&entityId=goal"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(readGoalTagContext).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "client", actorEmail: "client@example.test", entityId: "goal" }));
+    expect(readTaskTagContext).not.toHaveBeenCalled();
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=goal&engagementId=space"))).status).toBe(400);
+    jest.mocked(readGoalTagContext).mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=goal&entityId=goal"))).status).toBe(404);
   });
 
   it("loads a new task's client-space vocabulary without inventing a task or accepting ambiguous scopes", async () => {

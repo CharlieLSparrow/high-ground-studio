@@ -52,6 +52,41 @@ const snapshot: WorkSnapshot = {
 describe("Work Queue interactions", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it.each(["task", "goal"] as const)("lets a client tag a shared %s without a Nest grant, and retry a failed palette read", async entityKind => {
+    const user = userEvent.setup();
+    const originalFetch = global.fetch;
+    const tag = { id: "research", label: "Research", hexColor: "#506b46", isActive: true };
+    const updatedAt = "2026-09-09T02:00:00.000Z";
+    const fetchMock = jest.fn().mockResolvedValueOnce({ ok: false, json: async () => { throw new SyntaxError("Unexpected end of JSON input"); } })
+      .mockResolvedValue({ ok: true, json: async () => ({ ok: true, tags: [tag], selectedTagIds: [], updatedAt, canCreateTags: false }) });
+    global.fetch = fetchMock;
+    jest.mocked(replaceWorkTags).mockResolvedValue({ ok: true } as never);
+    const goal = { id: "goal-1", title: "Prepare together", description: null, status: "ACTIVE" as const,
+      targetAt: null, achievedAt: null, progressPercent: null, progressNote: null, provenance: "Canonical goal" as const,
+      updatedAt: "2026-09-09T00:00:00.000Z", roomId: null, sessionTitle: null, sessionStart: null,
+      project: null, tags: [], canEdit: true, canManageTags: true, parent: null, childCount: 0, linkedTasks: [], sourceAnchor: null };
+    try {
+      render(<WorkClient initialSnapshot={{ ...snapshot, goals: [goal] }} initialView={entityKind === "goal" ? "goals" : "tasks"} projectOptions={[]} />);
+      expect(fetchMock).not.toHaveBeenCalled();
+      const card = document.getElementById(`work-${entityKind}-${entityKind}-1`)!;
+      await user.click(within(card).getByText("Edit tags"));
+      expect(await within(card).findByRole("status")).toHaveTextContent("Tags couldn't load");
+      expect(within(card).queryByRole("button", { name: "Save tags" })).not.toBeInTheDocument();
+      await user.click(within(card).getByRole("button", { name: "Try again" }));
+      const choice = await within(card).findByRole("checkbox", { name: "Research" });
+      expect(choice.closest("label")).toHaveStyle({ backgroundColor: "#506b46" });
+      expect(fetchMock).toHaveBeenLastCalledWith(`/api/work/tags?entityKind=${entityKind}&entityId=${entityKind}-1`, expect.objectContaining({ cache: "no-store" }));
+      expect(within(card).queryByRole("button", { name: "Create & apply" })).not.toBeInTheDocument();
+      await user.click(choice);
+      await user.click(within(card).getByRole("button", { name: "Save tags" }));
+      await within(card).findByText("Tags saved.");
+      expect(replaceWorkTags).toHaveBeenCalledWith({ entityKind, entityId: `${entityKind}-1`, tagIds: ["research"], expectedUpdatedAt: updatedAt });
+      expect(refresh).toHaveBeenCalled();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it.each(["task", "goal"] as const)("keeps shared colors and retained archived tags when editing %s tags", async entityKind => {
     const user = userEvent.setup();
     const archived = { id: "earlier", label: "Earlier focus", slug: "earlier", category: "topic", projectId: "project-1",

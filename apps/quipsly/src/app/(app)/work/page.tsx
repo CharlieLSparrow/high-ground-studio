@@ -156,19 +156,23 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
     tasks: taskRows.filter((task: any) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).map((task: any) => ({
       ...task,
       canEditByActor: editableTaskIds.has(task.id),
+      canManageTagsByActor: Boolean(task.project) && editableTaskIds.has(task.id),
       project: task.project && visibleProjects.has(task.project.id) ? task.project : null,
-      tagLinks: (task.tagLinks || []).filter((link: any) => visibleProjects.has(link.tag.projectId)),
+      // Attached labels belong to the authorized work. Do not expose the Nest
+      // itself (or its whole vocabulary) merely because a client can use them.
+      tagLinks: (task.tagLinks || []).filter((link: any) => link.tag.projectId === task.project?.id),
     })),
     goals: legacyGoalRows,
     canonicalGoals: canonicalGoalRows.map((goal: any) => ({
       ...goal,
       canEditByActor: editableGoalIds.has(goal.id),
+      canManageTagsByActor: Boolean(goal.project) && editableGoalIds.has(goal.id),
       progressReceipts: [
         goalReceiptProjection.get(goal.id)?.transcriptEvidence,
         goalReceiptProjection.get(goal.id)?.progress,
       ].filter(Boolean),
       project: goal.project && visibleProjects.has(goal.project.id) ? goal.project : null,
-      tagLinks: (goal.tagLinks || []).filter((link: any) => visibleProjects.has(link.tag.projectId)),
+      tagLinks: (goal.tagLinks || []).filter((link: any) => link.tag.projectId === goal.project?.id),
     })),
     commitments: commitmentRows,
     planBlocks: planBlockRows,

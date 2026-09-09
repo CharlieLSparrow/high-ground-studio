@@ -8,6 +8,7 @@ import {
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
   readTaskTagContext,
+  readGoalTagContext,
   readNewCoachingTaskTagContext,
   readNewNestTaskTagContext,
   type WorkTagEntityKind,
@@ -26,24 +27,26 @@ function text(value: unknown, max = 200) {
 }
 
 export async function GET(request: Request) {
-  const session = await getQuipslySessionFromRequest(request);
-  const actorEmail = text(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
   const headers = { "Cache-Control": "private, no-store" };
-  if (!session?.user?.id || !actorEmail) return NextResponse.json({ ok: false, error: "Sign in to edit tags." }, { status: 401, headers });
-  const query = new URL(request.url).searchParams;
-  const entityId = text(query.get("entityId"));
-  const engagementId = text(query.get("engagementId"));
-  const projectSlug = text(query.get("projectSlug"));
-  if (query.get("entityKind") !== "task" || [entityId, engagementId, projectSlug].filter(Boolean).length !== 1) return NextResponse.json({ ok: false, error: "Choose a task, client space, or Nest." }, { status: 400, headers });
   try {
+    const session = await getQuipslySessionFromRequest(request);
+    const actorEmail = text(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+    if (!session?.user?.id || !actorEmail) return NextResponse.json({ ok: false, error: "Sign in to edit tags." }, { status: 401, headers });
+    const query = new URL(request.url).searchParams;
+    const entityId = text(query.get("entityId"));
+    const engagementId = text(query.get("engagementId"));
+    const projectSlug = text(query.get("projectSlug"));
+    const entityKind = query.get("entityKind");
+    if (!["task", "goal"].includes(entityKind || "") || (entityKind === "goal" && !entityId)
+      || [entityId, engagementId, projectSlug].filter(Boolean).length !== 1) return NextResponse.json({ ok: false, error: "Choose a task, goal, client space, or Nest." }, { status: 400, headers });
     const actor = { prisma: getPrismaClient(), actorUserId: session.user.id, actorEmail };
-    const context = entityId ? await readTaskTagContext({ ...actor, entityId })
+    const context = entityId ? await (entityKind === "goal" ? readGoalTagContext : readTaskTagContext)({ ...actor, entityId })
       : engagementId ? await readNewCoachingTaskTagContext({ ...actor, engagementId })
         : await readNewNestTaskTagContext({ ...actor, projectSlug });
     return context ? NextResponse.json({ ok: true, ...context }, { headers })
-      : NextResponse.json({ ok: false, error: "This task isn't available to edit." }, { status: 404, headers });
+      : NextResponse.json({ ok: false, error: "This work isn't available to edit." }, { status: 404, headers });
   } catch (error) {
-    console.error("[work-tags] task context read failed", error);
+    console.error("[work-tags] work context read failed", error);
     return NextResponse.json({ ok: false, error: "Tags couldn't load. Try again." }, { status: 503, headers });
   }
 }

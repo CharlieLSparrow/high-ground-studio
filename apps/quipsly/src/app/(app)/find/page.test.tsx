@@ -16,6 +16,29 @@ jest.mock("../studio-access-shell", () => ({ StudioAccessShell: ({ mode, redirec
 describe("Search All page", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it("renders a client's shared-tag results without Nest metadata or a false personal-work label", async () => {
+    jest.mocked(auth).mockResolvedValue({ user: { id: "client", primaryEmail: "client@example.test" } } as never);
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([]);
+    const project = { id: "private-nest", name: "Private coaching practice", slug: "private-nest" };
+    const tag = { id: "reflection", projectId: project.id, label: "Reflection", slug: "reflection", hexColor: "#506b46",
+      isActive: true, description: "Private catalog notes", aliases: [], mergedIntoTagId: null, project };
+    const empty = jest.fn().mockResolvedValue([]);
+    const mediaClipRead = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioTag: { findFirst: jest.fn().mockResolvedValue(tag) },
+      actionItem: { findMany: jest.fn().mockResolvedValue([{ id: "task", title: "Bring a paragraph", status: "OPEN", project, room: null, sourceJson: {}, tagLinks: [{ tag }] }]) },
+      goal: { findMany: jest.fn().mockResolvedValue([{ id: "goal", title: "Write each day", status: "ACTIVE", project, room: null, tagLinks: [{ tag }] }]) },
+      callRoom: { findMany: empty }, coachingNote: { findMany: empty }, mediaClip: { findMany: mediaClipRead },
+    } as never);
+    render(await FindPage({ searchParams: Promise.resolve({ tag: "reflection" }) }));
+    expect(screen.getByRole("heading", { name: "#Reflection" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bring a paragraph open Tags: Reflection" })).toHaveAttribute("href", "/work?task=task");
+    expect(screen.getByRole("link", { name: "Write each day active Tags: Reflection" })).toHaveAttribute("href", "/work?goal=goal");
+    expect(screen.getByText("Work tagged #Reflection in your shared work.")).toBeInTheDocument();
+    expect(screen.queryByText(/Private coaching practice|Private catalog notes|personal work|personal goal/)).not.toBeInTheDocument();
+    expect(mediaClipRead).not.toHaveBeenCalled();
+  });
+
   it("requires authentication before private access resolution", async () => {
     jest.mocked(auth).mockResolvedValue(null as any);
     render(await FindPage({ searchParams: Promise.resolve({ q: "episode" }) }));
@@ -36,7 +59,7 @@ describe("Search All page", () => {
       studioSourceUnit: { findMany: jest.fn().mockResolvedValue([{ id: "source-1", title: "Episode transcript", kind: "transcript", author: "Charlie", project: { name: "High Ground", slug: "high-ground" } }]) },
       studioSourceAnnotation: { findMany: jest.fn().mockResolvedValue([{ id: "annotation-1", kind: "quote", body: "Episode evidence", exactText: "Episode exact words", visibility: "private", sourceUnit: { title: "Episode transcript" }, project: { name: "High Ground", slug: "high-ground" } }]) },
       mediaClip: { findMany: jest.fn().mockResolvedValue([]) },
-      studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-1", slug: "episode-seed", label: "Episode seed", description: "Material for a future episode", category: "source", isPrivate: true, aliases: [], project: { name: "High Ground", slug: "high-ground" } }]) },
+      studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-1", projectId: "project-1", slug: "episode-seed", label: "Episode seed", description: "Material for a future episode", category: "source", isPrivate: true, aliases: [], project: { name: "High Ground", slug: "high-ground" } }]) },
     } as any);
 
     render(await FindPage({ searchParams: Promise.resolve({ q: "episode" }) }));
@@ -137,7 +160,7 @@ describe("Search All page", () => {
     jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "Person@Example.com" } } as any);
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
     const empty = jest.fn().mockResolvedValue([]);
-    jest.mocked(getPrismaClient).mockReturnValue({ actionItem: { findMany: empty }, goal: { findMany: empty }, callRoom: { findMany: empty }, coachingNote: { findMany: empty } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({ actionItem: { findMany: empty }, goal: { findMany: empty }, callRoom: { findMany: empty }, coachingNote: { findMany: empty }, studioTag: { findMany: empty } } as any);
     render(await FindPage({ searchParams: Promise.resolve({ q: "unmatched" }) }));
     expect(screen.getByRole("heading", { name: "No results found" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Tasks" })).not.toBeInTheDocument();

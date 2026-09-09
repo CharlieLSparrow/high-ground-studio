@@ -124,4 +124,28 @@ async function seed(tx: Prisma.TransactionClient) {
     expect(outsider.notes).toEqual([]);
     expect(outsider.tags).toEqual([]);
   }));
+  it("lets clients follow and search shared colors without disclosing the Nest or its private catalog", async () => withSearchFixture(async f => {
+    await f.tx.studioTag.update({ where: { id: f.tag.id }, data: { description: "PRIVATE catalog administration" } });
+    const privateTag = await f.tx.studioTag.create({ data: { projectId: f.project.id, label: "Coach strategy", slug: "coach-strategy",
+      goals: { create: { goalId: f.privateGoal.id } } } });
+    for (const actor of ["client", "observer"] as const) {
+      const result = await f.read(actor, f.tag.id);
+      expect(result.tagFocus).toMatchObject({ status: "resolved", resolvedLabel: "Reflection", project: null });
+      expect(result.goals.map(goal => goal.id).sort()).toEqual([f.sharedGoal.id, f.sessionGoal.id].sort());
+      expect(result.goals.every(goal => goal.project === null)).toBe(true);
+      expect(result.goals[0].tagLinks[0].tag).toMatchObject({ id: f.tag.id, hexColor: "#506b46" });
+      expect(result.tags).toEqual([expect.objectContaining({ id: f.tag.id, project: null, description: null, aliases: [] })]);
+      expect(result.mediaClips).toEqual([]);
+      expect(JSON.stringify(result)).not.toContain(f.project.name);
+      expect((await f.read(actor, privateTag.id)).tagFocus?.status).toBe("not-found");
+      const byName = await searchWorkspace(f.tx, { actorUserId: f.users[actor].id, query: "Reflection", visibleProjects: [] });
+      expect(byName.goals.map(goal => goal.id).sort()).toEqual([f.sharedGoal.id, f.sessionGoal.id].sort());
+      expect(byName.tags.map(tag => tag.id)).toEqual([f.tag.id]);
+      const byPrivateMetadata = await searchWorkspace(f.tx, { actorUserId: f.users[actor].id, query: "catalog administration", visibleProjects: [] });
+      expect(byPrivateMetadata.tags).toEqual([]);
+      expect(byPrivateMetadata.goals).toEqual([]);
+    }
+    await f.tx.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: f.engagement.id, userId: f.users.client.id } }, data: { status: "REMOVED" } });
+    expect((await f.read("client", f.tag.id)).tagFocus?.status).toBe("not-found");
+  }));
 });

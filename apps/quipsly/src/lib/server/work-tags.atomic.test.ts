@@ -12,7 +12,7 @@ describe("atomic iPhone vocabulary and tag replacement", () => {
     const tx = {
       studioProjectAccessGrant: {findFirst: jest.fn(async () => ({id: "grant-1"}))},
       studioTag: {count: jest.fn(async () => 0)},
-      actionItem: {updateMany: jest.fn()},
+      actionItem: {findFirst: jest.fn(async () => ({id: "task-1", projectId: "project-1", updatedAt, sourceJson: {}})), updateMany: jest.fn()},
       actionItemTagLink: {deleteMany: jest.fn(), createMany: jest.fn()},
     };
     const prisma = {
@@ -69,6 +69,7 @@ describe("atomic iPhone vocabulary and tag replacement", () => {
         findUnique: jest.fn(async () => null),
       },
       actionItem: {
+        findFirst: actionItemFindFirst,
         updateMany: actionItemUpdateMany,
         findUnique: jest.fn(async () => ({ updatedAt: savedUpdatedAt })),
       },

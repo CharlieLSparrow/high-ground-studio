@@ -89,6 +89,7 @@ export type RawWorkTask = {
   assignedUserId?: string | null;
   isNestShared?: boolean;
   canEditByActor?: boolean;
+  canManageTagsByActor?: boolean;
   sourceJson?: unknown;
   project?: WorkProject | null;
   tagLinks?: Array<{ tag: WorkTag }>;
@@ -134,6 +135,7 @@ export type RawCanonicalGoal = {
   id: string;
   ownerUserId?: string;
   canEditByActor?: boolean;
+  canManageTagsByActor?: boolean;
   title: string;
   description?: string | null;
   status: WorkGoalStatus;
@@ -494,7 +496,7 @@ export function buildWorkSnapshot(input: {
           && ((!task.isNestShared && task.assignedUserId === input.actorUserId) || task.canEditByActor === true)
           && !recurrence
           && !historicalLocked,
-        canManageTags: Boolean(input.actorUserId) && ((!task.isNestShared && task.assignedUserId === input.actorUserId) || task.canEditByActor === true),
+        canManageTags: task.canManageTagsByActor ?? (Boolean(input.actorUserId) && ((!task.isNestShared && task.assignedUserId === input.actorUserId) || task.canEditByActor === true)),
         canManageReminder: Boolean(input.actorUserId)
           && task.assignedUserId === input.actorUserId
           && !recurrence,
@@ -546,8 +548,8 @@ export function buildWorkSnapshot(input: {
         tags: (goal.tagLinks ?? []).map((link) => link.tag),
         canEdit: Boolean(input.actorUserId)
           && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true),
-        canManageTags: Boolean(input.actorUserId)
-          && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true),
+        canManageTags: goal.canManageTagsByActor ?? (Boolean(input.actorUserId)
+          && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true)),
         parent: goal.parent ? { id: goal.parent.id, title: goal.parent.title } : null,
         childCount: goal._count?.children ?? 0,
         linkedTasks: (goal.taskLinks ?? []).map((link) => ({ relationship: link.relationship, task: link.actionItem })),

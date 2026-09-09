@@ -149,7 +149,7 @@ describe("permission-filtered workspace search", () => {
     expect(result.mediaClips.map((clip) => clip.id)).toEqual(["clip-1"]);
     expect(result.boundaries).toMatchObject({ actorScoped: true, exactTagIdentity: true });
     expect(tagFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "tag-project-1", projectId: { in: ["project-1", "project-2"] } },
+      where: expect.objectContaining({ id: "tag-project-1", OR: expect.arrayContaining([{ projectId: { in: ["project-1", "project-2"] } }]) }),
     }));
     for (const query of [
       actionItemFindMany,
