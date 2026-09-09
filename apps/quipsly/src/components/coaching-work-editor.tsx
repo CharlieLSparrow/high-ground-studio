@@ -145,7 +145,7 @@ export function CoachingWorkEditor({entry, engagementId, members, busy, onSave}:
                 className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm" aria-label={entry.kind === "TASK" ? "Due date" : "Target date"} />
             ) : null}
           </div>
-          {entry.kind !== "NOTE" && engagementId && <WorkTagPicker entityKind={entry.kind === "GOAL" ? "goal" : "task"} entityId={entry.id}
+          {engagementId && <WorkTagPicker entityKind={entry.kind === "GOAL" ? "goal" : entry.kind === "NOTE" ? "note" : "task"} entityId={entry.id}
             selected={draft.tags} onChange={tags => change("tags", tags)} disabled={busy} onPendingChange={setTagPending} />}
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#41624b] px-4 py-2 text-sm font-black text-white disabled:opacity-50">

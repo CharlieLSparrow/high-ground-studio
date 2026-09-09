@@ -74,7 +74,7 @@ describe("CoachingEngagementWorkspace", () => {
     expect(command).not.toHaveProperty("tags");
     await screen.findByText("Revised wording");
   });
-  it.each(["TASK", "GOAL"] as const)("creates and edits a tagged %s with stable retries after lost responses", async (kind) => {
+  it.each(["TASK", "GOAL", "NOTE"] as const)("creates and edits a tagged %s with stable retries after lost responses", async (kind) => {
     const tag = {id: "research", label: "Research", hexColor: "#23543a", isActive: true};
     const saved = {...sharedTask, kind, status: kind === "TASK" ? "OPEN" : "ACTIVE", tags: [tag]};
     let attempts = 0;

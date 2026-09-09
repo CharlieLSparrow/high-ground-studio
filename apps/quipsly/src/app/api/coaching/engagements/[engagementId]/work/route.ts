@@ -27,7 +27,7 @@ class WorkTagSaveError extends Error {
 
 async function saveWorkTags(tx: Prisma.TransactionClient, work: { id: string; updatedAt: Date },
   actor: { id: string; primaryEmail?: string | null; email?: string | null },
-  selection: NonNullable<ReturnType<typeof parseWorkTagSelection>>, entityKind: "task" | "goal") {
+  selection: NonNullable<ReturnType<typeof parseWorkTagSelection>>, entityKind: "task" | "goal" | "note") {
   const result = await replaceWorkEntityTags({
     prisma: getPrismaClient(), transaction: tx, actorUserId: actor.id,
     actorEmail: actor.primaryEmail || actor.email || "", entityKind, entityId: work.id,
@@ -271,7 +271,7 @@ export async function POST(
   const workKind = kind(input.kind);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
   const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
-  if (input.tags !== undefined && ((workKind !== "TASK" && workKind !== "GOAL") || !tagSelection)) {
+  if (input.tags !== undefined && !tagSelection) {
     return NextResponse.json({ ok: false, error: "Choose up to 24 tags." }, { status: 400 });
   }
   const sourceMessageId = input.sourceMessageId == null ? null : input.sourceMessageId;
@@ -418,9 +418,10 @@ export async function POST(
             },
             select: NOTE_SELECT,
           });
+          if (tagSelection) await saveWorkTags(tx, created, session.user, tagSelection, "note");
           return {
             kind: "saved" as const,
-            entry: notePayload(created, session.user.id),
+            entry: notePayload(tagSelection ? await tx.coachingNote.findUniqueOrThrow({ where: { id }, select: NOTE_SELECT }) : created, session.user.id),
             replay: false,
           };
         }
@@ -569,7 +570,7 @@ export async function PATCH(
   const id = text(input.id, 240);
   const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
-  if ((input.tags !== undefined && ((workKind !== "TASK" && workKind !== "GOAL") || !tagSelection)) || (clientRequestId && !REQUEST_ID.test(clientRequestId))) {
+  if ((input.tags !== undefined && !tagSelection) || (clientRequestId && !REQUEST_ID.test(clientRequestId))) {
     return NextResponse.json({ ok: false, error: "Choose valid tags and retry this save." }, { status: 400 });
   }
   const title = text(input.title, 500);
@@ -580,7 +581,8 @@ export async function PATCH(
   const targetAt = optionalDate(input.targetAt);
   const requestFingerprint = createHash("sha256").update(JSON.stringify({
     engagementId, workKind, id, title, detail, ownerUserId, requestedStatus,
-    targetAt, ...(tagSelection ? { tags: tagSelection } : {}),
+    targetAt, ...(workKind === "NOTE" ? { visibility: text(input.visibility, 20).toUpperCase() === "PRIVATE" ? "AUTHOR_PRIVATE" : "SESSION_SHARED" } : {}),
+    ...(tagSelection ? { tags: tagSelection } : {}),
   })).digest("hex");
   if (
     !workKind ||
@@ -640,7 +642,6 @@ export async function PATCH(
               id,
               engagementId,
               ...collaborativeNoteWhere(session.user.id),
-              updatedAt: expectedUpdatedAt,
             },
             select: {
               ...NOTE_SELECT,
@@ -649,6 +650,13 @@ export async function PATCH(
             },
           });
           if (!current) return { kind: "conflict" as const };
+          const source = record(current.sourceJson);
+          const replay = clientRequestId && priorReceipts(source).map(record).find(receipt =>
+            receipt.clientRequestId === clientRequestId && receipt.actorUserId === session.user.id);
+          if (replay) return replay.requestFingerprint === requestFingerprint
+            ? { kind: "saved" as const, entry: notePayload(current, session.user.id) }
+            : { kind: "conflict" as const };
+          if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { kind: "conflict" as const };
           const visibility =
             text(input.visibility, 20).toUpperCase() === "PRIVATE"
               ? "AUTHOR_PRIVATE"
@@ -665,6 +673,10 @@ export async function PATCH(
               title,
               body: detail || title,
               visibility,
+              sourceJson: { ...source, editReceipts: [...priorReceipts(source), {
+                id: randomUUID(), actorUserId: session.user.id, clientRequestId: clientRequestId || null,
+                requestFingerprint, changedAt: new Date().toISOString(),
+              }] },
               revisions: {
                 create: {
                   id: randomUUID(),
@@ -682,9 +694,10 @@ export async function PATCH(
             },
             select: NOTE_SELECT,
           });
+          if (tagSelection) await saveWorkTags(tx, updated, session.user, tagSelection, "note");
           return {
             kind: "saved" as const,
-            entry: notePayload(updated, session.user.id),
+            entry: notePayload(tagSelection ? await tx.coachingNote.findUniqueOrThrow({ where: { id }, select: NOTE_SELECT }) : updated, session.user.id),
           };
         }
 

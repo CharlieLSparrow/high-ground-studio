@@ -6,7 +6,7 @@ import { tagChipColors } from "@/lib/tag-color";
 export type WorkTagOption = { id: string; label: string; hexColor: string | null; isActive: boolean };
 
 export function WorkTagPicker({ entityKind = "task", entityId, engagementId, projectSlug, selected, onChange, disabled, onPendingChange }: {
-  entityKind?: "task" | "goal";
+  entityKind?: "task" | "goal" | "note";
   entityId?: string;
   engagementId?: string;
   projectSlug?: string;
@@ -97,7 +97,7 @@ export function WorkTagPicker({ entityKind = "task", entityId, engagementId, pro
         style={tagChipColors(tag.hexColor)} className="min-h-11 max-w-full rounded-full border px-3 py-1 text-xs [overflow-wrap:anywhere]"><span>{tag.label}</span>{!tag.isActive && " · archived"} <span aria-hidden="true">×</span></button>)}
     </div>}
     {expanded && <fieldset disabled={disabled || creating} className="min-w-0 space-y-2">
-      <legend className="sr-only">{entityKind === "goal" ? "Goal tags" : "Task tags"}</legend>
+      <legend className="sr-only">{entityKind === "goal" ? "Goal tags" : entityKind === "note" ? "Note tags" : "Task tags"}</legend>
       <input type="search" aria-label={`Find ${entityKind} tags`} value={query} maxLength={80} onChange={event => { setQuery(event.target.value); setCreateError(""); }} placeholder={canCreateTags ? "Find or create a tag…" : "Find a tag…"}
         className="block min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
       {loading && <p role="status" className="text-sm text-muted-foreground">Loading tags…</p>}

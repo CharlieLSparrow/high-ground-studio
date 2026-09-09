@@ -431,8 +431,18 @@ function entityWhere(
       : entityKind === "note"
         ? {
             id: entityId,
+            AND: [activeCoachingWorkWhere(), { OR: [
+              { engagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } },
+              { engagementId: null, room: { coachingEngagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } } },
+              { engagementId: null, OR: [{ roomId: null }, { room: { coachingEngagementId: null } }] },
+            ] }],
             OR: [
               { authorUserId: actorUserId },
+              { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] },
+                OR: [
+                  { engagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } },
+                  { engagementId: null, room: { coachingEngagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } } },
+                ] },
               ...(actorEmail ? [{
                 visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE", "PROJECT_TEAM"] },
                 room: {
@@ -461,6 +471,10 @@ function entityWhere(
         : { id: entityId, createdByUserId: actorUserId };
 }
 
+function noteProjectWhere(projectId: string) {
+  return { OR: [{ engagement: { projectId } }, { engagementId: null, room: { projectId } }] };
+}
+
 function entityModel(prisma: any, entityKind: WorkTagEntityKind) {
   return entityKind === "task"
     ? prisma.actionItem
@@ -485,7 +499,7 @@ function entityMutationLabel(entityKind: WorkTagEntityKind) {
   if (entityKind === "task") return "task editor";
   if (entityKind === "goal") return "goal editor";
   if (entityKind === "document") return "Nest editor";
-  if (entityKind === "note") return "note author or Nest editor";
+  if (entityKind === "note") return "note editor";
   return `${entityKind} owner`;
 }
 
@@ -505,12 +519,14 @@ async function findOwnedTagEntity(
     ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
   };
   if (entityKind === "note") {
-    if (expectedProjectId) where.room = { projectId: expectedProjectId };
     const note = await prisma.coachingNote.findFirst({
-      where,
-      select: { id: true, roomId: true, updatedAt: true, sourceJson: true, room: { select: { projectId: true } } },
+      where: expectedProjectId ? { AND: [where, noteProjectWhere(expectedProjectId)] } : where,
+      select: { id: true, roomId: true, engagementId: true, updatedAt: true, sourceJson: true,
+        engagement: { select: { projectId: true } },
+        room: { select: { projectId: true, coachingEngagementId: true } } },
     });
-    return note ? { ...note, projectId: note.room?.projectId ?? null } : null;
+    return note ? { ...note, projectId: note.engagement?.projectId ?? note.room?.projectId ?? null,
+      engagementId: note.engagementId ?? note.room?.coachingEngagementId ?? null } : null;
   }
   if (entityKind === "document") {
     return prisma.studioDocument.findFirst({
@@ -560,9 +576,16 @@ async function findOwnedTagEntity(
 
 /** Space-only collaborators see reusable tags from shared work in that space,
  * not the vocabulary of other clients who happen to share the same Nest. */
-function sharedWorkTagCatalogWhere(engagementId: string, entityKind: "task" | "goal", entityId: string): Prisma.StudioTagWhereInput {
+function sharedWorkTagCatalogWhere(engagementId: string, entityKind: "task" | "goal" | "note", entityId: string): Prisma.StudioTagWhereInput {
   const space = { OR: [{ engagementId }, { engagementId: null, booking: { is: { engagementId } } }] };
   return { OR: [
+    { coachingNotes: { some: { note: { OR: [
+      ...(entityKind === "note" && entityId ? [{ id: entityId }] : []),
+      { AND: [
+        { OR: [{ engagementId }, { engagementId: null, room: { coachingEngagementId: engagementId } }] },
+        { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } }, activeCoachingWorkWhere(),
+      ] },
+    ] } } } },
     { actionItems: { some: { actionItem: { OR: [
       ...(entityKind === "task" && entityId ? [{ id: entityId }] : []),
       { AND: [space, sharedCoachingWorkVisibilityWhere(), activeCoachingWorkWhere()] },
@@ -612,7 +635,7 @@ class WorkTagTransactionAbort extends Error {
 
 async function readWorkEntityTagContext(input: {
   prisma: PrismaClient; actorUserId: string; actorEmail: string; entityId: string;
-}, entityKind: "task" | "goal") {
+}, entityKind: "task" | "goal" | "note") {
   const entity = await findOwnedTagEntity(input.prisma, entityKind, input.entityId, input.actorUserId, input.actorEmail);
   if (!entity?.projectId) return null;
   const projects = await writableProjectIds(input.prisma, input.actorEmail);
@@ -627,7 +650,8 @@ async function readWorkEntityTagContext(input: {
     }),
     entityKind === "task"
       ? input.prisma.actionItemTagLink.findMany({ where: { actionItemId: entity.id }, select: { tagId: true } })
-      : input.prisma.goalTagLink.findMany({ where: { goalId: entity.id }, select: { tagId: true } }),
+      : entityKind === "goal" ? input.prisma.goalTagLink.findMany({ where: { goalId: entity.id }, select: { tagId: true } })
+        : input.prisma.coachingNoteTagLink.findMany({ where: { noteId: entity.id }, select: { tagId: true } }),
   ]);
   return { entityId: entity.id, projectId: entity.projectId, updatedAt: entity.updatedAt.toISOString(),
     selectedTagIds: links.map(link => link.tagId), tags, canCreateTags: projectEditor };
@@ -639,6 +663,10 @@ export function readTaskTagContext(input: Parameters<typeof readWorkEntityTagCon
 
 export function readGoalTagContext(input: Parameters<typeof readWorkEntityTagContext>[0]) {
   return readWorkEntityTagContext(input, "goal");
+}
+
+export function readNoteTagContext(input: Parameters<typeof readWorkEntityTagContext>[0]) {
+  return readWorkEntityTagContext(input, "note");
 }
 
 export async function readNewCoachingTaskTagContext(input: {
@@ -828,8 +856,7 @@ export async function createAndAssignWorkEntityTag(input: {
 
     const update = await entityModel(tx, input.entityKind).updateMany({
       where: {
-        ...ownerWhere,
-        ...(input.entityKind === "note" ? { room: { projectId: entity.projectId } } : { projectId: entity.projectId }),
+        AND: [ownerWhere, input.entityKind === "note" ? noteProjectWhere(entity.projectId) : { projectId: entity.projectId }],
         updatedAt: input.expectedUpdatedAt,
       },
       data: { [sourceField!]: { ...safeRecord(currentEntity[sourceField!]), lastTagReceipt: receipt } },
@@ -934,7 +961,7 @@ export async function replaceWorkEntityTags(input: {
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only a ${entityMutationLabel(input.entityKind)} can change these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before adding its tags." };
   const projectEditor = writableProjects.has(entity.projectId);
-  const collaborativeKind = input.entityKind === "task" || input.entityKind === "goal" ? input.entityKind : null;
+  const collaborativeKind = input.entityKind === "task" || input.entityKind === "goal" || input.entityKind === "note" ? input.entityKind : null;
   const spaceId = !projectEditor && collaborativeKind ? await writableTagSpace(prisma, entity, actorUserId) : null;
   if (!projectEditor && !spaceId) return { ok: false, code: "FORBIDDEN", error: "This work isn't available to tag." };
   const scopedTags = projectEditor ? {} : sharedWorkTagCatalogWhere(spaceId!, collaborativeKind!, entity.id);
@@ -1176,7 +1203,7 @@ export async function replaceWorkEntityTags(input: {
       : input.entityKind === "goal"
         ? await tx.goal.updateMany({ where: { ...entityWhere("goal", entityId, actorUserId, actorEmail), projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
         : input.entityKind === "note"
-          ? await tx.coachingNote.updateMany({ where: { ...entityWhere("note", entityId, actorUserId, actorEmail), room: { projectId: entity.projectId }, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+          ? await tx.coachingNote.updateMany({ where: { AND: [entityWhere("note", entityId, actorUserId, actorEmail), noteProjectWhere(entity.projectId)], updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
           : await tx.callRoom.updateMany({ where: { id: entityId, createdByUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { metadataJson: { ...safeRecord(entity.metadataJson), lastTagReceipt: receipt } } });
     if (update.count !== 1) return { kind: "conflict" as const };
 

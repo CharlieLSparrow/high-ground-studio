@@ -9,6 +9,7 @@ import {
   replaceWorkEntityTags,
   readTaskTagContext,
   readGoalTagContext,
+  readNoteTagContext,
   readNewCoachingTaskTagContext,
   readNewNestTaskTagContext,
 } from "@/lib/server/work-tags";
@@ -24,6 +25,7 @@ jest.mock("@/lib/server/work-tags", () => ({
   replaceWorkEntityTags: jest.fn(),
   readTaskTagContext: jest.fn(),
   readGoalTagContext: jest.fn(),
+  readNoteTagContext: jest.fn(),
   readNewCoachingTaskTagContext: jest.fn(),
   readNewNestTaskTagContext: jest.fn(),
 }));
@@ -38,6 +40,16 @@ function patchRequest(body: unknown) {
 
 describe("authenticated shared work tags route", () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it("reads note tags through the note authorization boundary", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "client@example.test"}} as any);
+    jest.mocked(readNoteTagContext).mockResolvedValue(null);
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=note&entityId=note"));
+    expect(response.status).toBe(404);
+    expect(readNoteTagContext).toHaveBeenCalledWith(expect.objectContaining({entityId: "note", actorUserId: "client"}));
+    expect(readTaskTagContext).not.toHaveBeenCalled();
+    expect(readGoalTagContext).not.toHaveBeenCalled();
+  });
 
   it("returns a retryable JSON response when the identity database is temporarily unavailable", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));

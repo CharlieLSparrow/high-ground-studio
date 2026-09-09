@@ -21,7 +21,7 @@ it("preserves unrelated tag updates and identifies conflicting tag choices by id
     {...base, tags: [{...research, hexColor: "#000000"}, next]}).conflicts).toEqual([]);
 });
 
-it.each(["TASK", "GOAL"] as const)("edits %s tags with its wording, retaining both after a failed save and allowing archived tag removal", async (kind) => {
+it.each(["TASK", "GOAL", "NOTE"] as const)("edits %s tags with its wording, retaining both after a failed save and allowing archived tag removal", async (kind) => {
   const tag = {id: "research", label: "Research", hexColor: "#23543a", isActive: true};
   const old = {...tag, id: "old", label: "Old topic", isActive: false};
   const initial = {...entry, kind, status: kind === "TASK" ? "OPEN" : "ACTIVE", tags: [old]};

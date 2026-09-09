@@ -5,7 +5,7 @@ import { GET as readChat } from "@/app/api/nest-chat/route";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadSessionWork } from "@/lib/server/session-work";
-import { createAndAssignWorkEntityTag, replaceWorkEntityTags, readTaskTagContext, readNewCoachingTaskTagContext, workTagSlug } from "@/lib/server/work-tags";
+import { createAndAssignWorkEntityTag, replaceWorkEntityTags, readTaskTagContext, readNoteTagContext, readNewCoachingTaskTagContext, workTagSlug } from "@/lib/server/work-tags";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -231,7 +231,7 @@ if (enabled) {
       .toMatchObject({id: completed.id, status: "OPEN", title: completed.title, tags: completed.tags});
   });
 
-  it.each(["TASK", "GOAL"] as const)("saves a %s draft and its canonical tags together, with retries and all-or-nothing failure", async (kind) => {
+  it.each(["TASK", "GOAL", "NOTE"] as const)("saves a %s draft and its canonical tags together, with retries and all-or-nothing failure", async (kind) => {
     const writingLabel = `Writing ${kind} ${nonce}`;
     const command = {kind, clientRequestId: randomUUID(), title: "Prepare together", ownerUserId: client!.id,
       tags: {tagIds: [], newTagLabels: [writingLabel]}};
@@ -268,14 +268,59 @@ if (enabled) {
     const tags = {tagIds: [], newTagLabels: [rollbackLabel, archivedLabel]};
     const rejected = await act("PATCH", {...update, clientRequestId: randomUUID(), expectedUpdatedAt: saved.body.entry.updatedAt, title: "Must not save", tags});
     expect(rejected.status).toBe(400);
-    expect((await act("GET", {}, coach!, `kind=${kind}&item=${task.id}`)).body.engagement.entries[0]).toEqual(saved.body.entry);
+    expect((await act("GET", {}, coach!, `kind=${kind}&item=${task.id}`)).body.engagement.entries[0])
+      .toEqual({...saved.body.entry, ...(kind === "NOTE" ? {canChangeVisibility: false} : {})});
     expect(await prisma.studioTag.count({where: {projectId, label: rollbackLabel}})).toBe(0);
     const failedCreate = {...command, clientRequestId: randomUUID(), title: `Must not exist ${nonce}`, tags};
     expect((await act("POST", failedCreate)).status).toBe(400);
     expect(kind === "TASK"
       ? await prisma.actionItem.count({where: {engagementId, title: failedCreate.title}})
-      : await prisma.goal.count({where: {engagementId, title: failedCreate.title}})).toBe(0);
+      : kind === "GOAL" ? await prisma.goal.count({where: {engagementId, title: failedCreate.title}})
+        : await prisma.coachingNote.count({where: {engagementId, title: failedCreate.title}})).toBe(0);
     for (const actor of [observer!, guest!, outsider!]) expect((await act("PATCH", update, actor)).status).toBe(404);
+  });
+
+  it("keeps private note tags private and revocation blocks tag reads and writes even for their author", async () => {
+    const shared = await act("POST", {kind: "NOTE", title: "Shared preparation", clientRequestId: randomUUID(),
+      tags: {tagIds: [], newTagLabels: [`Shared note ${nonce}`]}});
+    expect(shared.status).toBe(200);
+    const privateNote = await act("POST", {kind: "NOTE", title: "Only my reflection", visibility: "PRIVATE", clientRequestId: randomUUID(),
+      tags: {tagIds: [], newTagLabels: [`Private note ${nonce}`]}});
+    expect(privateNote.status).toBe(200);
+    const own = privateNote.body.entry;
+    const scoped = (actor: typeof client, entityId = own.id) => ({prisma, actorUserId: actor!.id, actorEmail: actor!.primaryEmail, entityId});
+    expect(await readNoteTagContext(scoped(client))).toMatchObject({selectedTagIds: [own.tags[0].id]});
+    for (const actor of [coach, observer, guest, outsider]) expect(await readNoteTagContext(scoped(actor))).toBeNull();
+    const palette = await readNewCoachingTaskTagContext({prisma, actorUserId: coach!.id, actorEmail: coach!.primaryEmail, engagementId});
+    expect(palette!.tags.some(tag => tag.id === own.tags[0].id)).toBe(false);
+    expect(palette!.tags.some(tag => tag.id === shared.body.entry.tags[0].id)).toBe(true);
+    for (const actor of [observer, guest, outsider]) expect(await readNoteTagContext(scoped(actor, shared.body.entry.id))).toBeNull();
+    const denied = await replaceWorkEntityTags({...scoped(coach), entityKind: "note", tagIds: [], expectedUpdatedAt: new Date(own.updatedAt)});
+    expect(denied.ok).toBe(false);
+    const roomNote = await prisma.coachingNote.create({data: {roomId, authorUserId: coach!.id,
+      title: "Note attached through the session", body: "Same client-space boundary", visibility: "SESSION_SHARED"}});
+    const grant = await prisma.studioProjectAccessGrant.create({data: {projectId, email: outsider!.primaryEmail,
+      role: "EDITOR", status: "ACTIVE", createdByUserId: coach!.id, createdByEmail: coach!.primaryEmail}});
+    try {
+      expect(await readNoteTagContext(scoped(client, roomNote.id))).toMatchObject({projectId});
+      expect((await replaceWorkEntityTags({...scoped(client, roomNote.id), entityKind: "note",
+        tagIds: [shared.body.entry.tags[0].id], expectedUpdatedAt: roomNote.updatedAt})).ok).toBe(true);
+      for (const entityId of [own.id, shared.body.entry.id, roomNote.id]) {
+        expect(await readNoteTagContext(scoped(outsider, entityId))).toBeNull();
+        expect((await replaceWorkEntityTags({...scoped(outsider, entityId), entityKind: "note",
+          tagIds: [], expectedUpdatedAt: roomNote.updatedAt})).ok).toBe(false);
+      }
+    } finally {
+      await prisma.coachingNote.delete({where: {id: roomNote.id}});
+      await prisma.studioProjectAccessGrant.delete({where: {id: grant.id}});
+    }
+    await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: client!.id}, data: {status: "REMOVED"}});
+    try {
+      expect(await readNoteTagContext(scoped(client))).toBeNull();
+      expect((await replaceWorkEntityTags({...scoped(client), entityKind: "note", tagIds: [], expectedUpdatedAt: new Date(own.updatedAt)})).ok).toBe(false);
+    } finally {
+      await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: client!.id}, data: {status: "ACTIVE"}});
+    }
   });
 
   it("retains an archived tag while saving other tags, but cannot assign it to new work or restore it after removal", async () => {

@@ -380,7 +380,7 @@ function CoachingEngagementWorkspaceContent({
         ownerUserId: String(formData.get("ownerUserId") || defaultOwner),
         targetAt: String(formData.get("targetAt") || ""),
         visibility: String(formData.get("visibility") || "SHARED"),
-        ...(["TASK", "GOAL"].includes(String(formData.get("kind"))) ? {tags: {tagIds: createTags.map(tag => tag.id).sort()}} : {}),
+        tags: {tagIds: createTags.map(tag => tag.id).sort()},
       };
       const fingerprint = JSON.stringify(values);
       // A lost response does not mean the server failed to save. Retry the
@@ -464,19 +464,16 @@ function CoachingEngagementWorkspaceContent({
         visibility: values.visibility ?? entry.visibility,
         status: values.status ?? entry.status,
         expectedUpdatedAt: entry.updatedAt,
-        ...(entry.kind !== "NOTE" && values.tags
+        ...(values.tags
           && JSON.stringify(values.tags.map(tag => tag.id).sort()) !== JSON.stringify((entry.tags ?? []).map(tag => tag.id).sort())
           ? {tags: {tagIds: values.tags.map(tag => tag.id).sort()}} : {}),
       };
       const fingerprint = JSON.stringify(changes);
-      let body = fingerprint;
-      if (entry.kind !== "NOTE") {
-        // An uncertain response must retry the same command, not create a new edit.
-        const previous = editRequests.current.get(entry.id);
-        body = previous?.fingerprint === fingerprint ? previous.body
-          : JSON.stringify({...changes, clientRequestId: crypto.randomUUID()});
-        editRequests.current.set(entry.id, {fingerprint, body});
-      }
+      // An uncertain response must retry the same command, not create a new edit.
+      const previous = editRequests.current.get(entry.id);
+      const body = previous?.fingerprint === fingerprint ? previous.body
+        : JSON.stringify({...changes, clientRequestId: crypto.randomUUID()});
+      editRequests.current.set(entry.id, {fingerprint, body});
       const response = await fetch(
         `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
         {
@@ -772,8 +769,8 @@ function CoachingEngagementWorkspaceContent({
                 </span>
               </label>
             ) : null}
-            {createKind !== "NOTE" && <WorkTagPicker entityKind={createKind === "GOAL" ? "goal" : "task"} engagementId={engagementId} selected={createTags}
-              onChange={setCreateTags} disabled={busyIds.has("create")} onPendingChange={setCreateTagPending} />}
+            <WorkTagPicker entityKind={createKind === "GOAL" ? "goal" : createKind === "NOTE" ? "note" : "task"} engagementId={engagementId} selected={createTags}
+              onChange={setCreateTags} disabled={busyIds.has("create")} onPendingChange={setCreateTagPending} />
             <button
               type="submit"
               disabled={busyIds.has("create")}
