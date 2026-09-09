@@ -10,6 +10,7 @@ import {
   createXcodeArguments,
   createExecutionGroups,
   createExecutionBatches,
+  selectPlatformPlan,
   executedTestCount,
   parseRunnerArguments,
   resultBundlePath,
@@ -252,6 +253,36 @@ test("partitions regular-width contracts onto an iPad destination", () => {
   ]);
 });
 
+test("separate platform plans cover every critical and full-shard test exactly once", () => {
+  const source = readFileSync(path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift"), "utf8");
+  const tests = discoverDeterministicTests(source);
+  const plans = [createPlan(tests), ...[1, 2, 3, 4].map(shard => createPlan(tests, { suite: "full", shard, shards: 4 }))];
+  for (const plan of plans) {
+    assert.deepEqual(selectPlatformPlan(plan).selectors, plan.selectors, "Local and release defaults retain all platforms");
+    const lanes = ["iphone", "ipad"].map(platform => selectPlatformPlan(plan, platform));
+    const combined = lanes.flatMap(lane => lane.selectors);
+    assert.equal(new Set(combined).size, combined.length, "No duplicate test execution between platforms");
+    assert.deepEqual([...combined].sort(), [...plan.selectors].sort(), "No missing test execution between platforms");
+    for (const lane of lanes) {
+      assert.equal(lane.selectedTestCount, lane.selectors.length);
+      const groups = createExecutionGroups(lane, { destination: "iPhone", ipadDestination: "iPad" });
+      assert.equal(groups.length, 1);
+      assert.equal(groups[0].name.toLowerCase(), lane.platform);
+      assert.deepEqual(createExecutionBatches(groups).flatMap(batch => batch.selectors), lane.selectors);
+    }
+  }
+});
+
+test("platform selection rejects typos and empty coverage instead of passing", () => {
+  for (const platform of ["", "mac", "iPhone", "none"]) {
+    assert.throws(() => parseRunnerArguments([`--platform=${platform}`]), /platform must/);
+    assert.throws(() => selectPlatformPlan({ selectors: planned }, platform), /platform must/);
+  }
+  assert.equal(parseRunnerArguments([]).platform, "all");
+  assert.equal(parseRunnerArguments(["--platform=ipad"]).platform, "ipad");
+  assert.throws(() => selectPlatformPlan({ selectors: planned }, "ipad"), /empty platform lane cannot pass/);
+});
+
 test("detects skipped tests and refuses a false green", () => {
   const output = `
     Test Case '-[CaptureTests testIPad]' skipped (1.0 seconds).
@@ -488,8 +519,11 @@ test("GitHub CI uses the skip-intolerant platform runner and preserves both resu
   assert.doesNotMatch(captureWorkflow, /only_testing_args=/);
 });
 
-for (const failure of ["none", "iPhone-discovery-recovers", "iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous", "iPhone-exit", "iPad-exit", "both-exit", "iPhone-substitution", "iPhone-unreadable"]) {
-  test(`the real runner collects both platforms and reports ${failure} without a second cloud run`, (t) => {
+for (const { failure, platform } of [
+  ...["none", "iPhone-discovery-recovers", "iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous", "iPhone-exit", "iPad-exit", "both-exit", "iPhone-substitution", "iPhone-unreadable"].map(failure => ({ failure, platform: "all" })),
+  ...["iphone", "ipad"].flatMap(platform => ["none", platform === "iphone" ? "iPhone-exit" : "iPad-exit"].map(failure => ({ failure, platform }))),
+]) {
+  test(`the real runner collects ${platform} and reports ${failure} without a second cloud run`, (t) => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "capture-platform-results-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
     // Only Apple subprocesses are substituted. The real CLI discovers the
@@ -557,7 +591,7 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     const callLog = path.join(fixture, "platforms.log");
     const result = spawnSync(process.execPath, [
       path.join(root, "scripts/release/quipsly-capture-ui-test-runner.mjs"),
-      "--suite=critical", `--evidence-root=${evidence}`,
+      "--suite=critical", `--platform=${platform}`, `--evidence-root=${evidence}`,
       `--destination=${exactPhone},arch=arm64`,
       "--ipad-destination=platform=iOS Simulator,id=22222222-2222-2222-2222-222222222222,arch=arm64",
       `--derived-data=${path.join(fixture, "derived")}`,
@@ -568,7 +602,7 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     const passes = ["none", "iPhone-discovery-recovers"].includes(failure);
     const phoneUnresolved = ["iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous"].includes(failure);
     const source = readFileSync(path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift"), "utf8");
-    const batches = createExecutionBatches(createExecutionGroups(createPlan(discoverDeterministicTests(source)), {
+    const batches = createExecutionBatches(createExecutionGroups(selectPlatformPlan(createPlan(discoverDeterministicTests(source)), platform), {
       destination: "phone", ipadDestination: "tablet",
     })).filter(batch => !phoneUnresolved || batch.destination === "tablet");
     assert.equal(result.status, passes ? 0 : 1, result.stdout + result.stderr);
@@ -584,7 +618,7 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
         assert.equal(verifyResultTests(report, batch.selectors), batch.selectors.length);
       }
     }
-    if (passes) assert.match(result.stdout, /PASS: executed all .* across 2 platform destinations/);
+    if (passes) assert.match(result.stdout, new RegExp(`PASS: executed all .* across ${platform === "all" ? 2 : 1} platform destinations`));
     else {
       assert.doesNotMatch(result.stdout, /PASS: executed all/);
       assert.match(result.stderr, /FAIL: Capture UI validation failed/);

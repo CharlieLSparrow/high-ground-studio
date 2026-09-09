@@ -110,8 +110,9 @@ test("native preflight executes every command and stops at each injected failure
   }
 });
 
-for (const failureDevice of ["none", "iPhone 17 Pro", "iPad Air 13-inch (M3)"]) {
-  test(`simulator prewarm preserves diagnostics and ${failureDevice} failure`, (t) => {
+for (const [platform, device, variable] of [["iphone", "iPhone 17 Pro", "CAPTURE_DESTINATION"], ["ipad", "iPad Air 13-inch (M3)", "CAPTURE_IPAD_DESTINATION"]]) {
+ for (const fails of [false, true]) {
+  test(`simulator prewarm prepares only ${platform} and preserves ${fails ? "failure" : "success"}`, (t) => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-prewarm-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const step = workflow.split("      - name: Prewarm deterministic simulator services\n")[1]?.split("\n      - name:")[0];
@@ -120,29 +121,26 @@ for (const failureDevice of ["none", "iPhone 17 Pro", "iPad Air 13-inch (M3)"]) 
     const result = spawnSync("bash", ["-c", `
       bash() {
         [[ "$1" == apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh ]] || return 98
-        if [[ "$2" == "iPhone 17 Pro" ]]; then
-          [[ "$CAPTURE_SIMULATOR_DESTINATION_VARIABLE" == CAPTURE_DESTINATION ]] || return 99
-        else
-          [[ "$CAPTURE_SIMULATOR_DESTINATION_VARIABLE" == CAPTURE_IPAD_DESTINATION ]] || return 99
-        fi
+        [[ "$2" == "$EXPECTED_DEVICE" && "$CAPTURE_SIMULATOR_DESTINATION_VARIABLE" == "$EXPECTED_VARIABLE" ]] || return 99
         echo "Preparing $2"
         echo "Simulator diagnostics" >&2
         [[ "$2" != "$FAILURE_DEVICE" ]] || return 37
       }
       ${stepScript("Prewarm deterministic simulator services")}
-    `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory, FAILURE_DEVICE: failureDevice } });
-    assert.equal(result.status, failureDevice === "none" ? 0 : 37, result.stdout + result.stderr);
-    assert.equal(readFileSync(path.join(directory, "capture-prewarm-iphone.log"), "utf8"),
-      "Preparing iPhone 17 Pro\nSimulator diagnostics\n");
-    if (failureDevice === "iPhone 17 Pro") assert.doesNotMatch(result.stdout, /Preparing iPad/);
-    else assert.equal(readFileSync(path.join(directory, "capture-prewarm-ipad.log"), "utf8"),
-      "Preparing iPad Air 13-inch (M3)\nSimulator diagnostics\n");
+    `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory, CAPTURE_TEST_PLATFORM: platform,
+      EXPECTED_DEVICE: device, EXPECTED_VARIABLE: variable, FAILURE_DEVICE: fails ? device : "none" } });
+    assert.equal(result.status, fails ? 37 : 0, result.stdout + result.stderr);
+    assert.deepEqual(readdirSync(directory), [`capture-prewarm-${platform}.log`]);
+    assert.equal(readFileSync(path.join(directory, `capture-prewarm-${platform}.log`), "utf8"),
+      `Preparing ${device}\nSimulator diagnostics\n`);
   });
+ }
 }
 
+for (const platform of ["iphone", "ipad"]) {
 for (const shard of [0, 3]) {
   for (const exitCode of [0, 17, 143]) {
-    test(`native CI shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {
+    test(`native CI ${platform} shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {
       const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-ci-"));
       t.after(() => rmSync(directory, { recursive: true, force: true }));
       const script = stepScript("Run bounded deterministic Capture UI lane serially")
@@ -153,19 +151,32 @@ for (const shard of [0, 3]) {
         node() {
           [[ "$1" == scripts/release/quipsly-capture-ui-test-runner.mjs ]] || return 98
           [[ " $* " == *" --suite=${suite} "* && " $* " == *" --shard=${selected} "* ]] || return 99
+          [[ " $* " == *" --platform=${platform} "* ]] || return 98
           echo "native test stdout"
           echo "native test stderr" >&2
           return "$TEST_EXIT"
         }
         ${script}
       `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory,
-        TEST_EXIT: String(exitCode), CAPTURE_DESTINATION: "synthetic iPhone", CAPTURE_IPAD_DESTINATION: "synthetic iPad" } });
+        TEST_EXIT: String(exitCode), CAPTURE_TEST_PLATFORM: platform, CAPTURE_DESTINATION: "synthetic iPhone", CAPTURE_IPAD_DESTINATION: "synthetic iPad" } });
       assert.equal(result.status, exitCode, result.stdout + result.stderr);
-      assert.equal(readFileSync(path.join(directory, `capture-ui-${suite}-${selected}/capture-ui-tests.log`), "utf8"),
+      assert.equal(readFileSync(path.join(directory, `capture-ui-${suite}-${selected}-${platform}/capture-ui-tests.log`), "utf8"),
         "native test stdout\nnative test stderr\n");
     });
   }
 }
+}
+
+test("both platform jobs are required, bounded, and retain independently named evidence", () => {
+  const job = workflow.split("  deterministic-ui:\n")[1]?.split("  validation:\n")[0];
+  assert.match(job, /platform: \[iphone, ipad\]/);
+  assert.match(job, /fail-fast: false/);
+  assert.match(job, /max-parallel: 2/);
+  assert.match(job, /CAPTURE_TEST_PLATFORM: \$\{\{ matrix.platform \}\}/);
+  assert.match(job, /name: capture-apple-test-evidence-.*\$\{\{ matrix.platform \}\}/);
+  assert.doesNotMatch(job, /continue-on-error:/);
+  assert.match(job, /if: matrix.platform == 'iphone' && \(matrix.shard == 0 \|\| matrix.shard == 1\)/);
+});
 
 test("the native execution budget leaves time to upload evidence after timeout", () => {
   const job = workflow.split("  deterministic-ui:\n")[1]?.split("  validation:\n")[0];

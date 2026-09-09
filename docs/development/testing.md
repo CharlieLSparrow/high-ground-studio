@@ -182,6 +182,17 @@ tests and fails if required planning or testing failed, was cancelled, or was
 unexpectedly skipped. Use this stable check when configuring branch protection;
 workflow files alone do not enable protection. Pushes alone do not run this lane.
 
+Hosted iPhone and iPad checks run in separate required matrix jobs, with at most
+two Mac jobs active. Each boots only its own simulator. `--platform=iphone` and
+`--platform=ipad` partition the same named critical/full-shard plan; regression
+tests require their union to contain every planned test exactly once. Empty
+platform lanes fail. Local and release runner defaults still exercise both
+devices. Artifact names include the platform so neither result overwrites the
+other. This replaces serial hosted execution that repeatedly exhausted the test
+deadline before iPad coverage finished; it does not shorten coverage, retry app
+failures, or extend the per-job timeout. Separate cold builds are a cost tradeoff
+to evaluate using completed runner minutes, not just elapsed wall time.
+
 New pushes to an open PR do not cancel its active Apple run. GitHub keeps one
 active run and, by default, replaces the single pending run as new revisions
 arrive. This avoids repeatedly paying for cold simulator startup without ever

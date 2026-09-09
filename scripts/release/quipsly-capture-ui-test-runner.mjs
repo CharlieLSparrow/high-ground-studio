@@ -26,6 +26,7 @@ const SOURCE = path.join(
 export function parseRunnerArguments(argv) {
   const options = {
     suite: "critical",
+    platform: "all",
     shard: 1,
     shards: 4,
     destination:
@@ -50,6 +51,7 @@ export function parseRunnerArguments(argv) {
     const name = argument.slice(0, separator);
     const value = argument.slice(separator + 1);
     if (name === "--suite") options.suite = value;
+    else if (name === "--platform") options.platform = value;
     else if (name === "--shard") options.shard = Number(value);
     else if (name === "--shards") options.shards = Number(value);
     else if (name === "--destination") options.destination = value;
@@ -59,7 +61,20 @@ export function parseRunnerArguments(argv) {
     else throw new Error(`unknown argument: ${argument}`);
   }
 
+  if (!["all", "iphone", "ipad"].includes(options.platform)) {
+    throw new Error("platform must be all, iphone, or ipad");
+  }
   return options;
+}
+
+/** The CI platform lanes partition the same plan; they never substitute a
+ * shorter suite. Local/release invocations still default to both devices. */
+export function selectPlatformPlan(plan, platform = "all") {
+  if (!["all", "iphone", "ipad"].includes(platform)) throw new Error("platform must be all, iphone, or ipad");
+  const selectors = platform === "all" ? plan.selectors : plan.selectors.filter(selector =>
+    selector.includes("RegularWidthIPad") === (platform === "ipad"));
+  if (!selectors.length) throw new Error(`No tests selected for ${platform}; an empty platform lane cannot pass`);
+  return { ...plan, platform, selectedTestCount: selectors.length, selectors };
 }
 
 export function createExecutionGroups(plan, options) {
@@ -379,14 +394,14 @@ async function main() {
   }
   const options = parseRunnerArguments(argv);
   const tests = discoverDeterministicTests(await readFile(SOURCE, "utf8"));
-  const plan = createPlan(tests, options);
+  const plan = selectPlatformPlan(createPlan(tests, options), options.platform);
   const executionGroups = createExecutionGroups(plan, options);
   options.evidenceRoot ??= await mkdtemp(path.join(os.tmpdir(), "quipsly-capture-ui-"));
   await mkdir(options.evidenceRoot, { recursive: true });
   process.stdout.write(`Xcode results: ${options.evidenceRoot}\n`);
 
   process.stdout.write(
-    `Quipsly Capture ${plan.suite} UI suite: ${plan.selectedTestCount} tests`
+    `Quipsly Capture ${plan.suite} UI suite (${plan.platform}): ${plan.selectedTestCount} tests`
       + `${plan.shards > 1 ? ` · shard ${plan.shard}/${plan.shards}` : ""}\n`,
   );
   let executedCount = 0;
