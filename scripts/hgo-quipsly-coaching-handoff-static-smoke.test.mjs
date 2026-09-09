@@ -61,7 +61,7 @@ for (const missingBoundary of [null, "booking authentication", "packet authentic
   });
 }
 
-for (const missingBoundary of [null, "native scheduling command", "calendar update status"]) {
+for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization"]) {
   test(`scheduling source checks tolerate presentation changes and detect ${missingBoundary || "intact wiring"}`, t => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-scheduling-source-gates-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -76,6 +76,10 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
       }
     }
     const route = path.join(fixture, "apps/quipsly/src/app/api/coaching/runway/route.ts");
+    const nestQuery = path.join(fixture, "apps/quipsly/src/lib/server/nest-project-follow-through.ts");
+    if (missingBoundary === "Nest task authorization") {
+      writeFileSync(nestQuery, readFileSync(nestQuery, "utf8").replaceAll("personalOrSharedSessionTaskAccessWhere(actorUserId)", "unscopedTaskQuery()"));
+    }
     writeFileSync(route, readFileSync(route, "utf8")
       .replaceAll("Session time updated.", "Appointment updated.")
       .replaceAll("Booking canceled in Quipsly. Cancel external calendar/invite/payment evidence separately", "Canceled here. Provider status is separate.")
@@ -90,11 +94,11 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
         cwd: fixture, encoding: "utf8", timeout: 15_000,
       });
       const expectedFailure = (script === scheduling && missingBoundary === "calendar update status")
-        || (script === capture && missingBoundary === "native scheduling command");
+        || (script === capture && ["native scheduling command", "Nest task authorization"].includes(missingBoundary));
       assert.equal(result.status, expectedFailure ? 1 : 0, result.stdout + result.stderr);
       const report = JSON.parse(result.stdout);
       assert.deepEqual(report.checks.filter(check => check.status === "fail").map(check => check.id ?? check.name),
-        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : "nativeCoachingSchedulingManagementParity"] : []);
+        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : "nativeCoachingSchedulingManagementParity"] : []);
     }
   });
 }

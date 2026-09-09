@@ -25,7 +25,7 @@ test("creates and colors the first shared tag inline before saving the task", as
   expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ operation: "CREATE", projectId: "nest", label: "Research", hexColor: "#506b46" });
   await act(async () => { finishTag({ ok: true, json: async () => ({ ok: true, tag }) }); });
   expect(screen.getByRole("checkbox", { name: "Research" })).toBeChecked();
-  expect(screen.getByText("Research")).toHaveStyle({ backgroundColor: "#506b46" });
+  expect(screen.getByRole("button", {name: "Remove Research tag"})).toHaveStyle({ backgroundColor: "#506b46" });
   expect(screen.getByRole("searchbox")).toHaveValue("");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Add task" })); });
   expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ tags: { tagIds: ["research"] } });
@@ -52,7 +52,7 @@ test("failed inline creation retains the name and color, and retry uses the cano
   expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(JSON.parse(fetchMock.mock.calls[1][1].body));
   expect(JSON.parse(fetchMock.mock.calls[2][1].body).hexColor).toBeNull();
   expect(screen.getByRole("checkbox", { name: "Research" })).toBeChecked();
-  expect(screen.getByText("Research")).toHaveStyle({ backgroundColor: "#23543a" });
+  expect(screen.getByRole("button", {name: "Remove Research tag"})).toHaveStyle({ backgroundColor: "#23543a" });
 });
 
 test("client-space access alone does not offer shared Nest vocabulary creation", async () => {

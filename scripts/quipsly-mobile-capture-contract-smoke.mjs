@@ -2456,15 +2456,15 @@ function checkTranscriptCorrectionContractSources() {
     "Work source retains canonical task attention projection and filtering; it does not require another global navigation destination.",
   );
   expect(
-    nestDashboardText.includes("Project follow-through")
+    nestDashboardText.includes("readNestProjectFollowThrough")
       && nestFollowThroughText.includes("isUnreviewedTranscriptActionItem")
       && nestFollowThroughText.includes("readTranscriptDerivedTaskSource")
       && nestFollowThroughText.includes("ownerUserId: actorUserId")
-      && nestDashboardText.includes('href={`/work?goal=${encodeURIComponent(goal.id)}`}')
-      && nestDashboardText.includes('href={`/work?task=${encodeURIComponent(task.id)}`}')
-      && nestDashboardText.includes('href={`/sessions/${encodeURIComponent(task.sourceAnchor.roomId)}#transcript-segment-${encodeURIComponent(task.sourceAnchor.segmentId)}`}'),
+      && nestFollowThroughText.includes("personalOrSharedSessionTaskAccessWhere(actorUserId)")
+      && nestFollowThroughText.includes("readEditableWorkQueueTaskIds(prisma, input.actorUserId")
+      && nestFollowThroughText.includes("parsedSource?.roomId === task.room?.id"),
     "nestProjectCanonicalFollowThrough",
-    "A Nest shows actor-scoped owned goals and accepted canonical tasks with same-ID Work navigation and exact transcript return.",
+    "Nest follow-through uses the canonical scoped task query, separate edit capabilities, owned goals, and matching transcript-source identity; rendered navigation is covered by component and database tests.",
   );
   expect(
     workspaceSearchText.includes("personalOrSharedWorkspaceTaskAccessWhere")

@@ -24,6 +24,54 @@ const sharedTask = {
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it("does not replace unchanged archived tags when editing task wording", async () => {
+    const entry = {...sharedTask, tags: [{id: "archived", label: "Earlier research", hexColor: "#23543a", isActive: false}]};
+    const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, entry: {...entry, body: "Revised wording"}})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="coach-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
+    fireEvent.click(screen.getByText("Edit"));
+    expect(screen.getByRole("button", {name: "Remove Earlier research tag"})).toBeVisible();
+    fireEvent.change(screen.getByLabelText("task details"), {target: {value: "Revised wording"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const command = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(command.body).toBe("Revised wording");
+    expect(command).not.toHaveProperty("tags");
+    await screen.findByText("Revised wording");
+  });
+  it("creates a tagged task with a stable retry and removes its tag in the same later text edit", async () => {
+    const tag = {id: "research", label: "Research", hexColor: "#23543a", isActive: true};
+    const saved = {...sharedTask, tags: [tag]};
+    let attempts = 0;
+    const fetchMock = jest.fn(async (url: string, options?: RequestInit) => {
+      if (url.startsWith("/api/work/tags?")) return {ok: true, json: async () => ({ok: true, tags: [tag]})};
+      if (options?.method === "POST" && ++attempts === 1) throw new Error("Response lost");
+      return {ok: true, json: async () => ({ok: true, entry: options?.method === "PATCH" ? {...saved, tags: [], body: "Three examples"} : saved})};
+    });
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[]} members={members} currentUserId="coach-1" canWrite />);
+    fireEvent.change(screen.getByLabelText("Type"), {target: {value: "TASK"}});
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: sharedTask.title}});
+    fireEvent.click(screen.getByRole("button", {name: "Add tags"}));
+    fireEvent.click(await screen.findByRole("checkbox", {name: "Research"}));
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByText("Response lost");
+    expect(screen.getByRole("checkbox", {name: "Research"})).toBeChecked();
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByRole("heading", {name: sharedTask.title});
+    const creates = fetchMock.mock.calls.filter(([, options]) => options?.method === "POST");
+    expect(creates).toHaveLength(2);
+    expect(creates[0][1]?.body).toBe(creates[1][1]?.body);
+    expect(JSON.parse(String(creates[0][1]?.body))).toMatchObject({kind: "TASK", tags: {tagIds: [tag.id]}});
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.click(screen.getByRole("button", {name: "Remove Research tag"}));
+    fireEvent.change(screen.getByLabelText("task details"), {target: {value: "Three examples"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(true));
+    const update = fetchMock.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+    expect(JSON.parse(String(update[1]?.body))).toMatchObject({body: "Three examples", tags: {tagIds: []}, expectedUpdatedAt: saved.updatedAt});
+  });
   it("restores a selected item from its space URL without exposing an unknown item", () => {
     const originalUrl = window.location.href;
     window.history.replaceState({}, "", `/coaching/engagements/engagement-1?work=${sharedTask.id}#relationship-work`);

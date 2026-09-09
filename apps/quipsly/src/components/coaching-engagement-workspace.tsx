@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { CoachingWorkEditor } from "./coaching-work-editor";
 import { CoachingWorkCollection } from "./coaching-work-collection";
+import { TaskTagPicker, type TaskTagOption } from "./task-tag-picker";
 
 export type CoachingEngagementWorkEntry = {
   id: string;
@@ -105,6 +106,8 @@ function CoachingEngagementWorkspaceContent({
   const [entries, setEntries] = useState(initialEntries);
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<CoachingWorkTag | null>(null);
+  const [createTags, setCreateTags] = useState<TaskTagOption[]>([]);
+  const [createTagPending, setCreateTagPending] = useState(false);
   const searchRef = useRef("");
   const [nextCursor, setNextCursor] = useState(initialPage?.nextCursor ?? null);
   const history = useRef<{query: string; kind: string; tag: string; cursors: Array<string | null>; ids: Set<string>}>({query: "", kind: "ALL", tag: "", cursors: [null], ids: new Set(initialEntries.map((entry) => entry.id))});
@@ -347,6 +350,7 @@ function CoachingEngagementWorkspaceContent({
   }
 
   async function createEntry(formData: FormData) {
+    if (createTagPending) return;
     if (!beginOperation("create")) return;
     setNotice(null);
     setLastRemoved(null);
@@ -358,6 +362,7 @@ function CoachingEngagementWorkspaceContent({
         ownerUserId: String(formData.get("ownerUserId") || defaultOwner),
         targetAt: String(formData.get("targetAt") || ""),
         visibility: String(formData.get("visibility") || "SHARED"),
+        ...(formData.get("kind") === "TASK" ? {tags: {tagIds: createTags.map(tag => tag.id).sort()}} : {}),
       };
       const fingerprint = JSON.stringify(values);
       // A lost response does not mean the server failed to save. Retry the
@@ -389,6 +394,7 @@ function CoachingEngagementWorkspaceContent({
       selectEntry(payload.entry.id);
       setWorkFilter((current) => current === "ALL" ? current : savedKind);
       createRequest.current = null;
+      setCreateTags([]);
       createForm.current?.reset();
       setCreateOpen(false);
       const itemLabel =
@@ -422,6 +428,7 @@ function CoachingEngagementWorkspaceContent({
       targetAt?: string;
       visibility?: string;
       status?: string;
+      tags?: TaskTagOption[];
     },
   ) {
     if (!beginOperation(entry.id)) return null;
@@ -444,6 +451,9 @@ function CoachingEngagementWorkspaceContent({
             visibility: values.visibility ?? entry.visibility,
             status: values.status ?? entry.status,
             expectedUpdatedAt: entry.updatedAt,
+            ...(entry.kind === "TASK" && values.tags
+              && JSON.stringify(values.tags.map(tag => tag.id).sort()) !== JSON.stringify((entry.tags ?? []).map(tag => tag.id).sort())
+              ? {tags: {tagIds: values.tags.map(tag => tag.id).sort()}} : {}),
           }),
         },
       );
@@ -646,7 +656,7 @@ function CoachingEngagementWorkspaceContent({
             }}
             className="mt-3 grid gap-3 rounded-xl border border-[#d8c7a7] bg-white p-4"
           >
-            <fieldset disabled={busyIds.has("create")} className="min-w-0 grid gap-3">
+            <fieldset disabled={busyIds.has("create") || createTagPending} className="min-w-0 grid gap-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
                 Type
@@ -732,6 +742,8 @@ function CoachingEngagementWorkspaceContent({
                 </span>
               </label>
             ) : null}
+            {createKind === "TASK" && <TaskTagPicker engagementId={engagementId} selected={createTags}
+              onChange={setCreateTags} disabled={busyIds.has("create")} onPendingChange={setCreateTagPending} />}
             <button
               type="submit"
               disabled={busyIds.has("create")}
@@ -842,6 +854,7 @@ function CoachingEngagementWorkspaceContent({
                   <div className="mt-4 border-t border-[#eee4d1] pt-3">
                     <CoachingWorkEditor
                       entry={entry}
+                      engagementId={engagementId}
                       members={members}
                       busy={busyIds.has(entry.id)}
                       onSave={updateEntry}
