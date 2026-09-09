@@ -20,6 +20,12 @@ test('warms all startup routes without credentials or mutations', async t => {
   assert.deepEqual(requests, startupRoutes.map(path => ({ path, method: 'GET', auth: undefined, cookie: undefined })));
   assert.equal(results.length, startupRoutes.length);
   assert.ok(requests.some(request => request.path === '/api/mobile/capture/today'), 'The signed-in task list must compile before the native journey starts.');
+  for (const route of ['/api/mobile/capture/work', '/api/mobile/capture/inbox',
+    '/api/mobile/capture/voice-writing', '/api/mobile/capture/speech-profile',
+    '/api/coaching/practice-command', '/api/coaching/public', '/api/calendar/feeds',
+    '/api/calendar/connections/google?view=summary']) {
+    assert.ok(requests.some(request => request.path === route), `Concurrent startup dependency ${route} must compile before native UI timings begin.`);
+  }
 });
 
 test('never contacts remote or non-HTTP origins', async () => {

@@ -1733,7 +1733,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts[defaultSessionTitle].firstMatch.waitForExistence(timeout: 30),
             "The same iPhone should read the canonical default Session title back from Nest."
         )
-        XCTAssertTrue(app.staticTexts[clientEmail].firstMatch.exists)
+        let expectedClientLabel = credentials.coachingClientName ?? clientEmail
+        XCTAssertTrue(app.staticTexts[expectedClientLabel].firstMatch.waitForExistence(timeout: 8),
+                      "An existing client should keep their account name; an email-only invite should show its recipient email.")
 
         let share = app.descendants(matching: .any).matching(
             NSPredicate(
@@ -1860,8 +1862,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             titleField.tap()
             titleField.typeText(title)
             if privateNote {
+                let keyboardDone = app.buttons["CaptureCoachingWorkKeyboardDone"].firstMatch
+                XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
+                keyboardDone.tap()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
                 let privacy = app.switches["CaptureCoachingNoteVisibility"].firstMatch
                 XCTAssertTrue(privacy.waitForExistence(timeout: 5))
+                XCTAssertTrue(privacy.isHittable)
                 if (privacy.value as? String) != "1" {
                     privacy.coordinate(
                         withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)

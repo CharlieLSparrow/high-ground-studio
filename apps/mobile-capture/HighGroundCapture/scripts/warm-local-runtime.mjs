@@ -9,8 +9,16 @@ export const startupRoutes = [
   '/api/mobile/capture/review-digest',
   '/api/mobile/capture/sessions',
   '/api/mobile/capture/today',
+  '/api/mobile/capture/work',
+  '/api/mobile/capture/inbox',
+  '/api/mobile/capture/voice-writing',
+  '/api/mobile/capture/speech-profile',
   '/api/coaching/forms',
   '/api/coaching/runway',
+  '/api/coaching/practice-command',
+  '/api/coaching/public',
+  '/api/calendar/feeds',
+  '/api/calendar/connections/google?view=summary',
 ];
 
 export async function warmLocalRuntime(baseURL, { fetchImpl = fetch, timeoutMs = 90_000, report = console.log } = {}) {

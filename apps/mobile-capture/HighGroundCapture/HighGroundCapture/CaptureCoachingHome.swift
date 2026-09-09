@@ -2010,6 +2010,7 @@ private struct MobileCoachingInvitationShareSheet: UIViewControllerRepresentable
 
 struct CaptureCoachingHomeView: View {
     @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject private var client: MobileCoachingRunwayClient
     @Binding var visibleTab: CaptureRootTab
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsNewAppointment = false
@@ -2023,7 +2024,14 @@ struct CaptureCoachingHomeView: View {
     @State private var selectedPublicTime: MobileCoachingPublicTimeSelection?
     @State private var invitationToShare: MobileCoachingInvitationShare?
 
-    private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
+    init(model: CaptureExperienceModel, visibleTab: Binding<CaptureRootTab>) {
+        _model = ObservedObject(wrappedValue: model)
+        _visibleTab = visibleTab
+        // Scheduling must respond while unrelated startup work is still
+        // loading. The root deliberately coalesces/suppresses child refreshes
+        // during initialization; this screen owns observation of its workflow.
+        _client = ObservedObject(wrappedValue: model.coachingRunwayClient)
+    }
 
     var body: some View {
         bookingTimeDialog
@@ -4183,7 +4191,10 @@ struct CaptureCoachingWorkItemEditor: View {
 }
 
 struct MobileCoachingWorkEditorSheet: View {
+    private enum Field: Hashable { case title, detail }
+
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: Field?
     @ObservedObject var client: MobileCoachingEngagementWorkspaceClient
     let workspace: MobileCoachingEngagementWorkspace
     let entry: MobileCoachingEngagementWorkEntry?
@@ -4284,9 +4295,11 @@ struct MobileCoachingWorkEditorSheet: View {
 
                     TextField(kind == "NOTE" ? "Note title" : kind == "TASK" ? "Task title" : "Goal title", text: $title, axis: .vertical)
                         .lineLimit(1 ... 4)
+                        .focused($focusedField, equals: .title)
                         .accessibilityIdentifier("CaptureCoachingWorkTitle")
                     TextEditor(text: $detail)
                         .frame(minHeight: 120)
+                        .focused($focusedField, equals: .detail)
                         .accessibilityLabel("Details")
                         .accessibilityIdentifier("CaptureCoachingWorkDetail")
                 }
@@ -4400,6 +4413,7 @@ struct MobileCoachingWorkEditorSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureCoachingWorkEditorForm")
+            .scrollDismissesKeyboard(.interactively)
             .disabled(client.isSaving)
             .captureFormSurface()
             .navigationTitle(entry == nil ? (sourceMessage == nil ? "Add coaching work" : "New task") : "Edit \(entry?.kindLabel ?? "item")")
@@ -4442,6 +4456,11 @@ struct MobileCoachingWorkEditorSheet: View {
                     }
                     .disabled(previewOnly || client.isSaving || !canSave)
                     .accessibilityIdentifier("CaptureCoachingSaveWork")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .accessibilityIdentifier("CaptureCoachingWorkKeyboardDone")
                 }
             }
         }
