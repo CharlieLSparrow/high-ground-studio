@@ -59,7 +59,7 @@ jest.mock("livekit-client", () => {
       room.switchActiveDevice.mockClear();
       localParticipant.publishData.mockClear();
       localParticipant.setMicrophoneEnabled.mockClear();
-      localParticipant.setCameraEnabled.mockClear();
+      localParticipant.setCameraEnabled.mockReset().mockResolvedValue(undefined);
       handlers.clear();
     },
   };
@@ -1654,7 +1654,95 @@ describe("LiveSessionRoom", () => {
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     expect(screen.getByText(/Your camera is off/i)).toBeInTheDocument();
     expect(mockLiveKitRoom.localParticipant.setCameraEnabled).toHaveBeenCalledWith(false);
-    expect(screen.getByRole("button", { name: "Start camera" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled();
+  });
+
+  describe("starting video after joining without camera permission", () => {
+    async function joinWithoutCamera() {
+      Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+        enumerateDevices: jest.fn().mockResolvedValue([]),
+        addEventListener: jest.fn(), removeEventListener: jest.fn(),
+      }});
+      global.fetch = jest.fn(async () => ({ok: true, status: 200, json: async () => ({
+        ok: true, canJoin: true, serverUrl: "wss://live.test", participantToken: "room-scoped-test-token",
+      })})) as unknown as typeof fetch;
+      await act(async () => { render(<LiveSessionRoom callRoomId="camera-later" sessionTitle="Coaching" kind="coaching" />); });
+      fireEvent.click(screen.getByRole("button", {name: "Mic on"}));
+      fireEvent.click(screen.getByRole("button", {name: "Join call"}));
+      expect(await screen.findByRole("button", {name: "Start camera"})).toBeEnabled();
+      mockLiveKitRoom.localParticipant.setCameraEnabled.mockClear();
+    }
+
+    it("requests the default camera once, shows busy state, and remembers the returned device", async () => {
+      await joinWithoutCamera();
+      const originalStream = Object.getOwnPropertyDescriptor(globalThis, "MediaStream");
+      Object.defineProperty(globalThis, "MediaStream", {configurable: true, value: class {
+        constructor(public tracks: unknown[]) {}
+        getTracks() { return this.tracks; }
+      }});
+      try {
+        let finish!: (publication: unknown) => void;
+        const camera = mockLiveKitRoom.localParticipant.setCameraEnabled;
+        camera.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const start = screen.getByRole("button", {name: "Start camera"});
+        fireEvent.click(start);
+        fireEvent.click(start);
+        expect(camera).toHaveBeenCalledTimes(1);
+        expect(camera).toHaveBeenCalledWith(true, undefined);
+        expect(screen.getByRole("button", {name: "Updating camera…"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Leave"})).toBeEnabled();
+        const media = {readyState: "live", label: "Built-in camera", getSettings: () => ({deviceId: "newly-visible-camera"})};
+        await act(async () => { finish({track: {mediaStreamTrack: media, stop: jest.fn()}}); });
+        expect(screen.getByRole("button", {name: "Stop camera"})).toHaveAttribute("aria-pressed", "true");
+        expect(screen.getByRole("combobox", {name: "Camera"})).toHaveValue("newly-visible-camera");
+        expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", expect.objectContaining({tracks: [media]}));
+        fireEvent.click(screen.getByRole("button", {name: "Stop camera"}));
+        expect(await screen.findByRole("button", {name: "Start camera"})).toBeEnabled();
+        expect(camera).toHaveBeenLastCalledWith(false, undefined);
+        expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+      } finally {
+        if (originalStream) Object.defineProperty(globalThis, "MediaStream", originalStream);
+        else Reflect.deleteProperty(globalThis, "MediaStream");
+      }
+    });
+
+    it.each([
+      ["NotAllowedError", "Camera access is blocked"],
+      ["NotFoundError", "No camera was found"],
+    ])("keeps %s failures retryable without disconnecting or claiming video is on", async (name, message) => {
+      await joinWithoutCamera();
+      const camera = mockLiveKitRoom.localParticipant.setCameraEnabled;
+      camera.mockRejectedValue(new DOMException("Device unavailable", name));
+      fireEvent.click(screen.getByRole("button", {name: "Start camera"}));
+      expect(await screen.findByRole("alert")).toHaveTextContent(message);
+      expect(screen.getByRole("button", {name: "Start camera"})).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(screen.getByRole("button", {name: "Start camera"}));
+      await waitFor(() => expect(camera).toHaveBeenCalledTimes(2));
+      expect(await screen.findByRole("button", {name: "Start camera"})).toBeEnabled();
+      expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+    });
+
+    it("does not claim video is on when the SDK returns no live camera track", async () => {
+      await joinWithoutCamera();
+      fireEvent.click(screen.getByRole("button", {name: "Start camera"}));
+      expect(await screen.findByRole("alert")).toHaveTextContent("The camera couldn't start");
+      expect(screen.getByRole("button", {name: "Start camera"})).toHaveAttribute("aria-pressed", "false");
+      expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+    });
+
+    it("stops a camera granted after Leave without putting video back into the ended call", async () => {
+      await joinWithoutCamera();
+      let finish!: (publication: unknown) => void;
+      mockLiveKitRoom.localParticipant.setCameraEnabled.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+      fireEvent.click(screen.getByRole("button", {name: "Start camera"}));
+      fireEvent.click(screen.getByRole("button", {name: "Leave"}));
+      await waitFor(() => expect(mockLiveKitRoom.disconnect).toHaveBeenCalledTimes(1));
+      const stop = jest.fn();
+      await act(async () => { finish({track: {stop}}); });
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("button", {name: "Stop camera"})).not.toBeInTheDocument();
+      expect(screen.getByText("Call ended", {selector:"span"})).toBeInTheDocument();
+    });
   });
 
   it("turns the Canon virtual-camera ownership failure into explicit preflight guidance", async () => {

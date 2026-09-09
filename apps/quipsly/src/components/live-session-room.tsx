@@ -539,6 +539,10 @@ export function LiveSessionRoom({
   const [microphoneRecoveryHeld, setMicrophoneRecoveryHeld] = useState(false);
   const microphoneToggleInFlightRef = useRef(false);
   const [cameraMuted, setCameraMuted] = useState(false);
+  const [cameraToggleBusy, setCameraToggleBusy] = useState(false);
+  const [cameraControlError, setCameraControlError] = useState<string | null>(null);
+  const cameraToggleInFlightRef = useRef(false);
+  const cameraOperationGenerationRef = useRef(0);
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
@@ -624,6 +628,13 @@ export function LiveSessionRoom({
   }, []);
 
   const connected = status === "connected" || status === "reconnecting";
+  useEffect(() => {
+    if (connected) return;
+    cameraOperationGenerationRef.current += 1;
+    cameraToggleInFlightRef.current = false;
+    setCameraToggleBusy(false);
+    setCameraControlError(null);
+  }, [connected]);
   const mutedForNextJoin = callRecoveryAvailable ? microphoneMuted : joinMuted;
   const cameraEnabledForNextJoin = cameraWanted && !(callRecoveryAvailable && cameraMuted);
   const statusLabel = useMemo(() => {
@@ -1995,26 +2006,59 @@ export function LiveSessionRoom({
 
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
-    if (!room) return;
-    const nextEnabled = !cameraWanted || cameraMuted;
-    if (nextEnabled && !cameraId) {
-      setMessage("Choose a usable camera before starting video.");
-      return;
-    }
+    if (!room || sourceLockedRef.current || cameraToggleInFlightRef.current) return;
+    const nextEnabled = !cameraWantedRef.current || cameraMutedRef.current;
+    const generation = ++cameraOperationGenerationRef.current;
+    const stillCurrent = () => generation === cameraOperationGenerationRef.current
+      && roomRef.current === room && room.state !== ConnectionState.Disconnected;
+    cameraToggleInFlightRef.current = true;
+    setCameraToggleBusy(true);
+    setCameraControlError(null);
     try {
-      const publication = await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && cameraId ? { deviceId: cameraId } : undefined);
-      await attachLocalCameraTrack(nextEnabled ? publication?.track?.mediaStreamTrack : null);
+      // Device IDs can be hidden until permission is granted. The SDK acquires
+      // only video here and owns publication; don't open a second camera stream.
+      const selectedCameraId = cameraIdRef.current;
+      const publication = await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && selectedCameraId ? { deviceId: selectedCameraId } : undefined);
+      if (!stillCurrent()) {
+        publication?.track?.stop();
+        return;
+      }
+      const mediaTrack = nextEnabled ? publication?.track?.mediaStreamTrack : null;
+      if (nextEnabled && (!mediaTrack || mediaTrack.readyState === "ended")) {
+        throw new Error("The camera did not return a live video track.");
+      }
+      const resolvedCameraId = mediaTrack?.getSettings().deviceId;
+      if (resolvedCameraId) {
+        cameraIdRef.current = resolvedCameraId;
+        setCameraId(resolvedCameraId);
+        setCameras((current) => current.some((camera) => camera.deviceId === resolvedCameraId)
+          ? current : [...current, { deviceId: resolvedCameraId, label: mediaTrack?.label || "Camera" }]);
+      }
+      await attachLocalCameraTrack(mediaTrack);
+      if (!stillCurrent()) return;
       setCameraWanted(true);
+      cameraWantedRef.current = true;
       setCameraMuted(!nextEnabled);
       cameraMutedRef.current = !nextEnabled;
       setTechnicalMessage(null);
     } catch (error) {
-      setMessage(nextEnabled
-        ? "The camera couldn't start. You are still connected; choose another camera in settings and try again."
-        : "The camera couldn't stop. Try again or leave the call.");
+      if (!stillCurrent()) return;
+      const errorName = error instanceof Error ? error.name : "";
+      setCameraControlError(!nextEnabled
+        ? "The camera couldn't stop. Try again or leave the call."
+        : errorName === "NotAllowedError"
+          ? "Camera access is blocked. Allow camera access in your browser’s site settings, then try Start camera again. Your call is still connected."
+          : errorName === "NotFoundError"
+            ? "No camera was found. Connect or enable a camera, then try again. Your call is still connected."
+            : "The camera couldn't start. Your call is still connected. Check that another app isn’t using the camera, or choose another camera in settings and try again.");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a camera error.");
+    } finally {
+      if (generation === cameraOperationGenerationRef.current) {
+        cameraToggleInFlightRef.current = false;
+        setCameraToggleBusy(false);
+      }
     }
-  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted]);
+  }, [attachLocalCameraTrack]);
 
   const chooseCallAudioMode = useCallback(async (nextMode: CallAudioMode) => {
     if (nextMode === callAudioModeRef.current || callAudioModeChangeInFlightRef.current) return;
@@ -2103,7 +2147,7 @@ export function LiveSessionRoom({
   }, [clearPreflightPreview, connected, microphoneId, microphoneMuted, microphones, sourceLocked, startAudioMeter]);
 
   const chooseCamera = useCallback(async (nextId: string) => {
-    if (!nextId || nextId === cameraId) return;
+    if (!nextId || nextId === cameraId || cameraToggleInFlightRef.current) return;
     if (sourceLocked) {
       setMessage("Stop the retained local source before changing cameras. The active take keeps its original measured source profile.");
       return;
@@ -2183,6 +2227,7 @@ export function LiveSessionRoom({
       deviceRefreshGenerationRef.current += 1;
       joinAttemptGenerationRef.current += 1;
       previewRequestGenerationRef.current += 1;
+      cameraOperationGenerationRef.current += 1;
       if (refreshTimer) clearTimeout(refreshTimer);
       navigator.mediaDevices?.removeEventListener?.("devicechange", changed);
       meterCleanupRef.current?.();
@@ -2321,10 +2366,11 @@ export function LiveSessionRoom({
         {callAudioMode === "this-device" ? (
           <button type="button" onClick={() => void toggleMicrophone()} aria-pressed={microphoneMuted} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:cursor-not-allowed disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
         ) : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
-        <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
+        <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{cameraToggleBusy ? <LoaderCircle size={16} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
         <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-rose-800 px-2 py-2 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
       </div>
       {callAudioMode === "this-device" ? <div><LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} compact={Boolean(controlsContainer)} /></div> : null}
+      {cameraControlError ? <p role="alert" className="text-xs leading-5 text-destructive">{cameraControlError}</p> : null}
     </div>
   ) : null;
 
@@ -2468,7 +2514,7 @@ export function LiveSessionRoom({
               Call audio is off on this device. Use your other device to talk and listen.
             </div>}
             <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Camera
-              <select value={cameraId} disabled={sourceLocked} onChange={(event) => void chooseCamera(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
+              <select value={cameraId} disabled={sourceLocked || cameraToggleBusy} onChange={(event) => void chooseCamera(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a camera</option>{cameras.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
               </select>
             </label>
