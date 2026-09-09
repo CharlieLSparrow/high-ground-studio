@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { FfmpegAudioSignalProfiler } from "../../apps/quipsly-media-processor/src/audio-signal-profile-ffmpeg.js";
 
 import {
   buildMobileCaptureConsentVersions,
@@ -328,7 +329,11 @@ async function claimLocalJob(prisma, candidate, options) {
   return claimed.count === 1 ? { ...candidate, receipt, consent, startedAt } : null;
 }
 
-async function runWhisper({ executable, model, device, language, sourcePath }) {
+export async function runWhisper({ executable, model, device, language, sourcePath }) {
+  const audioSignal = await new FfmpegAudioSignalProfiler().analyze(sourcePath, { frequencyAnalysis: false });
+  if (!audioSignal.hasNonZeroSamples) {
+    throw new Error("This recording contains no audio signal. The original recording is kept. Check the microphone before recording again.");
+  }
   await access(executable, fsConstants.X_OK);
   const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "quipsly-whisper-"));
   const outputPath = path.join(

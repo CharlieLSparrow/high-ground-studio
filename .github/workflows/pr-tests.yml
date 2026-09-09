@@ -247,6 +247,10 @@ jobs:
           set -o pipefail
           pnpm quipsly:contracts:test 2>&1 | tee "${RUNNER_TEMP}/quipsly-contracts.log"
 
+      - name: Test local transcription against decoded audio
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/dev/quipsly-local-transcript-worker.test.mjs
+
       - name: Preserve contract test results
         if: always() && (steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

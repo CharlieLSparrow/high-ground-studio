@@ -24,6 +24,7 @@ function sha256(value: Uint8Array) {
 
 function analyzedProfile() {
   return {
+    hasNonZeroSamples: true,
     media: {
       container: "mov,mp4,m4a,3gp,3g2,mj2",
       codec: "aac",
