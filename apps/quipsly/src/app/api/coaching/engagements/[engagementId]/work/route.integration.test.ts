@@ -274,6 +274,38 @@ if (enabled) {
     for (const actor of [observer!, guest!, outsider!]) expect((await act("PATCH", update, actor)).status).toBe(404);
   });
 
+  it("retains an archived tag while saving other tags, but cannot assign it to new work or restore it after removal", async () => {
+    const created = await act("POST", {kind: "TASK", clientRequestId: randomUUID(), title: "Keep useful context",
+      tags: {tagIds: [], newTagLabels: [`Earlier theme ${nonce}`, `Current theme ${nonce}`]}});
+    expect(created.status).toBe(200);
+    const task = created.body.entry;
+    const archived = task.tags.find((tag: {label: string}) => tag.label === `Earlier theme ${nonce}`);
+    await prisma.studioTag.update({where: {id: archived.id}, data: {isActive: false, hexColor: "#23543a"}});
+    const command = {kind: "TASK", id: task.id, clientRequestId: randomUUID(), expectedUpdatedAt: task.updatedAt,
+      title: "Keep context and move forward", status: task.status, ownerUserId: client!.id,
+      tags: {tagIds: [archived.id], newTagLabels: [`Next theme ${nonce}`]}};
+    const saved = await act("PATCH", command);
+    expect(saved).toMatchObject({status: 200, body: {entry: {title: command.title, tags: expect.arrayContaining([
+      {id: archived.id, label: archived.label, isActive: false, hexColor: "#23543a"},
+      expect.objectContaining({label: `Next theme ${nonce}`, isActive: true}),
+    ])}}});
+    expect(saved.body.entry.tags).toHaveLength(2);
+    expect((await act("PATCH", command)).body.entry).toEqual(saved.body.entry);
+    for (const actor of [coach!, client!]) {
+      expect((await act("GET", {}, actor, `kind=TASK&item=${task.id}`)).body.engagement.entries[0].tags).toEqual(saved.body.entry.tags);
+    }
+    for (const actor of [observer!, guest!, outsider!]) expect((await act("PATCH", command, actor)).status).toBe(404);
+    expect((await act("POST", {kind: "TASK", clientRequestId: randomUUID(), title: "Do not reuse a retired label",
+      tags: {tagIds: [archived.id]}})).status).toBe(400);
+    const removed = await act("PATCH", {...command, clientRequestId: randomUUID(), expectedUpdatedAt: saved.body.entry.updatedAt,
+      tags: {tagIds: saved.body.entry.tags.filter((tag: {id: string}) => tag.id !== archived.id).map((tag: {id: string}) => tag.id)}});
+    expect(removed.status).toBe(200);
+    const rejected = await act("PATCH", {...command, clientRequestId: randomUUID(), expectedUpdatedAt: removed.body.entry.updatedAt,
+      title: "This change must roll back", tags: {tagIds: [archived.id]}});
+    expect(rejected.status).toBe(400);
+    expect((await act("GET", {}, client!, `kind=TASK&item=${task.id}`)).body.engagement.entries[0]).toEqual(removed.body.entry);
+  });
+
   it("converges concurrent tagged saves and refuses retries after membership removal", async () => {
     const created = await act("POST", {kind: "TASK", clientRequestId: randomUUID(), title: "One shared draft"});
     const command = {kind: "TASK", id: created.body.entry.id, clientRequestId: randomUUID(),

@@ -137,6 +137,45 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     expect(task?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
   });
 
+  it.each(["task", "goal", "note", "session", "document"] as const)("retains archived %s labels without allowing new retired assignments", async (entityKind) => {
+    const unique = randomUUID();
+    const archived = await prisma.studioTag.create({data: {projectId, slug: `retired-${unique}`, label: "Earlier context", isActive: false}});
+    const active = await prisma.studioTag.create({data: {projectId, slug: `current-${unique}`, label: "Current context"}});
+    const linked = {create: {tagId: archived.id, createdByUserId: actorUserId}};
+    const entity = entityKind === "task"
+      ? await prisma.actionItem.create({data: {projectId, assignedUserId: actorUserId, title: "Retained context", tagLinks: linked}})
+      : entityKind === "goal"
+        ? await prisma.goal.create({data: {projectId, ownerUserId: actorUserId, title: "Retained context", tagLinks: linked}})
+        : entityKind === "note"
+          ? await prisma.coachingNote.create({data: {roomId, authorUserId: actorUserId, kind: "SESSION_NOTE", body: "Retained context", tagLinks: linked}})
+          : entityKind === "session"
+            ? await prisma.callRoom.create({data: {projectId, createdByUserId: actorUserId, title: "Retained context", tagLinks: linked}})
+            : await prisma.studioDocument.create({data: {projectId, stableId: unique, title: "Retained context", tagLinks: linked}});
+    const model = entityKind === "task" ? prisma.actionItem : entityKind === "goal" ? prisma.goal
+      : entityKind === "note" ? prisma.coachingNote : entityKind === "session" ? prisma.callRoom : prisma.studioDocument;
+    try {
+      const input = {prisma, actorUserId, actorEmail, entityKind, entityId: entity.id,
+        expectedUpdatedAt: entity.updatedAt, expectedTagRevision: 0, tagIds: [archived.id, active.id]};
+      const saved = await replaceWorkEntityTags(input);
+      expect(saved).toMatchObject({ok: true, tagIds: [archived.id, active.id].sort()});
+      if (!saved.ok) throw new Error(saved.error);
+      // A foreign label cannot be smuggled in alongside a retained one.
+      expect(await replaceWorkEntityTags({...input, expectedUpdatedAt: saved.updatedAt!, expectedTagRevision: saved.tagRevision ?? 0,
+        tagIds: [archived.id, otherTagId]})).toMatchObject({ok: false, code: "FORBIDDEN"});
+      const removed = await replaceWorkEntityTags({...input, expectedUpdatedAt: saved.updatedAt!, expectedTagRevision: saved.tagRevision ?? 0,
+        tagIds: [active.id]});
+      expect(removed).toMatchObject({ok: true, tagIds: [active.id]});
+      if (!removed.ok) throw new Error(removed.error);
+      expect(await replaceWorkEntityTags({...input, expectedUpdatedAt: removed.updatedAt!, expectedTagRevision: removed.tagRevision ?? 0}))
+        .toMatchObject({ok: false, code: "FORBIDDEN"});
+      const read = await (model as any).findUniqueOrThrow({where: {id: entity.id}, include: {tagLinks: true}});
+      expect(read.tagLinks.map((link: {tagId: string}) => link.tagId)).toEqual([active.id]);
+    } finally {
+      await (model as any).deleteMany({where: {id: entity.id}});
+      await prisma.studioTag.deleteMany({where: {id: {in: [archived.id, active.id]}}});
+    }
+  });
+
   it("focuses the exact tag identity without mixing a same-label tag from another visible Nest", async () => {
     await prisma.studioProjectAccessGrant.create({
       data: {

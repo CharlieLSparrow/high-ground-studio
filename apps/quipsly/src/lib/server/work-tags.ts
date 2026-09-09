@@ -564,6 +564,22 @@ function sharedTaskTagCatalogWhere(engagementId: string, entityId: string) {
   ] } } } };
 }
 
+/** Archiving retires a label from new work, not from records already using it.
+ * Query the actual link again in the write transaction rather than trusting
+ * the client's selected tags or an earlier snapshot. */
+function assignableOrRetainedTagWhere(entityKind: WorkTagEntityKind, entityId: string): Prisma.StudioTagWhereInput {
+  const linked: Prisma.StudioTagWhereInput = entityKind === "task"
+    ? { actionItems: { some: { actionItemId: entityId } } }
+    : entityKind === "goal"
+      ? { goals: { some: { goalId: entityId } } }
+      : entityKind === "note"
+        ? { coachingNotes: { some: { noteId: entityId } } }
+        : entityKind === "document"
+          ? { documents: { some: { documentId: entityId } } }
+          : { callRooms: { some: { roomId: entityId } } };
+  return { OR: [{ isActive: true }, linked] };
+}
+
 class WorkTagTransactionAbort extends Error {
   constructor(readonly result: { kind: string; [key: string]: any }) {
     super("Work tag transaction was not applied");
@@ -960,11 +976,12 @@ export async function replaceWorkEntityTags(input: {
 
   if (requestedTagIds.length) {
     const validTags = await prisma.studioTag.findMany({
-      where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true, ...scopedTags },
+      where: { id: { in: requestedTagIds }, projectId: entity.projectId,
+        AND: [scopedTags, assignableOrRetainedTagWhere(input.entityKind, entityId)] },
       select: { id: true },
     });
     if (validTags.length !== requestedTagIds.length) {
-      return { ok: false, code: "FORBIDDEN", error: "Every tag must be active and belong to the record's Nest." };
+      return { ok: false, code: "FORBIDDEN", error: "Choose available tags from this Nest. Archived tags can stay only on work that already uses them." };
     }
   }
 
@@ -981,8 +998,9 @@ export async function replaceWorkEntityTags(input: {
     if (!activeGrant && !currentTask?.engagementId) return { kind: "forbidden" as const };
     if (requestedTagIds.length) {
       const validTagCount = await tx.studioTag.count({ where: {
-        id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true,
-        ...(activeGrant ? {} : sharedTaskTagCatalogWhere(currentTask.engagementId, entityId)),
+        id: { in: requestedTagIds }, projectId: entity.projectId,
+        AND: [activeGrant ? {} : sharedTaskTagCatalogWhere(currentTask.engagementId, entityId),
+          assignableOrRetainedTagWhere(input.entityKind, entityId)],
       } });
       if (validTagCount !== requestedTagIds.length) return { kind: "forbidden" as const };
     }
@@ -1168,7 +1186,7 @@ export async function replaceWorkEntityTags(input: {
     throw error;
   });
 
-  if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access and active same-Nest tags are required." };
+  if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Access or available tags changed. Refresh and try again." };
   if (saved.kind === "archived") return { ok: false, code: "FORBIDDEN", error: "That tag is archived. Restore or rename it in the Nest vocabulary before using it." };
   if (saved.kind === "slug-conflict") return { ok: false, code: "CONFLICT", error: `“${saved.label}” conflicts with the existing “${saved.existingLabel}” tag. Choose a more distinct name.` };
   if (saved.kind === "invalid") return { ok: false, code: "INVALID_INPUT", error: "Choose no more than 24 canonical tags and valid new names." };

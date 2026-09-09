@@ -6,6 +6,32 @@ import { replaceWorkEntityTags } from "./work-tags";
 jest.mock("./home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
 
 describe("atomic iPhone vocabulary and tag replacement", () => {
+  it("rechecks retained tag eligibility inside the transaction before changing links", async () => {
+    const updatedAt = new Date("2026-09-09T00:00:00Z");
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{id: "project-1", role: "EDITOR"}] as never);
+    const tx = {
+      studioProjectAccessGrant: {findFirst: jest.fn(async () => ({id: "grant-1"}))},
+      studioTag: {count: jest.fn(async () => 0)},
+      actionItem: {updateMany: jest.fn()},
+      actionItemTagLink: {deleteMany: jest.fn(), createMany: jest.fn()},
+    };
+    const prisma = {
+      actionItem: {findFirst: jest.fn(async () => ({id: "task-1", projectId: "project-1", updatedAt, sourceJson: {}}))},
+      studioTag: {findMany: jest.fn(async () => [{id: "retired-tag"}])},
+      $transaction: jest.fn(async (operation: (client: typeof tx) => unknown) => operation(tx)),
+    };
+    expect(await replaceWorkEntityTags({prisma: prisma as never, actorUserId: "user-1", actorEmail: "person@example.test",
+      entityKind: "task", entityId: "task-1", tagIds: ["retired-tag"], expectedUpdatedAt: updatedAt}))
+      .toMatchObject({ok: false, code: "FORBIDDEN"});
+    const eligibility = {OR: [{isActive: true}, {actionItems: {some: {actionItemId: "task-1"}}}]};
+    const where = {projectId: "project-1", id: {in: ["retired-tag"]}, AND: expect.arrayContaining([eligibility])};
+    expect(prisma.studioTag.findMany).toHaveBeenCalledWith({where: expect.objectContaining(where), select: {id: true}});
+    expect(tx.studioTag.count).toHaveBeenCalledWith({where: expect.objectContaining(where)});
+    expect(tx.actionItem.updateMany).not.toHaveBeenCalled();
+    expect(tx.actionItemTagLink.deleteMany).not.toHaveBeenCalled();
+    expect(tx.actionItemTagLink.createMany).not.toHaveBeenCalled();
+  });
+
   it("creates one canonical label inside the complete decision and replays the same receipt", async () => {
     const originalUpdatedAt = new Date("2026-07-29T12:00:00.000Z");
     const savedUpdatedAt = new Date("2026-07-29T12:00:01.000Z");
