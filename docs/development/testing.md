@@ -233,6 +233,11 @@ tests, reusing the build directory and resolved device. Earlier bundles remain
 readable if the job deadline interrupts a later batch. Every planned test must
 still pass exactly once; batching does not raise the CI time limit or turn a
 partial run into success.
+Each device builds its test products once, then uses `test-without-building`
+for every batch. CI separates `--phase=build` (20 minutes) from `--phase=test`
+(55 minutes), using the same checkout and derived-data path; the job reserves
+95 minutes including simulator preparation and evidence upload. Local runs
+default to both phases. A build-only result is not test qualification.
 Before testing, the runner verifies Xcode's resolved simulator identity. If
 Xcode reports the exact destination-not-found diagnostic (exit 64 from
 `-showBuildSettings`, or 70) and lists only placeholder devices, an

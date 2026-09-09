@@ -139,11 +139,12 @@ for (const [platform, device, variable] of [["iphone", "iPhone 17 Pro", "CAPTURE
 
 for (const platform of ["iphone", "ipad"]) {
 for (const shard of [0, 3]) {
+ for (const phase of ["build", "test"]) {
   for (const exitCode of [0, 17, 143]) {
-    test(`native CI ${platform} shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {
+    test(`native CI ${phase} ${platform} shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {
       const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-ci-"));
       t.after(() => rmSync(directory, { recursive: true, force: true }));
-      const script = stepScript("Run bounded deterministic Capture UI lane serially")
+      const script = stepScript(phase === "build" ? "Build deterministic Capture test products" : "Run bounded deterministic Capture UI lane serially")
         .replaceAll("${{ matrix.shard }}", String(shard));
       const suite = shard === 0 ? "critical" : "full";
       const selected = shard || 1;
@@ -152,6 +153,8 @@ for (const shard of [0, 3]) {
           [[ "$1" == scripts/release/quipsly-capture-ui-test-runner.mjs ]] || return 98
           [[ " $* " == *" --suite=${suite} "* && " $* " == *" --shard=${selected} "* ]] || return 99
           [[ " $* " == *" --platform=${platform} "* ]] || return 98
+          [[ " $* " == *" --phase=${phase} "* ]] || return 98
+          [[ " $* " == *" --derived-data=$RUNNER_TEMP/capture-ui-derived-${selected}-${platform} "* ]] || return 98
           echo "native test stdout"
           echo "native test stderr" >&2
           return "$TEST_EXIT"
@@ -160,10 +163,11 @@ for (const shard of [0, 3]) {
       `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory,
         TEST_EXIT: String(exitCode), CAPTURE_TEST_PLATFORM: platform, CAPTURE_DESTINATION: "synthetic iPhone", CAPTURE_IPAD_DESTINATION: "synthetic iPad" } });
       assert.equal(result.status, exitCode, result.stdout + result.stderr);
-      assert.equal(readFileSync(path.join(directory, `capture-ui-${suite}-${selected}-${platform}/capture-ui-tests.log`), "utf8"),
+      assert.equal(readFileSync(path.join(directory, `capture-ui-${suite}-${selected}-${platform}/capture-ui-${phase === "build" ? "build" : "tests"}.log`), "utf8"),
         "native test stdout\nnative test stderr\n");
     });
   }
+ }
 }
 }
 
@@ -182,11 +186,16 @@ test("the native execution budget leaves time to upload evidence after timeout",
   const job = workflow.split("  deterministic-ui:\n")[1]?.split("  validation:\n")[0];
   const testStep = job.split("      - name: Run bounded deterministic Capture UI lane serially\n")[1]?.split("\n      - name:")[0];
   const prewarm = job.split("      - name: Prewarm deterministic simulator services\n")[1]?.split("\n      - name:")[0];
+  const build = job.split("      - name: Build deterministic Capture test products\n")[1]?.split("\n      - name:")[0];
   const minutes = (source) => Number(source?.match(/timeout-minutes: (\d+)/)?.[1]);
-  assert.ok(minutes(testStep) > 0 && minutes(prewarm) > 0);
-  assert.ok(minutes(job) >= minutes(testStep) + minutes(prewarm) + 3,
+  assert.ok(minutes(testStep) > 0 && minutes(prewarm) > 0 && minutes(build) > 0);
+  assert.ok(minutes(job) >= minutes(testStep) + minutes(prewarm) + minutes(build) + 3,
     "Startup and test timeouts must leave at least three minutes for setup and retained evidence");
   assert.match(job, /name: Preserve native test evidence\n\s+if: always\(\)/);
+  assert.ok(job.indexOf("name: Build deterministic Capture test products") < job.indexOf("name: Run bounded deterministic Capture UI lane serially"));
+  assert.match(job, /capture-ui-\*\/capture-ui-build\.log/);
+  assert.doesNotMatch(build, /continue-on-error:|if: always/);
+  assert.doesNotMatch(testStep, /continue-on-error:|if: always/);
 });
 
 test("Capture routes committed changes using the manifest and rejects an invalid comparison", (t) => {

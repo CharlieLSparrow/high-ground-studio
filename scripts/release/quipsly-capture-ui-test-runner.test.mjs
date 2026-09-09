@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -213,6 +213,21 @@ test("builds one xcode selector argument for every planned test", () => {
     plan.selectors.map((selector) => `-only-testing:${selector}`),
   );
   assert.equal(arguments_.at(-1), "test");
+});
+
+test("build and test phases are explicit and retain the same product path and selectors", () => {
+  const options = { destination: exactPhone, derivedDataPath: "/tmp/exact test products" };
+  const plan = { selectors: ["HighGroundCaptureUITests/CaptureExperienceUITests/testOne"] };
+  assert.equal(parseRunnerArguments([]).phase, "all");
+  for (const phase of ["all", "build", "test"]) assert.equal(parseRunnerArguments([`--phase=${phase}`]).phase, phase);
+  for (const phase of ["", "skip", "build-only"]) assert.throws(() => parseRunnerArguments([`--phase=${phase}`]), /phase must/);
+  for (const action of ["build-for-testing", "test-without-building"]) {
+    const args = createXcodeArguments(plan, { ...options, action });
+    assert.equal(args.at(-1), action);
+    assert.equal(args[args.indexOf("-derivedDataPath") + 1], options.derivedDataPath);
+    assert.deepEqual(args.filter(a => a.startsWith("-only-testing:")), plan.selectors.map(s => `-only-testing:${s}`));
+  }
+  assert.throws(() => createXcodeArguments(plan, { ...options, action: "clean" }), /Unsupported/);
 });
 
 test("reads the authoritative aggregate executed count", () => {
@@ -519,11 +534,14 @@ test("GitHub CI uses the skip-intolerant platform runner and preserves both resu
   assert.doesNotMatch(captureWorkflow, /only_testing_args=/);
 });
 
-for (const { failure, platform } of [
+for (const { failure, platform, phase = "all" } of [
   ...["none", "iPhone-discovery-recovers", "iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous", "iPhone-exit", "iPad-exit", "both-exit", "iPhone-substitution", "iPhone-unreadable"].map(failure => ({ failure, platform: "all" })),
   ...["iphone", "ipad"].flatMap(platform => ["none", platform === "iphone" ? "iPhone-exit" : "iPad-exit"].map(failure => ({ failure, platform }))),
+  ...["build", "test"].map(phase => ({ failure: "none", platform: "iphone", phase })),
+  { failure: "iPhone-build-exit", platform: "all" },
+  { failure: "iPhone-build-exit", platform: "iphone", phase: "build" },
 ]) {
-  test(`the real runner collects ${platform} and reports ${failure} without a second cloud run`, (t) => {
+  test(`the real runner ${phase} phase collects ${platform} and reports ${failure} without a second cloud run`, (t) => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "capture-platform-results-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
     // Only Apple subprocesses are substituted. The real CLI discovers the
@@ -557,6 +575,13 @@ if (args.includes("-showBuildSettings")) {
   process.exit(0);
 }
 if (destination !== 'platform=iOS Simulator,id=' + (platform === 'iPhone' ? '${phoneID}' : '22222222-2222-2222-2222-222222222222') + ',arch=arm64') process.exit(97);
+if (args.at(-1) === 'build-for-testing') {
+  fs.appendFileSync(process.env.CAPTURE_CALL_LOG + '.builds', platform + "\\n");
+  if (process.env.CAPTURE_FAILURE === platform + '-build-exit') process.exit(65);
+  console.log('BUILD SUCCEEDED');
+  process.exit(0);
+}
+if (args.at(-1) !== 'test-without-building') process.exit(95);
 const result = args[args.indexOf("-resultBundlePath") + 1];
 const selectors = args.filter(arg => arg.startsWith("-only-testing:")).map(arg => arg.slice(14));
 fs.appendFileSync(process.env.CAPTURE_CALL_LOG, platform + "\\n");
@@ -591,7 +616,7 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     const callLog = path.join(fixture, "platforms.log");
     const result = spawnSync(process.execPath, [
       path.join(root, "scripts/release/quipsly-capture-ui-test-runner.mjs"),
-      "--suite=critical", `--platform=${platform}`, `--evidence-root=${evidence}`,
+      "--suite=critical", `--platform=${platform}`, `--phase=${phase}`, `--evidence-root=${evidence}`,
       `--destination=${exactPhone},arch=arm64`,
       "--ipad-destination=platform=iOS Simulator,id=22222222-2222-2222-2222-222222222222,arch=arm64",
       `--derived-data=${path.join(fixture, "derived")}`,
@@ -602,12 +627,16 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
     const passes = ["none", "iPhone-discovery-recovers"].includes(failure);
     const phoneUnresolved = ["iPhone-discovery-persists", "iPhone-discovery-unavailable", "iPhone-resolution-missing", "iPhone-resolution-exit", "iPhone-ambiguous"].includes(failure);
     const source = readFileSync(path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift"), "utf8");
-    const batches = createExecutionBatches(createExecutionGroups(selectPlatformPlan(createPlan(discoverDeterministicTests(source)), platform), {
+    const groups = createExecutionGroups(selectPlatformPlan(createPlan(discoverDeterministicTests(source)), platform), {
       destination: "phone", ipadDestination: "tablet",
-    })).filter(batch => !phoneUnresolved || batch.destination === "tablet");
+    }).filter(group => !phoneUnresolved || group.destination === "tablet");
+    const batches = phase === "build" ? [] : createExecutionBatches(groups)
+      .filter(batch => failure !== "iPhone-build-exit" || batch.destination === "tablet");
     assert.equal(result.status, passes ? 0 : 1, result.stdout + result.stderr);
     assert.doesNotMatch(result.stdout + result.stderr, /synthetic-settings-must-not-appear-in-logs/);
-    assert.equal(readFileSync(callLog, "utf8"), batches.map(batch => batch.destination === "phone" ? "iPhone\n" : "iPad\n").join(""), result.stdout + result.stderr);
+    const readCalls = file => existsSync(file) ? readFileSync(file, "utf8") : "";
+    assert.equal(readCalls(callLog), batches.map(batch => batch.destination === "phone" ? "iPhone\n" : "iPad\n").join(""), result.stdout + result.stderr);
+    assert.equal(readCalls(callLog + '.builds'), phase === "test" ? "" : groups.map(group => group.name + "\n").join(""), "Build each selected device once, not once per test batch");
     if (failure.startsWith("iPhone-discovery-")) {
       assert.equal(readFileSync(callLog + ".resolution", "utf8"), failure === "iPhone-discovery-unavailable" ? "1" : "2");
     }
@@ -618,7 +647,10 @@ process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
         assert.equal(verifyResultTests(report, batch.selectors), batch.selectors.length);
       }
     }
-    if (passes) assert.match(result.stdout, new RegExp(`PASS: executed all .* across ${platform === "all" ? 2 : 1} platform destinations`));
+    if (passes && phase === "build") {
+      assert.match(result.stdout, /BUILD ONLY:.*no UI tests executed or qualified/);
+      assert.doesNotMatch(result.stdout, /PASS: executed all/);
+    } else if (passes) assert.match(result.stdout, new RegExp(`PASS: executed all .* across ${platform === "all" ? 2 : 1} platform destinations`));
     else {
       assert.doesNotMatch(result.stdout, /PASS: executed all/);
       assert.match(result.stderr, /FAIL: Capture UI validation failed/);

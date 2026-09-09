@@ -27,6 +27,7 @@ export function parseRunnerArguments(argv) {
   const options = {
     suite: "critical",
     platform: "all",
+    phase: "all",
     shard: 1,
     shards: 4,
     destination:
@@ -52,6 +53,7 @@ export function parseRunnerArguments(argv) {
     const value = argument.slice(separator + 1);
     if (name === "--suite") options.suite = value;
     else if (name === "--platform") options.platform = value;
+    else if (name === "--phase") options.phase = value;
     else if (name === "--shard") options.shard = Number(value);
     else if (name === "--shards") options.shards = Number(value);
     else if (name === "--destination") options.destination = value;
@@ -63,6 +65,9 @@ export function parseRunnerArguments(argv) {
 
   if (!["all", "iphone", "ipad"].includes(options.platform)) {
     throw new Error("platform must be all, iphone, or ipad");
+  }
+  if (!["all", "build", "test"].includes(options.phase)) {
+    throw new Error("phase must be all, build, or test");
   }
   return options;
 }
@@ -119,6 +124,10 @@ export function createExecutionBatches(groups, batchSize = 8) {
 }
 
 export function createXcodeArguments(plan, options) {
+  const action = options.action ?? "test";
+  if (!["test", "build-for-testing", "test-without-building"].includes(action)) {
+    throw new Error("Unsupported Xcode test action");
+  }
   return [
     "-project",
     PROJECT,
@@ -134,7 +143,7 @@ export function createXcodeArguments(plan, options) {
       ? ["-resultBundlePath", options.resultBundlePath]
       : []),
     ...plan.selectors.map((selector) => `-only-testing:${selector}`),
-    "test",
+    action,
   ];
 }
 
@@ -416,6 +425,21 @@ async function main() {
       process.stderr.write(`${failure}\n`);
       continue;
     }
+    if (options.phase !== "test") {
+      const bundlePath = resultBundlePath(options.evidenceRoot, `${group.name}-build`);
+      process.stdout.write(`Building ${group.name} test products once on ${resolvedDestination}\n`);
+      try {
+        const result = await runXcodebuild(createXcodeArguments(group, {
+          ...options, destination: resolvedDestination, resultBundlePath: bundlePath,
+          action: "build-for-testing",
+        }));
+        if (result.exitCode !== 0) throw new Error(`build-for-testing failed with exit code ${result.exitCode}`);
+      } catch (error) {
+        failures.push(`${group.name} build: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+    }
+    if (options.phase === "build") continue;
     for (const execution of createExecutionBatches([group])) {
       const bundlePath = resultBundlePath(options.evidenceRoot, execution.name);
       process.stdout.write(
@@ -428,6 +452,7 @@ async function main() {
             ...options,
             destination: resolvedDestination,
             resultBundlePath: bundlePath,
+            action: "test-without-building",
           },
         ));
         executedCount += await verifyPlatformExecution({
@@ -446,6 +471,10 @@ async function main() {
   }
   if (failures.length) {
     throw new Error(`Capture UI validation failed in ${failures.length} destination setup(s) or test batch(es):\n${failures.join("\n")}`);
+  }
+  if (options.phase === "build") {
+    process.stdout.write("BUILD ONLY: test products compiled; no UI tests executed or qualified.\n");
+    return;
   }
   if (executedCount !== plan.selectedTestCount) {
     throw new Error(

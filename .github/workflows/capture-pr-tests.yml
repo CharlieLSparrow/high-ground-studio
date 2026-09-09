@@ -74,10 +74,10 @@ jobs:
     if: needs.changes.outputs.capture == 'true'
     name: Deterministic Apple UX (${{ matrix.platform }}, ${{ matrix.shard == 0 && 'critical' || format('full {0}/4', matrix.shard) }})
     runs-on: macos-26
-    # Each platform gets its own runner. Serial iPhone -> iPad execution hit
-    # the 55m test deadline before iPad could finish. Keep the existing per-job
-    # bounds and exact coverage, while avoiding cross-device startup and contention.
-    timeout-minutes: 75
+    # Cold compilation took 16m of the former 55m test step, killing the final
+    # batch after 32 passing tests. Build once, then test those same products.
+    # Separate bounded phases preserve evidence without adding test attempts.
+    timeout-minutes: 95
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -159,6 +159,32 @@ jobs:
             *) echo "Unknown Capture platform" >&2; exit 1 ;;
           esac
 
+      - name: Build deterministic Capture test products
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.shard }}" == "0" ]]; then
+            suite="critical"
+            shard="1"
+          else
+            suite="full"
+            shard="${{ matrix.shard }}"
+          fi
+          evidence_root="${RUNNER_TEMP}/capture-ui-${suite}-${shard}-${CAPTURE_TEST_PLATFORM}"
+          build_log="${evidence_root}/capture-ui-build.log"
+          mkdir -p "${evidence_root}"
+          node scripts/release/quipsly-capture-ui-test-runner.mjs \
+            --phase=build \
+            --suite="${suite}" \
+            --platform="${CAPTURE_TEST_PLATFORM}" \
+            --shard="${shard}" \
+            --shards=4 \
+            --destination="${CAPTURE_DESTINATION}" \
+            --ipad-destination="${CAPTURE_IPAD_DESTINATION}" \
+            --derived-data="${RUNNER_TEMP}/capture-ui-derived-${shard}-${CAPTURE_TEST_PLATFORM}" \
+            --evidence-root="${evidence_root}" \
+            2>&1 | tee "${build_log}"
+
       - name: Run bounded deterministic Capture UI lane serially
         timeout-minutes: 55
         run: |
@@ -171,9 +197,9 @@ jobs:
             shard="${{ matrix.shard }}"
           fi
           evidence_root="${RUNNER_TEMP}/capture-ui-${suite}-${shard}-${CAPTURE_TEST_PLATFORM}"
-          build_log="${evidence_root}/capture-ui-tests.log"
           mkdir -p "${evidence_root}"
           node scripts/release/quipsly-capture-ui-test-runner.mjs \
+            --phase=test \
             --suite="${suite}" \
             --platform="${CAPTURE_TEST_PLATFORM}" \
             --shard="${shard}" \
@@ -182,7 +208,7 @@ jobs:
             --ipad-destination="${CAPTURE_IPAD_DESTINATION}" \
             --derived-data="${RUNNER_TEMP}/capture-ui-derived-${shard}-${CAPTURE_TEST_PLATFORM}" \
             --evidence-root="${evidence_root}" \
-            2>&1 | tee "${build_log}"
+            2>&1 | tee "${evidence_root}/capture-ui-tests.log"
 
       - name: Preserve native test evidence
         if: always()
@@ -193,6 +219,7 @@ jobs:
             ${{ runner.temp }}/capture-prewarm-*.log
             ${{ runner.temp }}/capture-ui-*/*.xcresult
             ${{ runner.temp }}/capture-ui-*/capture-ui-tests.log
+            ${{ runner.temp }}/capture-ui-*/capture-ui-build.log
           if-no-files-found: warn
           retention-days: 14
 
