@@ -67,7 +67,9 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
   }
 
   return <div className="mt-2 space-y-2">
-    {linked.map(task => <Link key={task.id} href={`/work?task=${encodeURIComponent(task.id)}`}
+    {linked.map(task => <Link key={task.id} href={engagementId
+      ? `/coaching/engagements/${encodeURIComponent(engagementId)}?work=${encodeURIComponent(task.id)}#relationship-work`
+      : `/work?task=${encodeURIComponent(task.id)}`}
       className="flex min-h-11 min-w-0 items-start gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent">
       <span aria-hidden="true">{task.status === "DONE" ? "✓" : "☐"}</span>
       <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">

@@ -96,7 +96,7 @@ test("creates normal shared work and keeps the same request after a lost respons
   const first = JSON.parse(fetchMock.mock.calls[0][1].body);
   expect(first).toMatchObject({ kind: "TASK", title: "Prepare chapter one", sourceMessageId: "message", body: props.body });
   expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(first);
-  expect(screen.getByRole("link", { name: /Prepare chapter one/ })).toHaveAttribute("href", "/work?task=task");
+  expect(screen.getByRole("link", { name: /Prepare chapter one/ })).toHaveAttribute("href", "/coaching/engagements/space?work=task#relationship-work");
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 });
 

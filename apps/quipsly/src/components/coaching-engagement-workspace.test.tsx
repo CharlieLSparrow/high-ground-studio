@@ -10,6 +10,8 @@ import userEvent from "@testing-library/user-event";
 
 import { CoachingEngagementWorkspace } from "./coaching-engagement-workspace";
 
+jest.mock("next/navigation", () => ({useSearchParams: () => new URLSearchParams(window.location.search)}));
+
 const members = [
   { id: "coach-1", label: "Morgan Coach", role: "COACH" },
   { id: "client-1", label: "Riley Client", role: "CLIENT" },
@@ -25,6 +27,21 @@ const sharedTask = {
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it("opens a chat-linked task after client navigation without remounting the workspace", () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState({}, "", "/coaching/engagements/engagement-1#relationship-conversation");
+    try {
+      const props = {engagementId: "engagement-1", initialEntries: [sharedTask], members, currentUserId: "client-1", canWrite: true};
+      const {rerender} = render(<CoachingEngagementWorkspace {...props} />);
+      expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
+      fireEvent.click(within(screen.getByRole("group", {name: "Filter work"})).getByRole("button", {name: "Goals"}));
+      window.history.pushState({}, "", `/coaching/engagements/engagement-1?work=${sharedTask.id}#relationship-work`);
+      rerender(<CoachingEngagementWorkspace {...props} />);
+      expect(screen.getByRole("heading", {name: sharedTask.title})).toBeVisible();
+      expect(screen.getByRole("button", {name: "All"})).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("link", {name: `From recording: ${sharedTask.title}`})).toHaveAttribute("href", sharedTask.sourceHref);
+    } finally { window.history.replaceState({}, "", originalUrl); }
+  });
   it("does not replace unchanged archived tags when editing task wording", async () => {
     const entry = {...sharedTask, tags: [{id: "archived", label: "Earlier research", hexColor: "#23543a", isActive: false}]};
     const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, entry: {...entry, body: "Revised wording"}})});

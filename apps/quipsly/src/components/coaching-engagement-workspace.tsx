@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Check,
   CheckCircle2,
@@ -121,17 +122,26 @@ function CoachingEngagementWorkspaceContent({
   const [resultIds, setResultIds] = useState<Set<string> | null>(null);
   const [createOpen, setCreateOpen] = useState(initialEntries.length === 0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const linkedWorkId = useSearchParams()?.get("work") ?? null;
   const selection = useRef(selectedId);
   selection.current = selectedId;
+  // In-space Next links update search parameters without a popstate event.
   useEffect(() => {
     const restoreSelection = () => {
       if (window.location.pathname !== `/coaching/engagements/${engagementId}`) return;
-      setSelectedId(new URL(window.location.href).searchParams.get("work"));
+      const id = new URL(window.location.href).searchParams.get("work");
+      if (id && id !== selection.current) {
+        setSearch("");
+        setTagFilter(null);
+        setWorkFilter("ALL");
+        setResultIds(null);
+      }
+      setSelectedId(id);
     };
     restoreSelection();
     window.addEventListener("popstate", restoreSelection);
     return () => window.removeEventListener("popstate", restoreSelection);
-  }, [engagementId]);
+  }, [engagementId, linkedWorkId]);
 
   function selectEntry(id: string | null) {
     selection.current = id;
