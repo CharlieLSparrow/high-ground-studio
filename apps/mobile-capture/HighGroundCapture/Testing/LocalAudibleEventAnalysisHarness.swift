@@ -19,7 +19,7 @@ private func classification(_ identifier: String, _ confidence: Double) -> Local
 
 @main
 struct LocalAudibleEventAnalysisHarness {
-    static func main() throws {
+    static func main() async throws {
         let analysisId = "audible_analysis_test_receipt_001"
         let results = [
             LocalAudibleEventRawResult(
@@ -121,6 +121,55 @@ struct LocalAudibleEventAnalysisHarness {
             "the native receipt must survive the Swift/TypeScript JSON boundary"
         )
 
-        print("PASS Native audible-event analysis keeps unqualified suggestions bounded, versioned, deterministic, and review-only.")
+        let completed = LocalSoundFileAnalysisOperation(start: { completion in
+            completion(true)
+            completion(false)
+        }, cancel: { fatalError("Completed analysis must not be cancelled.") })
+        let completionResult = await completed.run(timeout: 0.05)
+        require(completionResult, "only the first framework completion may finish analysis")
+
+        let missingCallback = AnalysisCallbackProbe()
+        let timedOut = LocalSoundFileAnalysisOperation(start: missingCallback.start, cancel: missingCallback.cancel)
+        let timeoutResult = await timedOut.run(timeout: 0.02)
+        require(!timeoutResult && missingCallback.cancelCount == 1,
+                "missing framework completion must release the worker and cancel underlying analysis")
+        missingCallback.complete(true)
+
+        let cancelledBeforeStart = AnalysisCallbackProbe()
+        let earlyCancel = LocalSoundFileAnalysisOperation(start: cancelledBeforeStart.start, cancel: cancelledBeforeStart.cancel)
+        earlyCancel.cancel()
+        let earlyResult = await earlyCancel.run(timeout: 1)
+        require(!earlyResult && cancelledBeforeStart.startCount == 0 && cancelledBeforeStart.cancelCount == 1,
+                "account cancellation before analysis begins must not start ML work or strand a continuation")
+
+        let cancelledDuringRun = AnalysisCallbackProbe()
+        let running = LocalSoundFileAnalysisOperation(start: cancelledDuringRun.start, cancel: cancelledDuringRun.cancel)
+        let task = Task { await running.run(timeout: 1) }
+        while cancelledDuringRun.startCount == 0 { await Task.yield() }
+        running.cancel()
+        let cancelledResult = await task.value
+        require(!cancelledResult && cancelledDuringRun.cancelCount == 1,
+                "cancelling active analysis must release its awaiting worker")
+        cancelledDuringRun.complete(true)
+        running.cancel()
+        try await Task.sleep(for: .milliseconds(80))
+        require(cancelledDuringRun.cancelCount == 1 && missingCallback.cancelCount == 1,
+                "late completion and repeated cancellation must not finish twice")
+
+        print("PASS Native audible-event analysis retains source-bound observations and handles completion, timeout, cancellation, and late callbacks.")
     }
+}
+
+private final class AnalysisCallbackProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var starts = 0
+    private var cancels = 0
+    private var callback: (@Sendable (Bool) -> Void)?
+    var startCount: Int { lock.withLock { starts } }
+    var cancelCount: Int { lock.withLock { cancels } }
+    func start(_ callback: @escaping @Sendable (Bool) -> Void) {
+        lock.withLock { starts += 1; self.callback = callback }
+    }
+    func cancel() { lock.withLock { cancels += 1 } }
+    func complete(_ success: Bool) { lock.withLock { callback }?(success) }
 }
