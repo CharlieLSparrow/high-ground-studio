@@ -55,12 +55,32 @@ for (const [file, method, item] of queuedUploadOwners) {
   });
 }
 
+function hasPendingWorkParameter(signature) {
+  // A queued value owns an account; a nested discriminator such as
+  // PendingWorkTagDecision.EntityKind is only "task" or "goal".
+  // The negative lookahead also prevents matching a shortened type prefix.
+  return /:\s*Pending[A-Za-z0-9_]+(?![A-Za-z0-9_.])/.test(signature);
+}
+
+test("pending-work detection distinguishes queued values from nested type names", () => {
+  for (const signature of [
+    "func sync(decision: PendingWorkTagDecision) async",
+    "func sync(decision: PendingWorkTagDecision?, retry: Bool)",
+    "func sync(edit: PendingDocumentNoteEdit) async throws",
+  ]) assert.equal(hasPendingWorkParameter(signature), true, signature);
+  for (const signature of [
+    "func loadSharedTagContext(kind: PendingWorkTagDecision.EntityKind, entityID: String)",
+    "func describe(disposition: PendingWorkTagDecision.Disposition?)",
+    "func load(entityID: String) async",
+  ]) assert.equal(hasPendingWorkParameter(signature), false, signature);
+});
+
 test("new typed pending-work upload methods cannot silently inherit the current login", () => {
   const unbound = [];
   for (const file of readdirSync(root).filter((name) => name.endsWith(".swift"))) {
     for (const match of read(file).matchAll(/func ([A-Za-z0-9_]+)\([\s\S]*?\n    }/g)) {
       const body = match[0], signature = body.slice(0, body.indexOf("{"));
-      if (/:\s*Pending[A-Za-z]+/.test(signature) && body.includes("authenticatedData(")
+      if (hasPendingWorkParameter(signature) && body.includes("authenticatedData(")
         && !body.includes("expectedOwnerAccountID:")) unbound.push(`${file}/${match[1]}`);
     }
   }

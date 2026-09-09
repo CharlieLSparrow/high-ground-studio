@@ -1039,7 +1039,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ).firstMatch
     }
 
-    private func openTaskTagEditor(taskID: String, in app: XCUIApplication) {
+    private func openTaskList(in app: XCUIApplication) {
         if !app.descendants(matching: .any)["CaptureAcrossNestsFollowThroughView"].firstMatch.exists {
             tapRootTab("Today", in: app)
             let openWork = app.buttons["CaptureHomeWorkOpen"].firstMatch
@@ -1049,9 +1049,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(app.descendants(matching: .any)["CaptureAcrossNestsFollowThroughView"].firstMatch.waitForExistence(timeout: 10))
         }
         let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
+        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6),
+           showMore.label.contains("more") {
             showMore.tap()
         }
+    }
+
+    private func openTaskSchedule(taskID: String, in app: XCUIApplication) {
+        openTaskList(in: app)
+        let schedule = app.buttons["CaptureTodayTaskSchedule_\(taskID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(schedule, in: app, timeout: 20, swipeAttempts: 12))
+        schedule.tap()
+    }
+
+    private func openTaskTagEditor(taskID: String, in app: XCUIApplication) {
+        openTaskList(in: app)
         let edit = app.buttons["CaptureTodayTaskTagsEdit_\(taskID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12),
@@ -3875,11 +3887,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let app = try launchSignedInCaptureApp()
 
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
 
+        openTaskSchedule(taskID: taskID, in: app)
         let cancel = app.buttons["CaptureTodayTaskReminderCancel_\(taskID)"].firstMatch
         if waitForRuntimeElement(cancel, in: app, timeout: 8, swipeAttempts: 12) {
             cancel.tap()
@@ -3983,11 +3992,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The focus-plan journey requires one exact open task ID.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
 
+        openTaskSchedule(taskID: taskID, in: app)
         let plan = app.buttons["CaptureTodayTaskPlanFocus_\(taskID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(plan, in: app, timeout: 25, swipeAttempts: 12),
@@ -3996,12 +4002,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(plan.isEnabled)
         plan.tap()
 
-        XCTAssertTrue(app.navigationBars["Plan focus"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.navigationBars["Focus time"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanStart"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanDuration"].exists)
-        XCTAssertTrue(app.staticTexts["Does not change the task deadline or status"].exists)
-        XCTAssertTrue(app.staticTexts["Does not create a reminder or appointment"].exists)
-        XCTAssertTrue(app.staticTexts["Does not write to Google or Apple Calendar"].exists)
+        XCTAssertTrue(app.staticTexts["Private to you"].exists)
+        XCTAssertTrue(app.staticTexts["Focus time stays beside this task in Quipsly. You can record how much time you spent when you finish."].exists)
 
         let save = app.buttons["CaptureTodayFocusPlanSave"].firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 5))
@@ -4028,6 +4033,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         app.terminate()
         let relaunched = try launchSignedInCaptureApp()
+        openTaskList(in: relaunched)
         let persisted = relaunched.descendants(matching: .any)[plannedIdentifier].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(persisted, in: relaunched, timeout: 35, swipeAttempts: 12),
@@ -4635,11 +4641,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let app = try launchSignedInCaptureApp()
 
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
 
+        openTaskSchedule(taskID: taskID, in: app)
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_\(seriesID)_\(taskID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(recurrence, in: app, timeout: 30, swipeAttempts: 10),
@@ -4648,10 +4651,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Every week at 09:00", "America/Denver")
         ).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "No reminder or provider event is implied.")
-        ).firstMatch.exists)
-
         let menu = app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 8))
         XCTAssertTrue(menu.isEnabled)
@@ -4660,7 +4659,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(pause.waitForExistence(timeout: 5))
         pause.tap()
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Occurrence \(scheduledLocalDate)", "Paused")
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Due \(scheduledLocalDate)", "Paused")
         ).firstMatch.waitForExistence(timeout: 20))
 
         let refreshedMenu = app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch
@@ -4670,7 +4669,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(resume.waitForExistence(timeout: 5))
         resume.tap()
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Occurrence \(scheduledLocalDate)", "Active")
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Due \(scheduledLocalDate)", "Active")
         ).firstMatch.waitForExistence(timeout: 20))
 
         let done = app.buttons["CaptureTodayTaskDone_\(taskID)"].firstMatch
@@ -4815,10 +4814,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("Recurrence editing requires exact source task/series IDs, source/future titles, and a target timezone.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
+        openTaskSchedule(taskID: taskID, in: app)
         XCTAssertTrue(waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 25, swipeAttempts: 10))
 
         let menu = app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch
@@ -4856,7 +4852,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let save = app.buttons["CaptureRecurrenceEditSave"].firstMatch
         XCTAssertTrue(save.isEnabled)
         save.tap()
-        XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.scrollViews["CaptureAcrossNestsFollowThroughView"].waitForExistence(timeout: 30))
+        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
         if waitForRuntimeElement(showMore, in: app, timeout: 8, swipeAttempts: 4), showMore.label.contains("more") {
             showMore.tap()
         }
@@ -4864,6 +4861,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             waitForRuntimeElement(app.staticTexts[futureTitle].firstMatch, in: app, timeout: 35, swipeAttempts: 12),
             "The revised future series should return through Today under its new canonical task identity."
         )
+        let replacement = app.staticTexts.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label == %@", "CaptureTodayTask_", futureTitle
+        )).firstMatch
+        XCTAssertTrue(replacement.exists)
+        openTaskSchedule(taskID: String(replacement.identifier.dropFirst("CaptureTodayTask_".count)), in: app)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", targetTimezone)).firstMatch.exists)
         XCTAssertFalse(app.staticTexts[sourceTitle].firstMatch.exists, "The superseded open horizon should leave Today while remaining preserved in task history.")
         XCTAssertFalse(app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].exists, "The predecessor series should be ended and replaced, not mutated in place.")
@@ -4878,15 +4880,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("Missed-occurrence runtime proof requires exact task, series, and scheduled-local-date identities.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) { showMore.tap() }
+        openTaskSchedule(taskID: taskID, in: app)
 
         let task = app.descendants(matching: .any)["CaptureTodayTask_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(task, in: app, timeout: 25, swipeAttempts: 12))
+        let taskTitle = task.label
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_\(seriesID)_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(recurrence, in: app, timeout: 12, swipeAttempts: 8))
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Occurrence \(scheduledLocalDate)")
+            NSPredicate(format: "label CONTAINS %@", "Due \(scheduledLocalDate)")
         ).firstMatch.exists)
 
         let skip = app.buttons["CaptureTodaySkipMissed_\(taskID)"].firstMatch
@@ -4900,7 +4902,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ).firstMatch.exists)
         confirm.tap()
 
-        XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.scrollViews["CaptureAcrossNestsFollowThroughView"].waitForExistence(timeout: 30))
+        let nextOccurrence = app.staticTexts.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND identifier != %@ AND label == %@",
+            "CaptureTodayTask_", "CaptureTodayTask_\(taskID)", taskTitle
+        )).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(nextOccurrence, in: app, timeout: 30, swipeAttempts: 12))
+        openTaskSchedule(taskID: String(nextOccurrence.identifier.dropFirst("CaptureTodayTask_".count)), in: app)
         XCTAssertTrue(
             waitForRuntimeElement(app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch, in: app, timeout: 30, swipeAttempts: 12),
             "The same canonical series should continue from its next open occurrence."

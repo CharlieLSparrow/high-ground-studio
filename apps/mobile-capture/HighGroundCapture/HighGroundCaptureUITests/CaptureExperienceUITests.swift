@@ -3391,12 +3391,35 @@ final class CaptureExperienceUITests: XCTestCase {
         open.tap()
         XCTAssertTrue(app.navigationBars["Tasks & goals"].waitForExistence(timeout: 5))
         let task = app.staticTexts["CaptureTodayTask_preview-task"]
-        reveal(task)
-        XCTAssertTrue(task.isHittable, "The user's work should not require selecting or joining a Nest first.")
+        XCTAssertTrue(task.waitForExistence(timeout: 5))
+        XCTAssertTrue(task.isHittable, "Tasks should be visible immediately, before session summaries or focus reports.")
+        let tags = app.descendants(matching: .any)["CaptureTodayTaskTags_preview-task"].firstMatch
+        XCTAssertTrue(tags.isHittable, "Shared tags should be visible beside the work without opening details.")
+        XCTAssertFalse(app.buttons["CaptureTodayTaskPlanFocus_preview-task"].exists, "Scheduling controls should start collapsed.")
+        XCTAssertFalse(app.buttons["CaptureTodaySkipMissed_preview-task"].exists, "Repeat maintenance belongs inside the schedule.")
+        XCTAssertFalse(app.buttons["CaptureTodayTaskMergedEvidenceSource_preview-task"].exists, "Extra source history should start collapsed.")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "home-tasks-and-shared-colors"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+        let schedule = app.buttons["CaptureTodayTaskSchedule_preview-task"].firstMatch
+        reveal(schedule)
+        XCTAssertTrue(schedule.isHittable)
+        schedule.tap()
+        let plan = app.buttons["CaptureTodayTaskPlanFocus_preview-task"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 3), "The existing planner must remain one tap away.")
+        reveal(schedule)
+        schedule.tap()
+        XCTAssertFalse(plan.exists, "The task list should return to its compact state.")
+        let sourceDetails = app.buttons["CaptureTodayTaskSourceDetails_preview-task"].firstMatch
+        reveal(sourceDetails)
+        XCTAssertTrue(sourceDetails.isHittable)
+        sourceDetails.tap()
+        XCTAssertTrue(app.buttons["CaptureTodayTaskMergedEvidenceSource_preview-task"].waitForExistence(timeout: 3),
+            "Collapsing source history must not remove the original evidence link.")
+        reveal(sourceDetails)
+        sourceDetails.tap()
+        XCTAssertFalse(app.buttons["CaptureTodayTaskMergedEvidenceSource_preview-task"].exists)
     }
 
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
@@ -4453,6 +4476,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         let complete = app.buttons["CaptureTodayFocusDoneButton"]
+        reveal(complete)
         XCTAssertTrue(complete.exists)
         XCTAssertFalse(complete.isEnabled, "Preview work must never call Nest or imply a real task/focus mutation.")
 
@@ -4470,7 +4494,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(taskTags.exists)
         XCTAssertTrue(taskTags.label.contains("High Ground Odyssey"))
         XCTAssertTrue(taskTags.label.contains("Proof listen"))
+        let schedule = app.buttons["CaptureTodayTaskSchedule_preview-task"].firstMatch
+        reveal(schedule)
+        XCTAssertTrue(schedule.isHittable)
+        schedule.tap()
         let planFocus = app.buttons["CaptureTodayTaskPlanFocus_preview-task"]
+        XCTAssertTrue(planFocus.waitForExistence(timeout: 3), "Expanding the task schedule should expose its planner.")
         reveal(planFocus)
         XCTAssertTrue(planFocus.exists)
         XCTAssertEqual(planFocus.label, "Plan focus")
@@ -4713,6 +4742,10 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {
         openAcrossNestsFollowThrough()
+        let schedule = app.buttons["CaptureTodayTaskSchedule_preview-task"].firstMatch
+        reveal(schedule)
+        XCTAssertTrue(schedule.isHittable)
+        schedule.tap()
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_preview-series_preview-task"]
         reveal(recurrence)
         XCTAssertTrue(recurrence.exists)
