@@ -569,6 +569,7 @@ async function findOwnedTagEntity(
     select: { id: true, projectId: true, updatedAt: true, [sourceField]: true,
       ...(["task", "goal"].includes(entityKind) ? {
         engagementId: true, booking: { select: { engagementId: true } },
+        room: { select: { projectId: true, coachingEngagementId: true } },
       } : {}),
     },
   });
@@ -599,10 +600,14 @@ function sharedWorkTagCatalogWhere(engagementId: string, entityKind: "task" | "g
 
 async function writableTagSpace(
   prisma: Pick<Prisma.TransactionClient, "coachingEngagement">,
-  entity: { projectId: string; engagementId?: string | null; booking?: { engagementId: string | null } | null },
+  entity: { projectId: string; engagementId?: string | null; booking?: { engagementId: string | null } | null;
+    room?: { projectId: string | null; coachingEngagementId: string | null } | null },
   actorUserId: string,
 ): Promise<string | null> {
-  const engagementId = entity.engagementId ?? entity.booking?.engagementId;
+  // Transcript-derived work may be anchored only to its Session. Resolve that
+  // canonical relationship without granting access to the rest of the Nest.
+  const engagementId = entity.engagementId ?? entity.booking?.engagementId
+    ?? (entity.room?.projectId === entity.projectId ? entity.room?.coachingEngagementId : null);
   if (!engagementId) return null;
   const space = await prisma.coachingEngagement.findFirst({
     where: { id: engagementId, projectId: entity.projectId, ...activeCoachingEngagementParticipantWhere(actorUserId, "write") },

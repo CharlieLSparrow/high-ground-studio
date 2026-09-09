@@ -292,6 +292,7 @@ describe("TranscriptCorrectionDesk", () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
     window.history.replaceState(null, "", window.location.pathname);
   });
@@ -494,6 +495,80 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.queryByLabelText(/correct transcript words/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Welcome, everybody.")).not.toBeInTheDocument();
     expect(screen.getByText(/Session access removed/)).toBeInTheDocument();
+  });
+
+  it("clears a recovered read error without discarding an unfinished correction", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockRejectedValueOnce(new Error("Temporarily offline"))
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    const input = screen.getByLabelText(/correct transcript words/i);
+    fireEvent.change(input, { target: { value: "My unfinished correction." } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("Temporarily offline")).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(screen.queryByText("Temporarily offline")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    expect(input).toHaveValue("My unfinished correction.");
+  });
+
+  it("times out a stalled read so it can be retried", async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn()
+      .mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }))
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+    expect(screen.getByText(/taking too long to load/i)).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Retry" })); });
+    expect(screen.getByText("Welcome, everybody.")).toBeInTheDocument();
+    expect(screen.queryByText(/taking too long to load/i)).not.toBeInTheDocument();
+  });
+
+  it("does not stack background reads or apply an old response over a manual refresh", async () => {
+    jest.useFakeTimers();
+    let finishOld!: (value: unknown) => void;
+    const running = { ...desk(true), transcriptStatus: "RUNNING" };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => running })
+      .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await act(async () => { render(<TranscriptCorrectionDesk roomId="room-1" />); });
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    const input = screen.getByLabelText(/correct transcript words/i);
+    fireEvent.change(input, { target: { value: "My current correction." } });
+    await act(async () => { jest.advanceTimersByTime(15_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true);
+    await act(async () => { finishOld({ ok: false, status: 403, json: async () => ({ error: "Old failure" }) }); });
+    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    expect(input).toHaveValue("My current correction.");
+    expect(screen.queryByText("Old failure")).not.toBeInTheDocument();
+  });
+
+  it.each([401, 403, 404, "wrong-session"])("clears protected content after %s even without an error JSON body", async (status) => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockResolvedValueOnce(status === "wrong-session"
+        ? { ok: true, json: async () => ({ ...desk(true), roomId: "other-room" }) }
+        : { ok: false, status, json: async () => { throw new SyntaxError("Not JSON"); } });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(screen.queryByText("Welcome, everybody.")).not.toBeInTheDocument();
+    expect(screen.getByText(/no longer available/i)).toBeInTheDocument();
   });
 
   it("retries an ambiguous correction with the same command and prevents double submission", async () => {
@@ -790,7 +865,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/mobile/capture/transcripts/corrections?callRoomId=room-1&recordingAssetId=asset-backup",
-      { cache: "no-store" },
+      { cache: "no-store", signal: expect.any(AbortSignal) },
     );
   });
 
@@ -1092,6 +1167,7 @@ describe("TranscriptCorrectionDesk", () => {
     fireEvent.click(screen.getByRole("button", { name: /create my task/i }));
 
     await screen.findByText("Task created in Today and Work: Prepare the opening");
+    expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=task-1");
     const requests = fetchMock.mock.calls.filter(([url]) => url === "/api/mobile/capture/transcripts/tasks");
     expect(requests).toHaveLength(1);
     const request = requests[0]!;
@@ -1103,6 +1179,39 @@ describe("TranscriptCorrectionDesk", () => {
       title: "Prepare the opening",
       surface: "nest-session-transcript-review",
     });
+  });
+
+  it.each(["network", "timeout"])("keeps task creation visible and retries a %s failure without another command", async (failure) => {
+    if (failure === "timeout") jest.useFakeTimers();
+    let rejectSave!: (reason: Error) => void;
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+        rejectSave = reject;
+        options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: true, task: { id: "retained/task", title: "Write the outline" } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByText("Create from this moment"));
+    fireEvent.click(screen.getByRole("button", { name: /make this my task/i }));
+    fireEvent.change(screen.getByLabelText(/task title/i), { target: { value: "Write the outline" } });
+    const create = screen.getByRole("button", { name: /create my task/i });
+    fireEvent.click(create);
+    fireEvent.click(create);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: /creating task/i })).toBeDisabled();
+    expect(screen.getByLabelText(/task title/i)).toBeDisabled();
+    await act(async () => {
+      if (failure === "timeout") jest.advanceTimersByTime(30_000);
+      else rejectSave(new Error("Connection interrupted"));
+    });
+    expect(screen.getByLabelText(/task title/i)).toHaveValue("Write the outline");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /create my task/i })); });
+    expect(fetchMock.mock.calls[2][1].body).toBe(fetchMock.mock.calls[1][1].body);
+    expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=retained%2Ftask");
   });
 
   it("opens coaching recording edits in the transcript surface", async () => {

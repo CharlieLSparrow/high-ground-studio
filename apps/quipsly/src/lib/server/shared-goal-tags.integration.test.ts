@@ -39,6 +39,7 @@ if (enabled) {
   afterAll(async () => {
     await prisma.actionItem.deleteMany({ where: { projectId: id("project") } });
     await prisma.goal.deleteMany({ where: { projectId: id("project") } });
+    await prisma.callRoom.deleteMany({ where: { projectId: id("project") } });
     await prisma.coachingBooking.deleteMany({ where: { id: id("booking") } });
     await prisma.coachingEngagement.deleteMany({ where: { projectId: id("project") } });
     await prisma.studioProject.deleteMany({ where: { id: id("project") } });
@@ -46,6 +47,38 @@ if (enabled) {
     await prisma.user.deleteMany({ where: { id: { in: users.map(id) } } });
     await prisma.$disconnect();
   });
+  it("tags a client-owned transcript task through its Session without exposing private Nest vocabulary", async () => {
+    await prisma.studioProjectAccessGrant.updateMany({ where: { projectId: id("project"), email: email("client") }, data: { status: "REVOKED" } });
+    try {
+      const room = await prisma.callRoom.create({ data: { projectId: id("project"), coachingEngagementId: id("engagement"), title: "Client transcript" } });
+      const task = await prisma.actionItem.create({ data: { roomId: room.id, projectId: id("project"), assignedUserId: id("client"), title: "Task from a recording" } });
+      await prisma.goal.create({ data: { engagementId: id("engagement"), projectId: id("project"), ownerUserId: id("coach"),
+        title: "Shared research", sourceJson: { visibility: "SESSION_SHARED" }, tagLinks: { create: { tagId: id("tag") } } } });
+      const privateTag = await prisma.studioTag.create({ data: { projectId: id("project"), slug: "private-session-tag", label: "Other client only" } });
+      await prisma.goal.create({ data: { engagementId: id("other-engagement"), projectId: id("project"), ownerUserId: id("coach"),
+        title: "Another client", sourceJson: { visibility: "SESSION_SHARED" }, tagLinks: { create: { tagId: privateTag.id } } } });
+      const actor = { prisma, actorUserId: id("client"), actorEmail: email("client"), entityId: task.id };
+      const context = await readTaskTagContext(actor);
+      expect(context).toMatchObject({ canCreateTags: false, tags: expect.arrayContaining([expect.objectContaining({ id: id("tag"), hexColor: "#506b46" })]) });
+      expect(context?.tags.map(tag => tag.id)).not.toContain(privateTag.id);
+      for (const name of ["coach", "observer", "outsider"]) {
+        expect(await readTaskTagContext({ ...actor, actorUserId: id(name), actorEmail: email(name) })).toBeNull();
+      }
+      const command = { ...actor, entityKind: "task" as const, expectedUpdatedAt: task.updatedAt, tagIds: [id("tag")], clientRequestId: randomUUID() };
+      expect(await replaceWorkEntityTags({ ...command, tagIds: [privateTag.id] })).toMatchObject({ ok: false, code: "FORBIDDEN" });
+      expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: true, tagIds: [id("tag")] });
+      expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: true, idempotentReplay: true });
+      expect(await readTaskTagContext(actor)).toMatchObject({ selectedTagIds: [id("tag")] });
+      await prisma.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: id("engagement"), userId: id("client") } }, data: { status: "REMOVED" } });
+      expect(await readTaskTagContext(actor)).toBeNull();
+      expect(await replaceWorkEntityTags(command)).toMatchObject({ ok: false });
+      expect(await prisma.actionItemTagLink.count({ where: { actionItemId: task.id, tagId: id("tag") } })).toBe(1);
+    } finally {
+      await prisma.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: id("engagement"), userId: id("client") } }, data: { status: "ACTIVE" } });
+      await prisma.studioProjectAccessGrant.updateMany({ where: { projectId: id("project"), email: email("client") }, data: { status: "ACTIVE" } });
+    }
+  });
+
   it.each(["engagement", "booking"])("allows collaborators to tag %s goals, with current membership, retries, and private isolation", async scope => {
     const context = scope === "engagement" ? { engagementId: id("engagement") } : { bookingId: id("booking") };
     const goal = await prisma.goal.create({ data: { ...context, projectId: id("project"), ownerUserId: id("coach"),
