@@ -7896,6 +7896,18 @@ final class ShareCaptureExtensionUITests: XCTestCase {
     }
 
     private func openSafariShareSheet(_ safari: XCUIApplication) {
+        // Fresh Safari installs teach the relocated toolbar with a popover
+        // that covers More. Dismiss that observed system UI explicitly rather
+        // than tapping through it and waiting on Safari's animation timeout.
+        let toolbarTip = safari.descendants(matching: .popover).containing(
+            .staticText, identifier: "View Bookmarks, Share Menu, and Open Tabs"
+        ).firstMatch
+        if toolbarTip.waitForExistence(timeout: 2) {
+            let close = toolbarTip.buttons["Close"].firstMatch
+            XCTAssertTrue(close.exists, safari.debugDescription)
+            close.tap()
+            XCTAssertTrue(toolbarTip.waitForNonExistence(timeout: 3), safari.debugDescription)
+        }
         let share = safari.buttons.matching(
             NSPredicate(format: "label ==[c] %@ OR identifier == %@", "Share", "ShareButton")
         ).firstMatch

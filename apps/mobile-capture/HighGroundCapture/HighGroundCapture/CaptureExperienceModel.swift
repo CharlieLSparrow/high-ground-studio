@@ -427,6 +427,16 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// An explicit unsigned Share Sheet test must not restore credentials left
+    /// by a separate authenticated simulator journey. Do not erase that account.
+    nonisolated static var usesSignedOutShareExtensionUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("\(shareOwnerPreviewPrefix)none")
+        #else
+        false
+        #endif
+    }
+
     /// A simulator-only owner used to exercise the real Share Extension and
     /// protected handoff without a production account or network mutation.
     nonisolated static var shareExtensionUITestOwner: String? {
