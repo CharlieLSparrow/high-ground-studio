@@ -19,6 +19,15 @@ function signedIn() {
   jest.mocked(getQuipslySession).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
 }
 
+function creationPrisma(models: { actionItem?: { create: jest.Mock }; goal?: { create: jest.Mock } }) {
+  const tx = {
+    actionItem: { findUnique: jest.fn().mockResolvedValue(null), ...models.actionItem },
+    goal: { findUnique: jest.fn().mockResolvedValue(null), ...models.goal },
+    studioProject: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+  };
+  return { ...tx, $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
+}
+
 describe("Work Queue task decisions", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -35,9 +44,9 @@ describe("Work Queue task decisions", () => {
 
   it("creates an explicitly self-assigned personal task with no external side effects", async () => {
     signedIn();
-    const prisma = { actionItem: { create: jest.fn().mockResolvedValue({ id: "task-new", updatedAt: persisted }) } };
+    const prisma = creationPrisma({ actionItem: { create: jest.fn().mockResolvedValue({ id: "task-new", updatedAt: persisted }) } });
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
-    const result = await createWorkTask({ title: " Draft the next episode ", detail: "Use source notes", dueAt: "2026-07-20T18:00:00.000Z" });
+    const result = await createWorkTask({ clientRequestId: "76a86eaf-2c6c-40e1-a614-d141c1a330e7", title: " Draft the next episode ", detail: "Use source notes", dueAt: "2026-07-20T18:00:00.000Z" });
     expect(result).toMatchObject({ ok: true, taskId: "task-new", updatedAt: persisted.toISOString(), receiptId: expect.any(String) });
     expect(prisma.actionItem.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -312,12 +321,12 @@ describe("Work Queue task decisions", () => {
       },
       actionItem: {
         create: jest.fn().mockImplementation(async ({ data }) => { createdActionIds.push(data.id); return data; }),
-        findUnique: jest.fn().mockImplementation(async ({ where }) => ({ id: where.id, updatedAt: persisted })),
+        findUnique: jest.fn().mockImplementation(async ({ where }) => createdActionIds.includes(where.id) ? { id: where.id, updatedAt: persisted } : null),
       },
     };
     const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
-    const result = await createWorkTask({
+    const result = await createWorkTask({ clientRequestId: "76a86eaf-2c6c-40e1-a614-d141c1a330e7",
       title: "Review coaching goals",
       dueLocal: "2026-03-07T09:00",
       timezone: "America/Denver",
@@ -341,7 +350,7 @@ describe("Work Queue task decisions", () => {
     signedIn();
     const prisma = { $transaction: jest.fn() };
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
-    const result = await createWorkTask({ title: "Never materialized", dueLocal: "2026-03-07T09:00", timezone: "Mountain-ish", recurrence: { cadence: "FIXED", frequency: "DAILY" } });
+    const result = await createWorkTask({ clientRequestId: "76a86eaf-2c6c-40e1-a614-d141c1a330e7", title: "Never materialized", dueLocal: "2026-03-07T09:00", timezone: "Mountain-ish", recurrence: { cadence: "FIXED", frequency: "DAILY" } });
     expect(result).toMatchObject({ ok: false, code: "INVALID_INPUT" });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -386,9 +395,9 @@ describe("Work Queue task decisions", () => {
 
   it("creates an owned canonical goal without inventing tasks or calendar work", async () => {
     signedIn();
-    const prisma = { goal: { create: jest.fn().mockResolvedValue({ id: "goal-new", updatedAt: persisted }) } };
+    const prisma = creationPrisma({ goal: { create: jest.fn().mockResolvedValue({ id: "goal-new", updatedAt: persisted }) } });
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
-    const result = await createWorkGoal({ title: "Publish a trustworthy episode", description: "Proof-listen the final artifact", targetAt: "2026-08-01T12:00:00.000Z" });
+    const result = await createWorkGoal({ clientRequestId: "76a86eaf-2c6c-40e1-a614-d141c1a330e7", title: "Publish a trustworthy episode", description: "Proof-listen the final artifact", targetAt: "2026-08-01T12:00:00.000Z" });
     expect(result).toMatchObject({ ok: true, goalId: "goal-new", receiptId: expect.any(String) });
     expect(prisma.goal.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       ownerUserId: "user-1",
@@ -483,15 +492,16 @@ describe("Work Queue task decisions", () => {
 
   it("files new work only into a Nest where the actor can write", async () => {
     signedIn();
-    const prisma = { actionItem: { create: jest.fn().mockResolvedValue({ id: "task-project", updatedAt: persisted }) } };
+    const prisma = creationPrisma({ actionItem: { create: jest.fn().mockResolvedValue({ id: "task-project", updatedAt: persisted }) } });
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{ id: "project-1", role: "EDITOR" }] as any);
-    const result = await createWorkTask({ title: "Proof-listen the episode", projectId: "project-1" });
+    const result = await createWorkTask({ clientRequestId: "76a86eaf-2c6c-40e1-a614-d141c1a330e7", title: "Proof-listen the episode", projectId: "project-1" });
     expect(result).toMatchObject({ ok: true, taskId: "task-project" });
     expect(prisma.actionItem.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ projectId: "project-1" }) }));
 
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{ id: "project-viewer", role: "VIEWER" }] as any);
-    const viewerResult = await createWorkTask({ title: "Should remain uncreated", projectId: "project-viewer" });
+    prisma.studioProject.findFirst.mockResolvedValue(null as any);
+    const viewerResult = await createWorkTask({ clientRequestId: "76a86eaf-2c6c-40e1-a614-d141c1a330e7", title: "Should remain uncreated", projectId: "project-viewer" });
     expect(viewerResult).toMatchObject({ ok: false, code: "INVALID_INPUT" });
     expect(prisma.actionItem.create).toHaveBeenCalledTimes(1);
   });

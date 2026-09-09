@@ -993,6 +993,10 @@ export function WorkClient({
   const createFormRef = useRef<HTMLFormElement>(null);
   const goalFormRef = useRef<HTMLFormElement>(null);
   const taskDetailsRef = useRef<HTMLDetailsElement>(null);
+  const taskCreateCommand = useRef<Parameters<typeof createWorkTask>[0] | null>(null);
+  const goalCreateCommand = useRef<Parameters<typeof createWorkGoal>[0] | null>(null);
+  const [taskSaveUnconfirmed, setTaskSaveUnconfirmed] = useState(false);
+  const [goalSaveUnconfirmed, setGoalSaveUnconfirmed] = useState(false);
   const visibleTasks = useMemo(() => {
     if (focusTaskOnly && focusTaskId) return snapshot.tasks.filter((task) => task.id === focusTaskId);
     return filter === "ALL"
@@ -1038,7 +1042,8 @@ export function WorkClient({
     startCreating(async () => {
       const dueValue = String(formData.get("dueAt") || "");
       const cadence = String(formData.get("recurrenceCadence") || "NEVER");
-      const result = await createWorkTask({
+      taskCreateCommand.current ??= {
+        clientRequestId: crypto.randomUUID(),
         title: String(formData.get("title") || ""),
         detail: String(formData.get("detail") || ""),
         dueLocal: dueValue || null,
@@ -1049,11 +1054,19 @@ export function WorkClient({
           frequency: String(formData.get("recurrenceFrequency") || "WEEKLY") as "DAILY" | "WEEKLY" | "MONTHLY",
           interval: Number(formData.get("recurrenceInterval") || 1),
         } : null,
-      });
+      };
+      let result: Awaited<ReturnType<typeof createWorkTask>>;
+      try { result = await createWorkTask(taskCreateCommand.current); }
+      catch { result = { ok: false, code: "UNAVAILABLE", error: "We couldn't confirm the save. Retry to recover your task." }; }
       if (!result.ok) {
+        const uncertain = taskSaveUnconfirmed || result.code === "UNAVAILABLE" || result.code === "CONFLICT";
+        setTaskSaveUnconfirmed(uncertain);
+        if (!uncertain) taskCreateCommand.current = null;
         setCreateMessage(result.error);
         return;
       }
+      taskCreateCommand.current = null;
+      setTaskSaveUnconfirmed(false);
       setCreateMessage(result.recurrenceSeriesId ? `Repeating task added · ${result.occurrenceCount} upcoming occurrence${result.occurrenceCount === 1 ? "" : "s"}.` : "Task added.");
       resetDraftKeepingNest(createFormRef.current, "projectId");
       setRepeatCadence("NEVER");
@@ -1065,13 +1078,24 @@ export function WorkClient({
     setGoalMessage(null);
     startCreatingGoal(async () => {
       const targetValue = String(formData.get("targetAt") || "");
-      const result = await createWorkGoal({
+      goalCreateCommand.current ??= {
+        clientRequestId: crypto.randomUUID(),
         title: String(formData.get("goalTitle") || ""),
         description: String(formData.get("goalDescription") || ""),
         targetAt: targetValue ? new Date(`${targetValue}T12:00:00`).toISOString() : null,
         projectId: String(formData.get("goalProjectId") || "") || null,
-      });
-      if (!result.ok) { setGoalMessage(result.error); return; }
+      };
+      let result: Awaited<ReturnType<typeof createWorkGoal>>;
+      try { result = await createWorkGoal(goalCreateCommand.current); }
+      catch { result = { ok: false, code: "UNAVAILABLE", error: "We couldn't confirm the save. Retry to recover your goal." }; }
+      if (!result.ok) {
+        const uncertain = goalSaveUnconfirmed || result.code === "UNAVAILABLE" || result.code === "CONFLICT";
+        setGoalSaveUnconfirmed(uncertain);
+        if (!uncertain) goalCreateCommand.current = null;
+        setGoalMessage(result.error); return;
+      }
+      goalCreateCommand.current = null;
+      setGoalSaveUnconfirmed(false);
       setGoalMessage("Goal added.");
       resetDraftKeepingNest(goalFormRef.current, "goalProjectId");
       router.refresh();
@@ -1173,8 +1197,8 @@ export function WorkClient({
       {!focusTaskOnly && !focusGoalOnly && <section hidden={view !== "tasks"} aria-labelledby="new-task-heading" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
         <h2 id="new-task-heading" className="sr-only">Add a personal task</h2>
         <form ref={createFormRef} onSubmit={(event) => { event.preventDefault(); submitNewTask(new FormData(event.currentTarget)); }} className="space-y-3" onInvalidCapture={(event) => { if (taskDetailsRef.current?.contains(event.target as Node)) taskDetailsRef.current.open = true; }}>
-          <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm font-semibold">Task title<input name="title" required maxLength={500} placeholder="What would you like to do?" className="mt-1 block min-h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" /></label><button type="submit" disabled={creating} className="min-h-11 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{creating ? "Saving…" : "Add task"}</button></div>
-          <details ref={taskDetailsRef}><summary className="min-h-8 cursor-pointer text-sm font-medium text-muted-foreground">Details, date & repeat</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm font-semibold">Task title<input name="title" disabled={creating || taskSaveUnconfirmed} required maxLength={500} placeholder="What would you like to do?" className="mt-1 block min-h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" /></label><button type="submit" disabled={creating} className="min-h-11 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{creating ? "Saving…" : taskSaveUnconfirmed ? "Retry save" : "Add task"}</button></div>
+          <details ref={taskDetailsRef}><summary className="min-h-8 cursor-pointer text-sm font-medium text-muted-foreground">Details, date & repeat</summary><fieldset disabled={creating || taskSaveUnconfirmed} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Useful detail<input name="detail" maxLength={5000} placeholder="Context, definition of done, or source" className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Due {repeatCadence === "NEVER" ? "(optional)" : "(required)"}<input name="dueAt" type="datetime-local" required={repeatCadence !== "NEVER"} className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
           <label className="text-xs font-black uppercase tracking-wide text-[#6f573b]">Repeat<select name="recurrenceCadence" value={repeatCadence} onChange={(event) => setRepeatCadence(event.target.value as typeof repeatCadence)} className="mt-1 block w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"><option value="NEVER">Does not repeat</option><option value="FIXED">Fixed schedule</option><option value="COMPLETION">After completion</option></select></label>
@@ -1184,7 +1208,7 @@ export function WorkClient({
             <label className="text-xs font-black uppercase tracking-wide text-violet-900">Unit<select name="recurrenceFrequency" defaultValue="WEEKLY" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal"><option value="DAILY">Day(s)</option><option value="WEEKLY">Week(s)</option><option value="MONTHLY">Month(s)</option></select></label>
             <label className="text-xs font-black uppercase tracking-wide text-violet-900">Timezone<input name="timezone" aria-label="Timezone" aria-describedby="task-repeat-timezone-help" required value={browserTimezone} onChange={(event) => setBrowserTimezone(event.target.value)} className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /><span id="task-repeat-timezone-help" className="mt-1 block text-[11px] font-semibold normal-case tracking-normal text-violet-800">The wall-clock time stays in this IANA zone across daylight-saving changes.</span></label>
           </fieldset>}
-          </div>{repeatCadence !== "NEVER" && <p className="mt-3 text-xs text-muted-foreground">Fixed schedule keeps regular dates. After completion sets the next date when you finish.</p>}</details>
+          </fieldset>{repeatCadence !== "NEVER" && <p className="mt-3 text-xs text-muted-foreground">Fixed schedule keeps regular dates. After completion sets the next date when you finish.</p>}</details>
         </form>
         {createMessage && <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{createMessage}</p>}
       </section>}
@@ -1206,7 +1230,7 @@ export function WorkClient({
           {focusGoalOnly && <button type="button" onClick={() => changeView("goals")} className="min-h-11 rounded-full border border-[#dcc8a5] bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#765f40]">Show all goals</button>}
         </div>
         <p className="mt-2 text-sm text-muted-foreground">Set a direction, connect your next steps, and track your progress.</p>
-        {!focusGoalOnly && <form ref={goalFormRef} onSubmit={(event) => { event.preventDefault(); submitNewGoal(new FormData(event.currentTarget)); }} className="mt-4 grid gap-3 rounded-2xl border border-violet-200 bg-violet-50/40 p-4 lg:grid-cols-[1.1fr_1.5fr_auto_auto_auto] lg:items-end"><label className="text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input name="goalTitle" required maxLength={500} placeholder="What does better look like?" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Why or definition of success<input name="goalDescription" maxLength={5000} placeholder="Enough context to recognize meaningful progress" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Target (optional)<input name="targetAt" type="date" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Nest (optional)<select name="goalProjectId" defaultValue="" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal"><option value="">Personal / unfiled</option>{projectOptions.filter((project) => project.canWrite).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><button type="submit" disabled={creatingGoal} className="rounded-xl bg-violet-700 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{creatingGoal ? "Saving…" : "Add goal"}</button></form>}
+        {!focusGoalOnly && <form ref={goalFormRef} onSubmit={(event) => { event.preventDefault(); submitNewGoal(new FormData(event.currentTarget)); }} className="mt-4 grid gap-3 rounded-2xl border border-violet-200 bg-violet-50/40 p-4 lg:grid-cols-[1.1fr_1.5fr_auto_auto_auto] lg:items-end"><fieldset disabled={creatingGoal || goalSaveUnconfirmed} className="contents"><label className="text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input name="goalTitle" required maxLength={500} placeholder="What does better look like?" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Why or definition of success<input name="goalDescription" maxLength={5000} placeholder="Enough context to recognize meaningful progress" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Target (optional)<input name="targetAt" type="date" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal" /></label><label className="text-xs font-black uppercase tracking-wide text-violet-900">Nest (optional)<select name="goalProjectId" defaultValue="" className="mt-1 block w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal"><option value="">Personal / unfiled</option>{projectOptions.filter((project) => project.canWrite).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label></fieldset><button type="submit" disabled={creatingGoal} className="rounded-xl bg-violet-700 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{creatingGoal ? "Saving…" : goalSaveUnconfirmed ? "Retry save" : "Add goal"}</button></form>}
         {goalMessage && <p role="status" className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-900">{goalMessage}</p>}
         {visibleGoals.length ? <div className={focusGoalOnly ? "mt-4 max-w-4xl" : "mt-4 grid gap-4 xl:grid-cols-2"}>{visibleGoals.map((goal) => <GoalCard key={goal.id} goal={goal} focused={goal.id === focusGoalId} availableTasks={snapshot.tasks} projectOptions={projectOptions} onRefresh={() => router.refresh()} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">What would you like to work toward? Add a goal above.</div>}
       </section>}

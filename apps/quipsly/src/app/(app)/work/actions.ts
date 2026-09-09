@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { createWorkOnce, WorkCreationError } from "@/lib/server/work-creation";
 import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
 import { updateCanonicalGoalStatusInTransaction } from "@/lib/server/canonical-goal-status";
@@ -40,7 +41,7 @@ export type UpdateWorkTaskStatusResult =
 
 export type CreateWorkTaskResult =
   | { ok: true; taskId: string; updatedAt: string; receiptId: string; recurrenceSeriesId?: string; occurrenceCount?: number }
-  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "UNAVAILABLE"; error: string };
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "CONFLICT" | "UNAVAILABLE"; error: string };
 
 export type EditWorkTaskResult =
   | { ok: true; taskId: string; title: string; detail: string | null; dueAt: string | null; updatedAt: string; receiptId: string }
@@ -52,7 +53,7 @@ export type WorkGoalMutationResult =
 
 export type CreateWorkGoalResult =
   | { ok: true; goalId: string; updatedAt: string; receiptId: string }
-  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "UNAVAILABLE"; error: string };
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "CONFLICT" | "UNAVAILABLE"; error: string };
 
 export type EditWorkGoalResult =
   | { ok: true; goalId: string; title: string; description: string | null; targetAt: string | null; updatedAt: string; receiptId: string }
@@ -242,6 +243,7 @@ async function visibleProjectId(input: { projectId?: string | null; actorEmail: 
 }
 
 export async function createWorkGoal(input: {
+  clientRequestId: string;
   title: string;
   description?: string;
   targetAt?: string | null;
@@ -257,36 +259,44 @@ export async function createWorkGoal(input: {
   if (!title || (targetAt && !Number.isFinite(targetAt.getTime())) || (targetAt && Math.abs(targetAt.getTime() - now.getTime()) > 20 * 365 * 86_400_000)) {
     return { ok: false, code: "INVALID_INPUT", error: "Add a goal title and, if used, a valid target date within twenty years." };
   }
-  const receiptId = randomUUID();
   try {
-    const prisma = getPrismaClient() as any;
-    const project = await visibleProjectId({ projectId: input?.projectId, actorEmail: cleanText(session.user.primaryEmail || session.user.email, 320).toLowerCase(), prisma });
-    if (!project.ok) return { ok: false, code: "INVALID_INPUT", error: "Choose a Nest that is available to your account." };
-    const goal = await prisma.goal.create({
-      data: {
-        ownerUserId: session.user.id,
-        projectId: project.projectId,
-        title,
-        description: description || null,
-        targetAt,
-        sourceJson: {
-          source: "quipsly-work-manual-goal-v1",
-          creationReceipt: {
-            id: receiptId,
-            kind: "quipsly-goal-create-v1",
-            createdAt: now.toISOString(),
-            createdByUserId: session.user.id,
-            externalSideEffects: false,
+    const projectId = cleanId(input?.projectId) || null;
+    const goal = await createWorkOnce({
+      prisma: getPrismaClient(), kind: "goal", actorUserId: session.user.id,
+      clientRequestId: input.clientRequestId, projectId,
+      intent: { title, description: description || null, targetAt: targetAt?.toISOString() ?? null },
+      create: async (tx, id, creationCommand) => {
+        const saved = await tx.goal.create({
+          data: {
+            id,
+            ownerUserId: session.user.id,
+            projectId,
+            title,
+            description: description || null,
+            targetAt,
+            sourceJson: {
+              source: "quipsly-work-manual-goal-v1",
+              creationCommand,
+              creationReceipt: {
+                id: creationCommand.receiptId,
+                kind: "quipsly-goal-create-v1",
+                createdAt: now.toISOString(),
+                createdByUserId: session.user.id,
+                externalSideEffects: false,
+              },
+            },
           },
-        },
+          select: { id: true, updatedAt: true },
+        });
+        return { id: saved.id, updatedAt: saved.updatedAt.toISOString(), receiptId: creationCommand.receiptId };
       },
-      select: { id: true, updatedAt: true },
     });
     revalidatePath("/work");
-    return { ok: true, goalId: goal.id, updatedAt: goal.updatedAt.toISOString(), receiptId };
+    return { ok: true, goalId: goal.id, updatedAt: goal.updatedAt, receiptId: goal.receiptId };
   } catch (error) {
+    if (error instanceof WorkCreationError) return { ok: false, code: error.code, error: error.message };
     console.error("[work] failed to create private goal", error);
-    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this goal. No task, message, or calendar event was created." };
+    return { ok: false, code: "UNAVAILABLE", error: "We couldn't confirm the save. Retry to recover your goal." };
   }
 }
 
@@ -655,6 +665,7 @@ export async function saveWeeklyCommitment(input: {
 }
 
 export async function createWorkTask(input: {
+  clientRequestId: string;
   title: string;
   detail?: string;
   dueAt?: string | null;
@@ -698,105 +709,112 @@ export async function createWorkTask(input: {
   if (dueAt && Math.abs(dueAt.getTime() - now.getTime()) > 10 * 365 * 86_400_000) {
     return { ok: false, code: "INVALID_INPUT", error: "Choose a due date within ten years." };
   }
-  const receiptId = randomUUID();
   try {
-    const prisma = getPrismaClient() as any;
-    const project = await visibleProjectId({ projectId: input?.projectId, actorEmail: cleanText(session.user.primaryEmail || session.user.email, 320).toLowerCase(), prisma });
-    if (!project.ok) return { ok: false, code: "INVALID_INPUT", error: "Choose a Nest that is available to your account." };
-    if (recurrence && parsedLocal) {
-      const seriesId = randomUUID();
-      const seriesReceipt = {
-        id: receiptId,
-        kind: "quipsly-task-recurrence-create-v1",
-        createdAt: now.toISOString(),
-        createdByUserId: session.user.id,
-        requestedLocalDateTime: parsedLocal.requestedLocalDateTime,
-        resolvedLocalDateTime: parsedLocal.resolvedLocalDateTime,
-        dstResolution: parsedLocal.dstResolution,
-        timezone: parsedLocal.timezone,
-        initialMaterializationCount: recurrence.cadence === "FIXED" ? 3 : 1,
-        externalSideEffects: false,
-        notificationScheduled: false,
-        providerCalendarEventCreated: false,
-      };
-      const saved = await prisma.$transaction(async (tx: any) => {
-        const series = await tx.taskRecurrenceSeries.create({
-          data: {
-            id: seriesId,
-            ownerUserId: session.user.id,
-            projectId: project.projectId,
-            title,
-            detail: detail || null,
-            cadence: recurrence.cadence,
-            frequency: recurrence.frequency,
-            interval: recurrenceInterval,
-            timezone: parsedLocal.timezone,
-            localTimeMinutes: parsedLocal.localTimeMinutes,
-            anchorLocalDate: parsedLocal.anchorLocalDate,
-            anchorDayOfMonth: parsedLocal.anchorDayOfMonth,
-            sourceJson: { source: "quipsly-task-recurrence-v1", creationReceipt: seriesReceipt },
-          },
-        });
-        const persistedSeries: PersistedTaskRecurrenceSeries = {
-          ...series,
-          projectId: series.projectId ?? null,
-          detail: series.detail ?? null,
-        };
-        const plans = initialOccurrencePlan(persistedSeries);
-        const materialized = [];
-        for (const occurrence of plans) {
-          materialized.push(await materializeTaskOccurrence({
-            tx,
-            series: persistedSeries,
-            occurrence,
-            actorUserId: session.user.id,
-            reason: "series-created",
-          }));
-        }
-        const firstTaskId = materialized[0]?.actionItemId;
-        const firstTask = firstTaskId ? await tx.actionItem.findUnique({ where: { id: firstTaskId }, select: { id: true, updatedAt: true } }) : null;
-        return { firstTask, occurrenceCount: materialized.length };
-      });
-      if (!saved.firstTask) throw new Error("Recurring task series did not produce its first canonical task.");
-      revalidatePath("/work");
-      revalidatePath("/schedule");
-      revalidatePath("/today");
-      return { ok: true, taskId: saved.firstTask.id, updatedAt: saved.firstTask.updatedAt.toISOString(), receiptId, recurrenceSeriesId: seriesId, occurrenceCount: saved.occurrenceCount };
-    }
-    const task = await prisma.actionItem.create({
-      data: {
-        assignedUserId: session.user.id,
-        projectId: project.projectId,
-        title,
-        detail: detail || null,
-        dueAt,
-        sourceJson: {
-          source: "quipsly-work-manual-v1",
-          createdByUserId: session.user.id,
-          createdAt: now.toISOString(),
-          dueIntent: parsedLocal ? {
+    const projectId = cleanId(input?.projectId) || null;
+    const saved = await createWorkOnce({
+      prisma: getPrismaClient(), kind: "task", actorUserId: session.user.id,
+      clientRequestId: input.clientRequestId, projectId,
+      intent: { title, detail: detail || null, dueAt: dueAt?.toISOString() ?? null,
+        dueLocal: dueLocal || null, timezone: dueLocal ? timezone : null,
+        recurrence: recurrence ? { cadence: recurrence.cadence, frequency: recurrence.frequency, interval: recurrenceInterval } : null },
+      create: async (tx, id, creationCommand) => {
+        const receiptId = creationCommand.receiptId;
+        if (recurrence && parsedLocal) {
+          const seriesId = randomUUID();
+          const seriesReceipt = {
+            id: receiptId,
+            kind: "quipsly-task-recurrence-create-v1",
+            createdAt: now.toISOString(),
+            createdByUserId: session.user.id,
             requestedLocalDateTime: parsedLocal.requestedLocalDateTime,
             resolvedLocalDateTime: parsedLocal.resolvedLocalDateTime,
             dstResolution: parsedLocal.dstResolution,
             timezone: parsedLocal.timezone,
-          } : null,
-          creationReceipt: {
-            id: receiptId,
-            kind: "quipsly-work-item-create-v1",
-            assignedToCreator: true,
+            initialMaterializationCount: recurrence.cadence === "FIXED" ? 3 : 1,
             externalSideEffects: false,
+            notificationScheduled: false,
+            providerCalendarEventCreated: false,
+          };
+          const series = await tx.taskRecurrenceSeries.create({
+            data: {
+              id: seriesId,
+              ownerUserId: session.user.id,
+              projectId,
+              title,
+              detail: detail || null,
+              cadence: recurrence.cadence,
+              frequency: recurrence.frequency,
+              interval: recurrenceInterval,
+              timezone: parsedLocal.timezone,
+              localTimeMinutes: parsedLocal.localTimeMinutes,
+              anchorLocalDate: parsedLocal.anchorLocalDate,
+              anchorDayOfMonth: parsedLocal.anchorDayOfMonth,
+              sourceJson: { source: "quipsly-task-recurrence-v1", creationReceipt: seriesReceipt },
+            },
+          });
+          const persistedSeries: PersistedTaskRecurrenceSeries = {
+            ...series,
+            projectId: series.projectId ?? null,
+            detail: series.detail ?? null,
+          };
+          const plans = initialOccurrencePlan(persistedSeries);
+          const materialized = [];
+          for (const occurrence of plans) {
+            materialized.push(await materializeTaskOccurrence({
+              tx,
+              series: persistedSeries,
+              occurrence,
+              actorUserId: session.user.id,
+              reason: "series-created",
+              ...(materialized.length === 0 ? { initialTask: { id, creationCommand: { ...creationCommand, occurrenceCount: plans.length } } } : {}),
+            }));
+          }
+          const firstTaskId = materialized[0]?.actionItemId;
+          const firstTask = firstTaskId ? await tx.actionItem.findUnique({ where: { id: firstTaskId }, select: { id: true, updatedAt: true } }) : null;
+          if (!firstTask) throw new Error("Recurring task series did not produce its first canonical task.");
+          return { id: firstTask.id, updatedAt: firstTask.updatedAt.toISOString(), receiptId, recurrenceSeriesId: seriesId, occurrenceCount: materialized.length };
+        }
+        const task = await tx.actionItem.create({
+          data: {
+            id,
+            assignedUserId: session.user.id,
+            projectId,
+            title,
+            detail: detail || null,
+            dueAt,
+            sourceJson: {
+              source: "quipsly-work-manual-v1",
+              creationCommand,
+              createdByUserId: session.user.id,
+              createdAt: now.toISOString(),
+              dueIntent: parsedLocal ? {
+                requestedLocalDateTime: parsedLocal.requestedLocalDateTime,
+                resolvedLocalDateTime: parsedLocal.resolvedLocalDateTime,
+                dstResolution: parsedLocal.dstResolution,
+                timezone: parsedLocal.timezone,
+              } : null,
+              creationReceipt: {
+                id: receiptId,
+                kind: "quipsly-work-item-create-v1",
+                assignedToCreator: true,
+                externalSideEffects: false,
+              },
+            },
           },
-        },
+          select: { id: true, updatedAt: true },
+        });
+        return { id: task.id, updatedAt: task.updatedAt.toISOString(), receiptId };
       },
-      select: { id: true, updatedAt: true },
     });
     revalidatePath("/work");
     revalidatePath("/schedule");
     revalidatePath("/today");
-    return { ok: true, taskId: task.id, updatedAt: task.updatedAt.toISOString(), receiptId };
+    return { ok: true, taskId: saved.id, updatedAt: saved.updatedAt, receiptId: saved.receiptId,
+      ...(saved.recurrenceSeriesId ? { recurrenceSeriesId: saved.recurrenceSeriesId, occurrenceCount: saved.occurrenceCount } : {}) };
   } catch (error) {
+    if (error instanceof WorkCreationError) return { ok: false, code: error.code, error: error.message };
     console.error("[work] failed to create private task", error);
-    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this task. Nothing was sent or scheduled elsewhere." };
+    return { ok: false, code: "UNAVAILABLE", error: "We couldn't confirm the save. Retry to recover your task." };
   }
 }
 

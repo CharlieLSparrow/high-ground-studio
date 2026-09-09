@@ -77,17 +77,80 @@ describe("Work Queue interactions", () => {
   it("keeps a task draft after a failed save and retries from the same form", async () => {
     const user = userEvent.setup();
     jest.mocked(createWorkTask).mockResolvedValueOnce({ ok: false, code: "UNAVAILABLE", error: "Could not save. Try again." })
-      .mockResolvedValueOnce({ ok: true, taskId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+      .mockResolvedValueOnce({ ok: true, taskId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" })
+      .mockResolvedValueOnce({ ok: true, taskId: "new", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "new-receipt" });
     render(<WorkClient initialSnapshot={snapshot} />);
     const title = screen.getByRole("textbox", { name: "Task title" });
     await user.type(title, "Capture this before I forget");
     await user.click(screen.getByRole("button", { name: "Add task" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Could not save");
     expect(title).toHaveValue("Capture this before I forget");
-    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(title).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Retry save" }));
     await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(2));
     expect(createWorkTask).toHaveBeenNthCalledWith(2, jest.mocked(createWorkTask).mock.calls[0]![0]);
     await waitFor(() => expect(title).toHaveValue(""));
+    expect(title).toBeEnabled();
+    await user.type(title, "A deliberately new task");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(jest.mocked(createWorkTask).mock.calls[2]![0].clientRequestId).not.toBe(jest.mocked(createWorkTask).mock.calls[0]![0].clientRequestId);
+  });
+
+  it.each(["tasks", "goals"] as const)("recovers a thrown %s save using the identical command, even after switching views", async view => {
+    const user = userEvent.setup();
+    const action = view === "tasks" ? jest.mocked(createWorkTask) : jest.mocked(createWorkGoal);
+    action.mockRejectedValueOnce(new Error("Connection dropped"));
+    jest.mocked(createWorkTask).mockResolvedValue({ ok: true, taskId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    jest.mocked(createWorkGoal).mockResolvedValue({ ok: true, goalId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    render(<WorkClient initialSnapshot={snapshot} initialView={view} />);
+    const title = screen.getByRole("textbox", { name: view === "tasks" ? "Task title" : "Goal title" });
+    await user.type(title, "Do not lose this idea");
+    await user.click(screen.getByRole("button", { name: view === "tasks" ? "Add task" : "Add goal" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Retry to recover");
+    expect(title).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Weekly planning" }));
+    await user.click(screen.getByRole("button", { name: view === "tasks" ? "Tasks" : "Goals" }));
+    await user.click(screen.getByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(2));
+    expect(action.mock.calls[1]![0]).toEqual(action.mock.calls[0]![0]);
+    expect(action.mock.calls[0]![0].clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+    await waitFor(() => expect(title).toBeEnabled());
+    expect(title).toHaveValue("");
+  });
+
+  it("allows a rejected input to be corrected without retaining a failed command", async () => {
+    const user = userEvent.setup();
+    jest.mocked(createWorkTask).mockResolvedValueOnce({ ok: false, code: "INVALID_INPUT", error: "Choose a different Nest." })
+      .mockResolvedValueOnce({ ok: true, taskId: "corrected", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    const title = screen.getByRole("textbox", { name: "Task title" });
+    await user.type(title, "First draft");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("different Nest");
+    expect(title).toBeEnabled();
+    await user.clear(title);
+    await user.type(title, "Corrected draft");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(2));
+    expect(jest.mocked(createWorkTask).mock.calls[1]![0]).toMatchObject({ title: "Corrected draft" });
+    expect(jest.mocked(createWorkTask).mock.calls[1]![0].clientRequestId).not.toBe(jest.mocked(createWorkTask).mock.calls[0]![0].clientRequestId);
+  });
+
+  it("does not forget an uncertain save when a later retry temporarily loses authorization", async () => {
+    const user = userEvent.setup();
+    jest.mocked(createWorkTask).mockRejectedValueOnce(new Error("Lost reply"))
+      .mockResolvedValueOnce({ ok: false, code: "AUTH_REQUIRED", error: "Sign in again." })
+      .mockResolvedValueOnce({ ok: true, taskId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    const title = screen.getByRole("textbox", { name: "Task title" });
+    await user.type(title, "Keep the original request");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await user.click(await screen.findByRole("button", { name: "Retry save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Sign in again");
+    expect(title).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(3));
+    expect(jest.mocked(createWorkTask).mock.calls.map(call => call[0])).toEqual(Array(3).fill(jest.mocked(createWorkTask).mock.calls[0]![0]));
   });
 
   it.each(["goals", "weekly"] as const)("keeps the %s draft when saving fails", async view => {
@@ -1027,7 +1090,7 @@ describe("Work Queue interactions", () => {
     await user.click(screen.getByText("Details, date & repeat"));
     await user.type(screen.getByRole("textbox", { name: "Useful detail" }), "Start from the session notes");
     await user.click(screen.getByRole("button", { name: "Add task" }));
-    expect(createWorkTask).toHaveBeenCalledWith({ title: "Draft the next outline", detail: "Start from the session notes", dueLocal: null, timezone: null, projectId: null, recurrence: null });
+    expect(createWorkTask).toHaveBeenCalledWith({ clientRequestId: expect.any(String), title: "Draft the next outline", detail: "Start from the session notes", dueLocal: null, timezone: null, projectId: null, recurrence: null });
     expect(await screen.findByRole("status")).toHaveTextContent("Task added.");
     expect(refresh).toHaveBeenCalled();
   });
@@ -1189,6 +1252,7 @@ describe("Work Queue interactions", () => {
     await user.type(screen.getByRole("textbox", { name: "Why or definition of success" }), "The next action opens from its source session");
     await user.click(screen.getByRole("button", { name: "Add goal" }));
     expect(createWorkGoal).toHaveBeenCalledWith({
+      clientRequestId: expect.any(String),
       title: "Make coaching follow-through obvious",
       description: "The next action opens from its source session",
       targetAt: null,
