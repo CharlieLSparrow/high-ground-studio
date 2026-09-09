@@ -6277,6 +6277,8 @@ private struct CaptureTagVocabularySheet: View {
     @State private var searchText = ""
     @State private var showsRetired = false
     @State private var createLabel = ""
+    @State private var createColor: String? = "#506b46"
+    @State private var colorTag: MobileCaptureWorkTag?
     @State private var renameTagID: String?
     @State private var renameLabel = ""
     @State private var archiveCandidate: MobileCaptureWorkTag?
@@ -6386,6 +6388,9 @@ private struct CaptureTagVocabularySheet: View {
                             Text("#\(normalizedCreateLabel) will join this Nest’s private vocabulary without being attached to a record.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            CaptureTagColorField(hexColor: $createColor)
+                            CaptureWorkTags(tags: [MobileWorkTagLabel(id: "new", label: normalizedCreateLabel,
+                                hexColor: createColor, isActive: true)], workID: "new-tag-preview")
                         }
                         if normalizedCreateLabel.utf16.count > 80 {
                             Label(
@@ -6397,13 +6402,16 @@ private struct CaptureTagVocabularySheet: View {
                         }
                         Button {
                             let requestedLabel = normalizedCreateLabel
+                            let requestedColor = createColor
                             focusedField = nil
                             Task {
                                 if await client.createTagVocabulary(
                                     projectID: project.id,
-                                    label: requestedLabel
+                                    label: requestedLabel,
+                                    hexColor: requestedColor
                                 ) {
                                     createLabel = ""
+                                    createColor = "#506b46"
                                 }
                             }
                         } label: {
@@ -6507,6 +6515,9 @@ private struct CaptureTagVocabularySheet: View {
             }
         }
         .accessibilityIdentifier("CaptureTagVocabularySheet")
+        .sheet(item: $colorTag) { tag in
+            CaptureTagColorEditor(client: client, tag: tag)
+        }
     }
 
     @ViewBuilder
@@ -6514,8 +6525,8 @@ private struct CaptureTagVocabularySheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("#\(tag.label)")
-                        .font(.body.weight(.semibold))
+                    CaptureWorkTags(tags: [MobileWorkTagLabel(id: tag.id, label: tag.label,
+                        hexColor: tag.hexColor, isActive: tag.isActive)], workID: "vocabulary")
                     Text("\(tag.usageCount) assignment\(tag.usageCount == 1 ? "" : "s") · \(tag.slug)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -6527,6 +6538,9 @@ private struct CaptureTagVocabularySheet: View {
                         .foregroundStyle(.secondary)
                 } else if tag.isActive {
                     Menu {
+                        Button { colorTag = tag } label: {
+                            Label("Change color", systemImage: "paintpalette")
+                        }
                         Button {
                             renameTagID = tag.id
                             renameLabel = tag.label

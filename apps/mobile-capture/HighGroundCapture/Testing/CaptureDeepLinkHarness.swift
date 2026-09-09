@@ -71,6 +71,11 @@ struct CaptureDeepLinkHarness {
         precondition(plainMessage.suggestedTaskTitle.count == 160 && plainMessage.linkedTasks == nil)
         precondition(CaptureTagColor(hex: "#f2e4c5")?.usesWhiteText == false)
         precondition(CaptureTagColor(hex: "#aBc") == CaptureTagColor(hex: "#aabbcc"))
+        precondition(CaptureTagColor(hex: "#aBc")?.hexString == "#aabbcc")
+        precondition(CaptureTagColor(red: 0.5, green: 0, blue: 1)?.hexString == "#8000ff")
+        precondition(CaptureTagColor(red: -0.1, green: 1.1, blue: 0.5)?.hexString == "#00ff80")
+        precondition(CaptureTagColor(red: .nan, green: 0, blue: 0) == nil)
+        precondition(CaptureTagColor(red: 0, green: .infinity, blue: 0) == nil)
         for invalid: String? in [nil, "", "red", "#12345", "#12345678", "#ggg", "url(https://example.test)"] {
             precondition(CaptureTagColor(hex: invalid) == nil, "Unspecified or invalid colors should inherit the app theme.")
         }
@@ -78,6 +83,8 @@ struct CaptureDeepLinkHarness {
             for green in stride(from: 0, through: 255, by: 17) {
                 for blue in stride(from: 0, through: 255, by: 17) {
                     let hex = String(format: "#%02x%02x%02x", red, green, blue)
+                    precondition(CaptureTagColor(hex: hex)?.hexString == hex,
+                                 "Saved RGB values must round-trip without changing shared colors.")
                     precondition(CaptureTagColor(hex: hex)!.textContrastRatio >= 4.5,
                                  "Every saved color must retain readable text: \(hex)")
                 }

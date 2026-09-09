@@ -3313,6 +3313,21 @@ final class CaptureExperienceUITests: XCTestCase {
             previewCreateTag.isEnabled,
             "Preview must explain direct vocabulary creation without pretending to mutate the Nest."
         )
+        previewCreateField.tap()
+        previewCreateField.typeText("Session prep")
+        app.buttons["CaptureTagVocabularyKeyboardDone"].tap()
+        let colorPicker = app.descendants(matching: .any)["CaptureTagColorPicker"].firstMatch
+        XCTAssertTrue(colorPicker.waitForExistence(timeout: 3),
+            "A new shared tag should offer the native color picker right where it is created.")
+        let resetColor = app.buttons["CaptureTagColorReset"]
+        reveal(resetColor)
+        XCTAssertTrue(resetColor.isEnabled)
+        resetColor.tap()
+        XCTAssertFalse(resetColor.isEnabled, "Theme color is a deliberate, reversible choice.")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_new-tag-preview_new"].exists)
+        previewCreateField.tap()
+        previewCreateField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Session prep".count))
+        app.buttons["CaptureTagVocabularyKeyboardDone"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTagVocabularyAliases_preview-episode-4"].exists)
         let previewManageTag = app.buttons["CaptureTagVocabularyManage_preview-episode-4"]
         XCTAssertTrue(previewManageTag.exists)

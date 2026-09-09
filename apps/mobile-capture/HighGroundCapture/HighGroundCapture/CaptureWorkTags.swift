@@ -1,4 +1,87 @@
 import SwiftUI
+import UIKit
+
+/// The standard system picker writes the same opaque sRGB hex used by Nest.
+/// A nil color is meaningful: the tag follows the app theme on every device.
+struct CaptureTagColorField: View {
+    @Binding var hexColor: String?
+
+    private var color: Binding<Color> {
+        Binding(get: {
+            let rgb = CaptureTagColor(hex: hexColor) ?? CaptureTagColor(hex: "#506b46")!
+            return Color(.sRGB, red: rgb.red, green: rgb.green, blue: rgb.blue, opacity: 1)
+        }, set: { value in
+            guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+                  let converted = UIColor(value).cgColor.converted(to: space, intent: .defaultIntent, options: nil),
+                  let components = converted.components, components.count >= 3,
+                  let rgb = CaptureTagColor(red: Double(components[0]), green: Double(components[1]), blue: Double(components[2])) else { return }
+            hexColor = rgb.hexString
+        })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ColorPicker("Color", selection: color, supportsOpacity: false)
+                .accessibilityIdentifier("CaptureTagColorPicker")
+            Button(hexColor == nil ? "Using theme color" : "Use theme color") { hexColor = nil }
+                .buttonStyle(.borderless)
+                .disabled(hexColor == nil)
+                .accessibilityIdentifier("CaptureTagColorReset")
+        }
+    }
+}
+
+struct CaptureTagColorEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: CaptureWorkClient
+    let tag: MobileCaptureWorkTag
+    @State private var hexColor: String?
+    @State private var attemptedSave = false
+
+    init(client: CaptureWorkClient, tag: MobileCaptureWorkTag) {
+        self.client = client
+        self.tag = tag
+        _hexColor = State(initialValue: tag.hexColor)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    CaptureWorkTags(tags: [MobileWorkTagLabel(id: tag.id, label: tag.label,
+                        hexColor: hexColor, isActive: tag.isActive)], workID: "color-preview")
+                    CaptureTagColorField(hexColor: $hexColor)
+                } footer: {
+                    Text("This color follows the tag throughout the shared Nest.")
+                }
+                if attemptedSave, let message = client.tagVocabularyMessage {
+                    Section { Text(message).foregroundStyle(.secondary) }
+                }
+            }
+            .disabled(client.isMutatingTagVocabulary)
+            .captureFormSurface()
+            .navigationTitle("Tag color")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(client.isMutatingTagVocabulary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isMutatingTagVocabulary ? "Saving…" : "Save") {
+                        attemptedSave = true
+                        Task {
+                            if await client.changeTagVocabulary(tag: tag, operation: "COLOR", hexColor: hexColor) {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .disabled(client.isMutatingTagVocabulary || hexColor == tag.hexColor)
+                    .accessibilityIdentifier("CaptureTagColorSave")
+                }
+            }
+        }
+    }
+}
 
 /// Edits the parent task draft only. Its Save commits text and tags together.
 struct CaptureTaskTagPicker: View {

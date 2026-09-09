@@ -18,6 +18,18 @@ struct CaptureTagColor: Equatable {
         blue = Double(value & 255) / 255
     }
 
+    init?(red: Double, green: Double, blue: Double) {
+        guard red.isFinite, green.isFinite, blue.isFinite else { return nil }
+        self.red = min(1, max(0, red))
+        self.green = min(1, max(0, green))
+        self.blue = min(1, max(0, blue))
+    }
+
+    var hexString: String {
+        String(format: "#%02x%02x%02x", Int((red * 255).rounded()),
+               Int((green * 255).rounded()), Int((blue * 255).rounded()))
+    }
+
     private var luminance: Double {
         func linear(_ channel: Double) -> Double {
             channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)

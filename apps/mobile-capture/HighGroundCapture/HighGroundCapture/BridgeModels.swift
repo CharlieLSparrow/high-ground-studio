@@ -2380,6 +2380,7 @@ struct MobileCaptureWorkTag: Codable, Identifiable, Hashable {
     let updatedAt: String?
     let mergedInto: MobileCaptureWorkTagRedirect?
     let aliases: [MobileCaptureWorkTagAlias]?
+    var hexColor: String? = nil
 }
 
 struct MobileCaptureWorkTagAlias: Codable, Identifiable, Hashable {
@@ -2403,6 +2404,7 @@ struct MobileCaptureWorkTagTaxonomyResponse: Codable {
         let archivedAt: String?
         let updatedAt: String
         let aliases: [MobileCaptureWorkTagAlias]
+        let hexColor: String?
     }
 
     let ok: Bool
@@ -2425,6 +2427,7 @@ struct MobileCaptureWorkTagCreateResponse: Codable {
         let archivedAt: String?
         let updatedAt: String
         let aliases: [MobileCaptureWorkTagAlias]
+        let hexColor: String?
     }
 
     let ok: Bool
@@ -7221,7 +7224,8 @@ final class CaptureWorkClient: ObservableObject {
     @discardableResult
     func createTagVocabulary(
         projectID: String,
-        label: String
+        label: String,
+        hexColor: String? = nil
     ) async -> Bool {
         guard !isMutatingTagVocabulary else { return false }
         guard !projectID.hasPrefix("preview-") else {
@@ -7256,6 +7260,11 @@ final class CaptureWorkClient: ObservableObject {
             return false
         }
 
+        let normalizedColor = CaptureTagColor(hex: hexColor)?.hexString
+        guard hexColor == nil || normalizedColor != nil else {
+            tagVocabularyMessage = "Choose a valid tag color."
+            return false
+        }
         isMutatingTagVocabulary = true
         defer { isMutatingTagVocabulary = false }
         errorMessage = nil
@@ -7269,6 +7278,7 @@ final class CaptureWorkClient: ObservableObject {
                 "operation": "CREATE",
                 "projectId": projectID,
                 "label": normalizedLabel,
+                "hexColor": normalizedColor.map { $0 as Any } ?? NSNull(),
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try decodeMobileCaptureResponse(
@@ -7318,7 +7328,8 @@ final class CaptureWorkClient: ObservableObject {
     func changeTagVocabulary(
         tag: MobileCaptureWorkTag,
         operation: String,
-        label: String? = nil
+        label: String? = nil,
+        hexColor: String? = nil
     ) async -> Bool {
         let canonicalOperation = operation.uppercased()
         guard !isMutatingTagVocabulary else { return false }
@@ -7344,7 +7355,9 @@ final class CaptureWorkClient: ObservableObject {
         let normalizedLabel = label?
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ") ?? ""
-        guard ["RENAME", "ARCHIVE", "RESTORE"].contains(canonicalOperation),
+        let normalizedColor = CaptureTagColor(hex: hexColor)?.hexString
+        guard ["RENAME", "ARCHIVE", "RESTORE", "COLOR"].contains(canonicalOperation),
+              canonicalOperation != "COLOR" || hexColor == nil || normalizedColor != nil,
               canonicalOperation != "RENAME" || !normalizedLabel.isEmpty,
               let url = URL(string: "\(baseURL)/api/work/tags") else {
             tagVocabularyMessage = "Choose a valid vocabulary change and name."
@@ -7368,6 +7381,9 @@ final class CaptureWorkClient: ObservableObject {
             if canonicalOperation == "RENAME" {
                 body["label"] = normalizedLabel
             }
+            if canonicalOperation == "COLOR" {
+                body["hexColor"] = normalizedColor.map { $0 as Any } ?? NSNull()
+            }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try decodeMobileCaptureResponse(
@@ -7383,6 +7399,7 @@ final class CaptureWorkClient: ObservableObject {
                   payload.projectId == workspace?.project.id,
                   let savedTag = payload.tag,
                   savedTag.id == tag.id,
+                  canonicalOperation != "COLOR" || savedTag.hexColor == normalizedColor,
                   let receiptID = payload.receiptId,
                   !receiptID.isEmpty else {
                 tagVocabularyMessage = payload.error
@@ -7394,6 +7411,8 @@ final class CaptureWorkClient: ObservableObject {
             }
 
             switch canonicalOperation {
+            case "COLOR":
+                tagVocabularyMessage = "Updated the shared color for #\(savedTag.label)."
             case "RENAME":
                 tagVocabularyMessage = "Renamed to #\(savedTag.label). #\(tag.label) remains an alias, so existing links and older language still resolve."
             case "ARCHIVE":
@@ -7560,7 +7579,8 @@ final class CaptureWorkClient: ObservableObject {
                                 label: "Episode four",
                                 slug: "episode-four"
                             ),
-                        ]
+                        ],
+                        hexColor: "#506b46"
                     ),
                     MobileCaptureWorkTag(
                         id: "preview-proof-listen",

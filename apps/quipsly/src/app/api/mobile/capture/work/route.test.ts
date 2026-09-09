@@ -183,6 +183,7 @@ describe("mobile Capture Work contract", () => {
           projectId: "project-1",
           slug: "episode-4",
           label: "Episode 4",
+          hexColor: "#506b46",
           isActive: true,
           archivedAt: null,
           updatedAt,
@@ -194,6 +195,7 @@ describe("mobile Capture Work contract", () => {
           projectId: "project-1",
           slug: "old",
           label: "Old",
+          hexColor: null,
           isActive: false,
           archivedAt: new Date("2026-07-20T18:00:00.000Z"),
           updatedAt,
@@ -252,6 +254,7 @@ describe("mobile Capture Work contract", () => {
           {
             id: "tag-1",
             usageCount: 3,
+            hexColor: "#506b46",
             isActive: true,
             archivedAt: null,
             updatedAt: "2026-07-24T18:00:00.000Z",
@@ -261,6 +264,7 @@ describe("mobile Capture Work contract", () => {
           {
             id: "tag-old",
             usageCount: 0,
+            hexColor: null,
             isActive: false,
             archivedAt: "2026-07-20T18:00:00.000Z",
             mergedInto: { id: "tag-1", label: "Episode 4", slug: "episode-4" },
