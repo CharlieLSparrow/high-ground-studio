@@ -45,9 +45,19 @@ function response(value: unknown) {
 }
 
 describe("SessionRecordingShareCard", () => {
+  const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  const scrollIntoView = jest.fn();
   beforeEach(() => {
     jest.restoreAllMocks();
     Reflect.deleteProperty(global, "fetch");
+    // jsdom has no layout engine. Model this browser method and assert its
+    // target; whether scrolling feels right still needs browser workflow proof.
+    scrollIntoView.mockReset();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+  });
+  afterEach(() => {
+    if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+    else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
   });
 
   it("switches recording attempts without combining their sources or gaps", async () => {
@@ -519,6 +529,8 @@ describe("SessionRecordingShareCard", () => {
     expect(source.currentTime).toBeCloseTo(8.1, 3);
     expect(play).toHaveBeenCalled();
     expect(screen.getByText(/plays the original passage.*original recording stays unchanged/i)).toBeInTheDocument();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "nearest" }));
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(document.getElementById("recording-cut-audition"));
   });
 
   it("keeps overlapping speech included and explains why", async () => {
