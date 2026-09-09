@@ -102,6 +102,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
   const [mobilePanel, setMobilePanel] = useState<"call" | "chat">("call");
   const [desktopChatOpen, setDesktopChatOpen] = useState(true);
+  const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMobilePanel("call");
@@ -289,6 +290,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 compact
                 narrow
                 showSessionHeading={false}
+                controlsContainer={controlsContainer}
               />
               </div>
               <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${mobilePanel === "chat" ? "flex" : "hidden"} ${desktopChatOpen ? "lg:flex" : "lg:hidden"}`}>
@@ -311,6 +313,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               )}
               </div>
             </div>
+            <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="mt-3 shrink-0 rounded-2xl border border-border bg-card p-3 text-card-foreground empty:hidden" />
           </aside>
         ) : null}
       </div>

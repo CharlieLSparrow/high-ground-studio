@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
 import type { BrowserRetainedSourceGuardianEvidence } from "@/lib/session-guardian";
 
@@ -71,6 +71,7 @@ jest.mock("livekit-client", () => {
 });
 
 import { LiveSessionRoom, liveMicrophoneStatusPresentation } from "./live-session-room";
+import { LiveSessionDockLauncher, LiveSessionDockProvider } from "./live-session-dock";
 
 type MockLiveKitRoom = {
   __reset: () => void;
@@ -440,6 +441,51 @@ describe("LiveSessionRoom", () => {
     expect(getUserMedia).not.toHaveBeenCalled();
     expect(query).not.toHaveBeenCalledWith({ name: "microphone" });
     expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the same live controls outside the chat and scrolling panes, including safe recording stop", async () => {
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([{kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone"}]),
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    global.fetch = jest.fn(async () => ({ok: true, status: 200, json: async () => ({
+      ok: true, canJoin: true, serverUrl: "wss://live.test", participantToken: "room-scoped-test-token", messages: [],
+    })})) as unknown as typeof fetch;
+    await act(async () => { render(<LiveSessionDockProvider><LiveSessionDockLauncher autoOpen config={{
+      callRoomId: "dock-controls-room", captureGroupId: "55555555-5555-4555-8555-555555555554",
+      sessionTitle: "Coaching controls", kind: "coaching", purpose: "COACHING", projectSlug: "coaching",
+    }} /></LiveSessionDockProvider>); });
+
+    const slot = screen.getByTestId("live-call-controls-slot");
+    expect(slot).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByRole("button", {name: "Mic on"}));
+    fireEvent.click(screen.getByRole("button", {name: "Join call"}));
+    expect(await within(slot).findByRole("button", {name: "Unmute"})).toBeEnabled();
+    expect(screen.getAllByRole("group", {name: "Call controls"})).toHaveLength(1);
+    expect(document.getElementById("live-call-stage-panel")).not.toContainElement(slot);
+    expect(document.getElementById("live-call-chat-panel")).not.toContainElement(slot);
+
+    fireEvent.click(screen.getByRole("button", {name: "Chat"}));
+    expect(document.getElementById("live-call-stage-panel")).toHaveClass("hidden");
+    fireEvent.click(within(slot).getByRole("button", {name: "Unmute"}));
+    const mute = await within(slot).findByRole("button", {name: "Mute"});
+    expect(mute).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(mute);
+    expect(await within(slot).findByRole("button", {name: "Unmute"})).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", {name: "Minimize live call"}));
+    fireEvent.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
+    expect(screen.getByTestId("live-call-controls-slot")).toBe(slot);
+    expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1);
+    expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", {name: "Call"}));
+    fireEvent.click(screen.getByRole("button", {name: "Simulate retained source start"}));
+    fireEvent.click(screen.getByRole("button", {name: "Chat"}));
+    expect(within(slot).getByRole("button", {name: "Start camera"})).toBeDisabled();
+    fireEvent.click(within(slot).getByRole("button", {name: "Stop recording & leave"}));
+    await waitFor(() => expect(mockLiveKitRoom.disconnect).toHaveBeenCalledTimes(1));
+    expect(slot).toBeEmptyDOMElement();
+    expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
   });
 
   it("reopens a remembered setup automatically only when browser permission is already granted", async () => {

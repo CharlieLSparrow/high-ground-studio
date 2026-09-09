@@ -30,6 +30,7 @@ import {
 } from "livekit-client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
@@ -369,16 +370,18 @@ function LiveMicrophoneStatus({
   evidence,
   muted,
   recoveryHeld,
+  compact = false,
 }: {
   evidence: StudioAudioMeterEvidence | null;
   muted: boolean;
   recoveryHeld: boolean;
+  compact?: boolean;
 }) {
   const presentation = liveMicrophoneStatusPresentation({ evidence, muted, recoveryHeld });
 
   return (
     <span
-      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-xs font-black ${presentation.style}`}
+      className={`inline-flex items-center gap-2 rounded-full border font-black ${compact ? "min-h-6 px-3 text-[10px]" : "min-h-11 px-4 text-xs"} ${presentation.style}`}
       aria-label={`Live microphone status: ${presentation.label}`}
       data-testid="live-microphone-status"
     >
@@ -493,6 +496,7 @@ export function LiveSessionRoom({
   compact = false,
   narrow = false,
   showSessionHeading = true,
+  controlsContainer = null,
 }: {
   callRoomId: string;
   captureGroupId?: string | null;
@@ -510,6 +514,7 @@ export function LiveSessionRoom({
   compact?: boolean;
   narrow?: boolean;
   showSessionHeading?: boolean;
+  controlsContainer?: HTMLElement | null;
 }) {
   const router = useRouter();
   const experience = useMemo(
@@ -2310,6 +2315,19 @@ export function LiveSessionRoom({
     </div>
   );
 
+  const callControls = connected ? (
+    <div className="flex flex-col gap-2" role="group" aria-label="Call controls">
+      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        {callAudioMode === "this-device" ? (
+          <button type="button" onClick={() => void toggleMicrophone()} aria-pressed={microphoneMuted} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:cursor-not-allowed disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
+        ) : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
+        <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
+        <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-rose-800 px-2 py-2 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
+      </div>
+      {callAudioMode === "this-device" ? <div><LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} compact={Boolean(controlsContainer)} /></div> : null}
+    </div>
+  ) : null;
+
   return (
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2406,16 +2424,9 @@ export function LiveSessionRoom({
 
           {connected ? callVideoStage : null}
 
-          {connected ? (
-            <div className="flex flex-wrap gap-2" aria-label="Call controls">
-              {callAudioMode === "this-device" ? <>
-                <button type="button" onClick={() => void toggleMicrophone()} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-45 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
-                <LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} />
-              </> : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black uppercase tracking-wide text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
-              <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
-              <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-wait disabled:opacity-60"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
-            </div>
-          ) : null}
+          {/* Keep transport and capture ownership here while the dock places
+              these controls outside its independently scrolling/hidden panes. */}
+          {controlsContainer ? createPortal(callControls, controlsContainer) : callControls}
 
           {/* One stable recorder owns capture/recovery across call transitions.
               Keep it mounted in the lobby so a reload resumes saved uploads
