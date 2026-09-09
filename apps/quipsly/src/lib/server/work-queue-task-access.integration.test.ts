@@ -5,6 +5,7 @@ import { workQueueTaskWhere, readEditableWorkQueueTaskIds } from "./work-queue-t
 import { editCanonicalTaskInTransaction } from "./canonical-task-edit";
 import { personalOrSharedSessionTaskAccessWhere, personalOrSharedWorkspaceTaskAccessWhere } from "./task-access";
 import { personalOrSharedCoachingGoalAccessWhere, readEditableCoachingGoalIds } from "./coaching-work-access";
+import { workQueueGoalRelations, workQueueGoalWhere } from "./work-queue-goal-access";
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
 if (enabled) {
@@ -15,6 +16,79 @@ if (enabled) {
 
 (enabled ? describe : describe.skip)("work queue task capabilities", () => {
   afterAll(async () => { if (enabled) await getPrismaClient().$disconnect(); });
+  it.each(["engagement", "booking", "production"])("scopes linked work, parent goals, and child counts independently in %s collaboration", async scope => {
+    const rollback = new Error("rollback linked goal privacy fixture");
+    try {
+      await getPrismaClient().$transaction(async tx => {
+        const nonce = randomUUID();
+        const [coach, client, outsider] = await Promise.all(["coach", "client", "outsider"].map(name =>
+          tx.user.create({ data: { name, primaryEmail: `goal-links-${name}-${nonce}@example.test` } })));
+        const project = await tx.studioProject.create({ data: { slug: `goal-links-${nonce}`, name: "Linked work QA",
+          workspace: { create: { slug: `goal-links-${nonce}`, name: "Linked work QA" } } } });
+        const engagement = await tx.coachingEngagement.create({ data: { projectId: project.id, title: "Client relationship",
+          primaryCoachUserId: coach.id, primaryClientUserId: client.id,
+          members: { create: [{ userId: coach.id, role: "COACH" }, { userId: client.id, role: "CLIENT" }] } } });
+        const booking = await tx.coachingBooking.create({ data: { engagementId: engagement.id,
+          coachUserId: coach.id, clientUserId: client.id,
+          scheduledStart: new Date("2026-09-12T10:00:00Z"), scheduledEnd: new Date("2026-09-12T11:00:00Z") } });
+        const room = await tx.callRoom.create({ data: { createdByUserId: coach.id,
+          participants: { create: { userId: client.id, accessStatus: "ACTIVE", role: "GUEST" } } } });
+        const context = scope === "engagement" ? { engagementId: engagement.id }
+          : scope === "booking" ? { bookingId: booking.id } : { roomId: room.id };
+        const shared = { visibility: "SESSION_SHARED" };
+        const privateSource = { visibility: "AUTHOR_PRIVATE" };
+        const parent = await tx.goal.create({ data: { ...context, ownerUserId: coach.id, title: "Private coach strategy", sourceJson: privateSource } });
+        const goal = await tx.goal.create({ data: { ...context, ownerUserId: coach.id, parentGoalId: parent.id,
+          title: "Our shared goal", sourceJson: shared } });
+        const sharedChild = await tx.goal.create({ data: { ...context, ownerUserId: coach.id, parentGoalId: goal.id,
+          title: "Our next milestone", sourceJson: shared } });
+        const privateChild = await tx.goal.create({ data: { ...context, ownerUserId: coach.id, parentGoalId: goal.id,
+          title: "Private coach milestone", sourceJson: privateSource } });
+        const clientChild = await tx.goal.create({ data: { ...context, ownerUserId: client.id, parentGoalId: goal.id,
+          title: "My personal milestone", sourceJson: privateSource } });
+        const privateTask = await tx.actionItem.create({ data: { ...context, assignedUserId: coach.id,
+          title: "Private coach preparation", sourceJson: privateSource } });
+        const sharedTask = await tx.actionItem.create({ data: { ...context,
+          assignedUserId: scope === "production" ? null : coach.id, title: "Prepare together", sourceJson: shared } });
+        const ownTask = await tx.actionItem.create({ data: { assignedUserId: client.id, title: "Personal follow-up" } });
+        const foreignTask = await tx.actionItem.create({ data: { assignedUserId: outsider.id, title: "Unrelated private work" } });
+        await tx.goalTaskLink.createMany({ data: [privateTask, sharedTask, ownTask, foreignTask].map(task => ({ goalId: goal.id, actionItemId: task.id })) });
+        await tx.goalTaskLink.create({ data: { goalId: clientChild.id, actionItemId: sharedTask.id } });
+        const read = (actorId: string, goalId = goal.id) => tx.goal.findFirst({
+          where: { id: goalId, AND: [workQueueGoalWhere(actorId)] },
+          select: { id: true, title: true, ...workQueueGoalRelations(actorId) },
+        });
+        const clientView = await read(client.id);
+        expect(clientView?.parent).toBeNull();
+        expect(clientView?._count.children).toBe(2);
+        expect(clientView?.taskLinks.map(link => link.actionItem.id).sort()).toEqual([sharedTask.id, ownTask.id].sort());
+        expect(JSON.stringify(clientView)).not.toContain(privateTask.title);
+        expect(JSON.stringify(clientView)).not.toContain(foreignTask.id);
+        const coachView = await read(coach.id);
+        expect(coachView?.parent).toEqual({ id: parent.id, title: parent.title });
+        expect(coachView?._count.children).toBe(2);
+        expect(coachView?.taskLinks.map(link => link.actionItem.id).sort()).toEqual([privateTask.id, sharedTask.id].sort());
+        expect(await read(outsider.id)).toBeNull();
+        expect(await read(client.id, privateChild.id)).toBeNull();
+        expect(await read(client.id, sharedChild.id)).not.toBeNull();
+        // Sharing the parent later makes it visible without copying or changing
+        // the link. The relationship itself never changes its audience.
+        await tx.goal.update({ where: { id: parent.id }, data: { sourceJson: shared } });
+        expect((await read(client.id))?.parent?.id).toBe(parent.id);
+        if (scope === "production") {
+          await tx.callParticipant.updateMany({ where: { roomId: room.id, userId: client.id }, data: { accessStatus: "REMOVED" } });
+        } else {
+          await tx.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: engagement.id, userId: client.id } }, data: { status: "REMOVED" } });
+        }
+        expect(await read(client.id)).toBeNull();
+        // The client's own goal survives removal, but no longer brings its
+        // former shared parent or linked task along with it.
+        expect(await read(client.id, clientChild.id)).toMatchObject({ id: clientChild.id, parent: null, taskLinks: [], _count: { children: 0 } });
+        expect((await read(coach.id))?.taskLinks).toHaveLength(2);
+        throw rollback;
+      }, { timeout: 30_000 });
+    } catch (error) { if (error !== rollback) throw error; }
+  });
   it("keeps production-session assignments private and exposes editable shared tasks using the mutation policy", async () => {
     const prisma = getPrismaClient();
     const rollback = new Error("rollback synthetic queue fixture");

@@ -5,10 +5,11 @@ import { getPrismaClient } from "@/lib/prisma";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
-import { coachingBookingParticipantWhere, personalOrSharedCoachingGoalAccessWhere, readEditableCoachingGoalIds, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { coachingBookingParticipantWhere, readEditableCoachingGoalIds } from "@/lib/server/coaching-work-access";
 import { sessionActorAccessWhere } from "@/lib/server/session-access";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { readEditableWorkQueueTaskIds, workQueueTaskWhere } from "@/lib/server/work-queue-task-access";
+import { workQueueGoalWhere, workQueueGoalRelations } from "@/lib/server/work-queue-goal-access";
 
 import { StudioAccessShell } from "../studio-access-shell";
 import { WorkClient } from "./work-client";
@@ -93,10 +94,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
       select: { id: true, title: true, body: true, sourceJson: true, createdAt: true, updatedAt: true, room: { select: { id: true, title: true } }, booking: { select: { id: true, scheduledStart: true, callRoom: { select: { id: true, title: true } } } } },
     }),
     prisma.goal.findMany({
-      where: { OR: [
-        ...personalOrSharedCoachingGoalAccessWhere(userId),
-        ...(sharedProductionRoomIds.length ? [{ roomId: { in: sharedProductionRoomIds }, AND: [sharedCoachingWorkVisibilityWhere()] }] : []),
-      ] },
+      where: workQueueGoalWhere(userId),
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
       take: 500,
       select: {
@@ -113,9 +111,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
         } },
         project: { select: { id: true, name: true, slug: true } },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true, isActive: true } } } },
-        parent: { select: { id: true, title: true } },
-        taskLinks: { take: 100, select: { relationship: true, actionItem: { select: { id: true, title: true, status: true } } } },
-        _count: { select: { children: true } },
+        ...workQueueGoalRelations(userId),
       },
     }),
     prisma.weeklyCommitment.findMany({

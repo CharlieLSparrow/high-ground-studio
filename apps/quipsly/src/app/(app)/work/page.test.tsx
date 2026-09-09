@@ -3,7 +3,8 @@ import { render, screen } from "@testing-library/react";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
-import { coachingBookingParticipantWhere, personalOrSharedCoachingGoalAccessWhere, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { coachingBookingParticipantWhere, personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
+import { workQueueGoalWhere, workQueueGoalRelations } from "@/lib/server/work-queue-goal-access";
 import { sessionActorAccessWhere } from "@/lib/server/session-access";
 import { WorkClient } from "./work-client";
 
@@ -88,10 +89,9 @@ describe("Work Queue page truth states", () => {
     ]);
     expect(prisma.coachingBooking.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: coachingBookingParticipantWhere("member") }));
     expect(prisma.callRoom.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: sessionActorAccessWhere({ id: "member" }) }));
-    expect(prisma.goal.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { OR: [
-      ...personalOrSharedCoachingGoalAccessWhere("member"),
-      { roomId: { in: ["team-room"] }, AND: [sharedCoachingWorkVisibilityWhere()] },
-    ] } }));
+    expect(prisma.goal.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: workQueueGoalWhere("member"), select: expect.objectContaining(workQueueGoalRelations("member")),
+    }));
     expect(prisma.goal.findMany).toHaveBeenNthCalledWith(2, {
       where: { id: { in: ["goal"] }, OR: personalOrSharedCoachingGoalAccessWhere("member", "write") }, select: { id: true },
     });
