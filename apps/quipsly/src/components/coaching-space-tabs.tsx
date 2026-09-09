@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { CalendarDays, MessageCircle, NotebookPen, UsersRound } from "lucide-react";
+import { WorkspacePanelActivity } from "./workspace-panel-activity";
 
 const sections = [
   { id: "work", label: "Work", icon: NotebookPen, hash: "#relationship-work" },
@@ -19,6 +20,11 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
   people?: ReactNode;
 }) {
   const [active, setActive] = useState<Section>("work");
+  const [visited, setVisited] = useState<Set<Section>>(() => new Set(["work"]));
+  const activate = useCallback((section: Section) => {
+    setVisited(current => current.has(section) ? current : new Set([...current, section]));
+    setActive(section);
+  }, []);
   const search = useSearchParams()?.toString() ?? "";
   // The server cannot read the saved URL hash. Do not accept a click against
   // its default section before hydration restores the actual navigation.
@@ -31,7 +37,7 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
   useEffect(() => {
     const restoreSection = () => {
       const target = sections.find((section) => section.hash === window.location.hash);
-      setActive(target && (target.id !== "people" || people) ? target.id : "work");
+      activate(target && (target.id !== "people" || people) ? target.id : "work");
     };
     restoreSection();
     setReady(true);
@@ -42,10 +48,10 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
       window.removeEventListener("popstate", restoreSection);
     };
     // Next links can change a message query and hash without a hashchange event.
-  }, [people, search]);
+  }, [people, search, activate]);
 
   function select(section: typeof sections[number]) {
-    setActive(section.id);
+    activate(section.id);
     window.history.replaceState(window.history.state, "", section.hash);
   }
 
@@ -58,7 +64,7 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
     const section = available.find(section => section.hash === target.hash);
     // A same-page source link must reveal its panel even if the router already
     // holds that query and does not emit a search/hash navigation update.
-    if (section) setActive(section.id);
+    if (section) activate(section.id);
   }}>
     <div role="tablist" aria-label="Client space" className="grid grid-flow-col auto-cols-fr gap-1 rounded-2xl border border-[#dfcfb4] bg-[#fffdf8] p-1.5">
       {available.map((section, index) => <button
@@ -97,8 +103,10 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
       hidden={active !== section.id}
       className="mt-4 min-w-0 outline-offset-4"
     >
-      {/* Keep panels mounted so switching context never discards an unsaved draft. */}
-      {content[section.id]}
+      {/* Load on first use, then retain drafts across switches. */}
+      {visited.has(section.id) && <WorkspacePanelActivity.Provider value={active === section.id}>
+        {content[section.id]}
+      </WorkspacePanelActivity.Provider>}
     </div>)}
   </div>;
 }

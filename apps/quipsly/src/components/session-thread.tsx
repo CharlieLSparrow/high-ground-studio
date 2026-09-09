@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import LocalDateTime from "@/components/LocalDateTime";
 import { ConversationTaskAction, type ConversationLinkedTask } from "./conversation-task-action";
+import { useWorkspacePanelActive } from "./workspace-panel-activity";
 import {
   CHAT_PERSISTED_INCOMING_EVENT,
   chatPersistedLiveHint,
@@ -69,6 +70,7 @@ function ScopedCollaborationThread({
   scopeDescription?: string;
   liveHintThreadKey?: string | null;
 }) {
+  const panelActive = useWorkspacePanelActive();
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<"loading" | "idle" | "sending" | "error">("loading");
@@ -117,6 +119,11 @@ function ScopedCollaborationThread({
 
   useEffect(() => {
     activeRef.current = true;
+    return () => { activeRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!panelActive) return;
     void refresh();
     const refreshWhenVisible = () => {
       if (document.visibilityState !== "hidden" && navigator.onLine) void refresh(true);
@@ -125,15 +132,14 @@ function ScopedCollaborationThread({
     window.addEventListener("online", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
-      activeRef.current = false;
       window.clearInterval(interval);
       window.removeEventListener("online", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [refresh]);
+  }, [refresh, panelActive]);
 
   useEffect(() => {
-    if (!liveHintThreadKey || liveHintThreadKey !== threadKey) return;
+    if (!panelActive || !liveHintThreadKey || liveHintThreadKey !== threadKey) return;
     const receivePersistedHint = (event: Event) => {
       const hint = parseChatPersistedLiveHint(
         (event as CustomEvent<unknown>).detail,
@@ -148,7 +154,7 @@ function ScopedCollaborationThread({
     };
     window.addEventListener(CHAT_PERSISTED_INCOMING_EVENT, receivePersistedHint);
     return () => window.removeEventListener(CHAT_PERSISTED_INCOMING_EVENT, receivePersistedHint);
-  }, [liveHintThreadKey, refresh, threadKey]);
+  }, [liveHintThreadKey, refresh, threadKey, panelActive]);
 
   useEffect(() => {
     const thread = scrollRef.current;

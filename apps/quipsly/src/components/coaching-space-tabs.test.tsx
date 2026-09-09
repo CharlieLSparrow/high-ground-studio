@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
+import { useEffect } from "react";
 import { CoachingSpaceTabs } from "./coaching-space-tabs";
 
 jest.mock("next/navigation", () => ({useSearchParams: () => new URLSearchParams(window.location.search)}));
@@ -33,7 +34,7 @@ describe("CoachingSpaceTabs", () => {
     render(<CoachingSpaceTabs {...panels} />);
     expect(screen.getByRole("tab", { name: "Work" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("Note draft")).toBeVisible();
-    expect(screen.getByText("People settings")).not.toBeVisible();
+    expect(screen.queryByText("People settings")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Note draft"), { target: { value: "Before our session" } });
     fireEvent.click(screen.getByRole("tab", { name: "Chat" }));
     fireEvent.change(screen.getByLabelText("Message draft"), { target: { value: "A thought for next time" } });
@@ -44,6 +45,24 @@ describe("CoachingSpaceTabs", () => {
     expect(screen.getByLabelText("Note draft")).toHaveValue("Before our session");
     fireEvent.click(screen.getByRole("tab", { name: "Chat" }));
     expect(screen.getByLabelText("Message draft")).toHaveValue("A thought for next time");
+  });
+
+  it("does not start unopened panels and mounts each panel only once", () => {
+    const started = jest.fn();
+    const stopped = jest.fn();
+    function Panel({name}: {name: string}) {
+      useEffect(() => { started(name); return () => { stopped(name); }; }, [name]);
+      return <p>{name} content</p>;
+    }
+    render(<CoachingSpaceTabs work={<Panel name="work" />} conversation={<Panel name="chat" />}
+      people={<Panel name="people" />} sessions={<Panel name="sessions" />} />);
+    expect(started.mock.calls).toEqual([["work"]]);
+    fireEvent.click(screen.getByRole("tab", {name: "Chat"}));
+    fireEvent.click(screen.getByRole("tab", {name: "Work"}));
+    fireEvent.click(screen.getByRole("tab", {name: "Chat"}));
+    expect(started.mock.calls).toEqual([["work"], ["chat"]]);
+    expect(stopped).not.toHaveBeenCalled();
+    expect(screen.queryByText("people content")).not.toBeInTheDocument();
   });
 
   it("supports arrow keys, Home and End without tabbing through every inactive tab", () => {
