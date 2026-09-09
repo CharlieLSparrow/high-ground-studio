@@ -354,6 +354,43 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
     });
   });
 
+  it.each(["task", "goal"] as const)("binds a %s retry to its original passage and wording while preserving later edits", async (kind) => {
+    await withFixture(async (tx, f) => {
+      const handler = kind === "task" ? createTask : createGoal;
+      const body = { roomId: f.room.id, segmentId: f.segments[0]!.id,
+        expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID(),
+        title: "Write the opening", detail: "Keep it brief", description: "Keep it brief" };
+      const submit = (changes: Record<string, unknown> = {}) => handler(new Request(`http://localhost/api/mobile/capture/transcripts/${kind}s`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...changes }),
+      }));
+      const created = await submit();
+      expect(created.status).toBe(200);
+      const payload = await created.json();
+      const id = payload[kind].id;
+      for (const changes of [
+        { segmentId: f.segments[1]!.id, expectedProviderTextSha256: sha(f.segments[1]!.text) },
+        { title: "A different opening" },
+        { detail: "Different details", description: "Different details" },
+      ]) {
+        const conflict = await submit(changes);
+        expect(conflict.status).toBe(409);
+        expect(await conflict.json()).toMatchObject({ ok: false, code: "IDEMPOTENCY_CONFLICT" });
+      }
+      if (kind === "task") {
+        await tx.actionItem.update({ where: { id }, data: { title: "Edited after creation", detail: "Keep my edits", status: "DONE" } });
+      } else {
+        await tx.goal.update({ where: { id }, data: { title: "Edited after creation", description: "Keep my edits", status: "ACHIEVED" } });
+      }
+      const retry = await submit();
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toMatchObject({ idempotentReplay: true, [kind]: { id, title: "Edited after creation" } });
+      const rows = kind === "task" ? await tx.actionItem.findMany({ where: { roomId: f.room.id } })
+        : await tx.goal.findMany({ where: { roomId: f.room.id } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ title: "Edited after creation", sourceJson: { segmentId: f.segments[0]!.id } });
+    });
+  });
+
   it.each(["task", "goal", "note", "draft"] as const)("creates a %s from the selected older recording while a newer recording is processing", async (kind) => {
     await withFixture(async (tx, f) => {
       await existingWork(tx, f, "task");

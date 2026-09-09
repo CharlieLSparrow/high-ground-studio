@@ -95,8 +95,22 @@ export async function POST(request: Request) {
         if (source.schema !== TRANSCRIPT_DERIVED_TASK_SCHEMA
             || source.clientRequestId !== clientRequestId
             || source.createdByUserId !== actor.id
-            || replay.roomId !== roomId) {
+            || replay.roomId !== roomId
+            || source.segmentId !== segmentId
+            || source.providerTextSha256 !== expectedProviderTextSha256) {
           throw new TranscriptCorrectionError("That task request identity is already bound to different evidence.", 409, "IDEMPOTENCY_CONFLICT");
+        }
+        // Compare the original command, not the task's editable current state.
+        // An exact retry must neither undo later edits nor silently discard new
+        // wording from a client that reused its request ID after a lost reply.
+        const savedIntent = record(source.materializationIntent);
+        const original = Object.keys(savedIntent).length ? savedIntent : replay;
+        if (original.title !== title || (original.detail ?? null) !== detail) {
+          throw new TranscriptCorrectionError(
+            "This task was already saved with different wording. Your new draft has not replaced it. Open the saved task to continue editing.",
+            409,
+            "IDEMPOTENCY_CONFLICT",
+          );
         }
         return {
           task: replay,
@@ -154,6 +168,7 @@ export async function POST(request: Request) {
             schema: TRANSCRIPT_DERIVED_TASK_SCHEMA,
             surface: sourceSurface,
             clientRequestId,
+            materializationIntent: { title, detail },
             explicitHumanAction: true,
             createdByUserId: actor.id,
             createdAt: new Date().toISOString(),
