@@ -9,6 +9,7 @@ import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 import { buildSessionFinishingCockpit, type SessionFinishingEvidence } from "./session-finishing-cockpit";
 import { buildSessionSourceJourneyProjection, type SessionSourceJourney, type SessionSourceJourneyCheckpoint } from "./session-source-journey";
+import { useRecordingToolsActive } from "./session-recordings-workspace";
 
 type Props = {
   roomId: string;
@@ -68,20 +69,22 @@ function checkpointAction(input: {
 
 export function SessionFinishingCockpitCard(props: Props) {
   const router = useRouter();
+  const active = useRecordingToolsActive();
   const cockpit = buildSessionFinishingCockpit(props);
   const sourceJourney = buildSessionSourceJourneyProjection(props);
   const shouldRefresh = sourceJourney.counts.attention === 0
     && sourceJourney.counts.inProgress > 0;
   useEffect(() => {
-    if (!shouldRefresh) return;
+    if (!active || !shouldRefresh) return;
     let attempts = 0;
     const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       attempts += 1;
       router.refresh();
       if (attempts >= 24) window.clearInterval(interval);
     }, 5_000);
     return () => window.clearInterval(interval);
-  }, [props.roomId, router, shouldRefresh]);
+  }, [active, props.roomId, router, shouldRefresh]);
   const protectedSourceCount = props.sourceEvidence.counts.VERIFIED_MATCH;
   const completedTranscriptCount = props.finishingEvidence.transcriptJobs.filter(
     (job) => job.readiness ? job.readiness.state === "READY" : job.status === "COMPLETED" && job.segmentCount > 0,

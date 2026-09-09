@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import "@testing-library/jest-dom";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 const refresh = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -9,6 +9,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
+import { RecordingDetails } from "./session-recordings-workspace";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
@@ -130,6 +131,35 @@ const sourceEvidence: SessionSourceEvidence = {
 };
 
 describe("Session finishing cockpit card", () => {
+  afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); refresh.mockClear(); });
+
+  it("refreshes unfinished work only while its diagnostics are open and the tab is visible", () => {
+    jest.useFakeTimers();
+    let visibility: DocumentVisibilityState = "visible";
+    jest.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+    render(<RecordingDetails><SessionFinishingCockpitCard roomId="episode-9-room" topology={topology}
+      sourceEvidence={sourceEvidence} contentReadiness={{ status: "uploaded", captureAssetCount: 1, uploadedRecordingCount: 1 }}
+      studioHandoff={{ recordings: [{ status: "ATTACHED" }] }}
+      finishingEvidence={{ transcriptJobs: [], outputs: [], analyzedSourceCount: 0, assembly: undefined }} /></RecordingDetails>);
+    const details = screen.getByText("Recording details & troubleshooting").closest("details")!;
+    act(() => { jest.advanceTimersByTime(20_000); });
+    expect(refresh).not.toHaveBeenCalled();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    act(() => { jest.advanceTimersByTime(5_000); });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    visibility = "hidden";
+    act(() => { jest.advanceTimersByTime(20_000); });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    visibility = "visible";
+    act(() => { jest.advanceTimersByTime(5_000); });
+    expect(refresh).toHaveBeenCalledTimes(2);
+    details.open = false;
+    fireEvent(details, new Event("toggle"));
+    act(() => { jest.advanceTimersByTime(20_000); });
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
   it("renders a calm source journey with expert identities available on demand", () => {
     render(<SessionFinishingCockpitCard
       roomId="episode-9-room"
