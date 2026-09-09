@@ -3567,19 +3567,14 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     }
 
     private var quickAddWork: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Add")
-                .font(.headline)
-            let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-                : AnyLayout(HStackLayout(spacing: 8))
-            layout {
-                quickAddButton(title: "Note", kind: "NOTE", systemImage: "note.text")
-                quickAddButton(title: "Task", kind: "TASK", systemImage: "checkmark.circle")
-                quickAddButton(title: "Goal", kind: "GOAL", systemImage: "target")
-            }
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
+            quickAddButton(title: "Note", kind: "NOTE", systemImage: "note.text")
+            quickAddButton(title: "Task", kind: "TASK", systemImage: "checkmark.circle")
+            quickAddButton(title: "Goal", kind: "GOAL", systemImage: "target")
         }
-        .captureCard()
     }
 
     private func quickAddButton(
@@ -3610,21 +3605,16 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         let privateNotes = visibleNotes.filter { $0.visibility == "PRIVATE" }
         let pulseSession = relationshipPulseSession
 
-        return VStack(alignment: .leading, spacing: 14) {
-            Label("Client space", systemImage: "person.2.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
-
+        return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(relationshipPulseEyebrow(session: pulseSession))
                     .font(.caption2.weight(.black))
                     .textCase(.uppercase)
                     .foregroundStyle(CapturePalette.accent)
                 Text(relationshipPulseTitle(session: pulseSession))
-                    .font(.title3.weight(.black))
+                    .font(.headline)
                 Text(relationshipPulseDetail(session: pulseSession))
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if let pulseSession {
@@ -3676,6 +3666,29 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 }
             }
 
+            if !allEntries.isEmpty {
+                DisclosureGroup("Space summary") {
+                    relationshipSummary(openTasks: openTasks, overdueTasks: overdueTasks,
+                                        activeGoals: activeGoals, visibleNotes: visibleNotes,
+                                        privateNotes: privateNotes)
+                }
+                .font(.subheadline)
+                .accessibilityIdentifier("CaptureCoachingSpaceSummary")
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoachingRelationshipPulse")
+    }
+
+    private func relationshipSummary(
+        openTasks: [MobileCoachingEngagementWorkEntry],
+        overdueTasks: [MobileCoachingEngagementWorkEntry],
+        activeGoals: [MobileCoachingEngagementWorkEntry],
+        visibleNotes: [MobileCoachingEngagementWorkEntry],
+        privateNotes: [MobileCoachingEngagementWorkEntry]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             if !openTasks.isEmpty || !overdueTasks.isEmpty || !activeGoals.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -3724,9 +3737,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .foregroundStyle(CapturePalette.brass)
             }
         }
-        .captureCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureCoachingRelationshipPulse")
+        .padding(.top, 8)
     }
 
     private var canonicalPriority: MobileCaptureCoachingClientPriority? {
@@ -4362,7 +4373,10 @@ struct MobileCoachingWorkEditorSheet: View {
                 }
 
                 if let error = client.errorMessage {
-                    Section { MobileCoachingInlineWarning(text: error) }
+                    Section {
+                        MobileCoachingInlineWarning(text: error)
+                            .accessibilityIdentifier("CaptureCoachingWorkSaveError")
+                    }
                 }
 
                 if let entry, allowsRemoval {

@@ -1947,6 +1947,21 @@ final class CaptureExperienceUITests: XCTestCase {
         let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
         reveal(relationship)
         relationship.tap()
+        let firstWork = app.descendants(matching: .any)["CaptureCoachingWork_preview-linked-task"]
+            .staticTexts["Review the final cut"].firstMatch
+        XCTAssertTrue(firstWork.waitForExistence(timeout: 5))
+        XCTAssertTrue(firstWork.isHittable, "Actual work must be visible on entry, before scrolling past the relationship summary.")
+        XCTAssertFalse(app.staticTexts["Bring forward"].exists, "Optional context must not crowd out the work by default.")
+        let summary = app.buttons["Space summary"].firstMatch
+        XCTAssertTrue(summary.isHittable)
+        summary.tap()
+        XCTAssertTrue(app.staticTexts["Bring forward"].waitForExistence(timeout: 3))
+        summary.tap()
+        XCTAssertTrue(app.staticTexts["Bring forward"].waitForNonExistence(timeout: 3))
+        let workspaceShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        workspaceShot.name = "client-space-work-visible-on-entry.png"
+        workspaceShot.lifetime = .keepAlways
+        add(workspaceShot)
         let addNote = app.buttons["CaptureCoachingQuickAdd_NOTE"]
         reveal(addNote, searchAboveFirst: true)
         XCTAssertTrue(addNote.isHittable)

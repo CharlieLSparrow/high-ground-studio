@@ -1739,7 +1739,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             workspace.waitForExistence(timeout: 30),
             "The relationship card must open native shared notes, tasks, and goals without requiring a desktop or fixture route."
         )
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkspacePrivacy"].exists)
+        XCTAssertTrue(app.buttons["CaptureCoachingConversationToolbarButton"].isHittable,
+                      "The new client space should expose its conversation without scrolling.")
 
         let workSuffix = clientEmail
             .split(separator: "@", maxSplits: 1)
@@ -2849,14 +2850,17 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         replaceText(in: title, with: originalTitle, app: app)
         let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
         save.tap()
-        let firstFailure = app.staticTexts["Test connection interrupted after saving. Try Save again."].firstMatch
+        let firstFailure = app.descendants(matching: .any)["CaptureCoachingWorkSaveError"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(firstFailure, in: app, timeout: 30, swipeAttempts: 10))
         XCTAssertTrue(editor.exists, "A lost reply must not close the draft.")
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureOfflineAccessBanner"].exists,
+                       "A dropped save reply must not replace the authenticated workspace.")
         replaceText(in: title, with: updatedTitle, app: app)
         save.tap()
-        let secondFailure = app.staticTexts["Test connection interrupted after updating. Try Save again."].firstMatch
+        let secondFailure = app.descendants(matching: .any)["CaptureCoachingWorkSaveError"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(secondFailure, in: app, timeout: 30, swipeAttempts: 10))
         XCTAssertEqual(title.value as? String, updatedTitle)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureOfflineAccessBanner"].exists)
         save.tap()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 30))
         XCTAssertTrue(waitForRuntimeElement(app.staticTexts[updatedTitle].firstMatch, in: app, timeout: 20, swipeAttempts: 16))

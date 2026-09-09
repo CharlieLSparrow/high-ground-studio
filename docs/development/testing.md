@@ -269,6 +269,9 @@ real create and amendment persist, then substitutes a failure response once
 for each. The UI must retain the draft and finish with one work card. Also
 read back the client-space API and confirm one canonical entry, not merely
 one visible title. Stop the proxy after the run. Never use real client data.
+Set `CAPTURE_WORK_RETRY_FAILURE=disconnect` on the proxy to drop the actual
+connection after persistence instead of returning HTTP 503. The same native
+journey must keep the workspace and draft open through both lost replies.
 
 `test-coaching-work-save.sh` tests immutable retry commands and field-level
 amendments without a server. The native runtime runner also warms local

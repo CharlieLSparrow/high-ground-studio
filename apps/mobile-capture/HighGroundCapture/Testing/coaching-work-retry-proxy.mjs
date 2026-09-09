@@ -4,6 +4,15 @@ import { createServer } from 'node:http';
 
 const title = process.env.CAPTURE_WORK_RETRY_TITLE;
 if (!title) throw new Error('CAPTURE_WORK_RETRY_TITLE must name a synthetic test item.');
+const failureMode = process.env.CAPTURE_WORK_RETRY_FAILURE ?? 'http';
+if (!['http', 'disconnect'].includes(failureMode)) throw new Error('Choose http or disconnect for the local failure mode.');
+function loseReply(res, operation) {
+  if (failureMode === 'disconnect') {
+    res.destroy();
+  } else {
+    res.writeHead(503, {'Content-Type': 'application/json'}).end(JSON.stringify({ok: false, error: `Test connection interrupted after ${operation}. Try Save again.`}));
+  }
+}
 const attempts = new Set();
 const amended = new Set();
 const createdIDs = new Set();
@@ -37,14 +46,15 @@ const server = createServer(async (req, res) => {
         console.log(JSON.stringify({method: 'POST', requestID: input.clientRequestId, entryID: output.entry.id, distinctItems: createdIDs.size}));
         if (!attempts.has(input.clientRequestId)) {
           attempts.add(input.clientRequestId);
-          res.writeHead(503, {'Content-Type': 'application/json'}).end(JSON.stringify({ok: false, error: 'Test connection interrupted after saving. Try Save again.'}));
+          console.log(JSON.stringify({method: 'POST', entryID: output.entry.id, lostReply: true, failureMode}));
+          loseReply(res, 'saving');
           return;
         }
       }
       if (req.method === 'PATCH' && createdIDs.has(input.id) && !amended.has(input.id)) {
         amended.add(input.id);
-        console.log(JSON.stringify({method: 'PATCH', entryID: input.id, lostReply: true}));
-        res.writeHead(503, {'Content-Type': 'application/json'}).end(JSON.stringify({ok: false, error: 'Test connection interrupted after updating. Try Save again.'}));
+        console.log(JSON.stringify({method: 'PATCH', entryID: input.id, lostReply: true, failureMode}));
+        loseReply(res, 'updating');
         return;
       }
     }
