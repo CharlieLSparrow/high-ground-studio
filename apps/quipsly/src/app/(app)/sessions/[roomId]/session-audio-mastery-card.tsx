@@ -1,5 +1,7 @@
 "use client";
 
+import { useRecordingToolsActive } from "./session-recordings-workspace";
+
 import { LoaderCircle, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
@@ -33,6 +35,7 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
 }
 
 function SessionAudioMasterySourceCard({ coordinates }: { coordinates: AudioMasteryCoordinates }) {
+  const active = useRecordingToolsActive();
   const canManage = coordinates.canManage === true;
   const [status, setStatus] = useState<MasteryStatus | null>(null);
   const [checking, setChecking] = useState(true);
@@ -76,11 +79,13 @@ function SessionAudioMasterySourceCard({ coordinates }: { coordinates: AudioMast
   }, [canManage, coordinates, statusUrl]);
 
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     setChecking(true);
     fetch(statusUrl(), { signal: controller.signal })
       .then(parseStatus)
       .then((next) => {
+        if (controller.signal.aborted) return;
         setStatus(next);
         setNotice(null);
         setRetryAvailable(false);
@@ -93,17 +98,17 @@ function SessionAudioMasterySourceCard({ coordinates }: { coordinates: AudioMast
         if (!controller.signal.aborted) setChecking(false);
       });
     return () => controller.abort();
-  }, [statusUrl]);
+  }, [active, statusUrl]);
 
   useEffect(() => {
-    if (!status || !["queued", "processing", "output-ready"].includes(status.status) || busy) return;
+    if (!active || !status || !["queued", "processing", "output-ready"].includes(status.status) || busy) return;
     const timer = window.setTimeout(() => {
       operate("reconcile").catch((error) => {
         setNotice(error instanceof Error ? error.message : "Audio improvement is still processing.");
       });
     }, 2_500);
     return () => window.clearTimeout(timer);
-  }, [busy, operate, status]);
+  }, [active, busy, operate, status]);
 
   const improve = useCallback(async (options?: { automatic?: boolean }) => {
     if (operationInFlight.current) return;
@@ -165,10 +170,10 @@ function SessionAudioMasterySourceCard({ coordinates }: { coordinates: AudioMast
   }, [coordinates, status?.jobId]);
 
   useEffect(() => {
-    if (!canManage || checking || status?.status !== "not-queued" || busy || automaticAttempted.current) return;
+    if (!active || !canManage || checking || status?.status !== "not-queued" || busy || automaticAttempted.current) return;
     automaticAttempted.current = true;
     void improve({ automatic: true });
-  }, [busy, canManage, checking, improve, status?.status]);
+  }, [active, busy, canManage, checking, improve, status?.status]);
 
   const working = status && ["queued", "processing", "output-ready"].includes(status.status);
   const failed = status?.status === "failed" || status?.status === "blocked" || retryAvailable;
