@@ -61,7 +61,7 @@ for (const missingBoundary of [null, "booking authentication", "packet authentic
   });
 }
 
-for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization"]) {
+for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization", "tag assignment eligibility"]) {
   test(`scheduling source checks tolerate presentation changes and detect ${missingBoundary || "intact wiring"}`, t => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-scheduling-source-gates-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -77,6 +77,12 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
     }
     const route = path.join(fixture, "apps/quipsly/src/app/api/coaching/runway/route.ts");
     const nestQuery = path.join(fixture, "apps/quipsly/src/lib/server/nest-project-follow-through.ts");
+    const workTags = path.join(fixture, "apps/quipsly/src/lib/server/work-tags.ts");
+    // Product wording and retaining already-assigned archived tags are not an
+    // authorization contract. Check the canonical eligibility guard's wiring.
+    writeFileSync(workTags, readFileSync(workTags, "utf8")
+      .replaceAll("Choose available tags from this Nest. Archived tags can stay only on work that already uses them.", "Choose an available tag.")
+      .replaceAll("assignableOrRetainedTagWhere(input.entityKind, entityId)", missingBoundary === "tag assignment eligibility" ? "missingTagEligibility()" : "assignableOrRetainedTagWhere(input.entityKind, entityId)"));
     if (missingBoundary === "Nest task authorization") {
       writeFileSync(nestQuery, readFileSync(nestQuery, "utf8").replaceAll("personalOrSharedSessionTaskAccessWhere(actorUserId)", "unscopedTaskQuery()"));
     }
@@ -94,11 +100,11 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
         cwd: fixture, encoding: "utf8", timeout: 15_000,
       });
       const expectedFailure = (script === scheduling && missingBoundary === "calendar update status")
-        || (script === capture && ["native scheduling command", "Nest task authorization"].includes(missingBoundary));
+        || (script === capture && ["native scheduling command", "Nest task authorization", "tag assignment eligibility"].includes(missingBoundary));
       assert.equal(result.status, expectedFailure ? 1 : 0, result.stdout + result.stderr);
       const report = JSON.parse(result.stdout);
       assert.deepEqual(report.checks.filter(check => check.status === "fail").map(check => check.id ?? check.name),
-        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : "nativeCoachingSchedulingManagementParity"] : []);
+        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : missingBoundary === "tag assignment eligibility" ? "canonicalWorkSessionProjectTags" : "nativeCoachingSchedulingManagementParity"] : []);
     }
   });
 }

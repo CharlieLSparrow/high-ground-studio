@@ -1753,7 +1753,7 @@ function checkTranscriptCorrectionContractSources() {
       && schemaText.includes("model GoalTagLink")
       && schemaText.includes("model CallRoomTagLink")
       && workTagsText.includes('kind: "quipsly-work-tags-v1"')
-      && workTagsText.includes("Every tag must be active and belong to the record's Nest.")
+      && workTagsText.includes("assignableOrRetainedTagWhere(input.entityKind, entityId)")
       && workTagsText.includes("externalSideEffects: false")
       && sessionsRouteText.includes("projectId: captureProjectId")
       && sessionsRouteText.includes("const MOBILE_CAPTURE_ROOM_INCLUDE = {")
