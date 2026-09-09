@@ -19,6 +19,7 @@ test('warms all startup routes without credentials or mutations', async t => {
   const results = await warmLocalRuntime(`${origin}/irrelevant?secret=not-forwarded`, { report() {} });
   assert.deepEqual(requests, startupRoutes.map(path => ({ path, method: 'GET', auth: undefined, cookie: undefined })));
   assert.equal(results.length, startupRoutes.length);
+  assert.ok(requests.some(request => request.path === '/api/mobile/capture/today'), 'The signed-in task list must compile before the native journey starts.');
 });
 
 test('never contacts remote or non-HTTP origins', async () => {

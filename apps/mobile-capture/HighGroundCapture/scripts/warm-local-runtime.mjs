@@ -8,6 +8,7 @@ export const startupRoutes = [
   '/api/mobile/capture/entitlements',
   '/api/mobile/capture/review-digest',
   '/api/mobile/capture/sessions',
+  '/api/mobile/capture/today',
   '/api/coaching/forms',
   '/api/coaching/runway',
 ];

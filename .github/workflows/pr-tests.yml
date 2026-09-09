@@ -193,7 +193,7 @@ jobs:
         env:
           QUIPSLY_LOCAL_DB_SMOKE: '0'
         run: |
-          node --test apps/quipsly/scripts/typescript-config.test.mjs
+          node --test apps/quipsly/scripts/typescript-config.test.mjs apps/quipsly/scripts/next-config.test.mjs
           set -o pipefail
           pnpm --filter quipsly --fail-if-no-match test --maxWorkers=2 --json --outputFile="${RUNNER_TEMP}/quipsly-jest-results.json" 2>&1 | tee "${RUNNER_TEMP}/quipsly-jest.log"
 

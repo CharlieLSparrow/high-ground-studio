@@ -120,7 +120,7 @@ for (const scenario of [
           command node "$@"
           return $?
         fi
-        [[ "$*" == "--test apps/quipsly/scripts/typescript-config.test.mjs" ]] || return 98
+        [[ "$*" == "--test apps/quipsly/scripts/typescript-config.test.mjs apps/quipsly/scripts/next-config.test.mjs" ]] || return 98
         [[ "$FAILED_COMMAND" != config ]] || return "$TEST_EXIT"
       }
       pnpm() {

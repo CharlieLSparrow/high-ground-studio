@@ -34,6 +34,14 @@ const config = {
   outputFileTracingRoot: repoRoot,
   allowedDevOrigins,
   reactStrictMode: true,
+  // A native workflow uses more routes than a single browser page. Next's
+  // one-minute development expiry can evict login while later startup routes
+  // are still compiling. Retain that working set without changing production
+  // caching, request timeouts, or authentication behavior.
+  onDemandEntries: {
+    maxInactiveAge: 15 * 60 * 1000,
+    pagesBufferLength: 32,
+  },
   logging: {
     incomingRequests: {
       // Calendar subscription URLs are bearer capabilities. Keep their paths out
