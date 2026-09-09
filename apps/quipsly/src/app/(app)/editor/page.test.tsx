@@ -619,7 +619,9 @@ describe("CloudEditor production truth UX", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "Restore to edit" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Restored 00:02–00:05 to the active edit/i);
+    // A status node already exists for the prior operation. Restoration saves
+    // asynchronously, so wait for its result, not just that retained node.
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Restored 00:02–00:05 to the active edit/i));
     expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(await screen.findByRole("region", { name: "Exact range edit decisions" })).toBeInTheDocument();

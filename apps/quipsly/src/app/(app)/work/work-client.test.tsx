@@ -179,9 +179,11 @@ describe("Work Queue interactions", () => {
     await user.type(title, "Keep the original request");
     await user.click(screen.getByRole("button", { name: "Add task" }));
     await user.click(await screen.findByRole("button", { name: "Retry save" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Sign in again");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Sign in again"));
     expect(title).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Retry save" }));
+    // The message can render before React completes the action transition.
+    // Wait for the real retry control rather than clicking the prior busy UI.
+    await user.click(await screen.findByRole("button", { name: "Retry save" }));
     await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(3));
     expect(jest.mocked(createWorkTask).mock.calls.map(call => call[0])).toEqual(Array(3).fill(jest.mocked(createWorkTask).mock.calls[0]![0]));
   });
