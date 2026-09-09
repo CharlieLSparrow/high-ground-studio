@@ -6467,40 +6467,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
-        let missingPlanReason = app.textFields.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureMissingPlannedSourceReason_")
-        ).firstMatch
-        let waiveMissingMaster = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureWaiveMissingPlannedSource_")
-        ).firstMatch
-        if waitForRuntimeElementAbove(missingPlanReason, in: app, timeout: 18, swipeAttempts: 8) {
-            XCTAssertTrue(
-                waitForRuntimeElement(waiveMissingMaster, in: app, timeout: 8, swipeAttempts: 4),
-                "A missing required master should expose the phone-only, reason-required recovery decision."
-            )
-            missingPlanReason.tap()
-            missingPlanReason.typeText(
-                "The interrupted take could not decode after process recovery; continue with the verified source."
-            )
-            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: waiveMissingMaster)
-            waitForExpectations(timeout: 8)
-            waiveMissingMaster.tap()
-            XCTAssertTrue(
-                missingPlanReason.waitForNonExistence(timeout: 20),
-                "The append-only waiver should refresh the exact Session source plan before Studio handoff."
-            )
-            let resolvedEvidence = app.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureResolvedEvidence_")
-            ).firstMatch
-            XCTAssertTrue(
-                waitForRuntimeElement(resolvedEvidence, in: app, timeout: 20, swipeAttempts: 6),
-                "The phone should preserve the interrupted receipt and its reason as visible resolved evidence."
-            )
-        }
+        // Both the normal and interrupted source have already played and
+        // uploaded above. Recovery must not require a waiver for a lost take.
 
         let handoffCard = app.descendants(matching: .any)["CaptureStudioHandoffCard_\(sessionID)"].firstMatch
         XCTAssertTrue(
-            waitForRuntimeElement(handoffCard, in: app, timeout: 45, swipeAttempts: 10),
+            scrollRuntimeElementIntoHittableView(handoffCard, in: app, timeout: 45, swipeAttempts: 18),
             "A server-verified recording should keep its Studio handoff state reachable beside the recorder."
         )
         let promotionStatusIdentifier = "CaptureStudioPromotionStatus_\(sessionID)"
@@ -6517,7 +6489,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             NSPredicate(format: "label == %@", "Open advanced edit")
         ).firstMatch
 
-        if scrollRuntimeElementIntoHittableView(
+        if !openStudioReview.exists && !openStudioReviewByLabel.exists && scrollRuntimeElementIntoHittableView(
             attachToStudio,
             in: app,
             timeout: 20,
@@ -6538,12 +6510,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             )
             attachToStudio.tap()
         } else {
-            let reviewIsReachable = waitForRuntimeElement(
+            let reviewIsReachable = scrollRuntimeElementIntoHittableView(
                 openStudioReview,
                 in: app,
                 timeout: 4,
                 swipeAttempts: 2
-            ) || waitForRuntimeElement(
+            ) || scrollRuntimeElementIntoHittableView(
                 openStudioReviewByLabel,
                 in: app,
                 timeout: 8,

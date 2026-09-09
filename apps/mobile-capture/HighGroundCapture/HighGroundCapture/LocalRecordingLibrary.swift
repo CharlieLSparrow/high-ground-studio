@@ -434,7 +434,7 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         // Date encoding is seconds from Apple's 2001 reference epoch, which is
         // not self-describing JSON. New profiles use ISO 8601; Nest retains a
         // versioned compatibility reader for already-recorded v1 evidence.
-        encoder.dateEncodingStrategy = .iso8601
+        CaptureDateCoding.configure(encoder)
         guard let data = try? encoder.encode(sourceProfile) else { return nil }
         return String(data: data, encoding: .utf8)
     }
@@ -759,10 +759,10 @@ final class LocalRecordingLibrary: ObservableObject {
 
         encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
+        CaptureDateCoding.configure(encoder)
 
         decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        CaptureDateCoding.configure(decoder)
 
         do {
             try ensureRecordingsDirectory()

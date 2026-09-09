@@ -8578,7 +8578,7 @@ final class CaptureSessionClient: ObservableObject {
                 "callRoomId": session.callRoomId,
                 "action": normalizedAction,
                 "receiptId": roomStateReceipt.receiptID.uuidString.lowercased(),
-                "occurredAt": ISO8601DateFormatter().string(from: roomStateReceipt.occurredAt),
+                "occurredAt": CaptureDateCoding.string(from: roomStateReceipt.occurredAt),
                 "source": "ios-direct-room-control",
             ]
             if let captureID = roomStateReceipt.captureID {
@@ -8741,7 +8741,7 @@ final class CaptureSessionClient: ObservableObject {
                 "receiptId": receipt.id.uuidString.lowercased(),
                 "captureId": receipt.captureID.uuidString.lowercased(),
                 "sourceType": receipt.sourceType ?? "audio",
-                "occurredAt": ISO8601DateFormatter().string(from: receipt.occurredAt),
+                "occurredAt": CaptureDateCoding.string(from: receipt.occurredAt),
                 "source": "ios-capture-outbox",
             ])
 

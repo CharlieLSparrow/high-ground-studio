@@ -1794,9 +1794,9 @@ struct CaptureSourceEvidenceView: View {
             cumulativeActiveSeconds += max(segment.durationSeconds ?? 0, 0)
             guard let reason = segment.stopReason,
                   reason != .userStop else { return nil }
-            let startedAt = ISO8601DateFormatter().date(from: segment.startedAt)
+            let startedAt = CaptureDateCoding.date(from: segment.startedAt)
             let stoppedAt = segment.stoppedAt.flatMap {
-                ISO8601DateFormatter().date(from: $0)
+                CaptureDateCoding.date(from: $0)
             }
             let offset: Double
             if reason == .callTransportGap {

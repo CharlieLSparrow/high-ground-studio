@@ -1779,8 +1779,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 participantId: activeParticipantId ?? localFallbackParticipantId,
                 deviceKind: UIDevice.current.name,
                 status: "timeline-gap",
-                startedAt: ISO8601DateFormatter().string(from: startedAt),
-                stoppedAt: ISO8601DateFormatter().string(from: safeEndedAt),
+                startedAt: CaptureDateCoding.string(from: startedAt),
+                stoppedAt: CaptureDateCoding.string(from: safeEndedAt),
                 // This is evidence layered over the wall-clock-preserving
                 // source, not another media segment to sum into duration.
                 durationSeconds: 0,
@@ -1816,8 +1816,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
             participantId: activeParticipantId ?? localFallbackParticipantId,
             deviceKind: UIDevice.current.name,
             status: "local-ready",
-            startedAt: ISO8601DateFormatter().string(from: startedAt),
-            stoppedAt: ISO8601DateFormatter().string(from: stoppedAt),
+            startedAt: CaptureDateCoding.string(from: startedAt),
+            stoppedAt: CaptureDateCoding.string(from: stoppedAt),
             durationSeconds: max(0, stoppedAt.timeIntervalSince(startedAt)),
             stopReason: reason,
             boundaryDetail: boundaryDetail,
@@ -2317,8 +2317,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
             sourceType: recording.effectiveMediaKind.uploadSourceType,
             captureGroupId: recording.captureGroupId,
             sourceProfileJson: recording.encodedSourceProfileJSON,
-            startedAt: ISO8601DateFormatter().string(from: recording.startedAt),
-            stoppedAt: ISO8601DateFormatter().string(from: stoppedAt),
+            startedAt: CaptureDateCoding.string(from: recording.startedAt),
+            stoppedAt: CaptureDateCoding.string(from: stoppedAt),
             recordingSegmentsJson: segmentsJson,
             localRecordingID: recording.id,
             ownerAccountID: recording.ownerAccountID
