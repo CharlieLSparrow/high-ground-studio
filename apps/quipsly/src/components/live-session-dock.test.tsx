@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import { render, screen } from "@testing-library/react";
+import React, { useEffect, useRef, useState } from "react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CaptureAppHandoff } from "./capture-app-handoff";
 
@@ -55,7 +55,10 @@ jest.mock("./live-session-room", () => ({
 }));
 
 jest.mock("./session-thread", () => ({
-  SessionThread: ({ roomId }: { roomId: string }) => <div>Durable thread {roomId}</div>,
+  SessionThread: ({ roomId }: { roomId: string }) => {
+    const [draft, setDraft] = useState("");
+    return <div>Durable thread {roomId}<textarea aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} /></div>;
+  },
 }));
 
 const episodeConfig: LiveSessionDockConfig = {
@@ -87,6 +90,28 @@ describe("LiveSessionDockProvider", () => {
     mockRoomLifecycle.mounted.mockClear();
     mockRoomLifecycle.unmounted.mockClear();
     mockRoomLifecycle.leaveRequested.mockClear();
+  });
+
+  it("switches call and chat views without remounting the room or discarding a draft", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("button", { name: "Chat" }));
+    expect(screen.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
+    expect(document.getElementById("live-call-stage-panel")).toHaveClass("hidden", "lg:block");
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "A thought to come back to");
+    await user.click(screen.getByRole("button", { name: "Call" }));
+    expect(document.getElementById("live-call-chat-panel")).toHaveClass("hidden", "lg:flex");
+    await user.click(screen.getByRole("button", { name: "Hide chat" }));
+    expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById("live-call-chat-panel")).toHaveClass("lg:hidden");
+    await user.click(screen.getByRole("button", { name: "Show chat" }));
+    await user.click(screen.getByRole("button", { name: "Minimize live call" }));
+    await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", { name: "Open live call" }));
+    await user.click(screen.getByRole("button", { name: "Chat" }));
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("A thought to come back to");
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
   });
 
   it("distinguishes an open lobby from an actual call and retains state when minimized", async () => {

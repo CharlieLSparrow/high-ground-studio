@@ -57,6 +57,7 @@ function ScopedCollaborationThread({
   scopeLabel = "Shared collaboration",
   scopeDescription,
   liveHintThreadKey = null,
+  fillHeight = false,
 }: {
   projectSlug: string;
   threadKey: string;
@@ -69,6 +70,7 @@ function ScopedCollaborationThread({
   scopeLabel?: string;
   scopeDescription?: string;
   liveHintThreadKey?: string | null;
+  fillHeight?: boolean;
 }) {
   const panelActive = useWorkspacePanelActive();
   const [messages, setMessages] = useState<SessionMessage[]>([]);
@@ -244,13 +246,13 @@ function ScopedCollaborationThread({
   }
 
   return (
-    <section className="flex min-h-[30rem] min-w-0 w-full flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card text-card-foreground shadow-sm" aria-labelledby={headingId}>
-      <header className="border-b border-border px-5 py-4">
+    <section className={`flex min-w-0 w-full flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card text-card-foreground shadow-sm ${fillHeight ? "h-full min-h-0" : "min-h-[30rem]"}`} aria-labelledby={headingId}>
+      <header className={`shrink-0 border-b border-border ${fillHeight ? "px-4 py-3" : "px-5 py-4"}`}>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">{scopeLabel}</p>
         <h2 id={headingId} className="mt-1 flex items-center gap-2 font-serif text-2xl font-black text-foreground"><MessageCircle size={20} aria-hidden="true" /> {heading}</h2>
         <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">{scopeDescription || `Discuss ${collaborationTitle} and keep the conversation beside your work.`}</p>
       </header>
-      <div ref={scrollRef} className="max-h-[32rem] min-h-0 flex-1 space-y-3 overflow-y-auto p-4" role="log" aria-label={heading}
+      <div ref={scrollRef} className={`min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 ${fillHeight ? "" : "max-h-[32rem]"}`} role="log" aria-label={heading}
         onScroll={() => { const el = scrollRef.current; if (el) followLatestRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64; }}>
         {nextCursor ? <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="min-h-11 w-full rounded-xl border border-border px-3 text-sm">{loadingOlder ? "Loading…" : "Earlier messages"}</button> : null}
         {loading ? <p className="flex items-center gap-2 text-sm font-semibold text-muted-foreground"><LoaderCircle size={16} className="animate-spin" /> Loading conversation…</p> : null}
@@ -264,7 +266,7 @@ function ScopedCollaborationThread({
         </article>)}
       </div>
       {loadError ? <div role="alert" className="px-4 py-2 text-sm text-destructive">{loadError} <button type="button" onClick={() => void refresh()} className="min-h-11 underline">Retry loading</button></div> : null}
-      <form onSubmit={send} className="border-t border-border p-3">
+      <form onSubmit={send} className="shrink-0 border-t border-border p-3">
         {error ? <p role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{error} Your text is still here; try sending again.</p> : null}
         <div className="flex items-end gap-2">
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="Message" maxLength={4000} disabled={!canPost || status === "sending"} placeholder={canPost ? composerPlaceholder : viewOnlyPlaceholder} className="min-h-20 min-w-0 flex-1 resize-none rounded-2xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-4 focus:ring-ring/20 disabled:bg-muted" />
@@ -283,6 +285,8 @@ export function SessionThread({
   canPost = true,
   scopeLabel = "This meeting only",
   scopeDescription,
+  fillHeight = false,
+  heading = "Session thread",
 }: {
   projectSlug: string;
   roomId: string;
@@ -290,13 +294,16 @@ export function SessionThread({
   canPost?: boolean;
   scopeLabel?: string;
   scopeDescription?: string;
+  fillHeight?: boolean;
+  heading?: string;
 }) {
   return <CollaborationThread
     projectSlug={projectSlug}
     threadKey={`session:${roomId}`}
     liveHintThreadKey={`session:${roomId}`}
     collaborationTitle={sessionTitle}
-    heading="Session thread"
+    heading={heading}
+    fillHeight={fillHeight}
     clientSurface="session-room-web"
     canPost={canPost}
     scopeLabel={scopeLabel}

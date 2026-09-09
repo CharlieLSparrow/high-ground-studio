@@ -100,6 +100,13 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
   const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
+  const [mobilePanel, setMobilePanel] = useState<"call" | "chat">("call");
+  const [desktopChatOpen, setDesktopChatOpen] = useState(true);
+
+  useEffect(() => {
+    setMobilePanel("call");
+    setDesktopChatOpen(true);
+  }, [active?.callRoomId]);
 
   const requestSession = useCallback((config: LiveSessionDockConfig, requestOpen: boolean) => {
     setActive((current) => {
@@ -200,7 +207,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
   return (
     <LiveSessionDockContext.Provider value={value}>
-      <div className={isOpen && active ? "2xl:grid 2xl:grid-cols-[minmax(0,1fr)_minmax(25rem,36rem)] 2xl:gap-5" : ""}>
+      <div>
         <div className="min-w-0">{children}</div>
 
         {active ? (
@@ -209,11 +216,11 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
             aria-hidden={!isOpen}
             inert={!isOpen ? true : undefined}
             className={isOpen
-              ? "fixed inset-3 bottom-20 z-[70] overflow-y-auto rounded-[1.75rem] border border-[#cbb791] bg-[#fdf8ee] p-3 shadow-2xl shadow-black/30 md:inset-6 md:bottom-6 2xl:sticky 2xl:inset-auto 2xl:top-0 2xl:z-30 2xl:max-h-[calc(100vh-7.5rem)]"
+              ? "fixed inset-x-2 top-2 bottom-20 z-[70] flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] border border-[#cbb791] bg-[#fdf8ee] p-3 shadow-2xl shadow-black/30 md:inset-6"
               : "pointer-events-none fixed h-px w-px overflow-hidden opacity-0"
             }
           >
-            <header className="sticky top-0 z-20 rounded-2xl border border-[#d8c7a7] bg-[#3d3122] p-3 text-white shadow-lg">
+            <header className="z-20 shrink-0 rounded-2xl border border-[#d8c7a7] bg-[#3d3122] p-3 text-white shadow-lg">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
@@ -222,6 +229,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   <h2 className="mt-1 truncate font-serif text-lg font-black">{active.sessionTitle}</h2>
                 </div>
                 <div className="flex shrink-0 gap-1">
+                  <button type="button" onClick={() => setDesktopChatOpen((open) => !open)} aria-expanded={desktopChatOpen} aria-controls="live-call-chat-panel" className="hidden min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-xs font-bold hover:bg-white/10 lg:inline-flex"><MessageSquareText size={16} />{desktopChatOpen ? "Hide chat" : "Show chat"}</button>
                   <button type="button" onClick={minimize} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Minimize live call"><ChevronDown size={18} /></button>
                   <button type="button" onClick={requestClose} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-rose-500/20" aria-label="Close live call"><X size={18} /></button>
                 </div>
@@ -236,8 +244,13 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </nav>
             </header>
 
+            <div className="mt-3 flex shrink-0 gap-2 lg:hidden" role="group" aria-label="Call workspace view">
+              <button type="button" aria-pressed={mobilePanel === "call"} aria-controls="live-call-stage-panel" onClick={() => setMobilePanel("call")} className={`min-h-11 flex-1 rounded-xl border px-3 text-sm font-bold ${mobilePanel === "call" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-card-foreground"}`}><Radio className="mr-2 inline" size={16} />Call</button>
+              <button type="button" aria-pressed={mobilePanel === "chat"} aria-controls="live-call-chat-panel" onClick={() => setMobilePanel("chat")} className={`min-h-11 flex-1 rounded-xl border px-3 text-sm font-bold ${mobilePanel === "chat" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-card-foreground"}`}><MessageSquareText className="mr-2 inline" size={16} />Chat</button>
+            </div>
+
             {pending ? (
-              <section className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-live="polite">
+              <section className="mt-3 max-h-[35dvh] shrink-0 overflow-y-auto rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-live="polite">
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><Repeat2 size={15} /> Another Session requested</p>
                 <p className="mt-2 text-sm font-semibold">Leave <strong>{active.sessionTitle}</strong> and open <strong>{pending.sessionTitle}</strong>?</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -248,7 +261,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
             ) : null}
 
             {showLeaveDecision ? (
-              <section className="mt-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-rose-950" aria-live="polite">
+              <section className="mt-3 max-h-[35dvh] shrink-0 overflow-y-auto rounded-2xl border border-rose-300 bg-rose-50 p-4 text-rose-950" aria-live="polite">
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><PhoneOff size={15} /> Leave this live call?</p>
                 <p className="mt-2 text-sm font-semibold">Closing disconnects this browser. Minimizing keeps the mic, camera, participant audio, and local source controls alive.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -258,7 +271,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </section>
             ) : null}
 
-            <div className="mt-3 space-y-3">
+            <div data-testid="live-call-workspace" className={`mt-3 grid min-h-0 flex-1 gap-3 ${desktopChatOpen ? "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,23rem)]" : "lg:grid-cols-1"}`}>
+              <div id="live-call-stage-panel" className={`min-h-0 min-w-0 overflow-y-auto overscroll-contain ${mobilePanel === "call" ? "block" : "hidden"} lg:block`}>
               <LiveSessionRoom
                 key={active.callRoomId}
                 callRoomId={active.callRoomId}
@@ -276,6 +290,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 narrow
                 showSessionHeading={false}
               />
+              </div>
+              <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${mobilePanel === "chat" ? "flex" : "hidden"} ${desktopChatOpen ? "lg:flex" : "lg:hidden"}`}>
               {active.projectSlug ? (
                 <SessionThread
                   projectSlug={active.projectSlug}
@@ -284,6 +300,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   canPost={active.canPost}
                   scopeLabel="This live Session"
                   scopeDescription="Messages stay here after the call."
+                  heading="Chat"
+                  fillHeight
                 />
               ) : (
                 <section className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
@@ -291,6 +309,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   <p className="mt-2 text-sm font-semibold text-[#765f40]">Connect this Session to a Nest to give the call a durable shared thread.</p>
                 </section>
               )}
+              </div>
             </div>
           </aside>
         ) : null}
