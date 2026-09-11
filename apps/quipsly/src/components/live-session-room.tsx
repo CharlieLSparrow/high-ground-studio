@@ -2277,9 +2277,9 @@ export function LiveSessionRoom({
     return () => window.clearInterval(interval);
   }, [refreshProviderRecording]);
 
-  const handlePreparationStateChange = useCallback((state: {
-    participantReady: boolean;
-    everyoneReady: boolean;
+  const handleRecordingConsentChange = useCallback((state: {
+    participantConsentGranted: boolean;
+    everyoneConsentGranted: boolean;
   }) => {
     // Joining muted is the conventional fallback when a microphone prompt is
     // denied, dismissed, or cannot expose a usable input. Keep that immediate
@@ -2287,10 +2287,10 @@ export function LiveSessionRoom({
     // overwrite the reason Unmute is unavailable.
     if (!connected || microphoneRecoveryHeld) return;
     setMessage(
-      !state.participantReady
+      !state.participantConsentGranted
         ? "You’re connected. Recording is off until you allow it."
-        : state.everyoneReady
-          ? "You’re connected. Everyone is ready to record."
+        : state.everyoneConsentGranted
+          ? "You’re connected. Everyone has allowed recording."
           : "You’re connected. Your recording choice is saved. Waiting for the other participant.",
     );
   }, [connected, microphoneRecoveryHeld]);
@@ -2314,7 +2314,7 @@ export function LiveSessionRoom({
       onSourceLockChange={setSourceLocked}
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={reportRetainedGuardianEvidence}
-      onPreparationStateChange={handlePreparationStateChange}
+      onRecordingConsentChange={handleRecordingConsentChange}
     />
   ) : (
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">

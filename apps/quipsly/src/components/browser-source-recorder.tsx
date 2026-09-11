@@ -291,7 +291,7 @@ export function BrowserSourceRecorder({
   stopRequestVersion = 0,
   onSourceLockChange,
   onGuardianEvidenceChange,
-  onPreparationStateChange,
+  onRecordingConsentChange,
 }: {
   callRoomId: string;
   captureGroupId: string;
@@ -311,9 +311,9 @@ export function BrowserSourceRecorder({
   onGuardianEvidenceChange?: (
     evidence: BrowserRetainedSourceGuardianEvidence,
   ) => void;
-  onPreparationStateChange?: (state: {
-    participantReady: boolean;
-    everyoneReady: boolean;
+  onRecordingConsentChange?: (state: {
+    participantConsentGranted: boolean;
+    everyoneConsentGranted: boolean;
   }) => void;
 }) {
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
@@ -803,11 +803,11 @@ export function BrowserSourceRecorder({
   const waitingForParticipantConsent =
     myConsentCoversSource && !consentReady;
   useEffect(() => {
-    onPreparationStateChange?.({
-      participantReady: myConsentCoversSource,
-      everyoneReady: consentReady,
+    onRecordingConsentChange?.({
+      participantConsentGranted: myConsentCoversSource,
+      everyoneConsentGranted: consentReady,
     });
-  }, [consentReady, myConsentCoversSource, onPreparationStateChange]);
+  }, [consentReady, myConsentCoversSource, onRecordingConsentChange]);
   const readiness = useMemo(
     () =>
       browserSourceCanBegin({
@@ -943,7 +943,7 @@ export function BrowserSourceRecorder({
       setStatus("ready");
       setMessage(
         session.allRegisteredParticipantConsentGranted === true
-          ? "Everyone is ready to record."
+          ? "Everyone has allowed recording."
           : "Your choice is saved. Waiting for the other participant.",
       );
     } catch (error) {
@@ -2841,16 +2841,16 @@ export function BrowserSourceRecorder({
           >
             {conversationEnded
               ? exitSafety.label
-              : sessionKind === "coaching"
-                ? "Record this coaching Session"
-                : "Record the selected studio source"}
+              : !canControlRoom
+                ? "Your recording"
+                : "Record session"}
           </h3>
           <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
             {conversationEnded
               ? exitSafety.detail
-              : sessionKind === "coaching"
-                ? "Joining never starts recording. Once everyone agrees, Record starts the high-quality copy on this device."
-                : "Joining never starts recording. Record saves a high-quality copy on this device for the shared timeline."}
+              : !canControlRoom
+                ? `Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording. Once you allow it, this device saves and uploads your high-quality copy when recording starts.`
+                : "Joining never starts recording. Once everyone agrees, select Record to start the high-quality recordings."}
           </p>
           <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
             <summary className="cursor-pointer">
@@ -3013,7 +3013,7 @@ export function BrowserSourceRecorder({
               ) : null}
               <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
                 {consentReady
-                  ? "Everyone is ready to record."
+                  ? "Everyone has allowed recording."
                   : consentId
                     ? "Your choice is saved. Waiting for the other participant."
                     : "Not agreed yet."}
@@ -3070,8 +3070,9 @@ export function BrowserSourceRecorder({
           </section>
         ) : !activeLedger && !recoveryRows.length ? (
           <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
-            Next, check your microphone and camera, then join the call. Joining
-            does not start recording; the Record button appears after you join.
+            {canControlRoom
+              ? "Check your microphone and camera, then join the call. The Record button appears after you join."
+              : `Check your microphone and camera, then join the call. Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording once everyone agrees.`}
           </p>
         ) : null
       ) : null}
@@ -3147,7 +3148,7 @@ export function BrowserSourceRecorder({
               aria-label="Waiting for recording consent"
               aria-live="polite"
             >
-              Your choice is saved. Recording starts when everyone is ready.
+              Your choice is saved. Waiting for everyone to allow recording.
             </span>
           ) : canControlRoom ? (
             <button

@@ -69,6 +69,28 @@ describe("browser recorder before recording", () => {
     expect(screen.queryByText(/Allow recording above/)).not.toBeInTheDocument();
   });
 
+  it("explains the client's role instead of promising a Record button they do not have", async () => {
+    session = { ...session, recordingConsentStatus: "GRANTED", recordingConsentId: "consent",
+      recordingConsentCanRecordAudio: true, allRegisteredParticipantConsentGranted: true };
+    render(<BrowserSourceRecorder {...props} />);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Allow recording" })).not.toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Your recording" })).toBeInTheDocument();
+    expect(screen.getByText(/Your coach starts recording/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
+  });
+
+  it("reports saved consent independently of missing microphone readiness", async () => {
+    session = { ...session, recordingConsentStatus: "GRANTED", recordingConsentId: "consent",
+      recordingConsentCanRecordAudio: true, allRegisteredParticipantConsentGranted: true };
+    const onRecordingConsentChange = jest.fn();
+    render(<BrowserSourceRecorder {...props} microphoneId="" onRecordingConsentChange={onRecordingConsentChange} />);
+    await waitFor(() => expect(onRecordingConsentChange).toHaveBeenLastCalledWith({
+      participantConsentGranted: true, everyoneConsentGranted: true,
+    }));
+    expect(screen.getByTestId("recording-readiness-message")).toHaveTextContent("Choose a microphone.");
+    expect(screen.queryByText(/Everyone is ready to record/)).not.toBeInTheDocument();
+  });
+
   it("shows preparation rather than a storage failure while readiness is still loading", async () => {
     let finishStorageCheck!: (value: Awaited<ReturnType<typeof browserSourceVaultReadiness>>) => void;
     jest.mocked(browserSourceVaultReadiness).mockImplementationOnce(() => new Promise((resolve) => {
@@ -181,6 +203,7 @@ describe("browser recorder before recording", () => {
     jest.mocked(issueBrowserRecordingDirective).mockRejectedValue(new Error("Recording coordination is temporarily unavailable."));
     render(<BrowserSourceRecorder {...props} />);
     const record = await screen.findByRole("button", { name: "Record" });
+    expect(screen.getByRole("heading", { name: "Record session" })).toBeInTheDocument();
     await waitFor(() => expect(record).toBeEnabled());
     fireEvent.click(record);
     expect(await screen.findByRole("alert")).toHaveTextContent("Recording coordination is temporarily unavailable.");

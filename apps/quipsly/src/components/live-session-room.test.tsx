@@ -97,7 +97,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     callTransportInterrupted,
     stopRequestVersion,
     onSourceLockChange,
-    onPreparationStateChange,
+    onRecordingConsentChange,
     onGuardianEvidenceChange,
   }: {
     captureGroupId: string;
@@ -108,7 +108,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     callTransportInterrupted?: boolean;
     stopRequestVersion?: number;
     onSourceLockChange?: (locked: boolean) => void;
-    onPreparationStateChange?: (state: { participantReady: boolean; everyoneReady: boolean }) => void;
+    onRecordingConsentChange?: (state: { participantConsentGranted: boolean; everyoneConsentGranted: boolean }) => void;
     onGuardianEvidenceChange?: (evidence: BrowserRetainedSourceGuardianEvidence) => void;
   }) => {
     useEffect(() => {
@@ -130,8 +130,8 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <span data-testid="browser-source-call-transport">{callTransportInterrupted ? "interrupted" : "available"}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
-      <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: false })}>Simulate recording choice ready</button>
-      <button type="button" onClick={() => onPreparationStateChange?.({ participantReady: true, everyoneReady: true })}>Simulate everyone ready</button>
+      <button type="button" onClick={() => onRecordingConsentChange?.({ participantConsentGranted: true, everyoneConsentGranted: false })}>Simulate participant consent</button>
+      <button type="button" onClick={() => onRecordingConsentChange?.({ participantConsentGranted: true, everyoneConsentGranted: true })}>Simulate everyone consent</button>
     </div>
   },
 }));
@@ -287,7 +287,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByText(/You joined muted/i)).toBeInTheDocument();
     expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
     expect(screen.getByRole("button", { name: "Unmute" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
+    fireEvent.click(screen.getByRole("button", { name: "Simulate participant consent" }));
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/You joined muted/i);
     expect(screen.getByTestId("call-status-message")).not.toHaveTextContent(/recording choice is saved/i);
     getUserMedia.mockRejectedValueOnce(new DOMException("Microphone denied", "NotAllowedError"));
@@ -1179,10 +1179,10 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent("55555555-5555-4555-8555-555555555545");
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Recording is off until everyone chooses/i);
-    fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
+    fireEvent.click(screen.getByRole("button", { name: "Simulate participant consent" }));
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Your recording choice is saved.*Waiting for the other participant/i);
-    fireEvent.click(screen.getByRole("button", { name: "Simulate everyone ready" }));
-    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Everyone is ready to record/i);
+    fireEvent.click(screen.getByRole("button", { name: "Simulate everyone consent" }));
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Everyone has allowed recording/i);
     const recorder = screen.getByTestId("browser-source-capture-group").parentElement;
     const optionalSettings = screen.getByTestId("call-device-settings");
     expect(recorder).not.toBeNull();
