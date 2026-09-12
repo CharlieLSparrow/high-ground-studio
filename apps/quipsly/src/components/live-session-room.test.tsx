@@ -98,6 +98,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     stopRequestVersion,
     onSourceLockChange,
     onRecordingConsentChange,
+    onOpenDeviceSettings,
     onGuardianEvidenceChange,
   }: {
     captureGroupId: string;
@@ -109,6 +110,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     stopRequestVersion?: number;
     onSourceLockChange?: (locked: boolean) => void;
     onRecordingConsentChange?: (state: { participantConsentGranted: boolean; everyoneConsentGranted: boolean }) => void;
+    onOpenDeviceSettings?: () => void;
     onGuardianEvidenceChange?: (evidence: BrowserRetainedSourceGuardianEvidence) => void;
   }) => {
     useEffect(() => {
@@ -132,6 +134,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
       <button type="button" onClick={() => onRecordingConsentChange?.({ participantConsentGranted: true, everyoneConsentGranted: false })}>Simulate participant consent</button>
       <button type="button" onClick={() => onRecordingConsentChange?.({ participantConsentGranted: true, everyoneConsentGranted: true })}>Simulate everyone consent</button>
+      <button type="button" onClick={onOpenDeviceSettings}>Choose devices</button>
     </div>
   },
 }));
@@ -1188,6 +1191,10 @@ describe("LiveSessionRoom", () => {
     expect(recorder).not.toBeNull();
     expect(recorder!.compareDocumentPosition(optionalSettings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(optionalSettings).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByRole("button", { name: "Choose devices" }));
+    expect(optionalSettings).toHaveAttribute("open");
+    expect(optionalSettings.querySelector("summary")).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Leave" })).toBeInTheDocument();
   });
 
   it("keeps browser call recovery ordinary while retaining the technical cause", async () => {

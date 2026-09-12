@@ -575,6 +575,7 @@ export function LiveSessionRoom({
   const [localRecordingFallback, setLocalRecordingFallback] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
+  const deviceSettingsRef = useRef<HTMLDetailsElement | null>(null);
   const intentionalDisconnectRef = useRef(false);
   const callJoinTrackedRef = useRef(false);
   const cameraWantedRef = useRef(cameraWanted);
@@ -2315,6 +2316,12 @@ export function LiveSessionRoom({
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={reportRetainedGuardianEvidence}
       onRecordingConsentChange={handleRecordingConsentChange}
+      onOpenDeviceSettings={() => {
+        const settings = deviceSettingsRef.current;
+        if (!settings) return;
+        settings.open = true;
+        settings.querySelector("summary")?.focus();
+      }}
     />
   ) : (
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">
@@ -2481,7 +2488,7 @@ export function LiveSessionRoom({
             {retainedSourceControls}
           </div>
 
-          <details data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
+          <details ref={deviceSettingsRef} data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
             <button

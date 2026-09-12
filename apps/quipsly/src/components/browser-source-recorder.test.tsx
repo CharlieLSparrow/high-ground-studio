@@ -107,7 +107,7 @@ describe("browser recorder before recording", () => {
       finishStorageCheck({ available: true, persistent: true, quotaBytes: 10 ** 10, usageBytes: 0 });
     });
     expect(await screen.findByRole("button", { name: "Allow recording" })).toBeEnabled();
-    expect(screen.getByText(/Recording health · Ready/)).toBeInTheDocument();
+    expect(screen.getByText(/Recording health · Recording off/)).toBeInTheDocument();
   });
 
   it("still explains a confirmed storage failure and does not offer recording", async () => {
@@ -161,9 +161,27 @@ describe("browser recorder before recording", () => {
   });
 
   it("keeps a real microphone problem visible even before consent", async () => {
-    render(<BrowserSourceRecorder {...props} microphoneId="" />);
+    const onOpenDeviceSettings = jest.fn();
+    render(<BrowserSourceRecorder {...props} microphoneId="" onOpenDeviceSettings={onOpenDeviceSettings} />);
     await waitFor(() => expect(screen.getByTestId("recording-readiness-message")).toHaveTextContent("Choose a microphone."));
     expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Recording health · Needs attention/)).toBeInTheDocument();
+    expect(screen.queryByText(/Recording health · Ready/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Choose devices" }));
+    expect(onOpenDeviceSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates recording health when a microphone becomes available without remounting", async () => {
+    session = { ...session, canControlRoom: true, recordingConsentStatus: "GRANTED",
+      recordingConsentId: "consent", recordingConsentCanRecordAudio: true,
+      allRegisteredParticipantConsentGranted: true };
+    const { rerender } = render(<BrowserSourceRecorder {...props} microphoneId="" onOpenDeviceSettings={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText(/Recording health · Needs attention/)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Record" })).toBeDisabled();
+    rerender(<BrowserSourceRecorder {...props} onOpenDeviceSettings={jest.fn()} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record" })).toBeEnabled());
+    expect(screen.getByText(/Recording health · Ready/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose devices" })).not.toBeInTheDocument();
   });
 
   it("preserves an unsaved transcription opt-out while fresh server status arrives", async () => {

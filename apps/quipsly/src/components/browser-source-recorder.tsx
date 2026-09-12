@@ -292,6 +292,7 @@ export function BrowserSourceRecorder({
   onSourceLockChange,
   onGuardianEvidenceChange,
   onRecordingConsentChange,
+  onOpenDeviceSettings,
 }: {
   callRoomId: string;
   captureGroupId: string;
@@ -315,6 +316,7 @@ export function BrowserSourceRecorder({
     participantConsentGranted: boolean;
     everyoneConsentGranted: boolean;
   }) => void;
+  onOpenDeviceSettings?: () => void;
 }) {
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
   const [message, setMessage] = useState("Getting recording ready…");
@@ -2819,6 +2821,24 @@ export function BrowserSourceRecorder({
   const latestRecordingExit = latestRecordingReceipt
     ? browserSourceReceiptExitStatus(latestRecordingReceipt, exitSafety)
     : null;
+  const recorderStatusLabel = conversationEnded
+    ? exitSafety.label
+    : status === "ready" && !activeLedger && !recoveryRows.length && !retainedReadiness.ok
+      ? retainedReadiness.blocker === "my-consent" ? "Recording off"
+        : retainedReadiness.blocker === "participant-consent" ? "Waiting for others"
+        : "Needs attention"
+      : browserRetainedRecorderStatusLabel({
+        status,
+        elapsedSeconds,
+        hasProtectedSource: Boolean(activeLedger || recoveryRows.length),
+      });
+  // Storage being available is only one prerequisite, not proof that the
+  // selected source can record. Reuse the same status as the Record control.
+  const recordingHealthLabel = !vaultChecked
+    ? status === "error" ? "Not checked" : "Checking…"
+    : !vaultAvailable || preflightStorageIssue || operationalIssue
+      ? "Needs attention"
+      : recorderStatusLabel;
 
   return (
     <section
@@ -2864,19 +2884,9 @@ export function BrowserSourceRecorder({
           </details>
         </div>
         <span
-          className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
+          className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : recorderStatusLabel === "Needs attention" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
         >
-          {conversationEnded
-            ? exitSafety.label
-            : status === "ready" && !activeLedger && !recoveryRows.length && !retainedReadiness.ok
-              ? retainedReadiness.blocker === "my-consent" ? "Recording off"
-                : retainedReadiness.blocker === "participant-consent" ? "Waiting for others"
-                : "Needs attention"
-              : browserRetainedRecorderStatusLabel({
-                status,
-                elapsedSeconds,
-                hasProtectedSource: Boolean(activeLedger || recoveryRows.length),
-              })}
+          {recorderStatusLabel}
         </span>
       </div>
 
@@ -3214,6 +3224,11 @@ export function BrowserSourceRecorder({
             className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950"
           >
             {retainedReadiness.reason}
+            {onOpenDeviceSettings && ["microphone", "camera"].includes(retainedReadiness.blocker ?? "") ? (
+              <button type="button" onClick={onOpenDeviceSettings} className="ml-2 min-h-11 rounded-full border border-amber-300 px-3 font-bold underline underline-offset-2">
+                Choose devices
+              </button>
+            ) : null}
           </p>
         ) : null}
         </div>
@@ -3312,11 +3327,7 @@ export function BrowserSourceRecorder({
         >
           <summary className="cursor-pointer">
             Recording health ·{" "}
-            {!vaultChecked
-              ? status === "error" ? "Not checked" : "Checking…"
-              : vaultAvailable && !preflightStorageIssue && !operationalIssue
-              ? "Ready"
-              : "Needs attention"}
+            {recordingHealthLabel}
           </summary>
           {vaultChecked ? <p className="mt-2">
             On-device protection {vaultAvailable ? "ready" : "unavailable"} ·{" "}
