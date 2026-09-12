@@ -281,6 +281,8 @@ describe("LiveSessionRoom", () => {
     expect(getUserMedia).not.toHaveBeenCalled();
     const join = screen.getByRole("button", { name: "Join call" });
     expect(join).toBeEnabled();
+    expect(screen.getByRole("region", { name: "Ready to join" })).toHaveTextContent("Audio on this device · Camera off");
+    expect(screen.queryByText(/Microphone not available yet|Camera not available yet/)).not.toBeInTheDocument();
     expect(screen.getByTestId("call-device-settings")).not.toHaveAttribute("open");
     expect(screen.queryByTestId("call-status-message")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Record private sample" })).toBeEnabled();

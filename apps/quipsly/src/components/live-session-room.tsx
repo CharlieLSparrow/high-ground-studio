@@ -2411,8 +2411,8 @@ export function LiveSessionRoom({
                   <p className="mt-1 text-xs font-bold leading-5 text-violet-900">
                     {callAudioMode === "other-device"
                       ? "Call audio on your other device"
-                      : microphones.find((device) => device.deviceId === microphoneId)?.label || "Microphone not available yet"}
-                    {cameraEnabledForNextJoin ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
+                      : microphones.find((device) => device.deviceId === microphoneId)?.label || "Audio on this device"}
+                    {cameraEnabledForNextJoin ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera on when you join"}` : " · Camera off"}
                   </p>
                 </div>
                 {previewTested ? <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-950">Preview ready</span> : null}
