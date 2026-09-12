@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { LocalMediaJobStorage } from "@high-ground/quipsly-media-processing/local-media-job-storage";
+import { FfmpegSessionAudioAuditionEngine } from "./session-audio-audition-ffmpeg.js";
+import { runSessionAudioAuditionWorker } from "./session-audio-audition-worker.js";
 import { mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -651,6 +654,10 @@ async function main() {
   const store = new PostgresLocalEpisodeProxyStore(pool);
   const transcoder = new FfmpegCaptureProxyTranscoder();
   const executionId = randomUUID();
+  const sessionAuditionStorage = new LocalMediaJobStorage(
+    process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT?.trim() || path.join(localMediaRoot, "capture-vault"),
+  );
+  const sessionAuditionEngine = new FfmpegSessionAudioAuditionEngine();
   const executionIdentity = await resolveLocalExecutionIdentity(localMediaRoot);
   const options: LocalEpisodeProxyWorkerOptions = {
     executionId,
@@ -929,6 +936,13 @@ async function main() {
       sessionRecordingShare.renderer,
       sessionRecordingShare.options,
     ),
+    async () => {
+      const results = await runSessionAudioAuditionWorker(sessionAuditionStorage, sessionAuditionEngine, {
+        executionId, buildId: options.buildId, imageDigest: null,
+        leaseDurationMs: options.leaseMs, now: () => new Date(),
+      }, 1);
+      return results[0] ?? { disposition: "idle" };
+    },
     () => runOneLocalEpisodeAudioMixJob(
       episodeAudioMix.store,
       episodeAudioMix.renderer,

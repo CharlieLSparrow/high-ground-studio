@@ -1,4 +1,5 @@
 import { newestCoherentRecordingTake } from "./session-recording-share";
+import type { SessionRecordingAttempt } from "./session-recording-attempts";
 
 export type SessionTranscriptSourceCandidate = {
   id: string;
@@ -11,20 +12,30 @@ export type SessionTranscriptSourceCandidate = {
 };
 
 /**
- * Chooses the current participant-owned transcript lanes. A declared capture
- * group outranks wall-clock clustering. Sequential crash/reconnect segments
- * remain separate lanes; simultaneous device alternatives remain one lane.
- * Legacy sources with no group retain the bounded coherent-take fallback.
+ * Chooses participant-owned transcript lanes from one acknowledged START.
+ * A room's capture group can contain several independent recordings. Without
+ * START receipts, declared groups outrank the legacy wall-clock fallback.
+ * Reconnect segments stay together; simultaneous device alternatives use one lane.
  */
 export function selectSessionTranscriptSources<T extends SessionTranscriptSourceCandidate>(input: {
   rows: T[];
   participantIds?: string[];
   anchorRecordingAssetId?: string | null;
+  attempts?: SessionRecordingAttempt<T>[];
 }): Array<T | null> {
   const rows = input.rows.filter((row) => row.participantId && row.transcriptJobs[0]?.id);
   const anchor = rows.find((row) => row.id === input.anchorRecordingAssetId) ?? null;
   const anchorGroupId = captureGroupId(anchor?.localManifestJson);
-  const take = anchorGroupId
+  const attempts = input.attempts;
+  const attempt = attempts?.some(value => value.id.startsWith("start:"))
+    ? anchor
+      ? attempts.find(value => value.sources.some(source => source.id === anchor.id))
+      : attempts[0]
+    : null;
+  const attemptSourceIds = attempt && new Set(attempt.sources.map(source => source.id));
+  const take = attemptSourceIds
+    ? rows.filter(row => attemptSourceIds.has(row.id))
+    : anchorGroupId
     ? rows.filter((row) => captureGroupId(row.localManifestJson) === anchorGroupId)
     : anchor
       ? newestCoherentRecordingTake(rows.filter((row) => (

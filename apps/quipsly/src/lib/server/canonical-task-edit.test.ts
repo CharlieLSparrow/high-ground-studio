@@ -3,6 +3,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { editCanonicalTaskInTransaction } from "./canonical-task-edit";
+import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
 
 const expectedUpdatedAt = new Date("2026-07-24T18:00:00.000Z");
 const persistedUpdatedAt = new Date("2026-07-24T18:01:00.000Z");
@@ -66,6 +67,7 @@ describe("canonical one-time task editing", () => {
       where: {
         id: "task-1",
         assignedUserId: "user-1",
+        OR: personalOrSharedSessionTaskAccessWhere("user-1", "write"),
         status: "OPEN",
         updatedAt: expectedUpdatedAt,
       },

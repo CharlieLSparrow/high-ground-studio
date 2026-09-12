@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 const root = "apps/mobile-capture/HighGroundCapture/HighGroundCapture";
@@ -16,6 +19,122 @@ const captureShell = read("CapturePhoneShell.swift");
 const bridge = read("BridgeModels.swift");
 const providerRoom = read("ProviderRoomController.swift");
 const mobileContext = read("MobileContextManager.swift");
+
+function swiftFunction(source, name) {
+  const start = source.indexOf(`func ${name}(`);
+  assert.ok(start >= 0, `Missing Swift function ${name}`);
+  const end = source.indexOf("\n    }", start);
+  assert.ok(end > start, `Missing Swift function end ${name}`);
+  return source.slice(start, end + 6);
+}
+
+const queuedUploadOwners = [
+  ["syncWritingDraftDecision", "decision"],
+  ["syncWeeklyPlanDecision", "decision"],
+  ["syncFocusPlan", "plan"],
+  ["syncFocusDecision", "decision"],
+  ["syncReminderDecision", "decision"],
+  ["syncWorkTagDecision", "decision"],
+  ["syncDocumentNoteEdit", "edit"],
+  ["syncQuickEntry", "entry"],
+  ["syncSessionNoteEdit", "edit"],
+].map(([method, item]) => ["BridgeModels.swift", method, item]);
+queuedUploadOwners.push(
+  ["CaptureRecordingCoordinator.swift", "deliver", "receipt"],
+  ["CaptureSessionPreflight.swift", "deliver", "receipt"],
+  ["CaptureSourceInbox.swift", "sync", "decision"],
+  ["TranscriptCorrectionReview.swift", "syncReviewDecision", "decision"],
+  ["TranscriptCorrectionReview.swift", "syncSpeakerAttribution", "decision"],
+);
+for (const [file, method, item] of queuedUploadOwners) {
+  test(`${file}/${method} binds queued work to its stored owner before sending`, () => {
+    // Wiring evidence only; the Swift test below executes the request boundary.
+    assert.match(swiftFunction(read(file), method), new RegExp(
+      `authenticatedData\\(\\s*for: request,\\s*expectedOwnerAccountID: ${item}\\.ownerAccountID\\s*\\)`,
+    ));
+  });
+}
+
+function hasPendingWorkParameter(signature) {
+  // A queued value owns an account; a nested discriminator such as
+  // PendingWorkTagDecision.EntityKind is only "task" or "goal".
+  // The negative lookahead also prevents matching a shortened type prefix.
+  return /:\s*Pending[A-Za-z0-9_]+(?![A-Za-z0-9_.])/.test(signature);
+}
+
+test("pending-work detection distinguishes queued values from nested type names", () => {
+  for (const signature of [
+    "func sync(decision: PendingWorkTagDecision) async",
+    "func sync(decision: PendingWorkTagDecision?, retry: Bool)",
+    "func sync(edit: PendingDocumentNoteEdit) async throws",
+  ]) assert.equal(hasPendingWorkParameter(signature), true, signature);
+  for (const signature of [
+    "func loadSharedTagContext(kind: PendingWorkTagDecision.EntityKind, entityID: String)",
+    "func describe(disposition: PendingWorkTagDecision.Disposition?)",
+    "func load(entityID: String) async",
+  ]) assert.equal(hasPendingWorkParameter(signature), false, signature);
+});
+
+test("new typed pending-work upload methods cannot silently inherit the current login", () => {
+  const unbound = [];
+  for (const file of readdirSync(root).filter((name) => name.endsWith(".swift"))) {
+    for (const match of read(file).matchAll(/func ([A-Za-z0-9_]+)\([\s\S]*?\n    }/g)) {
+      const body = match[0], signature = body.slice(0, body.indexOf("{"));
+      if (hasPendingWorkParameter(signature) && body.includes("authenticatedData(")
+        && !body.includes("expectedOwnerAccountID:")) unbound.push(`${file}/${match[1]}`);
+    }
+  }
+  assert.deepEqual(unbound, []);
+});
+
+test("the actual Swift owner-binding methods reject a queued edit after account replacement", {
+  skip: process.platform !== "darwin" ? "Requires the Apple Swift toolchain" : false,
+}, (t) => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-request-owner-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const source = `import Foundation
+final class Harness {
+    static var storedOwner: String? = "coach"
+    var accountOwnerID: String? = "coach"
+    var accountIdentityGeneration: UInt64 = 1
+    struct AuthenticatedOwnerBinding { let ownerAccountID: String; let generation: UInt64 }
+    enum AuthenticatedRequestError: Error { case accountChanged }
+    static func currentStoredOwnerID() -> String? { storedOwner }
+    static ${swiftFunction(auth, "normalizedOwnerID")}
+    ${swiftFunction(auth, "authenticatedOwnerBinding")}
+    ${swiftFunction(auth, "validateAuthenticatedOwnerBinding")}
+    func rejects(_ operation: () throws -> Void) {
+        do { try operation(); fatalError("Accepted an invalid account binding") }
+        catch AuthenticatedRequestError.accountChanged {} catch { fatalError("Unexpected error") }
+    }
+    func run() throws {
+        let original = try authenticatedOwnerBinding(expectedOwnerAccountID: "coach")
+        try validateAuthenticatedOwnerBinding(original)
+        accountOwnerID = "client"; Self.storedOwner = "client"; accountIdentityGeneration += 1
+        rejects { _ = try authenticatedOwnerBinding(expectedOwnerAccountID: "coach") }
+        rejects { try validateAuthenticatedOwnerBinding(original) }
+        let client = try authenticatedOwnerBinding(expectedOwnerAccountID: "client")
+        try validateAuthenticatedOwnerBinding(client)
+        accountOwnerID = "coach"; Self.storedOwner = "coach"; accountIdentityGeneration += 1
+        // Returning to the same account must not revive an in-flight old generation.
+        rejects { try validateAuthenticatedOwnerBinding(original) }
+        _ = try authenticatedOwnerBinding(expectedOwnerAccountID: "coach")
+        rejects { _ = try authenticatedOwnerBinding(expectedOwnerAccountID: "  ") }
+        Self.storedOwner = nil
+        rejects { _ = try authenticatedOwnerBinding(expectedOwnerAccountID: "coach") }
+        print("PASS request ownership survives account replacement and rejects stale generations")
+    }
+}
+try Harness().run()
+`;
+  const file = path.join(directory, "main.swift"), binary = path.join(directory, "owner-test");
+  writeFileSync(file, source);
+  const compile = spawnSync("xcrun", ["swiftc", file, "-o", binary], { encoding: "utf8", timeout: 60_000 });
+  assert.equal(compile.status, 0, compile.stdout + compile.stderr);
+  const result = spawnSync(binary, [], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /PASS request ownership/);
+});
 
 test("verified Quipsly actor identity owns the local account partition", () => {
   assert.match(auth, /private struct NativeSessionUser:[\s\S]*?let id: String\?/);

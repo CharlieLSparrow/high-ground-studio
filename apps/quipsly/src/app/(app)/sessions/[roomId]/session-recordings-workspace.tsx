@@ -1,19 +1,25 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+
+const RecordingToolsActive = createContext(true);
+export function useRecordingToolsActive() { return useContext(RecordingToolsActive); }
 
 // Diagnostics stay reachable through existing source-specific links, including
 // links opened from another screen. Opening details never changes recording data.
 function RecordingDisclosure({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  const parentActive = useRecordingToolsActive();
   useEffect(() => {
     function revealTarget() {
       let id: string;
       try { id = decodeURIComponent(window.location.hash.slice(1)); } catch { return; }
       const target = id ? document.getElementById(id) : null;
       if (!target || !ref.current?.contains(target)) return;
+      setOpen(true);
       let details = target.closest("details");
       while (details && ref.current.contains(details)) {
         details.open = true;
@@ -25,9 +31,11 @@ function RecordingDisclosure({ id, label, children }: { id: string; label: strin
     window.addEventListener("hashchange", revealTarget);
     return () => window.removeEventListener("hashchange", revealTarget);
   }, []);
-  return <details ref={ref} id={id} className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
+  return <details ref={ref} id={id} onToggle={event => setOpen(event.currentTarget.open)} className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
     <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">{label}</summary>
-    <div className="mt-4 space-y-5">{children}</div>
+    <RecordingToolsActive.Provider value={parentActive && open}>
+      <div className="mt-4 space-y-5">{children}</div>
+    </RecordingToolsActive.Provider>
   </details>;
 }
 

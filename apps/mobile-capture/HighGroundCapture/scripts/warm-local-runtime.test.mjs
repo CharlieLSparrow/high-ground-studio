@@ -19,6 +19,14 @@ test('warms all startup routes without credentials or mutations', async t => {
   const results = await warmLocalRuntime(`${origin}/irrelevant?secret=not-forwarded`, { report() {} });
   assert.deepEqual(requests, startupRoutes.map(path => ({ path, method: 'GET', auth: undefined, cookie: undefined })));
   assert.equal(results.length, startupRoutes.length);
+  assert.ok(requests.some(request => request.path === '/api/mobile/capture/today'), 'The signed-in task list must compile before the native journey starts.');
+  for (const route of ['/api/mobile/capture/work', '/api/mobile/capture/inbox',
+    '/api/mobile/capture/consent', '/api/mobile/capture/rooms/provider-recording',
+    '/api/mobile/capture/voice-writing', '/api/mobile/capture/speech-profile',
+    '/api/coaching/practice-command', '/api/coaching/public', '/api/calendar/feeds',
+    '/api/calendar/connections/google?view=summary']) {
+    assert.ok(requests.some(request => request.path === route), `Concurrent startup dependency ${route} must compile before native UI timings begin.`);
+  }
 });
 
 test('never contacts remote or non-HTTP origins', async () => {
@@ -47,5 +55,12 @@ test('does not accept an authorization failure on the public configuration route
 
 test('bounds stalled requests', async t => {
   const origin = await serve(t, () => {});
-  await assert.rejects(warmLocalRuntime(origin, { timeoutMs: 30, report() {} }), { name: 'TimeoutError' });
+  const progress = [];
+  await assert.rejects(warmLocalRuntime(origin, { timeoutMs: 30, report: message => progress.push(message) }), error => {
+    assert.equal(error.name, 'TimeoutError');
+    assert.match(error.message, /Local startup route \/api\/mac\/firebase-client-config did not respond after \d+ms/);
+    assert.match(error.message, /Native tests have not started/);
+    return true;
+  });
+  assert.deepEqual(progress, [`Warming local route: ${startupRoutes[0]}`]);
 });

@@ -4,7 +4,7 @@ jest.mock("../../work/actions", () => ({
   editWorkGoal: jest.fn(), editWorkTask: jest.fn(),
   updateWorkGoalStatus: jest.fn(), updateWorkTaskStatus: jest.fn(),
 }));
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
@@ -28,7 +28,8 @@ jest.mock("./coaching-session-plan-card", () => ({
 }));
 jest.mock("@/components/session-invitations", () => ({ SessionInvitations: () => <div>Session invitation manager</div> }));
 const mockRouterRefresh = jest.fn();
-jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh }) }));
+const mockRouterPush = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh, push: mockRouterPush }) }));
 
 const candidate: SessionReviewGoalCandidate = {
   id: "packet-goal-build-1-segment-1",
@@ -324,9 +325,27 @@ function heldSourceEvidence(): SessionSourceEvidence {
 describe("Session review goal candidates", () => {
   const originalFetch = global.fetch;
   beforeEach(() => {
+    mockRouterPush.mockClear();
     mockDockValue = null;
     jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     jest.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+  });
+
+  it("keeps every section in a stable order and provides a compact mobile section picker", async () => {
+    const consentSnapshot = { total: 1, granted: 1, transcriptionPermitted: 1 };
+    const { rerender } = render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="overview" consentSnapshot={consentSnapshot} />);
+    const nav = screen.getByRole("navigation", { name: "Session workspace modes" });
+    const destinations = within(nav).getAllByRole("link").map(link => link.getAttribute("href"));
+    const picker = within(nav).getByRole("combobox", { name: "Session section" });
+    expect(within(picker).getAllByRole("option")).toHaveLength(9);
+    await userEvent.selectOptions(picker, "outputs");
+    expect(mockRouterPush).toHaveBeenCalledWith("/sessions/room-1?mode=outputs");
+    rerender(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="work" consentSnapshot={consentSnapshot} />);
+    expect(within(nav).getAllByRole("link").map(link => link.getAttribute("href"))).toEqual(destinations);
+    expect(within(nav).getByRole("link", { name: "Goals & commitments" })).toHaveAttribute("aria-current", "page");
+    expect(picker).toHaveValue("work");
+    expect(within(screen.getByRole("region", { name: "Session heading and navigation" })).getByRole("heading", { name: "Coaching review" }))
+      .toBeInTheDocument();
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -722,7 +741,7 @@ describe("Session review goal candidates", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/mobile/capture/transcripts/packet?callRoomId=room-1",
-      { cache: "no-store" },
+      { cache: "no-store", signal: expect.any(AbortSignal) },
     );
   });
 
@@ -868,6 +887,51 @@ describe("Session review goal candidates", () => {
       screen.getByText("Details").closest("details"),
     ).not.toHaveAttribute("open");
     expect(screen.queryByText("Permission details")).not.toBeInTheDocument();
+  });
+
+  it("keeps the transcript editor mounted through a failed refresh and retry", async () => {
+    let finishRead!: (response: unknown) => void;
+    const fetchMock = jest.fn().mockResolvedValueOnce(jsonResponse(packet()))
+      .mockReturnValueOnce(new Promise(resolve => {finishRead = resolve;}))
+      .mockResolvedValueOnce(jsonResponse(packet()));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{total: 2, granted: 2, transcriptionPermitted: 2}} />);
+    const desk = await screen.findByText("Exact transcript desk");
+    fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"}));
+    expect(screen.getByRole("button", {name: "Refresh transcript"})).toBeDisabled();
+    expect(screen.getByText("Exact transcript desk")).toBe(desk);
+    expect(screen.queryByText("Reading the Session’s transcript evidence…")).not.toBeInTheDocument();
+    await act(async () => finishRead(jsonResponse({ok: false, error: "Temporary read failure"}, 503)));
+    expect(screen.getByText("Temporary read failure")).toBeVisible();
+    expect(screen.getByText("Exact transcript desk")).toBe(desk);
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"})));
+    expect(screen.getByText("Exact transcript desk")).toBe(desk);
+    expect(screen.queryByText("Temporary read failure")).not.toBeInTheDocument();
+  });
+
+  it("bounds a stalled transcript read and leaves Refresh available to retry", async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn().mockImplementationOnce((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), {once: true});
+    })).mockResolvedValueOnce(jsonResponse(packet())) as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{total: 2, granted: 2, transcriptionPermitted: 2}} />);
+    await act(async () => {jest.advanceTimersByTime(30_000);});
+    expect(screen.getByText("The transcript is taking too long to load. Try Refresh transcript again.")).toBeVisible();
+    expect(screen.getByRole("button", {name: "Refresh transcript"})).toBeEnabled();
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"})));
+    expect(screen.getByText("Exact transcript desk")).toBeVisible();
+  });
+
+  it.each([401, 403, 404, "wrong-session"])("removes loaded transcript work when refresh returns %s", async status => {
+    const denied = typeof status === "number"
+      ? {ok: false, status, json: async () => {throw new Error("Non-JSON denial");}}
+      : jsonResponse({...packet(), room: {...packet().room, id: "another-room"}});
+    global.fetch = jest.fn().mockResolvedValueOnce(jsonResponse(packet())).mockResolvedValueOnce(denied) as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{total: 2, granted: 2, transcriptionPermitted: 2}} />);
+    await screen.findByText("Exact transcript desk");
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh transcript"})));
+    expect(screen.queryByText("Exact transcript desk")).not.toBeInTheDocument();
+    expect(screen.getByText("This transcript is no longer available. Return to your session workspace.")).toBeVisible();
   });
 
   it("updates a running transcript to completed without a manual refresh", async () => {
@@ -1087,6 +1151,66 @@ describe("Session review goal candidates", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores an old Session response after navigating to another Session", async () => {
+    let finishFirst!: (response: Response) => void;
+    const next = packet();
+    next.room!.id = "room-2";
+    next.packet!.summary!.title = "Second Session recap";
+    const fetchMock = jest.fn().mockImplementationOnce(() => new Promise<Response>(resolve => { finishFirst = resolve; }))
+      .mockResolvedValue(jsonResponse(next));
+    global.fetch = fetchMock as typeof fetch;
+    const props = { sessionTitle: "Coaching review", mode: "transcript" as const,
+      consentSnapshot: { total: 2, granted: 2, transcriptionPermitted: 2 } };
+    const { rerender } = render(<SessionReviewClient {...props} roomId="room-1" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    rerender(<SessionReviewClient {...props} roomId="room-2" />);
+    expect(await screen.findByRole("heading", { name: "Second Session recap" })).toBeInTheDocument();
+    await act(async () => { finishFirst(jsonResponse(packet())); });
+    expect(screen.getByRole("heading", { name: "Second Session recap" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Session brief" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls[0][1]?.signal.aborted).toBe(true);
+  });
+
+  it("keeps polling completed transcripts while follow-through runs, without starting duplicate builds", async () => {
+    jest.useFakeTimers();
+    const processing = packetReadyToBuild();
+    processing.packet!.generation = { state: "PROCESSING", message: "Preparing editable Session work.", canRetry: false };
+    const ready = packet();
+    ready.packet!.generation = { state: "READY", message: "Ready.", canRetry: false };
+    const fetchMock = jest.fn().mockResolvedValueOnce(jsonResponse(processing)).mockResolvedValue(jsonResponse(ready));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+    expect(await screen.findByText("Preparing editable Session work.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(2_500); });
+    expect(await screen.findByRole("heading", { name: "Session brief" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
+    await act(async () => { await jest.advanceTimersByTimeAsync(5_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves existing results during a failed upgrade and retries only when asked", async () => {
+    const failed = packet();
+    failed.packet!.generation = { state: "FAILED", message: "Automatic notes couldn’t finish. Saved work is available.", canRetry: true };
+    const processing = packet();
+    processing.packet!.generation = { state: "PROCESSING", message: "Preparing editable Session work.", canRetry: false };
+    const fetchMock = jest.fn().mockResolvedValueOnce(jsonResponse(failed))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, analysisQueued: true }))
+      .mockResolvedValue(jsonResponse(processing));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+    expect(await screen.findByRole("heading", { name: "Session brief" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Retry automatic notes" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ transcriptJobId: "job-1", retryAnalysis: true });
+    expect(screen.getByRole("heading", { name: "Session brief" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry automatic notes" })).not.toBeInTheDocument();
+    expect(screen.getByText("Automatic notes are being prepared. Your saved work stays available.")).toBeInTheDocument();
+  });
+
   it("automatically prepares review material from the exact transcript without forcing a rebuild", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(packetReadyToBuild()))
@@ -1098,7 +1222,7 @@ describe("Session review goal candidates", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/packet");
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false, retryAnalysis: false });
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Your Session recap, notes, tasks, and goals are ready. Everything stays editable and linked to the recording.",
     );
@@ -1128,7 +1252,7 @@ describe("Session review goal candidates", () => {
     await user.click(retry);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
-    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false });
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false, retryAnalysis: true });
     expect(await screen.findByRole("heading", { name: "Session brief" })).toBeInTheDocument();
   });
 
@@ -1349,6 +1473,7 @@ describe("Session review goal candidates", () => {
 
     expect(screen.getByRole("heading", { name: "Coaching Session" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue in this browser" })).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Session workspace"})).toHaveAttribute("href", "/sessions/room-live-coaching?mode=overview");
     expect(screen.queryByTestId("session-consent-control")).not.toBeInTheDocument();
     expect(screen.getByText(/choose whether to record after you join/i)).toBeInTheDocument();
     expect(screen.queryByText("Recording status")).not.toBeInTheDocument();

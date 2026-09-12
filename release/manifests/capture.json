@@ -19,6 +19,7 @@
     "validation": {
       "prefixes": [
         "release/app-store/quipsly-capture/",
+        "scripts/test-capture-",
         "scripts/release/quipsly-app-store-connect-",
         "scripts/release/quipsly-capture-",
         "scripts/release/quipsly-testflight-",
@@ -26,8 +27,11 @@
       ],
       "files": [
         "scripts/ci/capture-ci-routing.test.mjs",
+        "scripts/quipsly-ios-capture-account-isolation.test.mjs",
         "scripts/lib/source-check-report.mjs",
         "scripts/lib/source-check-report.test.mjs",
+        "scripts/lib/capture-semantic-color-check.mjs",
+        "scripts/lib/capture-semantic-color-check.test.mjs",
         "scripts/test-capture-session-deep-links.sh",
         "docs/quipsly/xcode-cloud-usage-policy.md",
         "docs/quipsly/hgo-testflight-rehearsal-runbook.md",

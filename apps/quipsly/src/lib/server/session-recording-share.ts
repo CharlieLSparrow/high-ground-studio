@@ -1,6 +1,8 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
+import { readSessionRecordingAttempts as loadRecordingAttempts } from "./session-recording-attempts";
+export { recordingShareAttempts } from "./session-recording-attempts";
 
 import {
   newSessionRecordingShareJob,
@@ -524,10 +526,10 @@ async function loadSources(
       row.recordedStoppedAt > row.recordedStartedAt
     );
   });
-  // A capture group is the durable call/take boundary. Unlike a start-time
+  // A capture group is the durable call boundary. Unlike a start-time
   // cluster it deliberately survives long calls and crash/reconnect segments.
   // The bounded clock fallback exists only for legacy sources without groups.
-  return recordingShareSourcesForTake(verified, preferredCaptureGroupId);
+  return recordingShareSourcesForTake<any>(verified, preferredCaptureGroupId);
 }
 
 async function exactCloudBindings(
@@ -1271,7 +1273,7 @@ async function reconcileRender(client: RestoreClient, output: any) {
 
 export async function readSessionRecordingShare(
   client: RestoreClient,
-  input: { roomId: string; actor: SessionAccessActor },
+  input: { roomId: string; actor: SessionAccessActor; takeId?: string },
 ) {
   const room = await loadRoom(client, input.roomId, input.actor, "read");
   const canPrepare = Boolean(
@@ -1305,9 +1307,22 @@ export async function readSessionRecordingShare(
   });
   if (canPrepare && output?.status === "DRAFT")
     output = await reconcileRender(client, output);
-  const sourceRows = canPrepare
+  const allSourceRows = canPrepare
     ? await loadSources(client, room.id, room.captureGroupId)
     : [];
+  const attempts = canPrepare ? await loadRecordingAttempts(client, room.id, allSourceRows) : [];
+  const outputSources = object(output?.sourceManifestJson).sources;
+  const outputSourceIds = new Set((Array.isArray(outputSources) ? outputSources : [])
+    .map((source: any) => clean(source.recordingAssetId, 240)).filter(Boolean));
+  const outputAttempt = outputSourceIds.size ? attempts.find(attempt =>
+    [...outputSourceIds].every(id => attempt.sources.some(source => source.id === id))) : null;
+  const selectedAttempt = input.takeId ? attempts.find(attempt => attempt.id === input.takeId)
+    : outputAttempt || attempts[0];
+  if (canPrepare && input.takeId && !selectedAttempt) throw new SessionRecordingShareError(
+    404, "RECORDING_ATTEMPT_NOT_FOUND", "This recording attempt is not available in this Session.",
+  );
+  if (canPrepare && input.takeId && outputAttempt?.id !== selectedAttempt?.id) output = null;
+  const sourceRows = selectedAttempt?.sources || [];
   const available = sourceSummary(sourceRows);
   const transcriptSegments = canPrepare
     ? await loadTranscriptEditSegments(
@@ -1343,7 +1358,9 @@ export async function readSessionRecordingShare(
           "Client",
       },
     },
-    available: { ...available, transcriptSegments },
+    available: { ...available, transcriptSegments, selectedTakeId: selectedAttempt?.id || null,
+      takes: attempts.map(attempt => ({id: attempt.id, startedAt: attempt.startedAt.toISOString(), sourceCount: attempt.sources.length})),
+    },
     output: serializeOutput(output),
     readiness: {
       canPrepare,
@@ -1393,7 +1410,7 @@ export async function prepareSessionRecordingShare(
   ];
   const selected = requested.length
     ? allSources.filter((row: any) => requested.includes(row.id))
-    : allSources;
+    : (await loadRecordingAttempts(client, room.id, allSources))[0]?.sources || [];
   if (
     !selected.length ||
     (requested.length && selected.length !== requested.length)

@@ -1,5 +1,17 @@
 import Foundation
 
+struct CaptureTaskTagSelection: Equatable {
+    var tagIDs: [String] = []
+    var newTagLabels: [String] = []
+
+    var body: [String: Any] { ["tagIds": tagIDs.sorted(), "newTagLabels": newTagLabels] }
+    var isValid: Bool {
+        Set(tagIDs).count == tagIDs.count && tagIDs.count + newTagLabels.count <= 24
+            && newTagLabels.count <= 8
+            && newTagLabels.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.utf16.count <= 80 }
+    }
+}
+
 /// The editable values of canonical work, not a second stored work model.
 struct CaptureCoachingWorkDraft: Equatable {
     let kind: String
@@ -9,6 +21,7 @@ struct CaptureCoachingWorkDraft: Equatable {
     var ownerUserID: String
     var status: String
     var targetAt: String?
+    var tags: CaptureTaskTagSelection? = nil
 
     var fields: [String: String] {
         var values = ["title": title, "body": body]
@@ -28,6 +41,18 @@ struct CaptureCoachingWorkDraft: Equatable {
             values["ownerUserId"] = ownerUserID
             values["targetAt"] = targetAt.map { $0 as Any } ?? NSNull()
         }
+        if let tags { values["tags"] = tags.body }
+        return values
+    }
+
+    func updateBody(entryID: String, expectedUpdatedAt: String) -> [String: Any] {
+        var values: [String: Any] = fields.mapValues { $0 as Any }
+        values["id"] = entryID
+        values["kind"] = kind
+        values["expectedUpdatedAt"] = expectedUpdatedAt
+        if kind != "NOTE" { values["targetAt"] = targetAt.map { $0 as Any } ?? NSNull() }
+        // Omitted tags preserve the current selection; an explicit empty list clears it.
+        if let tags { values["tags"] = tags.body }
         return values
     }
 
@@ -51,5 +76,10 @@ struct CaptureCoachingWorkDraft: Equatable {
 struct CaptureCoachingCreateAttempt {
     let requestID: String
     let original: CaptureCoachingWorkDraft
-    var body: [String: Any] { original.createBody(requestID: requestID) }
+    var sourceMessageID: String? = nil
+    var body: [String: Any] {
+        var body = original.createBody(requestID: requestID)
+        if let sourceMessageID { body["sourceMessageId"] = sourceMessageID }
+        return body
+    }
 }

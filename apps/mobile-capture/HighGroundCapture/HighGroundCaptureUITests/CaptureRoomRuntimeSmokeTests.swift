@@ -332,6 +332,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
         }
         app.launchArguments.append("--quipsly-capture-runtime-smoke")
+        if name.contains("testDeviceSoundAnalysisSynchronizesAfterUploadAndRelaunch") {
+            app.launchArguments.append("--capture-runtime-sound-analysis")
+        }
         if credentials.recordingFixtureAssetID?.isEmpty == false {
             app.launchArguments.append("--quipsly-capture-runtime-playback-fixture")
         }
@@ -383,6 +386,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         switch initialTab {
         case "today": requestedTabTitle = "Home"
         case "record": requestedTabTitle = "Sessions"
+        case "work": requestedTabTitle = "Nests"
+        case "library": requestedTabTitle = "Notes"
         default: requestedTabTitle = initialTab.capitalized
         }
         let requestedTab = rootNavigationControl(requestedTabTitle, in: app)
@@ -453,6 +458,17 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         email: String,
         password: String
     ) {
+        if app.launchEnvironment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] != nil {
+            // LoginView already owns this real authentication transaction.
+            // Typing a second request after 20 seconds races its completion
+            // on cold local routes and can target a disappearing login form.
+            XCTAssertTrue(
+                app.descendants(matching: .any)["CaptureSignedInShellAccount"]
+                    .firstMatch.waitForExistence(timeout: 60),
+                "The credential-file sign-in must finish before operating the workspace."
+            )
+            return
+        }
         // Runtime flights provide a credential file and LoginView begins that
         // transaction as soon as it appears. Prefer the stable signed-in shell
         // over interacting with a login form that may be disappearing while
@@ -527,7 +543,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         _ title: String,
         in app: XCUIApplication
     ) -> XCUIElement {
-        let normalizedTitle = title == "Today" ? "Home" : title
+        let normalizedTitle: String
+        switch title {
+        case "Today": normalizedTitle = "Home"
+        case "Work": normalizedTitle = "Nests"
+        case "Library": normalizedTitle = "Notes"
+        default: normalizedTitle = title
+        }
         let tabBar = app.tabBars.firstMatch
         if tabBar.exists {
             return tabBar.buttons[normalizedTitle].firstMatch
@@ -536,12 +558,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         switch normalizedTitle {
         case "Home": sidebarKey = "today"
         case "Sessions": sidebarKey = "record"
-        case "Work": sidebarKey = "work"
-        case "Library": sidebarKey = "library"
+        case "Nests": sidebarKey = "work"
+        case "Notes": sidebarKey = "library"
         case "Account": sidebarKey = "account"
         default: sidebarKey = normalizedTitle.lowercased()
         }
-        return app.staticTexts.matching(
+        return app.buttons.matching(
             identifier: "CaptureIPadSidebar_\(sidebarKey)"
         ).firstMatch
     }
@@ -1020,11 +1042,31 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ).firstMatch
     }
 
-    private func openTaskTagEditor(taskID: String, in app: XCUIApplication) {
+    private func openTaskList(in app: XCUIApplication) {
+        if !app.descendants(matching: .any)["CaptureAcrossNestsFollowThroughView"].firstMatch.exists {
+            tapRootTab("Today", in: app)
+            let openWork = app.buttons["CaptureHomeWorkOpen"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(openWork, in: app, timeout: 15, swipeAttempts: 6),
+                "Home should lead directly to tasks and goals without requiring a Nest search.")
+            openWork.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureAcrossNestsFollowThroughView"].firstMatch.waitForExistence(timeout: 10))
+        }
         let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
+        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6),
+           showMore.label.contains("more") {
             showMore.tap()
         }
+    }
+
+    private func openTaskSchedule(taskID: String, in app: XCUIApplication) {
+        openTaskList(in: app)
+        let schedule = app.buttons["CaptureTodayTaskSchedule_\(taskID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(schedule, in: app, timeout: 20, swipeAttempts: 12))
+        schedule.tap()
+    }
+
+    private func openTaskTagEditor(taskID: String, in app: XCUIApplication) {
+        openTaskList(in: app)
         let edit = app.buttons["CaptureTodayTaskTagsEdit_\(taskID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12),
@@ -1104,8 +1146,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if let sessionTitle = credentials.sessionTitle,
                !sessionTitle.isEmpty {
                 let search = app.searchFields["Search sessions"].firstMatch
+                let searchIsVisible = search.waitForExistence(timeout: 8)
+                if !searchIsVisible {
+                    attachRuntimeScreenshot(app, name: "Session picker missing its search control")
+                    let hierarchy = XCTAttachment(string: app.debugDescription)
+                    hierarchy.name = "Session picker accessibility at navigation failure"
+                    hierarchy.lifetime = .keepAlways
+                    add(hierarchy)
+                }
                 XCTAssertTrue(
-                    search.waitForExistence(timeout: 8),
+                    searchIsVisible,
                     "The ordinary Session picker search should be available for exact navigation."
                 )
                 search.tap()
@@ -1256,7 +1306,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         add(attachment)
     }
 
-    private func replaceText(in element: XCUIElement, with value: String, app: XCUIApplication) {
+    private func replaceText(in element: XCUIElement, with value: String, app: XCUIApplication,
+                             dismissKeyboardAfterEditing: Bool = true) {
         XCTAssertTrue(element.waitForExistence(timeout: 8))
         // An empty writing body intentionally takes focus when a new document
         // opens. iOS then scrolls the Form far enough that its title remains in
@@ -1297,6 +1348,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // binding. Route the new text through the application so XCTest targets the
         // currently focused replacement instead of a stale element snapshot.
         app.typeText(value)
+        guard dismissKeyboardAfterEditing else { return }
         let packetNoteKeyboardDone = app.buttons["CapturePacketNoteKeyboardDone"].firstMatch
         let coachKeyboardDone = app.buttons["CaptureCoachFollowUpKeyboardDone"].firstMatch
         let weeklyPlanKeyboardDone = app.buttons["CaptureWeeklyPlanKeyboardDone"].firstMatch
@@ -1306,6 +1358,34 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         else if weeklyPlanKeyboardDone.waitForExistence(timeout: 2) { weeklyPlanKeyboardDone.tap() }
         else if keyboardDoneAfterEditing.exists { keyboardDoneAfterEditing.tap() }
         else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap() }
+    }
+
+    func testDeviceSoundAnalysisSynchronizesAfterUploadAndRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let rawID = credentials.recordingFixtureLocalID, let localID = UUID(uuidString: rawID)?.uuidString,
+              credentials.recordingFixtureAssetID?.isEmpty == false else {
+            XCTFail("Sound synchronization requires one exact retained source fixture.")
+            return
+        }
+        for launch in 0..<2 {
+            let app = try launchSignedInCaptureApp(initialTab: "library")
+            let recordings = app.segmentedControls["CaptureLibrarySectionPicker"].buttons["Recordings"]
+            XCTAssertTrue(recordings.waitForExistence(timeout: 15))
+            recordings.tap()
+            let quality = app.descendants(matching: .any)["CaptureSourceEvidenceLink_\(localID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(quality, in: app, timeout: 30, swipeAttempts: 16))
+            quality.tap()
+            let synced = app.descendants(matching: .any)["CaptureSoundAnalysisSyncStatus"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(synced, in: app, timeout: 45, swipeAttempts: 18))
+            let complete = NSPredicate(format: "label == %@", "Sound details synced")
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: complete, object: synced)], timeout: 45), .completed,
+                           "The native classifier must deliver source-bound results to authenticated Nest and persist the acknowledgement.")
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "sound-analysis-synced-launch-\(launch).png"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            app.terminate()
+        }
     }
 
     private func runtimeJSON(
@@ -1653,7 +1733,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts[defaultSessionTitle].firstMatch.waitForExistence(timeout: 30),
             "The same iPhone should read the canonical default Session title back from Nest."
         )
-        XCTAssertTrue(app.staticTexts[clientEmail].firstMatch.exists)
+        let expectedClientLabel = credentials.coachingClientName ?? clientEmail
+        XCTAssertTrue(app.staticTexts[expectedClientLabel].firstMatch.waitForExistence(timeout: 8),
+                      "An existing client should keep their account name; an email-only invite should show its recipient email.")
 
         let share = app.descendants(matching: .any).matching(
             NSPredicate(
@@ -1666,13 +1748,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             waitForRuntimeElement(share, in: app, timeout: 20, swipeAttempts: 10),
             "The newly scheduled Session should expose a working system share invitation from the same phone."
         )
-        let send = app.buttons.matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@ OR label == %@",
-                "CaptureCoachingSendInvite_",
-                "Send invitation email"
-            )
+        let invitationOptions = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingManage_")
         ).firstMatch
+        XCTAssertTrue(invitationOptions.waitForExistence(timeout: 5))
+        invitationOptions.tap()
+        let send = app.buttons["Email invite"].firstMatch
         if send.exists {
             XCTAssertTrue(send.isEnabled)
             send.tap()
@@ -1690,12 +1771,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "Configured email delivery must produce visible sent-or-not-sent truth; a tap may not disappear into silent state."
             )
         } else {
-            let shareOnly = app.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingInvitationShareOnly_")
-            ).firstMatch
+            app.navigationBars["Coaching"].tap()
             XCTAssertTrue(
-                shareOnly.exists,
-                "When email is unavailable, Capture should lead with the working share path instead of an error-producing email action."
+                share.exists && share.isHittable,
+                "When email is unavailable, the ordinary share invitation must remain available without an error-producing email action."
             )
         }
         attachRuntimeScreenshot(app, name: "Phone-first invitation outcome")
@@ -1713,7 +1792,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             workspace.waitForExistence(timeout: 30),
             "The relationship card must open native shared notes, tasks, and goals without requiring a desktop or fixture route."
         )
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkspacePrivacy"].exists)
+        XCTAssertTrue(app.buttons["CaptureCoachingConversationToolbarButton"].isHittable,
+                      "The new client space should expose its conversation without scrolling.")
 
         let workSuffix = clientEmail
             .split(separator: "@", maxSplits: 1)
@@ -1777,13 +1857,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 kindControl.tap()
             }
 
-            let titleField = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+            let titleField = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
             XCTAssertTrue(titleField.waitForExistence(timeout: 5))
             titleField.tap()
             titleField.typeText(title)
             if privateNote {
+                let keyboardDone = app.buttons["CaptureCoachingWorkKeyboardDone"].firstMatch
+                XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
+                keyboardDone.tap()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
                 let privacy = app.switches["CaptureCoachingNoteVisibility"].firstMatch
                 XCTAssertTrue(privacy.waitForExistence(timeout: 5))
+                XCTAssertTrue(privacy.isHittable)
                 if (privacy.value as? String) != "1" {
                     privacy.coordinate(
                         withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)
@@ -1825,7 +1910,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             title: privateNoteTitle,
             privateNote: true
         )
-        let privateBoundary = app.staticTexts["Only you can read this note"].firstMatch
+        let privateBoundary = app.staticTexts["Only me"].firstMatch
         XCTAssertTrue(
             privateBoundary.waitForExistence(timeout: 8),
             "The phone must expose the author-only boundary to sighted and assistive-technology users."
@@ -1858,6 +1943,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let fortyFiveMinutes = app.buttons["45 minutes"].firstMatch
         XCTAssertTrue(fortyFiveMinutes.waitForExistence(timeout: 5))
         fortyFiveMinutes.tap()
+        let notifyClient = app.switches["CaptureCoachingRescheduleNotifyClient"].firstMatch
+        XCTAssertTrue(notifyClient.waitForExistence(timeout: 5))
+        XCTAssertEqual(notifyClient.value as? String, "1")
         let saveReschedule = app.buttons["CaptureCoachingSaveReschedule"].firstMatch
         XCTAssertTrue(saveReschedule.waitForExistence(timeout: 5))
         XCTAssertTrue(saveReschedule.isEnabled)
@@ -1865,6 +1953,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             rescheduleSheet.waitForNonExistence(timeout: 30),
             "A standard iPhone reschedule must persist and return to the same coaching home."
+        )
+        let bookingID = manage.identifier.replacingOccurrences(of: "CaptureCoachingManage_", with: "")
+        let scheduleNotification = app.descendants(matching: .any)[
+            "CaptureCoachingScheduleNotification_\(bookingID)"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(scheduleNotification, in: app, timeout: 20, swipeAttempts: 8),
+            "The saved appointment must show the server's delivery state, not silently drop the email choice."
         )
         attachRuntimeScreenshot(app, name: "Phone-first canonical appointment rescheduled")
 
@@ -2808,18 +2904,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         app.buttons["Task"].firstMatch.tap()
-        let title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
         replaceText(in: title, with: originalTitle, app: app)
         let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
         save.tap()
-        let firstFailure = app.staticTexts["Test connection interrupted after saving. Try Save again."].firstMatch
+        let firstFailure = app.descendants(matching: .any)["CaptureCoachingWorkSaveError"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(firstFailure, in: app, timeout: 30, swipeAttempts: 10))
         XCTAssertTrue(editor.exists, "A lost reply must not close the draft.")
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureOfflineAccessBanner"].exists,
+                       "A dropped save reply must not replace the authenticated workspace.")
         replaceText(in: title, with: updatedTitle, app: app)
         save.tap()
-        let secondFailure = app.staticTexts["Test connection interrupted after updating. Try Save again."].firstMatch
+        let secondFailure = app.descendants(matching: .any)["CaptureCoachingWorkSaveError"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(secondFailure, in: app, timeout: 30, swipeAttempts: 10))
         XCTAssertEqual(title.value as? String, updatedTitle)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureOfflineAccessBanner"].exists)
         save.tap()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 30))
         XCTAssertTrue(waitForRuntimeElement(app.staticTexts[updatedTitle].firstMatch, in: app, timeout: 20, swipeAttempts: 16))
@@ -2828,6 +2927,555 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Count canonical work cards, not the same title repeated in the relationship summary.")
         XCTAssertFalse(app.staticTexts[originalTitle].exists)
         attachRuntimeScreenshot(app, name: "One shared task after two lost save replies")
+    }
+
+    func testSessionPickerKeepsSearchAndExactSelectionAcrossLaunches() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let sessionID = try XCTUnwrap(credentials.sessionID)
+        let sessionTitle = try XCTUnwrap(credentials.sessionTitle)
+
+        for attempt in 1...3 {
+            let app = try launchSignedInCaptureApp(initialTab: "record")
+            let chooser = app.buttons["CaptureSessionChooser"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(chooser, in: app, timeout: 15, swipeAttempts: 8))
+            XCTAssertTrue(chooser.isEnabled)
+            chooser.tap()
+            let search = app.searchFields["Search sessions"].firstMatch
+            let appeared = search.waitForExistence(timeout: 8)
+            attachRuntimeScreenshot(app, name: "Session picker after launch \(attempt)")
+            if !appeared {
+                let hierarchy = XCTAttachment(string: app.debugDescription)
+                hierarchy.name = "Missing Session picker search after launch \(attempt)"
+                hierarchy.lifetime = .keepAlways
+                add(hierarchy)
+            }
+            XCTAssertTrue(appeared, "A fresh launch must leave the ordinary Session chooser usable.")
+            search.tap()
+            search.typeText(sessionTitle)
+            let session = app.descendants(matching: .any)["CaptureSessionPicker_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitUntilHittable(session, timeout: 15))
+            session.tap()
+            XCTAssertTrue(app.navigationBars["Choose session"].waitForNonExistence(timeout: 8))
+            XCTAssertTrue(app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.scrollViews["CaptureRecorderView"].firstMatch.exists)
+            app.terminate()
+        }
+    }
+
+    func testConversationCreatesCanonicalTaskAndEditsItAfterRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let idea = try XCTUnwrap(credentials.taskEditSourceTitle)
+        let revisedTitle = try XCTUnwrap(credentials.taskEditUpdatedTitle)
+        let sharedTagLabel = credentials.tagLabel.flatMap { $0.isEmpty ? nil : $0 }
+
+        func openConversation(_ app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let space = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+            XCTAssertTrue(space.waitForExistence(timeout: 10))
+            XCTAssertTrue(space.isHittable, "Shared work should be reachable beside the Session heading without scrolling through recording tools.")
+            space.tap()
+            let conversation = app.buttons["CaptureCoachingConversationToolbarButton"].firstMatch
+            XCTAssertTrue(conversation.waitForExistence(timeout: 10))
+            XCTAssertTrue(conversation.isHittable)
+            conversation.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingConversationThread"].firstMatch.waitForExistence(timeout: 15))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openConversation(app)
+        let composer = app.descendants(matching: .any)["CaptureCoachingConversationComposer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: composer
+        )], timeout: 30), .completed, "The shared conversation must load the current member's writing access.")
+        // Keep the keyboard open, as a person sending a message would. The
+        // generic replacement helper's outside tap can dismiss an iPad sheet.
+        XCTAssertTrue(composer.isHittable)
+        composer.tap()
+        composer.typeText(idea)
+        let send = app.buttons["CaptureCoachingConversationSendButton"].firstMatch
+        attachRuntimeScreenshot(app, name: "Conversation composer with keyboard and reachable Send")
+        XCTAssertTrue(send.isEnabled)
+        XCTAssertTrue(send.isHittable, "Send must remain reachable with the conversation keyboard open, including in an iPad sheet.")
+        send.tap()
+        let message = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingConversationMessage_")
+        ).containing(.staticText, identifier: idea).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 30), "The idea must be saved before becoming task source material.")
+        let messageID = String(message.identifier.dropFirst("CaptureCoachingConversationMessage_".count))
+        XCTAssertFalse(messageID.isEmpty)
+        let messageTime = app.staticTexts["CaptureConversationMessageTime_\(messageID)"].firstMatch
+        XCTAssertTrue(messageTime.exists)
+        XCTAssertFalse(messageTime.label.isEmpty)
+        XCTAssertNotEqual(messageTime.label, "Time unavailable", "Canonical message timestamps must parse successfully.")
+        XCTAssertNil(messageTime.label.range(of: #"^\d{4}-\d{2}-\d{2}T"#, options: .regularExpression),
+                     "Conversation time should be localized, not a raw ISO timestamp.")
+        let create = app.buttons["CaptureConversationCreateTask_\(messageID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(create, in: app, timeout: 10, swipeAttempts: 8))
+        create.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 15))
+        XCTAssertEqual(title.value as? String, idea)
+        let tags = app.buttons["CaptureCoachingWorkTags"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(tags, in: app, timeout: 20, swipeAttempts: 5))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: tags)], timeout: 20), .completed)
+        tags.tap()
+        if let sharedTagLabel {
+            let existingTag = app.buttons[sharedTagLabel].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(existingTag, in: app, timeout: 15, swipeAttempts: 8))
+            XCTAssertEqual(existingTag.value as? String, "Not selected")
+            existingTag.tap()
+            XCTAssertEqual(existingTag.value as? String, "Selected")
+        }
+        let newTag = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(newTag.waitForExistence(timeout: 10))
+        replaceText(in: newTag, with: "Chapter planning", app: app)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+        let linked = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+            "CaptureConversationTask_", idea)).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(linked, in: app, timeout: 30, swipeAttempts: 12))
+        let taskIdentifier = linked.identifier
+        attachRuntimeScreenshot(app, name: "Native message with its saved shared task")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openConversation(app)
+        let reloaded = app.buttons[taskIdentifier].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reloaded, in: app, timeout: 30, swipeAttempts: 20))
+        reloaded.tap()
+        let reloadedTitle = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(reloadedTitle.waitForExistence(timeout: 15))
+        XCTAssertEqual(reloadedTitle.value as? String, idea)
+        let persistedTag = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+            "CaptureWorkTag_draft_", "Tag: Chapter planning")).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(persistedTag, in: app, timeout: 20, swipeAttempts: 5), "The tag must reload from the saved task, not the previous draft.")
+        if let sharedTagLabel {
+            let sharedTag = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+                "CaptureWorkTag_draft_", "Tag: \(sharedTagLabel)")).firstMatch
+            XCTAssertTrue(waitForRuntimeElement(sharedTag, in: app, timeout: 20, swipeAttempts: 5),
+                          "An existing shared tag must survive native creation and relaunch alongside the new tag.")
+        }
+        let persistedTagID = String(persistedTag.identifier.dropFirst("CaptureWorkTag_draft_".count))
+        app.buttons["CaptureCoachingWorkTags"].firstMatch.tap()
+        let choice = app.buttons["CaptureTaskTagChoice_\(persistedTagID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(choice, in: app, timeout: 15, swipeAttempts: 8))
+        XCTAssertEqual(choice.value as? String, "Selected")
+        choice.tap()
+        let replacementTag = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(replacementTag, in: app, timeout: 10, swipeAttempts: 8))
+        replaceText(in: replacementTag, with: "Draft ready", app: app)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(waitForRuntimeElement(reloadedTitle, in: app, timeout: 10, swipeAttempts: 5))
+        replaceText(in: reloadedTitle, with: revisedTitle, app: app)
+        app.buttons["CaptureCoachingSaveWork"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+        XCTAssertTrue(app.buttons[taskIdentifier].firstMatch.waitForExistence(timeout: 30))
+        let updated = app.buttons[taskIdentifier].firstMatch
+        let titleUpdated = NSPredicate(format: "label CONTAINS %@", revisedTitle)
+        expectation(for: titleUpdated, evaluatedWith: updated)
+        waitForExpectations(timeout: 20)
+        attachRuntimeScreenshot(app, name: "Same conversation task after relaunch and edit")
+        updated.tap()
+        let savedTag = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+            "CaptureWorkTag_draft_", "Tag: Draft ready")).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(savedTag, in: app, timeout: 20, swipeAttempts: 5))
+        XCTAssertFalse(app.staticTexts["CaptureWorkTag_draft_\(persistedTagID)"].exists)
+        if let sharedTagLabel {
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+                "CaptureWorkTag_draft_", "Tag: \(sharedTagLabel)")).firstMatch.exists,
+                          "Changing another tag and the task title must retain the shared tag.")
+        }
+        attachRuntimeScreenshot(app, name: "Task text and tags saved together")
+        app.buttons["CaptureCoachingWorkTags"].firstMatch.tap()
+        let canceledLabel = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(canceledLabel, in: app, timeout: 10, swipeAttempts: 8))
+        replaceText(in: canceledLabel, with: "Discard this unsaved tag", app: app)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        app.buttons["Cancel"].firstMatch.tap()
+        let sameTask = app.buttons[taskIdentifier].firstMatch
+        XCTAssertTrue(sameTask.waitForExistence(timeout: 20))
+        sameTask.tap()
+        XCTAssertTrue(waitForRuntimeElement(savedTag, in: app, timeout: 20, swipeAttempts: 5))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label == %@", "Tag: Discard this unsaved tag")).firstMatch.exists,
+                       "Cancel must not save labels separately from the task draft.")
+        app.buttons["Cancel"].firstMatch.tap()
+        let taskID = String(taskIdentifier.dropFirst("CaptureConversationTask_".count))
+        func completionControl(_ application: XCUIApplication) -> XCUIElement {
+            application.buttons["CaptureConversationToggleTask_\(taskID)"].firstMatch
+        }
+        var completion = completionControl(app)
+        XCTAssertTrue(waitForRuntimeElement(completion, in: app, timeout: 15, swipeAttempts: 12))
+        XCTAssertEqual(completion.value as? String, "OPEN")
+        completion.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "DONE"), object: completion
+        )], timeout: 30), .completed)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.exists,
+                       "Checking off a chat task should not open its editor.")
+        attachRuntimeScreenshot(app, name: "Task completed directly in conversation")
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openConversation(app)
+        completion = completionControl(app)
+        XCTAssertTrue(waitForRuntimeElement(completion, in: app, timeout: 20, swipeAttempts: 16))
+        XCTAssertEqual(completion.value as? String, "DONE", "Completion must survive a fresh app launch.")
+        completion.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "OPEN"), object: completion
+        )], timeout: 30), .completed)
+        let reopened = app.buttons[taskIdentifier].firstMatch
+        XCTAssertTrue(reopened.label.contains(revisedTitle))
+        reopened.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Tag: Draft ready")).firstMatch.waitForExistence(timeout: 15),
+                      "Complete and reopen must preserve the task's tags.")
+        app.buttons["Cancel"].firstMatch.tap()
+        app.buttons["Done"].firstMatch.tap()
+        if let sharedTagLabel {
+            exerciseSharedTagFilter(app, taskID: taskID, label: sharedTagLabel)
+        }
+    }
+
+    func testSharedCoachingNoteTagsPersistAcrossRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let initialTitle = try XCTUnwrap(credentials.noteEditSourceTitle)
+        let finalTitle = try XCTUnwrap(credentials.noteEditUpdatedTitle)
+        let initialBody = try XCTUnwrap(credentials.noteEditSourceBody)
+        let finalBody = try XCTUnwrap(credentials.noteEditUpdatedBody)
+        let tagLabel = try XCTUnwrap(credentials.tagLabel)
+
+        func openSpace(_ app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let open = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 30, swipeAttempts: 12))
+            open.tap()
+            XCTAssertTrue(app.scrollViews["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 30))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(app)
+        let add = app.buttons["CaptureCoachingQuickAdd_NOTE"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(add, in: app, timeout: 20, swipeAttempts: 12))
+        add.tap()
+        let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        let body = app.textViews["CaptureCoachingWorkDetail"].firstMatch
+        replaceText(in: title, with: initialTitle, app: app, dismissKeyboardAfterEditing: false)
+        replaceText(in: body, with: initialBody, app: app, dismissKeyboardAfterEditing: false)
+        let tags = app.buttons["CaptureCoachingWorkTags"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(tags, in: app, timeout: 20, swipeAttempts: 8))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: tags)], timeout: 20), .completed)
+        tags.tap()
+        let choice = app.buttons[tagLabel].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(choice, in: app, timeout: 15, swipeAttempts: 8))
+        XCTAssertEqual(choice.value as? String, "Not selected")
+        XCTAssertTrue(choice.identifier.hasPrefix("CaptureTaskTagChoice_"))
+        let tagID = String(choice.identifier.dropFirst("CaptureTaskTagChoice_".count))
+        XCTAssertFalse(tagID.isEmpty)
+        choice.tap()
+        XCTAssertEqual(choice.value as? String, "Selected")
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        app.buttons["CaptureCoachingSaveWork"].firstMatch.tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 30))
+        let card = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingWork_"))
+            .containing(.staticText, identifier: initialTitle).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(card, in: app, timeout: 30, swipeAttempts: 12))
+        let noteID = String(card.identifier.dropFirst("CaptureCoachingWork_".count))
+        XCTAssertFalse(noteID.isEmpty)
+        XCTAssertTrue(app.buttons["CaptureWorkTagFilter_\(noteID)_\(tagID)"].exists)
+        attachRecordingIdentity(noteID, name: "Shared native note identity for cross-account readback")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(app)
+        let edit = app.buttons["CaptureCoachingEdit_\(noteID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 25, swipeAttempts: 12))
+        edit.tap()
+        let restoredTitle = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        let restoredBody = app.textViews["CaptureCoachingWorkDetail"].firstMatch
+        XCTAssertTrue(restoredTitle.waitForExistence(timeout: 10))
+        XCTAssertEqual(restoredTitle.value as? String, initialTitle)
+        XCTAssertEqual(restoredBody.value as? String, initialBody)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_\(tagID)"].exists)
+        replaceText(in: restoredTitle, with: finalTitle, app: app, dismissKeyboardAfterEditing: false)
+        replaceText(in: restoredBody, with: finalBody, app: app, dismissKeyboardAfterEditing: false)
+        app.buttons["CaptureCoachingSaveWork"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(app)
+        let saved = app.descendants(matching: .any)["CaptureCoachingWork_\(noteID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(saved, in: app, timeout: 25, swipeAttempts: 12))
+        XCTAssertTrue(saved.staticTexts[finalTitle].exists)
+        XCTAssertTrue(saved.staticTexts[finalBody].exists)
+        XCTAssertTrue(app.buttons["CaptureWorkTagFilter_\(noteID)_\(tagID)"].exists,
+                      "Editing writing without changing the tag picker must preserve the saved selection.")
+        attachRuntimeScreenshot(app, name: "Shared note and canonical tag after two native relaunches")
+    }
+
+    func testPersonalSessionTaskEditsInItsClientSpaceAndStaysPersonalAfterRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let taskID = try XCTUnwrap(credentials.taskID)
+        let original = try XCTUnwrap(credentials.taskEditSourceTitle)
+        let revised = try XCTUnwrap(credentials.taskEditUpdatedTitle)
+        let tag = try XCTUnwrap(credentials.tagLabel)
+
+        func openSpace(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let space = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+            XCTAssertTrue(space.waitForExistence(timeout: 15))
+            space.tap()
+            exerciseSharedTagFilter(app, taskID: taskID, label: tag)
+            let privacy = app.descendants(matching: .any)["CaptureCoachingWorkPrivacy_\(taskID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(privacy, in: app, timeout: 15, swipeAttempts: 8))
+        }
+
+        func edit(in app: XCUIApplication, from oldTitle: String, to newTitle: String) {
+            let edit = app.buttons["CaptureCoachingEdit_\(taskID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 15, swipeAttempts: 8))
+            edit.tap()
+            let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+            XCTAssertTrue(title.waitForExistence(timeout: 15))
+            XCTAssertEqual(title.value as? String, oldTitle)
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkOwner"].exists,
+                "Editing a personal task must not offer a transfer to another member.")
+            replaceText(in: title, with: newTitle, app: app)
+            let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(save, in: app, timeout: 20, swipeAttempts: 4))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: save)], timeout: 30), .completed)
+            save.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+            XCTAssertTrue(waitForRuntimeElement(app.staticTexts[newTitle].firstMatch, in: app, timeout: 20, swipeAttempts: 8))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(in: app)
+        edit(in: app, from: original, to: revised)
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openSpace(in: app)
+        edit(in: app, from: revised, to: original)
+        attachRuntimeScreenshot(app, name: "Personal session task restored in its client space with its shared tag")
+    }
+
+    func testSharedWorkTagFiltersAndClears() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let taskID = try XCTUnwrap(credentials.taskID)
+        let label = try XCTUnwrap(credentials.tagLabel)
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+        let space = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+        XCTAssertTrue(space.waitForExistence(timeout: 10))
+        space.tap()
+        exerciseSharedTagFilter(app, taskID: taskID, label: label)
+    }
+
+    private func exerciseSharedTagFilter(_ app: XCUIApplication, taskID: String, label: String) {
+        let workspace = app.scrollViews["CaptureCoachingEngagementWorkspace"].firstMatch
+        XCTAssertTrue(workspace.waitForExistence(timeout: 15))
+        let tagButton = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+            "CaptureWorkTagFilter_\(taskID)_", "Show work tagged \(label)")).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(tagButton, in: app, timeout: 20, swipeAttempts: 12))
+        attachRuntimeScreenshot(app, name: "Before selecting shared work tag")
+        tagButton.tap()
+        let clear = app.buttons["CaptureCoachingClearTagFilter"].firstMatch
+        let filterOpened = clear.waitForExistence(timeout: 10)
+        if !filterOpened {
+            attachRuntimeScreenshot(app, name: "Tag selection did not reveal its filter")
+            attachRecordingIdentity(app.debugDescription, name: "Tag selection accessibility tree")
+        }
+        XCTAssertTrue(filterOpened)
+        XCTAssertTrue(clear.isHittable, "Clearing a tag stays available while scrolling through filtered work.")
+        let work = app.descendants(matching: .any)["CaptureCoachingWork_\(taskID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(work, in: app, timeout: 20, swipeAttempts: 8))
+        attachRuntimeScreenshot(app, name: "Related work under its shared tag")
+        clear.tap()
+        XCTAssertTrue(clear.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(waitForRuntimeElement(work, in: app, timeout: 20, swipeAttempts: 8))
+    }
+
+    func testTranscriptWorkDraftsRetainWritingAcrossSignedInRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.transcriptSegmentIDs.count == 1 else {
+            throw XCTSkip("Draft recovery requires one exact Session and transcript passage.")
+        }
+        let segmentID = credentials.transcriptSegmentIDs[0]
+        let proofID = String(UUID().uuidString.prefix(8))
+        let kinds = ["Note", "Task", "Goal"]
+
+        func openTranscript(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let transcript = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(transcript, in: app, timeout: 30, swipeAttempts: 12))
+            transcript.tap()
+            XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+            let controls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(controls, in: app, timeout: 30, swipeAttempts: 12))
+            controls.buttons["Timeline"].firstMatch.tap()
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"].exists,
+                "Draft recovery must reopen the authenticated Session, not a preview or offline projection.")
+        }
+
+        func openDraft(_ kind: String, in app: XCUIApplication) {
+            let create = app.buttons["CaptureTranscriptCreateFromPassage_\(segmentID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(create, in: app, timeout: 30, swipeAttempts: 14))
+            create.tap()
+            let action = app.buttons["CaptureTranscriptMake\(kind)Button"].firstMatch
+            XCTAssertTrue(action.waitForExistence(timeout: 10))
+            action.tap()
+            XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].isHittable,
+                "The composer must open in view without a search through the transcript.")
+        }
+
+        func replaceDraftText(_ identifier: String, with text: String, in app: XCUIApplication) {
+            let field = app.textFields[identifier].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            field.tap()
+            if let existing = field.value as? String, !existing.isEmpty {
+                field.press(forDuration: 1.2)
+                let menuItem = app.menuItems["Select All"].firstMatch
+                let button = app.buttons["Select All"].firstMatch
+                if menuItem.waitForExistence(timeout: 3) { menuItem.tap() }
+                else {
+                    XCTAssertTrue(button.waitForExistence(timeout: 3), "Use the ordinary touch editing menu to select the complete draft.")
+                    button.tap()
+                }
+            }
+            // Exercise the touch editing workflow rather than Command-A, which
+            // the iPad simulator can deliver without selecting the field text.
+            app.typeText(text)
+            XCTAssertEqual(field.value as? String, text, "The editor must contain exactly the requested replacement, not appended or truncated text.")
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        for kind in kinds {
+            openDraft(kind, in: app)
+            replaceDraftText("CaptureTranscript\(kind)TitleField", with: "\(kind) draft \(proofID)", in: app)
+            replaceDraftText("CaptureTranscript\(kind)BodyField",
+                with: "My own \(kind.lowercased()) writing from this passage, \(proofID).", in: app)
+            if kind != "Goal" {
+                app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
+                XCTAssertTrue(app.textFields["CaptureTranscript\(kind)TitleField"].waitForNonExistence(timeout: 10))
+            }
+        }
+        // Leave the final composer open: backgrounding, not Close, must flush it.
+        XCUIDevice.shared.press(.home)
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        for kind in kinds {
+            openDraft(kind, in: app)
+            XCTAssertEqual(app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch.value as? String,
+                "\(kind) draft \(proofID)", "A new app process must restore the actual edited title.")
+            XCTAssertEqual(app.textFields["CaptureTranscript\(kind)BodyField"].firstMatch.value as? String,
+                "My own \(kind.lowercased()) writing from this passage, \(proofID).",
+                "Reopening must not replace writing with the original transcript.")
+            attachRuntimeScreenshot(app, name: "\(kind) writing restored after signed-in relaunch")
+            if kind == "Task" {
+                let save = app.buttons["CaptureTranscriptCreateTaskButton"].firstMatch
+                XCTAssertTrue(save.isHittable, "Save must remain in view in the editor toolbar.")
+                XCTAssertTrue(save.isEnabled)
+                save.tap()
+                XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkComposer"].firstMatch.waitForNonExistence(timeout: 30),
+                    "A recovered task must save through the real application command and close on success.")
+            } else {
+                app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
+            }
+        }
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        openDraft("Task", in: app)
+        let freshTitle = app.textFields["CaptureTranscriptTaskTitleField"].firstMatch.value as? String ?? ""
+        XCTAssertFalse(freshTitle.isEmpty)
+        XCTAssertFalse(freshTitle.contains(proofID), "Saved work must not come back as an unsent draft after another restart.")
+        app.buttons["CaptureTranscriptCancelTaskButton"].firstMatch.tap()
+        attachRecordingIdentity(proofID, name: "Retained transcript task draft save identity")
+    }
+
+    func testTranscriptTaskEditsRecoverAcrossTwoLostRepliesAndRelaunches() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard credentials.baseURL == "http://127.0.0.1:3014",
+              let sessionID = credentials.sessionID, credentials.transcriptSegmentIDs.count == 1,
+              let originalTitle = credentials.taskEditSourceTitle,
+              let updatedTitle = credentials.taskEditUpdatedTitle else {
+            throw XCTSkip("Task save recovery requires the local fault proxy and exact synthetic identities.")
+        }
+        let segmentID = credentials.transcriptSegmentIDs[0]
+        func openTaskDraft(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let transcript = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(transcript, in: app, timeout: 30, swipeAttempts: 12))
+            transcript.tap()
+            XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+            let controls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(controls, in: app, timeout: 30, swipeAttempts: 12))
+            controls.buttons["Timeline"].firstMatch.tap()
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"].exists)
+            let create = app.buttons["CaptureTranscriptCreateFromPassage_\(segmentID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(create, in: app, timeout: 30, swipeAttempts: 14))
+            create.tap()
+            let action = app.buttons["CaptureTranscriptMakeTaskButton"].firstMatch
+            XCTAssertTrue(action.waitForExistence(timeout: 10))
+            action.tap()
+            XCTAssertTrue(app.textFields["CaptureTranscriptTaskTitleField"].waitForExistence(timeout: 15))
+        }
+        func replace(_ identifier: String, with text: String, in app: XCUIApplication) {
+            let field = app.textFields[identifier].firstMatch
+            field.tap()
+            if let existing = field.value as? String, !existing.isEmpty {
+                field.press(forDuration: 1.2)
+                let item = app.menuItems["Select All"].firstMatch
+                if item.waitForExistence(timeout: 3) { item.tap() }
+                else {
+                    let button = app.buttons["Select All"].firstMatch
+                    XCTAssertTrue(button.waitForExistence(timeout: 3))
+                    button.tap()
+                }
+            }
+            app.typeText(text)
+            XCTAssertEqual(field.value as? String, text)
+        }
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openTaskDraft(in: app)
+        let titles = [originalTitle, updatedTitle, updatedTitle + " final"]
+        for revision in 0...2 {
+            replace("CaptureTranscriptTaskTitleField", with: titles[revision], in: app)
+            replace("CaptureTranscriptTaskBodyField", with: "My writing revision \(revision)", in: app)
+            let save = app.buttons["CaptureTranscriptCreateTaskButton"].firstMatch
+            XCTAssertTrue(save.isHittable && save.isEnabled)
+            save.tap()
+            if revision < 2 {
+                let error = app.staticTexts["Test connection interrupted after saving revision \(revision). Try Save again."].firstMatch
+                XCTAssertTrue(error.waitForExistence(timeout: 30), "The server must persist before the proxy loses this reply.")
+                XCTAssertTrue(error.isHittable, "The save error must be visible above the keyboard without scrolling.")
+                XCTAssertTrue(save.isHittable, "Retry must remain in view beside the retained writing.")
+                XCTAssertTrue(app.textFields["CaptureTranscriptTaskTitleField"].exists, "Failed replies must leave writing editable.")
+                attachRuntimeScreenshot(app, name: "Task writing retained after lost reply \(revision)")
+                XCUIDevice.shared.press(.home)
+                app.terminate()
+                app = try launchSignedInCaptureApp(initialTab: "record")
+                openTaskDraft(in: app)
+                XCTAssertEqual(app.textFields["CaptureTranscriptTaskTitleField"].value as? String, titles[revision])
+                XCTAssertEqual(app.textFields["CaptureTranscriptTaskBodyField"].value as? String, "My writing revision \(revision)")
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkComposer"].firstMatch.waitForNonExistence(timeout: 30))
+            }
+        }
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openTaskDraft(in: app)
+        let freshTitle = app.textFields["CaptureTranscriptTaskTitleField"].value as? String ?? ""
+        XCTAssertFalse(titles.contains(freshTitle), "Successful saving clears only the acknowledged draft.")
+        app.buttons["CaptureTranscriptCancelTaskButton"].firstMatch.tap()
+        attachRecordingIdentity(titles[2], name: "Recovered transcript task for independent API readback")
     }
 
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
@@ -2903,7 +3551,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         var edit = app.buttons["CaptureTranscriptEditWork_TASK_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12))
         edit.tap()
-        var title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+        var title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 20))
         XCTAssertEqual(title.value as? String, originalTitle)
         replaceText(in: title, with: updatedTitle, app: app)
@@ -2923,7 +3571,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         edit = app.buttons["CaptureTranscriptEditWork_TASK_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12))
         edit.tap()
-        title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+        title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 20))
         XCTAssertEqual(title.value as? String, updatedTitle,
             "A new app process must load the same task identity and saved title from Nest.")
@@ -3502,11 +4150,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let app = try launchSignedInCaptureApp()
 
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
 
+        openTaskSchedule(taskID: taskID, in: app)
         let cancel = app.buttons["CaptureTodayTaskReminderCancel_\(taskID)"].firstMatch
         if waitForRuntimeElement(cancel, in: app, timeout: 8, swipeAttempts: 12) {
             cancel.tap()
@@ -3551,10 +4196,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The task-edit journey requires one exact non-recurring open task ID plus distinct source and temporary titles.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
+        openTaskList(in: app)
         XCTAssertTrue(
             waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 25, swipeAttempts: 12),
             "Today should expose the exact canonical source title before editing."
@@ -3563,12 +4205,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let originalDueLabel = originalDue.exists ? originalDue.label : nil
 
         func replaceTitle(with value: String) {
-            let field = app.textFields["CaptureTaskEditTitle"].firstMatch
+            let field = app.descendants(matching: .any)["CaptureTaskEditTitle"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 6))
-            field.tap()
-            field.typeKey("a", modifierFlags: .command)
-            field.typeKey(.delete, modifierFlags: [])
-            field.typeText(value)
+            replaceText(in: field, with: value, app: app)
             XCTAssertFalse(app.descendants(matching: .any)["CaptureTaskEditBoundary"].exists)
             XCTAssertFalse(app.textFields["CaptureTaskEditTimezone"].exists)
             XCTAssertTrue(app.buttons["CaptureTaskEditRemove"].exists)
@@ -3579,6 +4218,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         let edit = app.buttons["CaptureTodayTaskEdit_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 15, swipeAttempts: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: edit)
+        guard XCTWaiter.wait(for: [ready], timeout: 40) == .completed else {
+            attachRecordingIdentity(app.debugDescription, name: "Task edit unavailable after refresh")
+            attachRuntimeScreenshot(app, name: "Task edit unavailable after refresh")
+            XCTFail("The task stayed read-only after sign-in; wait for the authorized Today refresh before editing.")
+            return
+        }
         edit.tap()
         replaceTitle(with: updatedTitle)
         XCTAssertTrue(
@@ -3610,11 +4256,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The focus-plan journey requires one exact open task ID.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
 
+        openTaskSchedule(taskID: taskID, in: app)
         let plan = app.buttons["CaptureTodayTaskPlanFocus_\(taskID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(plan, in: app, timeout: 25, swipeAttempts: 12),
@@ -3623,12 +4266,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(plan.isEnabled)
         plan.tap()
 
-        XCTAssertTrue(app.navigationBars["Plan focus"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.navigationBars["Focus time"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanStart"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanDuration"].exists)
-        XCTAssertTrue(app.staticTexts["Does not change the task deadline or status"].exists)
-        XCTAssertTrue(app.staticTexts["Does not create a reminder or appointment"].exists)
-        XCTAssertTrue(app.staticTexts["Does not write to Google or Apple Calendar"].exists)
+        XCTAssertTrue(app.staticTexts["Private to you"].exists)
+        XCTAssertTrue(app.staticTexts["Focus time stays beside this task in Quipsly. You can record how much time you spent when you finish."].exists)
 
         let save = app.buttons["CaptureTodayFocusPlanSave"].firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 5))
@@ -3655,6 +4297,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         app.terminate()
         let relaunched = try launchSignedInCaptureApp()
+        openTaskList(in: relaunched)
         let persisted = relaunched.descendants(matching: .any)[plannedIdentifier].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(persisted, in: relaunched, timeout: 35, swipeAttempts: 12),
@@ -4072,6 +4715,123 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app.buttons["Cancel"].firstMatch.tap()
     }
 
+    func testIPhoneConversationDraftSurvivesDismissalAndRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let projectName = credentials.projectName else { throw XCTSkip("Requires a writable synthetic Nest") }
+        func openConversation(_ app: XCUIApplication) -> XCUIElement {
+            tapRootTab("Work", in: app)
+            let location = app.buttons["CaptureGlobalWorkLocation"].firstMatch
+            XCTAssertTrue(location.waitForExistence(timeout: 20))
+            location.tap()
+            let search = app.searchFields.firstMatch
+            XCTAssertTrue(search.waitForExistence(timeout: 10))
+            search.tap()
+            search.typeText(projectName)
+            let project = app.buttons[projectName].firstMatch
+            XCTAssertTrue(waitUntilHittable(project, timeout: 10))
+            project.tap()
+            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: search)
+            waitForExpectations(timeout: 10)
+            let open = app.buttons["CaptureNestConversationOpenButton"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 20, swipeAttempts: 8))
+            open.tap()
+            let composer = app.descendants(matching: .any)["CaptureNestConversationComposer"].firstMatch
+            XCTAssertTrue(composer.waitForExistence(timeout: 20))
+            expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: composer)
+            waitForExpectations(timeout: 20)
+            return composer
+        }
+        var app = try launchSignedInCaptureApp()
+        var composer = openConversation(app)
+        let message = "An unfinished chapter idea \(UUID().uuidString.prefix(8))"
+        replaceText(in: composer, with: message, app: app, dismissKeyboardAfterEditing: false)
+        XCTAssertEqual(composer.value as? String, message)
+        app.buttons["Done"].firstMatch.tap()
+        composer = openConversation(app)
+        XCTAssertEqual(composer.value as? String, message, "Closing conversation must retain unsent text")
+        app.terminate()
+        app = try launchSignedInCaptureApp()
+        composer = openConversation(app)
+        XCTAssertEqual(composer.value as? String, message, "Relaunch must restore the same private draft")
+        XCTAssertFalse(app.staticTexts[message].exists, "A saved draft must not publish itself")
+        app.buttons["CaptureNestConversationSendButton"].tap()
+        XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertNotEqual(composer.value as? String, message)
+        app.terminate()
+        app = try launchSignedInCaptureApp()
+        composer = openConversation(app)
+        XCTAssertNotEqual(composer.value as? String, message, "Confirmed text must not return as an unsent draft")
+        XCTAssertTrue(app.staticTexts[message].firstMatch.exists)
+    }
+
+    func testIPhoneCreatesTaskFromNestConversation() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let projectName = credentials.projectName, let tagLabel = credentials.tagLabel else {
+            throw XCTSkip("Requires a writable synthetic Nest and an existing tag")
+        }
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Work", in: app)
+        let location = app.buttons["CaptureGlobalWorkLocation"].firstMatch
+        XCTAssertTrue(location.waitForExistence(timeout: 20))
+        location.tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText(projectName)
+        let project = app.buttons[projectName].firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntilHittable(project, timeout: 10))
+        project.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: search)
+        waitForExpectations(timeout: 10)
+        let open = app.buttons["CaptureNestConversationOpenButton"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 20, swipeAttempts: 8))
+        open.tap()
+        let composer = app.descendants(matching: .any)["CaptureNestConversationComposer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 20))
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: composer)
+        waitForExpectations(timeout: 20)
+        let message = "Collect examples for our next chapter \(UUID().uuidString.prefix(8))"
+        composer.tap()
+        composer.typeText(message)
+        app.buttons["CaptureNestConversationSendButton"].tap()
+        XCTAssertTrue(app.staticTexts[message].firstMatch.waitForExistence(timeout: 20))
+        let choices = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureNestConversationCreateTask_"))
+        XCTAssertTrue(choices.count > 0)
+        choices.element(boundBy: choices.count - 1).tap()
+        let title = app.descendants(matching: .any)["CaptureNestConversationTaskTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.value as? String, message)
+        app.buttons["CaptureNestConversationTaskTags"].tap()
+        let tag = app.buttons[tagLabel].firstMatch
+        XCTAssertTrue(tag.waitForExistence(timeout: 10))
+        tag.tap()
+        let newTagLabel = "Chapter \(UUID().uuidString.prefix(8))"
+        let newTag = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(newTag, in: app, timeout: 10, swipeAttempts: 5))
+        newTag.tap()
+        newTag.typeText(newTagLabel)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        let save = app.buttons["CaptureNestConversationTaskSave"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: save)
+        waitForExpectations(timeout: 20)
+        let task = app.buttons["Task: \(message), open"].firstMatch
+        XCTAssertTrue(task.waitForExistence(timeout: 20), "Canonical task must return to its source message")
+        XCTAssertTrue(waitUntilHittable(task, timeout: 10))
+        task.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTaskEditTitle"].firstMatch.waitForExistence(timeout: 20),
+            "The conversation task must open the normal native task editor")
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(waitForRuntimeElement(open, in: app, timeout: 15, swipeAttempts: 8))
+        open.tap()
+        XCTAssertTrue(task.waitForExistence(timeout: 20), "Reopening must read the persisted task from Nest")
+        XCTAssertTrue(app.staticTexts[message].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts[newTagLabel].firstMatch.exists, "The new shared tag must return with the saved task")
+    }
+
     func testWorkTagOutboxSurvivesOfflineRelaunchAndConverges() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty,
@@ -4145,11 +4905,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let app = try launchSignedInCaptureApp()
 
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
 
+        openTaskSchedule(taskID: taskID, in: app)
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_\(seriesID)_\(taskID)"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(recurrence, in: app, timeout: 30, swipeAttempts: 10),
@@ -4158,10 +4915,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Every week at 09:00", "America/Denver")
         ).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "No reminder or provider event is implied.")
-        ).firstMatch.exists)
-
         let menu = app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 8))
         XCTAssertTrue(menu.isEnabled)
@@ -4170,7 +4923,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(pause.waitForExistence(timeout: 5))
         pause.tap()
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Occurrence \(scheduledLocalDate)", "Paused")
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Due \(scheduledLocalDate)", "Paused")
         ).firstMatch.waitForExistence(timeout: 20))
 
         let refreshedMenu = app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch
@@ -4180,7 +4933,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(resume.waitForExistence(timeout: 5))
         resume.tap()
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Occurrence \(scheduledLocalDate)", "Active")
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Due \(scheduledLocalDate)", "Active")
         ).firstMatch.waitForExistence(timeout: 20))
 
         let done = app.buttons["CaptureTodayTaskDone_\(taskID)"].firstMatch
@@ -4325,10 +5078,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("Recurrence editing requires exact source task/series IDs, source/future titles, and a target timezone.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
+        openTaskSchedule(taskID: taskID, in: app)
         XCTAssertTrue(waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 25, swipeAttempts: 10))
 
         let menu = app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch
@@ -4366,7 +5116,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let save = app.buttons["CaptureRecurrenceEditSave"].firstMatch
         XCTAssertTrue(save.isEnabled)
         save.tap()
-        XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.scrollViews["CaptureAcrossNestsFollowThroughView"].waitForExistence(timeout: 30))
+        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
         if waitForRuntimeElement(showMore, in: app, timeout: 8, swipeAttempts: 4), showMore.label.contains("more") {
             showMore.tap()
         }
@@ -4374,6 +5125,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             waitForRuntimeElement(app.staticTexts[futureTitle].firstMatch, in: app, timeout: 35, swipeAttempts: 12),
             "The revised future series should return through Today under its new canonical task identity."
         )
+        let replacement = app.staticTexts.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label == %@", "CaptureTodayTask_", futureTitle
+        )).firstMatch
+        XCTAssertTrue(replacement.exists)
+        openTaskSchedule(taskID: String(replacement.identifier.dropFirst("CaptureTodayTask_".count)), in: app)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", targetTimezone)).firstMatch.exists)
         XCTAssertFalse(app.staticTexts[sourceTitle].firstMatch.exists, "The superseded open horizon should leave Today while remaining preserved in task history.")
         XCTAssertFalse(app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].exists, "The predecessor series should be ended and replaced, not mutated in place.")
@@ -4388,15 +5144,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("Missed-occurrence runtime proof requires exact task, series, and scheduled-local-date identities.")
         }
         let app = try launchSignedInCaptureApp()
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) { showMore.tap() }
+        openTaskSchedule(taskID: taskID, in: app)
 
         let task = app.descendants(matching: .any)["CaptureTodayTask_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(task, in: app, timeout: 25, swipeAttempts: 12))
+        let taskTitle = task.label
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_\(seriesID)_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(recurrence, in: app, timeout: 12, swipeAttempts: 8))
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Occurrence \(scheduledLocalDate)")
+            NSPredicate(format: "label CONTAINS %@", "Due \(scheduledLocalDate)")
         ).firstMatch.exists)
 
         let skip = app.buttons["CaptureTodaySkipMissed_\(taskID)"].firstMatch
@@ -4410,7 +5166,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ).firstMatch.exists)
         confirm.tap()
 
-        XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.scrollViews["CaptureAcrossNestsFollowThroughView"].waitForExistence(timeout: 30))
+        let nextOccurrence = app.staticTexts.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND identifier != %@ AND label == %@",
+            "CaptureTodayTask_", "CaptureTodayTask_\(taskID)", taskTitle
+        )).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(nextOccurrence, in: app, timeout: 30, swipeAttempts: 12))
+        openTaskSchedule(taskID: String(nextOccurrence.identifier.dropFirst("CaptureTodayTask_".count)), in: app)
         XCTAssertTrue(
             waitForRuntimeElement(app.buttons["CaptureTodayRecurrenceMenu_\(seriesID)"].firstMatch, in: app, timeout: 30, swipeAttempts: 12),
             "The same canonical series should continue from its next open occurrence."
@@ -4500,7 +5262,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
     }
 
-    func testSignedInSpeakToWriteRecordsStopsAndEditorSavesWritingToNest() throws {
+    // This exercises recording and a separate typed draft. It does not prove
+    // source-linked transcription or continuing to write from that transcript.
+    func testSignedInRecorderStopsAndSeparateTypedDraftSavesToNest() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let proofTitle = credentials.voiceWritingTitle,
               !proofTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -4578,7 +5342,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
         attachRecordingIdentity(
             "\(proofTitle)|\(proofBody)|\(syncStatus.label)",
-            name: "Signed-in voice-writing Nest save"
+            name: "Signed-in separate typed-draft Nest save"
         )
         attachRuntimeScreenshot(app, name: "Signed-in writing saved to Nest")
     }
@@ -5362,7 +6126,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
-        if openRecordingConsentIfNeeded(in: app) != nil {
+        // This journey verifies an audio source. Operate the visible choice
+        // instead of inheriting a prior camera test's device preference.
+        let audioMode = app.segmentedControls["CaptureRecordingModePicker"].buttons["Audio"]
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(audioMode, in: app))
+        audioMode.tap()
+
+        if let consentSheet = openRecordingConsentIfNeeded(in: app) {
             let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
             let transcription = app.switches["CaptureConsentTranscriptionToggle"]
             XCTAssertTrue(
@@ -5381,8 +6151,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(saveConsent.isEnabled)
             saveConsent.tap()
             XCTAssertTrue(
-                app.buttons["CaptureStartButton"].firstMatch.waitForExistence(timeout: 12),
-                "The local recorder should return after the explicit consent transaction."
+                consentSheet.waitForNonExistence(timeout: 30),
+                "The consent sheet should dismiss after the server saves and refreshes the choices."
+            )
+            let recorderReturned = waitForAnyRuntimeElement(recordingStartActions(in: app), timeout: 8)
+            if !recorderReturned {
+                attachRuntimeScreenshot(app, name: "Recorder missing after saved consent")
+                let hierarchy = XCTAttachment(string: app.debugDescription)
+                hierarchy.name = "Post-consent screen hierarchy"
+                hierarchy.lifetime = .keepAlways
+                add(hierarchy)
+            }
+            XCTAssertTrue(
+                recorderReturned,
+                "The full recorder or persistent dock should return after the explicit consent transaction."
             )
         }
 
@@ -5531,6 +6313,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let safeIdentifier = safeRow.identifier
         attachRecordingIdentity(safeIdentifier, name: "Completed local source identity")
+        if let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty {
+            XCTAssertTrue(safeRow.staticTexts[sessionTitle].exists,
+                          "A saved recording should use the Session title, not its routing ID.")
+        }
         XCTAssertTrue(safeRow.descendants(matching: .any)["LocalRecordingMomentMarks"].exists)
         let play = safeRow.buttons["Play"].firstMatch
         XCTAssertTrue(play.exists)
@@ -5613,6 +6399,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let crashIdentifier = crashRow.identifier
         attachRecordingIdentity(crashIdentifier, name: "Crash-open local source identity")
+        if let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty {
+            XCTAssertTrue(crashRow.staticTexts[sessionTitle].exists,
+                          "The Session title must be saved before Stop so interrupted takes stay recognizable.")
+        }
         app.terminate()
 
         let offlineApp = XCUIApplication()
@@ -5646,6 +6436,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(safeOfflineRow.buttons["Stop playback"].firstMatch.waitForExistence(timeout: 3))
         safeOfflineRow.buttons["Stop playback"].firstMatch.tap()
 
+        let playRecovered = crashOfflineRow.buttons["Play local source"].firstMatch
+        XCTAssertTrue(playRecovered.exists && playRecovered.isEnabled,
+                      "An interrupted take must recover playable audio, not only a journal row and undecodable bytes.")
+        playRecovered.tap()
+        XCTAssertTrue(crashOfflineRow.buttons["Stop playback"].firstMatch.waitForExistence(timeout: 3))
+        crashOfflineRow.buttons["Stop playback"].firstMatch.tap()
+
         app.terminate()
         app = try launchSignedInCaptureApp()
         XCTAssertTrue(
@@ -5654,48 +6451,28 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         tapRootTab("Library", in: app)
         selectRecordingLibrary(in: app)
-        XCTAssertTrue(app.descendants(matching: .any)[safeIdentifier].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.descendants(matching: .any)[crashIdentifier].waitForExistence(timeout: 12))
+        // Library is a lazy List, newest take first. A recovered take can push
+        // the earlier source below the viewport; waiting cannot materialize it.
+        XCTAssertTrue(
+            waitForRuntimeElement(app.descendants(matching: .any)[safeIdentifier].firstMatch, in: app),
+            "The finalized source must remain in Library after reconnecting to Nest."
+        )
+        XCTAssertTrue(
+            waitForRuntimeElementAbove(app.descendants(matching: .any)[crashIdentifier].firstMatch, in: app),
+            "The interrupted source must remain in Library after reconnecting to Nest."
+        )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists, "An orphaned take must not relaunch as an active recording.")
 
         tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
-        let missingPlanReason = app.textFields.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureMissingPlannedSourceReason_")
-        ).firstMatch
-        let waiveMissingMaster = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureWaiveMissingPlannedSource_")
-        ).firstMatch
-        if waitForRuntimeElementAbove(missingPlanReason, in: app, timeout: 18, swipeAttempts: 8) {
-            XCTAssertTrue(
-                waitForRuntimeElement(waiveMissingMaster, in: app, timeout: 8, swipeAttempts: 4),
-                "A missing required master should expose the phone-only, reason-required recovery decision."
-            )
-            missingPlanReason.tap()
-            missingPlanReason.typeText(
-                "The interrupted take could not decode after process recovery; continue with the verified source."
-            )
-            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: waiveMissingMaster)
-            waitForExpectations(timeout: 8)
-            waiveMissingMaster.tap()
-            XCTAssertTrue(
-                missingPlanReason.waitForNonExistence(timeout: 20),
-                "The append-only waiver should refresh the exact Session source plan before Studio handoff."
-            )
-            let resolvedEvidence = app.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureResolvedEvidence_")
-            ).firstMatch
-            XCTAssertTrue(
-                waitForRuntimeElement(resolvedEvidence, in: app, timeout: 20, swipeAttempts: 6),
-                "The phone should preserve the interrupted receipt and its reason as visible resolved evidence."
-            )
-        }
+        // Both the normal and interrupted source have already played and
+        // uploaded above. Recovery must not require a waiver for a lost take.
 
         let handoffCard = app.descendants(matching: .any)["CaptureStudioHandoffCard_\(sessionID)"].firstMatch
         XCTAssertTrue(
-            waitForRuntimeElement(handoffCard, in: app, timeout: 45, swipeAttempts: 10),
+            scrollRuntimeElementIntoHittableView(handoffCard, in: app, timeout: 45, swipeAttempts: 18),
             "A server-verified recording should keep its Studio handoff state reachable beside the recorder."
         )
         let promotionStatusIdentifier = "CaptureStudioPromotionStatus_\(sessionID)"
@@ -5712,7 +6489,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             NSPredicate(format: "label == %@", "Open advanced edit")
         ).firstMatch
 
-        if scrollRuntimeElementIntoHittableView(
+        if !openStudioReview.exists && !openStudioReviewByLabel.exists && scrollRuntimeElementIntoHittableView(
             attachToStudio,
             in: app,
             timeout: 20,
@@ -5733,12 +6510,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             )
             attachToStudio.tap()
         } else {
-            let reviewIsReachable = waitForRuntimeElement(
+            let reviewIsReachable = scrollRuntimeElementIntoHittableView(
                 openStudioReview,
                 in: app,
                 timeout: 4,
                 swipeAttempts: 2
-            ) || waitForRuntimeElement(
+            ) || scrollRuntimeElementIntoHittableView(
                 openStudioReviewByLabel,
                 in: app,
                 timeout: 8,

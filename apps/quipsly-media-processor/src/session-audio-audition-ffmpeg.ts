@@ -181,7 +181,9 @@ function technicalEvidence(
     !Number.isFinite(durationSeconds) ||
     durationSeconds <= 0 ||
     !Number.isSafeInteger(bitRate) ||
-    bitRate < 64_000 ||
+    // AAC spends very few bits on digital silence. A low observed bitrate is
+    // not a decode failure; duration/format and the full decode below prove it.
+    bitRate <= 0 ||
     bitRate > 256_000 ||
     durationDeltaSeconds > 0.25
   )

@@ -37,6 +37,7 @@ if (
 
 const roomId = process.env.QUIPSLY_BROWSER_SOURCE_QA_ROOM_ID || "retained-coaching-follow-up-20260731";
 const email = process.env.QUIPSLY_BROWSER_SOURCE_QA_EMAIL || "quipsly-coach-retained-20260731@example.test";
+const reloadAfterLocalStop = process.env.QUIPSLY_BROWSER_SOURCE_QA_RELOAD_AFTER_STOP === "1";
 if (!/^[^@\s]+@[^@\s]+\.test$/.test(email)) {
   throw new Error("Browser-source regression requires a synthetic .test account.");
 }
@@ -189,13 +190,15 @@ try {
     },
   );
   await deviceSettings.getByRole("button", { name: "Test selected setup" }).click();
-  await page
-    .getByText(
-      /Selected setup is ready|Live input is ready|Microphone names are visible/i,
-    )
-    .first()
-    .waitFor({ timeout: 20_000 })
-    .catch(() => undefined);
+  await liveDock.getByText("Devices checked", {exact: true}).waitFor({timeout: 20_000});
+  // The ordinary lobby shows a meter, not the retired technical preview text.
+  // Require measured activity from the supplied speech before joining.
+  const microphoneMeter = liveDock.getByRole("meter", {name: "Microphone activity"});
+  const activityDeadline = Date.now() + 10_000;
+  while (Number(await microphoneMeter.getAttribute("aria-valuenow")) <= 0) {
+    if (Date.now() >= activityDeadline) throw new Error("The selected microphone preview had no measured audio activity.");
+    await page.waitForTimeout(100);
+  }
   await liveDock.getByRole("button", { name: "Join call" }).click();
   const connectedCallControl = liveDock.getByRole("button", {
     name: /^(?:Mute|Unmute)$/,
@@ -286,7 +289,40 @@ try {
   // Longer than one complete loop of the known speech, even if the shared
   // microphone stream was already running during the lobby sound check.
   await page.waitForTimeout(14_000);
+  // Hold upload reservation, not the local file write or coordination API.
+  // STOPPED must reach the host before uploading completes, not on a later
+  // ready-state poll after the entire transfer has finished.
+  let releaseUpload;
+  const uploadGate = new Promise(resolve => { releaseUpload = resolve; });
+  await page.route("**/api/mobile/capture/uploads/resumable", async route => {
+    await uploadGate;
+    await route.continue();
+  });
   await stopButton.click();
+  let stoppedReceipt = null;
+  try {
+    const deadline = Date.now() + 30_000;
+    do {
+      stoppedReceipt = await prisma.callRecordingEndpointReceipt.findFirst({
+        where: { roomId, actorUserId: actor.id, state: "STOPPED", receivedAt: { gte: startedAfter }, directive: { action: "STOP" } },
+        orderBy: { receivedAt: "desc" }, select: { captureId: true, receivedAt: true },
+      });
+      if (stoppedReceipt?.captureId) break;
+      await page.waitForTimeout(250);
+    } while (Date.now() < deadline);
+    if (!stoppedReceipt?.captureId) throw new Error("The browser did not confirm its durable local stop while upload was held.");
+    if (reloadAfterLocalStop) {
+      // Upload recovery must not depend on retaining permission to capture
+      // new media. Restore the browser's default permission state first.
+      await context.clearPermissions();
+      await page.reload({waitUntil: "domcontentloaded"});
+      // The call is no longer joined. Recovery must discover the local source
+      // and expose the recorder on its own, without another Join action.
+      await recorder.waitFor({state: "visible", timeout: 30_000});
+    }
+  } finally {
+    releaseUpload();
+  }
   await recorder
     .getByText(/Recording saved(?: and verified in Quipsly|\. Quipsly is preparing it for reliable playback)/i)
     .first()
@@ -446,6 +482,25 @@ try {
     });
   }
 
+  const decodedAudio = await page.evaluate(async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Recording playback returned ${response.status}.`);
+    const audioContext = new AudioContext();
+    try {
+      const buffer = await audioContext.decodeAudioData(await response.arrayBuffer());
+      let peak = 0;
+      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        for (const sample of buffer.getChannelData(channel)) peak = Math.max(peak, Math.abs(sample));
+      }
+      return {durationSeconds: buffer.duration, sampleRate: buffer.sampleRate, channels: buffer.numberOfChannels, peak};
+    } finally {
+      await audioContext.close();
+    }
+  }, playbackURL);
+  if (!(decodedAudio.durationSeconds > 0) || !(decodedAudio.peak > 0)) {
+    throw new Error(`The recovered recording did not decode to non-silent audio: ${JSON.stringify(decodedAudio)}`);
+  }
+
   let transcript = await prisma.transcriptJob.findUnique({
     where: { id: finalization.transcriptJobId },
     select: {
@@ -500,6 +555,25 @@ try {
       `The source-bound transcript did not recover the known speech (${matchedWords.length}/${expectedWords.length} key words).`,
     );
   }
+  const manifest =
+    recording.localManifestJson &&
+    typeof recording.localManifestJson === "object" &&
+    !Array.isArray(recording.localManifestJson)
+      ? recording.localManifestJson
+      : {};
+  if (manifest.captureId !== stoppedReceipt.captureId) {
+    throw new Error("The pre-upload stop confirmation did not belong to this recording.");
+  }
+  console.log(JSON.stringify({
+    phase: "recording-and-transcript-verified",
+    recordingAssetId: recording.id,
+    transcriptJobId: transcript.id,
+    durableStopReportedBeforeUpload: true,
+    recoveredAfterPageReload: reloadAfterLocalStop,
+    matchedSpeechKeywords: matchedWords.length,
+    playbackWindows: playbackEvidence.length,
+    followThroughVerified: false,
+  }));
   // A retained Session assembles multiple source transcripts. Identical work
   // may retain an earlier valid anchor rather than duplicate the newest take.
   let followThrough = { tasks: [], goals: [] };
@@ -519,12 +593,19 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 500));
   } while (Date.now() < workDeadline);
   assertRetainedSpeechWork({ before: workBeforeRecording, after: followThrough, actorId: actor.id });
-  const manifest =
-    recording.localManifestJson &&
-    typeof recording.localManifestJson === "object" &&
-    !Array.isArray(recording.localManifestJson)
-      ? recording.localManifestJson
-      : {};
+  const task = followThrough.tasks[0];
+  let followThroughWorkspaceReadback = false;
+  if (task.engagementId) {
+    await page.goto(`${baseURL}/coaching/engagements/${encodeURIComponent(task.engagementId)}?work=${encodeURIComponent(task.id)}#relationship-work`);
+    const sourceLink = page.getByRole("link", {name: `From recording: ${task.title}`, exact: true});
+    await sourceLink.waitFor({state: "visible", timeout: 30_000});
+    const originalSourceHref = await sourceLink.getAttribute("href");
+    if (!originalSourceHref?.includes(`/sessions/${roomId}`)) throw new Error("The generated task did not open its source Session.");
+    await page.reload({waitUntil: "domcontentloaded"});
+    await sourceLink.waitFor({state: "visible", timeout: 30_000});
+    if (await sourceLink.getAttribute("href") !== originalSourceHref) throw new Error("The task's source link changed on reload.");
+    followThroughWorkspaceReadback = true;
+  }
   await assertNoHorizontalOverflow(
     page.getByRole("main").last(),
     "retained browser-source Session",
@@ -573,6 +654,7 @@ try {
             source: projectAttachment.source,
           },
           playbackEvidence,
+          decodedAudio,
           transcript,
         },
         operated: {
@@ -584,12 +666,15 @@ try {
           explicitConsentActionPerformed,
           currentConsentReadback: true,
           explicitRecordAndStop: true,
+          durableStopReportedBeforeUpload: true,
+          recoveredAfterPageReload: reloadAfterLocalStop,
           opfsLocalRetention: true,
           resumableUploadAndVerification: true,
           canonicalReadback: true,
           automaticStudioMaterialization: true,
           authenticatedRangedPlayback: true,
           sourceBoundTranscription: true,
+          followThroughWorkspaceReadback,
         },
       },
       null,

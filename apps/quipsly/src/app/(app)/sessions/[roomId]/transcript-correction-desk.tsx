@@ -1,4 +1,5 @@
 "use client";
+import { SessionRecordingAudio } from "@/components/session-recording-audio";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -79,6 +80,7 @@ type TranscriptPlayback = {
   sourceId: string;
   url: string;
   kind: "audio" | "video";
+  contentType?: string;
   recordingAssetId: string;
   durationSeconds: number | null;
   label: string;
@@ -1237,7 +1239,10 @@ function CorrectionEditor({
   const [creatingTask, setCreatingTask] = useState(false);
   const [taskTitle, setTaskTitle] = useState(segment.text.slice(0, 180));
   const [taskDetail, setTaskDetail] = useState(`From ${timestampForSeconds(programStartSeconds)}–${timestampForSeconds(programEndSeconds)} on the Session timeline: ${segment.text}`);
-  const [taskRequestId, setTaskRequestId] = useState(() => requestId(`task-${segment.id}`));
+  const taskRequest = useRef<{ content: string; body: string } | null>(null);
+  const taskSavingRef = useRef(false);
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskHref, setTaskHref] = useState<string | null>(null);
   const [creatingGoal, setCreatingGoal] = useState(false);
   const [goalTitle, setGoalTitle] = useState(segment.text.slice(0, 180));
   const [goalDescription, setGoalDescription] = useState(`Source commitment at ${timestampForSeconds(programStartSeconds)}–${timestampForSeconds(programEndSeconds)} on the Session timeline: ${segment.text}`);
@@ -1362,30 +1367,47 @@ function CorrectionEditor({
   }
 
   async function createTask() {
+    if (taskSavingRef.current || busy || !taskTitle.trim()) return;
+    taskSavingRef.current = true;
+    setTaskSaving(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    const payload = {
+      roomId,
+      segmentId: segment.id,
+      expectedProviderTextSha256: segment.providerTextSha256,
+      title: taskTitle,
+      detail: taskDetail,
+      surface: "nest-session-transcript-review",
+    };
+    const content = JSON.stringify(payload);
+    if (taskRequest.current?.content !== content) {
+      taskRequest.current = { content, body: JSON.stringify({ ...payload, clientRequestId: requestId(`task-${segment.id}`) }) };
+    }
     try {
       const response = await fetch("/api/mobile/capture/transcripts/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          roomId,
-          segmentId: segment.id,
-          clientRequestId: taskRequestId,
-          expectedProviderTextSha256: segment.providerTextSha256,
-          title: taskTitle,
-          detail: taskDetail,
-          surface: "nest-session-transcript-review",
-        }),
+        body: taskRequest.current.body,
+        signal: controller.signal,
       });
-      const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; task?: { title?: string } };
+      const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; task?: { id?: string; title?: string } };
       if (!response.ok || !body.ok) throw new Error(body.error || "The task was not created.");
       setCreatingTask(false);
-      setTaskRequestId(requestId(`task-${segment.id}`));
+      setTaskHref(body.task?.id ? `/work?task=${encodeURIComponent(body.task.id)}` : null);
+      taskRequest.current = null;
       await onSaved(body.idempotentReplay
         ? "That source-linked task was already created; no duplicate was added."
         : `Task created in Today and Work: ${body.task?.title || taskTitle}`);
     } catch (taskError) {
-      setError(taskError instanceof Error ? taskError.message : "The task was not created.");
+      setError(controller.signal.aborted
+        ? "The save confirmation is taking too long. Try again; Quipsly will check the same task without creating a duplicate."
+        : taskError instanceof Error ? taskError.message : "The task was not created.");
+    } finally {
+      window.clearTimeout(timeout);
+      taskSavingRef.current = false;
+      setTaskSaving(false);
     }
   }
 
@@ -1694,8 +1716,8 @@ function CorrectionEditor({
 
       <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
         {creatingTask ? (
-          <div className="space-y-3">
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-900"><ListTodo size={15} aria-hidden="true" />Task</p>
+          <fieldset disabled={taskSaving || busy} className="space-y-3">
+            <legend className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-900"><ListTodo size={15} aria-hidden="true" />Task</legend>
             <label className="block text-xs font-black uppercase tracking-wide text-blue-950">Task title
               <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
             </label>
@@ -1703,13 +1725,16 @@ function CorrectionEditor({
               <textarea value={taskDetail} onChange={(event) => setTaskDetail(event.target.value)} maxLength={2000} rows={3} className="mt-1 block w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
             </label>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => void createTask()} disabled={busy || !taskTitle.trim()} className="inline-flex items-center gap-2 rounded-full bg-blue-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Create my task</button>
+              <button type="button" onClick={() => void createTask()} disabled={busy || taskSaving || !taskTitle.trim()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-blue-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{taskSaving ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}{taskSaving ? "Creating task…" : "Create my task"}</button>
               <button type="button" onClick={() => setCreatingTask(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-blue-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-blue-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
             </div>
             <p className="text-xs font-bold leading-relaxed text-blue-800">Assigned to you with a link back to this transcript moment.</p>
-          </div>
+          </fieldset>
         ) : (
-          <button type="button" onClick={() => setCreatingTask(true)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-blue-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-blue-900 disabled:opacity-50"><ListTodo size={15} aria-hidden="true" />Make this my task</button>
+          <div className="flex flex-wrap items-center gap-3">
+            {taskHref ? <Link href={taskHref} className="inline-flex min-h-11 items-center rounded-full bg-blue-800 px-4 py-2 text-xs font-black text-white">Open task</Link> : null}
+            <button type="button" onClick={() => setCreatingTask(true)} disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-blue-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-blue-900 disabled:opacity-50"><ListTodo size={15} aria-hidden="true" />{taskHref ? "Create another task" : "Make this my task"}</button>
+          </div>
         )}
       </div>
       <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
@@ -1752,6 +1777,9 @@ function TranscriptCorrectionDeskContent({
 }: TranscriptCorrectionDeskProps) {
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState<string | null>(null);
+  const activeRead = useRef<AbortController | null>(null);
+  const readGeneration = useRef(0);
   const [busy, setBusy] = useState(false);
   const [mentorReportBusy, setMentorReportBusy] = useState(false);
   const [preparingPlayback, setPreparingPlayback] = useState(false);
@@ -1819,27 +1847,62 @@ function TranscriptCorrectionDeskContent({
   }, [desk?.transcriptJobId]);
 
   const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+    if (silent && activeRead.current) return;
+    activeRead.current?.abort();
+    const controller = new AbortController();
+    const generation = ++readGeneration.current;
+    activeRead.current = controller;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 30_000);
+    if (!silent) {
+      setLoading(true);
+      setReadError(null);
+    }
     try {
       const query = new URLSearchParams({ callRoomId: roomId });
       if (recordingAssetId) query.set("recordingAssetId", recordingAssetId);
-      const response = await fetch(`/api/mobile/capture/transcripts/corrections?${query.toString()}`, { cache: "no-store" });
+      const response = await fetch(`/api/mobile/capture/transcripts/corrections?${query.toString()}`, { cache: "no-store", signal: controller.signal });
+      if (generation !== readGeneration.current) return;
+      // Clear protected content before parsing, even if an expired session or
+      // removed membership produces an HTML response instead of JSON.
+      if ([401, 403, 404].includes(response.status)) {
+        setDesk(null);
+        const failure = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(failure?.error || "This transcript is no longer available. Return to your session workspace.");
+      }
       const payload = await response.json() as Desk;
+      if (generation !== readGeneration.current) return;
       if (!response.ok || !payload.ok) {
-        // A transient refresh error must not erase drafts. Revoked access must
-        // still remove the protected transcript, including during silent polls.
-        if ([401, 403, 404].includes(response.status)) setDesk(null);
         throw new Error(payload.error || "The correction desk could not load.");
       }
+      if (payload.roomId !== roomId) {
+        setDesk(null);
+        throw new Error("This transcript is no longer available. Return to your session workspace.");
+      }
       setDesk(payload);
+      setReadError(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The correction desk could not load.");
+      if (generation !== readGeneration.current || (controller.signal.aborted && !timedOut)) return;
+      setReadError(timedOut
+        ? "The transcript is taking too long to load. Please try again."
+        : error instanceof Error ? error.message : "The correction desk could not load.");
     } finally {
-      if (!silent) setLoading(false);
+      window.clearTimeout(timeout);
+      if (generation === readGeneration.current) {
+        activeRead.current = null;
+        if (!silent) setLoading(false);
+      }
     }
   }, [recordingAssetId, roomId]);
 
-  useEffect(() => { void load(false); }, [load]);
+  useEffect(() => {
+    void load(false);
+    return () => {
+      ++readGeneration.current;
+      activeRead.current?.abort();
+      activeRead.current = null;
+    };
+  }, [load]);
 
   useEffect(() => {
     const media = mediaRef.current;
@@ -2249,7 +2312,7 @@ function TranscriptCorrectionDeskContent({
   }
 
   if (loading && !desk) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading transcript and recording…</section>;
-  if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
+  if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{readError || "The transcript could not load. Please try again."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
   const unidentifiedSpeakerCount = speakerGroupsNeedingIdentity.length;
@@ -2262,7 +2325,7 @@ function TranscriptCorrectionDeskContent({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-black text-sky-900">Recording · {currentPlayback.label}</p>{(desk.sessionTranscript?.sources.length ?? 0) > 1 ? <div className="flex flex-wrap gap-1" role="group" aria-label="Participant recording source">{desk.sessionTranscript!.sources.filter((source) => source.playback).map((source, index) => <button key={source.recordingAssetId} type="button" aria-pressed={source.playback?.sourceId === currentPlayback.sourceId} onClick={() => source.playback && selectPlaybackSource(source.playback)} className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${source.playback?.sourceId === currentPlayback.sourceId ? "border-sky-700 bg-sky-800 text-white" : "border-sky-200 bg-white text-sky-900"}`}>Source {index + 1}</button>)}</div> : null}</div>
       {currentPlayback.kind === "video"
         ? <video key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
-        : <audio key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
+        : <SessionRecordingAudio contentType={currentPlayback.contentType} key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
       {playbackState === "loading" ? <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-white p-3 text-xs font-bold text-sky-900">Loading recording…</p> : null}
       {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">The original recording is unavailable, so audio checks are paused. Direct transcript edits remain available and stay linked to the original source moment.</p> : null}
     </div>
@@ -2299,6 +2362,7 @@ function TranscriptCorrectionDeskContent({
           </div>
         </div>
         {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-900">{message}</p>}
+        {readError && <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">{readError}</p>}
         {desk.sessionTranscript ? <div className={`mt-4 rounded-xl border p-4 text-sm font-semibold leading-relaxed ${desk.sessionTranscript.status === "assembled" ? "border-indigo-200 bg-indigo-50 text-indigo-950" : desk.sessionTranscript.status === "held" || desk.sessionTranscript.status === "incomplete" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-slate-200 bg-slate-50 text-slate-800"}`}><p className="font-black">{desk.sessionTranscript.status === "assembled" ? `${desk.sessionTranscript.sourceCount} participant recordings on one Session timeline` : desk.sessionTranscript.status === "single-source" ? "One participant recording ready" : "Complete Session transcript still preparing"}</p><p className="mt-1 text-xs">{desk.sessionTranscript.reason}</p>{desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs font-black uppercase tracking-wide">Provisional clock placement · waveform and drift review still required</p> : null}</div> : null}
         {preparedTranscript ? <a href={preparedTranscript.url} download={preparedTranscript.filename} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Download size={15} aria-hidden="true" />Download prepared transcript</a> : null}
         {desk.processing && (

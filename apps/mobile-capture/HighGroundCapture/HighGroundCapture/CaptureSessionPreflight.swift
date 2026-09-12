@@ -478,7 +478,10 @@ final class CaptureSessionPreflightClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             let encoder = JSONEncoder()
             request.httpBody = try encoder.encode(receipt.payload)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: receipt.ownerAccountID
+            )
             let packet = try AuthResponseDecoder.decode(
                 ServerResponse.self,
                 from: data,

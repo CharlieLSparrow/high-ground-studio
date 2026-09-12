@@ -378,7 +378,9 @@ describe("Session recording directive route", () => {
     });
   });
 
-  it("accepts an idempotent endpoint acknowledgment only from a known installation", async () => {
+  it("accepts a participant's local recording status without a provider join or sound-check decision", async () => {
+    prisma.callParticipantProviderGrantReceipt.findFirst.mockResolvedValue(null);
+    prisma.callParticipantPreflightReceipt.findFirst.mockResolvedValue(null);
     prisma.callRecordingDirective.findFirst.mockResolvedValue({
       id: directive.id,
       action: "START",
@@ -399,6 +401,8 @@ describe("Session recording directive route", () => {
       context,
     );
     expect(response.status).toBe(201);
+    expect(prisma.callParticipantProviderGrantReceipt.findFirst).not.toHaveBeenCalled();
+    expect(prisma.callParticipantPreflightReceipt.findFirst).not.toHaveBeenCalled();
     expect(await response.json()).toMatchObject({
       ok: true,
       endpointReceipt: { state: "STARTED", occurredAt },
@@ -413,6 +417,17 @@ describe("Session recording directive route", () => {
         }),
       }),
     );
+  });
+
+  it.each([null, { id: room.id, participants: [] }])("rejects recording status without active participant access", async unavailableRoom => {
+    prisma.callRoom.findFirst.mockResolvedValue(unavailableRoom);
+    const response = await PATCH(request("PATCH", {
+      receiptId: "44444444-4444-4444-8444-444444444444", directiveId: directive.id,
+      state: "STOPPED", clientInstanceId: "new-browser", clientKind: "web", deviceLabel: "Mac",
+    }), context);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({code: "PARTICIPANT_REQUIRED"});
+    expect(prisma.callRecordingEndpointReceipt.create).not.toHaveBeenCalled();
   });
 
   it("replays the original endpoint event time and rejects identity drift", async () => {

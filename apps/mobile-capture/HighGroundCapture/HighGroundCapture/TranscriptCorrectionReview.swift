@@ -949,6 +949,13 @@ private struct CapturePacketGoalReviewContext: Equatable {
     let packetBuildId: String
 }
 
+struct CaptureFollowThroughGeneration: Codable, Equatable {
+    let state: String
+    let message: String
+    let canRetry: Bool
+    var isPending: Bool { state == "PROCESSING" || state == "RETRYING" }
+}
+
 private struct CapturePacketGoalReviewEnvelope: Codable {
     struct Packet: Codable {
         struct ReviewAccess: Codable {
@@ -974,6 +981,7 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
             let boundary: String
         }
         let build: Build?
+        let generation: CaptureFollowThroughGeneration?
         let reviewAccess: ReviewAccess?
         let status: String?
         let transcriptReview: TranscriptReview?
@@ -1020,6 +1028,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetProviderOnlySegmentCount = 0
     @Published private(set) var packetSnapshotStale = false
     @Published private(set) var followUpPreparationFailed = false
+    @Published private(set) var followThroughGeneration: CaptureFollowThroughGeneration?
     @Published private(set) var pendingTranscriptDecisionCount = 0
     @Published private(set) var heldTranscriptDecisionCount = 0
     @Published private(set) var pendingSpeakerAttributionCount = 0
@@ -1037,6 +1046,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private var activeRoomID: String?
     private var activeRecordingAssetID: String?
     private var activeTranscriptJobID: String?
+    private var activeReadScope: CaptureTranscriptReadScope?
+    private var packetReadID: UUID?
     private var includesFollowUpWorkspace = true
     private var automaticPacketAttemptKeys: Set<String> = []
     private var packetSnapshotSHA256: String?
@@ -1044,6 +1055,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com"
     )
+    var workDraftOrigin: String { baseURL }
 
     private static var previewResults: MobileCaptureTranscriptResults {
         let itemCount = ProcessInfo.processInfo.arguments.contains("--capture-follow-up-many-items-preview") ? 4 : 1
@@ -1186,11 +1198,20 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         let trimmedTranscriptJobID = transcriptJobID?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedRecordingAssetID = trimmedRecordingAssetID?.isEmpty == false ? trimmedRecordingAssetID : nil
         let normalizedTranscriptJobID = trimmedTranscriptJobID?.isEmpty == false ? trimmedTranscriptJobID : nil
+        let readScope = CaptureTranscriptReadScope(roomID: normalizedRoomID,
+            recordingAssetID: normalizedRecordingAssetID, transcriptJobID: normalizedTranscriptJobID,
+            ownerAccountID: AuthManager.currentStoredOwnerID())
         if activeRoomID != normalizedRoomID
             || activeRecordingAssetID != normalizedRecordingAssetID
-            || activeTranscriptJobID != normalizedTranscriptJobID {
+            || activeTranscriptJobID != normalizedTranscriptJobID
+            || activeReadScope?.ownerAccountID != readScope.ownerAccountID {
             removePreparedMentorReport()
+            clearFollowUpWorkspace()
+            desk = nil
         }
+        activeReadScope = readScope
+        packetReadID = nil
+        isLoading = false
         activeRoomID = normalizedRoomID
         activeRecordingAssetID = normalizedRecordingAssetID
         activeTranscriptJobID = normalizedTranscriptJobID
@@ -1240,6 +1261,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
             packetStatus = "RESULTS_READY"
+            followThroughGeneration = ProcessInfo.processInfo.arguments.contains("--capture-follow-through-processing-preview")
+                ? .init(state: "PROCESSING", message: "Preparing notes, tasks, and goals. You can keep working or leave this page.", canRetry: false)
+                : nil
             canReviewPrivatePacket = true
             privatePacketBoundary = nil
             packetSegmentCount = 0
@@ -1303,12 +1327,13 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if activeReadScope == readScope { isLoading = false } }
         do {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             guard response.statusCode < 400 else {
                 throw captureTranscriptError(data: data, fallback: "Transcript review could not load.")
             }
@@ -1325,6 +1350,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             message = nil
             if includeFollowUpWorkspace {
                 await loadPacketCandidates(roomID: roomID)
+                guard readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
                 await prepareFollowUpIfNeeded(roomID: roomID)
             } else {
                 clearFollowUpWorkspace()
@@ -1339,6 +1365,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 }
             }
         } catch {
+            guard readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             packetGoalCandidates = []
             packetGoalMergeTargets = []
             packetNoteCandidates = []
@@ -1627,6 +1654,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         title: String,
         detail: String,
         clientRequestID: String,
+        saveAttempt: CaptureTranscriptTaskSaveAttempt? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -1646,7 +1674,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            var command: [String: Any] = [
                 "roomId": roomID,
                 "segmentId": segment.id,
                 "clientRequestId": clientRequestID,
@@ -1654,15 +1682,20 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
                 "detail": detail.trimmingCharacters(in: .whitespacesAndNewlines),
                 "surface": "ios-capture-transcript-review",
-            ])
+            ]
+            if let saveAttempt {
+                command["save"] = ["revision": saveAttempt.revision,
+                    "original": ["title": saveAttempt.original.title, "detail": saveAttempt.original.detail]]
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: command)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(CaptureTranscriptTaskMutationResponse.self, from: data)
             guard response.statusCode < 400, payload.ok, let task = payload.task else {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "The task could not be created.")
             }
             message = payload.idempotentReplay == true
-                ? "That source-linked task was already created."
-                : "Task created in Today and Work: \(task.title)"
+                ? "Task saved: \(task.title)"
+                : "Task saved in Today and Work: \(task.title)"
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -2097,12 +2130,31 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     func refreshFollowUp(roomID: String) async {
         guard activeRoomID == roomID, !isUsingProtectedCache else { return }
+        guard let scope = activeReadScope,
+              scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else {
+            activeReadScope = nil
+            packetReadID = nil
+            clearFollowUpWorkspace()
+            desk = nil
+            return
+        }
         await loadPacketCandidates(roomID: roomID, preserveOnFailure: true)
     }
 
     private func loadPacketCandidates(roomID: String, preserveOnFailure: Bool = false) async {
+        guard let readScope = activeReadScope, readScope.roomID == roomID,
+              readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+        // A background poll must not overtake an in-flight foreground refresh.
+        if preserveOnFailure, packetReadID != nil { return }
+        let requestID = UUID()
+        packetReadID = requestID
+        defer { if packetReadID == requestID { packetReadID = nil } }
         guard AuthManager.shared.networkActionsAllowed,
               var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
+            if preserveOnFailure {
+                packetReviewError = "Updates paused. Your loaded work is still here; refresh when you're connected."
+                return
+            }
             packetGoalCandidates = []
             packetGoalMergeTargets = []
             packetNoteCandidates = []
@@ -2130,6 +2182,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 throw captureTranscriptError(data: data, fallback: "Packet goal candidates could not load.")
             }
             let payload = try JSONDecoder().decode(CapturePacketGoalReviewEnvelope.self, from: data)
+            guard packetReadID == requestID,
+                  readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: payload.error ?? "Packet goal candidates could not load.") }
             packetGoalCandidates = payload.packet?.goalCandidates ?? []
             packetGoalMergeTargets = payload.packet?.goalMergeTargets ?? []
@@ -2141,6 +2195,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
             packetResults = payload.packet?.results
             packetStatus = payload.packet?.status
+            followThroughGeneration = payload.packet?.generation
             canReviewPrivatePacket = payload.packet?.reviewAccess?.canReviewPrivatePacket
                 ?? (payload.packet?.status?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() != "PRIVATE_REVIEWER_ONLY")
             privatePacketBoundary = payload.packet?.reviewAccess?.boundary
@@ -2163,6 +2218,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 followUpPreparationFailed = false
             }
         } catch {
+            guard packetReadID == requestID,
+                  readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             if preserveOnFailure, ![401, 403, 404].contains(responseStatus ?? 0) {
                 packetReviewError = "Updates paused. Your loaded work is still here; refresh when you're connected."
                 return
@@ -2202,6 +2259,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private func prepareFollowUpIfNeeded(roomID: String) async {
         let status = packetStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
         guard canReviewPrivatePacket,
+              followThroughGeneration == nil || followThroughGeneration?.state == "READY",
               status == "PACKET_READY_TO_BUILD" || packetNeedsRebuild,
               let transcriptJobID = desk?.transcriptJobId?.nonemptyTranscriptValue else {
             return
@@ -2230,6 +2288,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "transcriptJobId": transcriptJobID,
                 "force": false,
+                "retryAnalysis": !automatic,
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileCapturePacketBuildResponse.self, from: data)
@@ -2238,7 +2297,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             await loadPacketCandidates(roomID: roomID)
             followUpPreparationFailed = false
-            message = payload.reusedExistingPacket == true
+            message = payload.analysisQueued == true
+                ? "Automatic notes are being prepared. Your saved work stays available."
+                : payload.reusedExistingPacket == true
                 ? "Your Session results are ready."
                 : "Quipsly created editable notes, tasks, and goals from this Session."
             return true
@@ -2253,6 +2314,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private func resetPacketReviewState() {
         packetStatus = nil
+        followThroughGeneration = nil
         canReviewPrivatePacket = true
         privatePacketBoundary = nil
         packetSegmentCount = 0
@@ -2336,7 +2398,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 body["reviewNote"] = "Confirmed as-is in Quipsly Capture against the exact retained local recording."
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try? JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
             guard response.statusCode < 400, payload?.ok == true else {
                 let apiError = try? JSONDecoder().decode(CaptureTranscriptAPIError.self, from: data)
@@ -2466,7 +2531,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 "confirmedAgainstPlayback": true,
                 "reviewNote": "Identified in Quipsly Capture from exact retained local recording samples. No transcript words were marked reviewed.",
             ])
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try? JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
             guard response.statusCode < 400, payload?.ok == true else {
                 let apiError = try? JSONDecoder().decode(CaptureTranscriptAPIError.self, from: data)
@@ -3462,6 +3530,9 @@ struct CaptureTranscriptReviewView: View {
                         ProgressView("Loading protected transcript…")
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
+                        if let generation = client.followThroughGeneration, generation.state != "READY" {
+                            followThroughProgress(generation)
+                        }
                         transcriptSegments(desk, scrollProxy: scrollProxy)
                         if let results = client.packetResults {
                             sessionFollowUpResults(
@@ -3492,19 +3563,6 @@ struct CaptureTranscriptReviewView: View {
             .scrollPosition(id: $scrollTargetSegmentID, anchor: .top)
             .scrollDismissesKeyboard(.immediately)
             .background(CapturePalette.canvas)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let focusSegmentID {
-                    Label("Opened from linked work", systemImage: "link.circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 6)
-                        .background(CapturePalette.canvas)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
-                }
-            }
             .navigationTitle("Transcript")
             .navigationBarTitleDisplayMode(.inline)
             // Transcript review is a focused destination with its own reading,
@@ -3722,6 +3780,14 @@ struct CaptureTranscriptReviewView: View {
                 guard client.packetResults != nil, !previewOnly else { return }
                 _ = await followUpSessions.load(authoritativeSessionID: roomID)
             }
+            .task(id: client.followThroughGeneration?.isPending == true) {
+                guard !previewOnly, !client.isUsingProtectedCache else { return }
+                while client.followThroughGeneration?.isPending == true && !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(3)) } catch { return }
+                    guard !Task.isCancelled else { return }
+                    await client.refreshFollowUp(roomID: roomID)
+                }
+            }
             .task {
                 await client.load(
                     roomID: roomID,
@@ -3758,6 +3824,24 @@ struct CaptureTranscriptReviewView: View {
             }
             .onDisappear { playback.pause(resetPosition: true) }
         }
+    }
+
+    private func followThroughProgress(_ generation: CaptureFollowThroughGeneration) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(generation.message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            if generation.canRetry && client.canReviewPrivatePacket {
+                Button("Retry automatic notes") {
+                    Task { _ = await client.buildCurrentPacket(roomID: roomID, previewOnly: previewOnly) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(previewOnly || client.isMutating || client.isUsingProtectedCache)
+                .accessibilityIdentifier("CaptureFollowThroughRetry")
+            }
+        }
+        .reviewCard()
+        .accessibilityIdentifier("CaptureFollowThroughProgress")
     }
 
     @ViewBuilder
@@ -4075,7 +4159,8 @@ struct CaptureTranscriptReviewView: View {
                             playback: playback,
                             protectedSource: segment.sourcePlayback ?? desk.playback,
                             protectedPlayback: protectedSessionPlayback,
-                            library: library
+                            library: library,
+                            isLinkedSource: segment.id == focusSegmentID
                         )
                         .id(segment.id)
                         .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
@@ -6872,6 +6957,9 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
 }
 
 private struct CaptureTranscriptSegmentCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var auth = AuthManager.shared
     let roomID: String
     let sessionTitle: String
     let transcriptJobID: String?
@@ -6888,6 +6976,7 @@ private struct CaptureTranscriptSegmentCard: View {
     let protectedSource: CaptureTranscriptPlayback?
     @ObservedObject var protectedPlayback: CaptureSessionProtectedPlaybackController
     let library: LocalRecordingLibrary
+    var isLinkedSource = false
 
     @State private var isEditing = false
     @State private var showsDetails = false
@@ -6897,20 +6986,13 @@ private struct CaptureTranscriptSegmentCard: View {
     @State private var reason = ""
     @State private var draftSaveTask: Task<Void, Never>?
     @State private var draftStatus: String?
-    @State private var isCreatingTask = false
-    @State private var taskTitle = ""
-    @State private var taskDetail = ""
-    @State private var taskRequestID = "iphone-transcript-task-\(UUID().uuidString)"
-    @State private var isCreatingGoal = false
-    @State private var goalTitle = ""
-    @State private var goalDescription = ""
-    @State private var goalRequestID = "iphone-transcript-goal-\(UUID().uuidString)"
-    @State private var isCreatingNote = false
-    @State private var noteTitle = ""
-    @State private var noteBody = ""
-    @State private var noteKind = MobileSessionNoteKind.sessionNote
-    @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
-    @State private var noteRequestID = "iphone-transcript-note-\(UUID().uuidString)"
+    @State private var creatingWork: CaptureTranscriptWorkKind?
+    @State private var workDrafts = CaptureTranscriptWorkDrafts()
+    @State private var workDraftScope: CaptureTranscriptWorkDraftScope?
+    @State private var workDraftCanPersist = false
+    @State private var workDraftSaveTask: Task<Void, Never>?
+    @State private var workDraftError: String?
+    private let workDraftStore = CaptureTranscriptWorkDraftStore()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -6919,12 +7001,16 @@ private struct CaptureTranscriptSegmentCard: View {
                     Text("\(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp)")
                         .font(.caption.monospacedDigit().weight(.bold))
                         .foregroundStyle(CapturePalette.ink)
+                        .accessibilityLabel("\(isLinkedSource ? "Linked source, " : "")Session time \(segment.sessionStartSeconds.captureTranscriptTimestamp) to \(segment.sessionEndSeconds.captureTranscriptTimestamp)")
+                        .accessibilityIdentifier(isLinkedSource ? "CaptureTranscriptSourceBoundary_\(segment.id)" : "CaptureTranscriptSegmentTime_\(segment.id)")
                     Text(captureTranscriptNonempty(segment.speakerLabel) ?? "Unlabelled speaker")
                         .font(.headline)
-                    CaptureTranscriptSpeakerEvidenceBadge(
-                        authority: segment.speakerAuthority,
-                        identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
-                    )
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        CaptureTranscriptSpeakerEvidenceBadge(
+                            authority: segment.speakerAuthority,
+                            identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
+                        )
+                    }
                 }
                 Spacer(minLength: 12)
                 Button {
@@ -6942,6 +7028,9 @@ private struct CaptureTranscriptSegmentCard: View {
                     if protectedPlayback.isPreparing && !hasExactLocalSource {
                         Label("Preparing…", systemImage: "arrow.down.circle")
                             .frame(minHeight: 44)
+                    } else if dynamicTypeSize.isAccessibilitySize {
+                        Image(systemName: "play.fill")
+                            .frame(minWidth: 44, minHeight: 44)
                     } else {
                         Label("Play", systemImage: "play.fill")
                             .frame(minHeight: 44)
@@ -6951,13 +7040,6 @@ private struct CaptureTranscriptSegmentCard: View {
                 .disabled(!canPlaySource || client.isMutating || protectedPlayback.isPreparing)
                 .accessibilityLabel("Play transcript segment from Session time \(segment.sessionStartSeconds.captureTranscriptTimestamp)")
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
-            }
-
-            if !isEditing {
-                Text(segment.text)
-                    .textSelection(.enabled)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack {
@@ -6970,6 +7052,12 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 Spacer(minLength: 8)
                 segmentCreationMenu
+            }
+            if !isEditing {
+                Text(segment.text)
+                    .textSelection(.enabled)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if isEditing { correctionEditor }
 
@@ -7041,9 +7129,13 @@ private struct CaptureTranscriptSegmentCard: View {
                 .accessibilityIdentifier("CaptureTranscriptEditRecording_\(segment.id)")
             }
 
-            if isCreatingNote { transcriptNoteComposer }
-            if isCreatingTask { transcriptTaskComposer }
-            if isCreatingGoal { transcriptGoalComposer }
+            if creatingWork == nil, let error = workDraftError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureTranscriptWorkDraftError")
+            }
 
             Button {
                 showsDetails.toggle()
@@ -7066,6 +7158,19 @@ private struct CaptureTranscriptSegmentCard: View {
         .reviewCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptSegment_\(segment.id)")
+        .sheet(item: $creatingWork, onDismiss: { persistWorkDrafts() }) { kind in
+            CaptureTranscriptWorkComposer(
+                kind: kind,
+                draft: Binding(get: { workDrafts[kind] }, set: { workDrafts[kind] = $0 }),
+                sourceLabel: "\(sessionTitle)\n\(segment.speakerLabel ?? "Speaker") · \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp)",
+                canUseProjectTeamNotes: canUseProjectTeamNotes,
+                isSaving: client.isMutating,
+                canSave: !previewOnly && !decisionsLocked,
+                error: workDraftError ?? client.errorMessage,
+                onClose: closeWorkDraft,
+                onSave: { saveWorkDraft(kind) }
+            )
+        }
         .onChange(of: requestedEditingSegmentID, initial: true) { _, requestedID in
             guard requestedID == segment.id else { return }
             beginEditing()
@@ -7074,49 +7179,59 @@ private struct CaptureTranscriptSegmentCard: View {
         .onChange(of: correctedText) { _, _ in scheduleDraftSave() }
         .onChange(of: correctedSpeaker) { _, _ in scheduleDraftSave() }
         .onChange(of: reason) { _, _ in scheduleDraftSave() }
+        .onChange(of: workDrafts) { _, _ in scheduleWorkDraftSave() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { persistWorkDrafts() }
+        }
+        .onChange(of: auth.userEmail) { _, _ in
+            // Never relabel an old account's in-memory writing as a new user's.
+            persistWorkDrafts(allowInactiveScope: true)
+            creatingWork = nil
+            workDraftScope = nil
+            workDraftCanPersist = false
+            workDrafts = CaptureTranscriptWorkDrafts()
+            workDraftError = nil
+        }
         .onDisappear {
             draftSaveTask?.cancel()
             persistDraftIfNeeded()
+            persistWorkDrafts()
         }
     }
 
     private var segmentCreationMenu: some View {
         Menu {
             Button {
-                noteTitle = "Note — \(defaultTaskTitle)"
-                noteBody = segment.text
-                noteKind = .sessionNote
-                noteVisibility = .authorPrivate
-                isCreatingNote = true
+                beginCreatingWork(.note)
             } label: {
-                Label("New note", systemImage: "note.text.badge.plus")
+                Label(workDrafts.note.hasStarted ? "Continue note" : "New note", systemImage: "note.text.badge.plus")
             }
             .disabled(client.isMutating || decisionsLocked)
             .accessibilityIdentifier("CaptureTranscriptMakeNoteButton")
             .accessibilityHint("Opens a note with this transcript moment ready to adjust.")
             Button {
-                taskTitle = defaultTaskTitle
-                taskDetail = "From \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
-                isCreatingTask = true
+                beginCreatingWork(.task)
             } label: {
-                Label("New task", systemImage: "checklist")
+                Label(workDrafts.task.hasStarted ? "Continue task" : "New task", systemImage: "checklist")
             }
             .disabled(client.isMutating || decisionsLocked)
             .accessibilityIdentifier("CaptureTranscriptMakeTaskButton")
             .accessibilityHint("Opens a task with the transcript wording ready to adjust.")
             Button {
-                goalTitle = defaultTaskTitle
-                goalDescription = "Source commitment at \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
-                isCreatingGoal = true
+                beginCreatingWork(.goal)
             } label: {
-                Label("New goal", systemImage: "target")
+                Label(workDrafts.goal.hasStarted ? "Continue goal" : "New goal", systemImage: "target")
             }
             .disabled(client.isMutating || decisionsLocked)
             .accessibilityIdentifier("CaptureTranscriptMakeGoalButton")
             .accessibilityHint("Opens a goal with the transcript wording ready to adjust.")
         } label: {
-            Label("Create", systemImage: "plus")
-                .frame(minHeight: 44)
+            if dynamicTypeSize.isAccessibilitySize {
+                Image(systemName: "plus").frame(minWidth: 44, minHeight: 44)
+            } else {
+                Label("Create", systemImage: "plus")
+                    .frame(minHeight: 44)
+            }
         }
         .accessibilityLabel("Create from this passage")
         .accessibilityIdentifier("CaptureTranscriptCreateFromPassage_\(segment.id)")
@@ -7124,6 +7239,12 @@ private struct CaptureTranscriptSegmentCard: View {
 
     private var segmentDetails: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if dynamicTypeSize.isAccessibilitySize {
+                CaptureTranscriptSpeakerEvidenceBadge(
+                    authority: segment.speakerAuthority,
+                    identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
+                )
+            }
             if !hasExactLocalSource && protectedSource?.kind == "video" {
                 Label(
                     "Quipsly will not download the full video just to review this sentence. Prepare an audio source or review the protected recording explicitly.",
@@ -7501,191 +7622,101 @@ private struct CaptureTranscriptSegmentCard: View {
         .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var transcriptTaskComposer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if isCreatingTask {
-                Label("Task", systemImage: "checklist")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.ink)
-                TextField("Task title", text: $taskTitle, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptTaskTitleField")
-                TextField("Useful detail (optional)", text: $taskDetail, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
-                HStack {
-                    Button("Create my task") {
-                        Task {
-                            let saved = await client.createTask(
-                                roomID: roomID,
-                                segment: segment,
-                                title: taskTitle,
-                                detail: taskDetail,
-                                clientRequestID: taskRequestID,
-                                previewOnly: previewOnly
-                            )
-                            if saved {
-                                isCreatingTask = false
-                                taskRequestID = "iphone-transcript-task-\(UUID().uuidString)"
-                            }
-                        }
-                    }
-                    .captureProminentButton()
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: 44)
-                    .disabled(taskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
-                    .accessibilityIdentifier("CaptureTranscriptCreateTaskButton")
-                    Button("Cancel") { isCreatingTask = false }
-                        .buttonStyle(.bordered)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minHeight: 44)
-                }
-                Text("Assigned to you with a link back to this transcript moment.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+    private func saveWorkDraft(_ kind: CaptureTranscriptWorkKind) {
+        guard !client.isMutating else { return }
+        if kind == .task, !workDrafts.task.prepareTaskSave() {
+            workDraftError = "Use a title of up to 500 characters and details of up to 5,000 characters. Your writing is still here."
+            return
+        }
+        let submitted = workDrafts[kind]
+        let submittedScope = workDraftScope
+        guard persistWorkDrafts() else { return }
+        Task {
+            let saved: Bool
+            switch kind {
+            case .note:
+                saved = await client.createNote(
+                    roomID: roomID, segment: segment, title: submitted.title, body: submitted.body,
+                    kind: MobileSessionNoteKind(rawValue: submitted.noteKind) ?? .sessionNote,
+                    visibility: MobileSessionNoteVisibility(rawValue: submitted.visibility) ?? .authorPrivate,
+                    clientRequestID: submitted.requestID, previewOnly: previewOnly
+                )
+            case .task:
+                saved = await client.createTask(
+                    roomID: roomID, segment: segment, title: submitted.title, detail: submitted.body,
+                    clientRequestID: submitted.requestID, saveAttempt: submitted.taskSaveAttempt, previewOnly: previewOnly
+                )
+            case .goal:
+                saved = await client.createGoal(
+                    roomID: roomID, segment: segment, title: submitted.title, description: submitted.body,
+                    clientRequestID: submitted.requestID, previewOnly: previewOnly
+                )
+            }
+            if saved, workDraftScope == submittedScope {
+                workDrafts.acknowledge(submitted, kind: kind)
+                creatingWork = nil
+                persistWorkDrafts()
             }
         }
-        .padding(12)
-        .background(CapturePalette.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var transcriptGoalComposer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if isCreatingGoal {
-                Label("Goal", systemImage: "target")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.plum)
-                TextField("Goal title", text: $goalTitle, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptGoalTitleField")
-                TextField("Definition of progress (optional)", text: $goalDescription, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
-                HStack {
-                    Button("Create my goal") {
-                        Task {
-                            let saved = await client.createGoal(
-                                roomID: roomID,
-                                segment: segment,
-                                title: goalTitle,
-                                description: goalDescription,
-                                clientRequestID: goalRequestID,
-                                previewOnly: previewOnly
-                            )
-                            if saved {
-                                isCreatingGoal = false
-                                goalRequestID = "iphone-transcript-goal-\(UUID().uuidString)"
-                            }
-                        }
-                    }
-                    .captureProminentButton(fill: CapturePalette.plumFill)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: 44)
-                    .disabled(goalTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
-                    .accessibilityIdentifier("CaptureTranscriptCreateGoalButton")
-                    Button("Cancel") { isCreatingGoal = false }
-                        .buttonStyle(.bordered)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minHeight: 44)
+    private func beginCreatingWork(_ kind: CaptureTranscriptWorkKind) {
+        if !previewOnly, let owner = AuthManager.currentStoredOwnerID() {
+            let scope = CaptureTranscriptWorkDraftScope(ownerAccountID: owner, origin: client.workDraftOrigin,
+                roomID: roomID, segmentID: segment.id, providerTextSha256: segment.providerTextSha256)
+            if workDraftScope != scope {
+                persistWorkDrafts()
+                workDrafts = CaptureTranscriptWorkDrafts()
+                workDraftScope = scope
+                workDraftCanPersist = false
+                do {
+                    workDrafts = try workDraftStore.load(scope)
+                    workDraftCanPersist = true
+                    workDraftError = nil
+                } catch {
+                    // Do not overwrite an unreadable saved draft with an empty one.
+                    workDraftError = "Your saved draft could not be opened. New writing is available in this screen, but cannot be saved on this device yet."
                 }
-                Text("Owned by you with a link back to this transcript moment.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureTranscriptGoalBoundary")
             }
         }
-        .padding(12)
-        .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        let body = kind == .note ? segment.text
+            : "From \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
+        workDrafts[kind].start(title: kind == .note ? "Note — \(defaultTaskTitle)" : defaultTaskTitle, body: body)
+        correctionTextFocused = false
+        creatingWork = kind
+        persistWorkDrafts()
     }
 
-    private var transcriptNoteComposer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if isCreatingNote {
-                Label("Session note", systemImage: "note.text.badge.plus")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.brass)
-                TextField("Note title (optional)", text: $noteTitle, axis: .vertical)
-                    .lineLimit(1...3)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptNoteTitleField")
-                TextField("Note", text: $noteBody, axis: .vertical)
-                    .lineLimit(3...7)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CaptureTranscriptNoteBodyField")
-                Picker("Purpose", selection: $noteKind) {
-                    ForEach(availableNoteKinds) { kind in
-                        Text(kind.title).tag(kind)
-                    }
-                }
-                .pickerStyle(.menu)
-                .accessibilityIdentifier("CaptureTranscriptNoteKindPicker")
-                Picker("Audience", selection: $noteVisibility) {
-                    ForEach(availableNoteVisibilities) { visibility in
-                        Text(visibility.title).tag(visibility)
-                    }
-                }
-                .pickerStyle(.menu)
-                .accessibilityIdentifier("CaptureTranscriptNoteVisibilityPicker")
-                Text(noteVisibility.boundary)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureTranscriptNoteAudienceBoundary")
-                HStack {
-                    Button("Save source-linked note") {
-                        Task {
-                            let saved = await client.createNote(
-                                roomID: roomID,
-                                segment: segment,
-                                title: noteTitle,
-                                body: noteBody,
-                                kind: noteKind,
-                                visibility: noteVisibility,
-                                clientRequestID: noteRequestID,
-                                previewOnly: previewOnly
-                            )
-                            if saved {
-                                isCreatingNote = false
-                                noteRequestID = "iphone-transcript-note-\(UUID().uuidString)"
-                            }
-                        }
-                    }
-                    .captureProminentButton(fill: CapturePalette.warningFill)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: 44)
-                    .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
-                    .accessibilityIdentifier("CaptureTranscriptCreateNoteButton")
-                    Button("Cancel") { isCreatingNote = false }
-                        .buttonStyle(.bordered)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minHeight: 44)
-                        .accessibilityIdentifier("CaptureTranscriptCancelNoteButton")
-                }
-                Text("Saved privately by default with a link back to this transcript moment. You can change who sees it.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureTranscriptNoteBoundary")
-            }
+    private func closeWorkDraft() {
+        persistWorkDrafts()
+        creatingWork = nil
+    }
+
+    private func scheduleWorkDraftSave() {
+        workDraftSaveTask?.cancel()
+        guard !previewOnly, workDraftCanPersist, workDraftScope != nil else { return }
+        workDraftSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            persistWorkDrafts()
         }
-        .padding(12)
-        .background(CapturePalette.brass.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var availableNoteKinds: [MobileSessionNoteKind] {
-        canUseProjectTeamNotes
-            ? MobileSessionNoteKind.allCases
-            : MobileSessionNoteKind.allCases.filter { $0 != .production }
+    @discardableResult
+    private func persistWorkDrafts(allowInactiveScope: Bool = false) -> Bool {
+        workDraftSaveTask?.cancel()
+        guard !previewOnly, workDraftCanPersist, let scope = workDraftScope,
+              allowInactiveScope || scope.ownerAccountID == AuthManager.currentStoredOwnerID() else { return false }
+        do {
+            try workDraftStore.save(workDrafts, for: scope)
+            workDraftError = nil
+            return true
+        } catch {
+            workDraftError = "This draft is still here, but could not be saved on your device. Keep this screen open and try again."
+            return false
+        }
     }
 
-    private var availableNoteVisibilities: [MobileSessionNoteVisibility] {
-        canUseProjectTeamNotes
-            ? MobileSessionNoteVisibility.allCases
-            : MobileSessionNoteVisibility.allCases.filter { $0 != .projectTeam }
-    }
 
     private func proposalReview(_ proposal: CaptureTranscriptCorrection) -> some View {
         VStack(alignment: .leading, spacing: 8) {

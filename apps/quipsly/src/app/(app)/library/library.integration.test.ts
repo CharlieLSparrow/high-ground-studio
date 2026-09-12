@@ -204,7 +204,7 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     expect(library.entries.find((entry) => entry.id === `session:${actorRoomId}`)).toMatchObject({
       href: `/sessions/${actorRoomId}`,
       title: "Episode 7 field recording",
-      badges: expect.arrayContaining(["2 segments"]),
+      badges: expect.arrayContaining(["2 timed segments"]),
     });
     expect(library.entries.find((entry) => entry.id === `session:${otherRoomId}`)).toMatchObject({
       href: `/sessions/${otherRoomId}`,
@@ -218,14 +218,14 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       kind: "NOTE",
       href: `/sessions/${actorRoomId}?mode=notes#session-note-${actorNoteId}`,
       projectName: "High Ground Library smoke",
-      stateLabel: "iPhone capture · author private",
-      badges: expect.arrayContaining(["#Opening thought", "Offline retry safe"]),
+      stateLabel: "Private note",
+      badges: expect.arrayContaining(["#Opening thought"]),
     });
     expect(library.entries.find((entry) => entry.id === `document:${documentId}`)?.href).toContain(`/read?projectSlug=library-${nonce}&episodeSlug=episode-7-${nonce}`);
     expect(library.entries.find((entry) => entry.id === `document:${writingNoteDocumentId}`)).toMatchObject({
       kind: "NOTE",
       detail: "The document kernel keeps this everyday thought searchable.",
-      href: `/create?project=library-${nonce}&document=${writingNoteDocumentId}&block=${writingNoteBlockId}`,
+      href: `/notes/${writingNoteDocumentId}`,
       stateLabel: "Note",
     });
     expect(library.entries.some((entry) => entry.id === `document:${otherPersonalDocumentId}`)).toBe(false);

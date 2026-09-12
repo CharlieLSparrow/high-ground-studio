@@ -7,6 +7,12 @@ import {
   createWorkTagTaxonomy,
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
+  readTaskTagContext,
+  readGoalTagContext,
+  readNoteTagContext,
+  readDocumentTagContext,
+  readNewCoachingTaskTagContext,
+  readNewNestTaskTagContext,
   type WorkTagEntityKind,
   type WorkTagTaxonomyOperation,
 } from "@/lib/server/work-tags";
@@ -20,6 +26,32 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown, max = 200) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+export async function GET(request: Request) {
+  const headers = { "Cache-Control": "private, no-store" };
+  try {
+    const session = await getQuipslySessionFromRequest(request);
+    const actorEmail = text(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+    if (!session?.user?.id || !actorEmail) return NextResponse.json({ ok: false, error: "Sign in to edit tags." }, { status: 401, headers });
+    const query = new URL(request.url).searchParams;
+    const entityId = text(query.get("entityId"));
+    const engagementId = text(query.get("engagementId"));
+    const projectSlug = text(query.get("projectSlug"));
+    const entityKind = query.get("entityKind");
+    if (!["task", "goal", "note", "document"].includes(entityKind || "")
+      || (entityKind === "document" && !entityId)
+      || [entityId, engagementId, projectSlug].filter(Boolean).length !== 1) return NextResponse.json({ ok: false, error: "Choose a note, task, goal, client space, or Nest." }, { status: 400, headers });
+    const actor = { prisma: getPrismaClient(), actorUserId: session.user.id, actorEmail };
+    const context = entityId ? await (entityKind === "document" ? readDocumentTagContext : entityKind === "goal" ? readGoalTagContext : entityKind === "note" ? readNoteTagContext : readTaskTagContext)({ ...actor, entityId })
+      : engagementId ? await readNewCoachingTaskTagContext({ ...actor, engagementId })
+        : await readNewNestTaskTagContext({ ...actor, projectSlug });
+    return context ? NextResponse.json({ ok: true, ...context }, { headers })
+      : NextResponse.json({ ok: false, error: "This work isn't available to edit." }, { status: 404, headers });
+  } catch (error) {
+    console.error("[work-tags] work context read failed", error);
+    return NextResponse.json({ ok: false, error: "Tags couldn't load. Try again." }, { status: 503, headers });
+  }
 }
 
 export async function POST(request: Request) {
@@ -54,6 +86,7 @@ export async function POST(request: Request) {
         actorEmail,
         projectId,
         label,
+        ...(Object.prototype.hasOwnProperty.call(body, "hexColor") ? { hexColor: body.hexColor } : {}),
       });
       if (!result.ok) {
         const status = result.code === "NOT_FOUND"
@@ -191,7 +224,8 @@ export async function PATCH(request: Request) {
   const expectedUpdatedAt = new Date(text(body.expectedUpdatedAt, 80));
   if (
     !tagId
-    || !["RENAME", "ARCHIVE", "RESTORE"].includes(operation)
+    || !["RENAME", "ARCHIVE", "RESTORE", "COLOR"].includes(operation)
+    || (operation === "COLOR" && body.hexColor !== null && typeof body.hexColor !== "string")
     || (operation === "RENAME" && !label)
     || !Number.isFinite(expectedUpdatedAt.getTime())
   ) {
@@ -213,6 +247,7 @@ export async function PATCH(request: Request) {
       tagId,
       operation,
       label: operation === "RENAME" ? label : undefined,
+      ...(operation === "COLOR" ? { hexColor: body.hexColor as string | null } : {}),
       expectedUpdatedAt,
     });
     if (!result.ok) {

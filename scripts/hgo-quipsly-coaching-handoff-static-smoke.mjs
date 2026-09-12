@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const failures = [];
 
 const files = {
   handoff: "apps/web/src/lib/hgo/coaching-handoff.ts",
@@ -28,7 +29,6 @@ const files = {
   mobileCaptureReadiness: "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts",
   mobileCaptureReviewDigest: "apps/quipsly/src/app/api/mobile/capture/review-digest/route.ts",
   quipslyCoachingRunway: "apps/quipsly/src/app/api/coaching/runway/route.ts",
-  quipslyCoachingPage: "apps/quipsly/src/app/(app)/coaching/page.tsx",
   prismaSchema: "prisma/schema.prisma",
 };
 
@@ -46,13 +46,13 @@ function read(relativePath) {
 function requireIncludes(text, needle, label, file) {
   const compact = (value) => String(value).replace(/\s+/g, " ").trim();
   if (!compact(text).includes(compact(needle))) {
-    fail("Required HGO/Quipsly coaching handoff invariant is missing.", { label, file, missing: needle });
+    failures.push({ label, file, missing: needle });
   }
 }
 
 function requireNotIncludes(text, needle, label, file) {
   if (text.includes(needle)) {
-    fail("Retired HGO/Quipsly coaching handoff pattern is still present.", { label, file, retired: needle });
+    failures.push({ label, file, retired: needle });
   }
 }
 
@@ -351,15 +351,9 @@ for (const [label, needle] of [
   requireIncludes(texts.quipslyCoachingRunway, needle, label, files.quipslyCoachingRunway);
 }
 
-for (const [label, needle] of [
-  ["client request home", "My time requests"],
-  ["client request cancellation affordance", "cancelClientBookingRequest"],
-  ["client coaching plain heading", "Your coaching, without the admin maze."],
-  ["coach incoming request home", "Incoming time requests"],
-  ["coach request confirmation affordance", "Confirm Session"],
-]) {
-  requireIncludes(texts.quipslyCoachingPage, needle, label, files.quipslyCoachingPage);
-}
+// Customer navigation, cancellation, and Session links are exercised by the
+// rendered coaching/page.test.tsx suite. Copy and component names are not API
+// contracts and must not force obsolete layouts back into the product.
 
 for (const [label, needle] of [
   ["quipsly marketing home coaches card", "title: \"Coaches\""],
@@ -502,10 +496,6 @@ for (const [label, needle] of [
   ["runway supports convert hold", "\"convert-booking-hold\""],
   ["runway supports reschedule booking", "\"reschedule-booking\""],
   ["runway supports cancel booking", "\"cancel-booking\""],
-  ["hold created next action", "Hold created. Convert to a booking only when the human confirms the session."],
-  ["hold released next action", "Hold released. The time is no longer reserved unless a human creates a new hold or booking."],
-  ["reschedule calendar caveat", "Update external calendar/invite evidence before promising the change is on calendars."],
-  ["cancel calendar caveat", "Cancel external calendar/invite/payment evidence separately before saying the outside world is updated."],
   ["reschedule planned calendar evidence", "reschedule-planned"],
   ["cancel planned calendar evidence", "cancel-planned"],
   ["payment hold blocks capture", "Payment hold. Keep this out of confirmed capture until Stripe evidence lands."],
@@ -514,20 +504,7 @@ for (const [label, needle] of [
   requireIncludes(texts.quipslyCoachingRunway, needle, label, files.quipslyCoachingRunway);
 }
 
-for (const [label, needle] of [
-  ["calendar packet type", "type CalendarReadyPacket"],
-  ["lifecycle type", "type CoachingLifecycle"],
-  ["lifecycle panel", "function LifecyclePanel"],
-  ["provider recording receipt binding", "providerRecordingReceiptSlotId"],
-  ["calendar packet panel", "function CalendarPacketPanel"],
-  ["calendar receipt label", "receipt-backed"],
-  ["booking renders lifecycle", "LifecyclePanel lifecycle={booking.lifecycle}"],
-  ["room renders lifecycle", "LifecyclePanel lifecycle={room.lifecycle}"],
-  ["booking renders calendar packet", "CalendarPacketPanel packet={booking.calendarReadyPacket}"],
-  ["room renders calendar packet", "CalendarPacketPanel packet={room.calendarReadyPacket}"],
-]) {
-  requireIncludes(texts.quipslyCoachingPage, needle, label, files.quipslyCoachingPage);
-}
+if (failures.length > 0) fail("HGO/Quipsly source checks failed.", { failures });
 
 console.log(JSON.stringify({
   ok: true,

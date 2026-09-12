@@ -68,9 +68,9 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .audio: "Audio"
-        case .podcastAV: "Podcast audio + video"
+        case .podcastAV: "Audio + video"
         case .soloVideo: "Solo video"
-        case .podcastCamera: "Podcast camera"
+        case .podcastCamera: "Video only"
         }
     }
 
@@ -107,13 +107,13 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .audio:
-            "A high-quality local microphone source. The live room remains a separate call."
+            "Records high-quality audio on this device."
         case .podcastAV:
-            "Two local masters: the selected microphone plus a video-only camera file in one capture group. The live room remains the call."
+            "Records separate audio and video tracks on this device."
         case .soloVideo:
-            "Camera and microphone in one local movie for a solo episode, short, or YouTube recording."
+            "Records one video file with sound."
         case .podcastCamera:
-            "A video-only camera master while the LiveKit room carries conversation audio. Quipsly aligns the sources later."
+            "Records video only. Use another device to record audio."
         }
     }
 }
@@ -232,6 +232,14 @@ enum CaptureLaunchConfiguration {
             && ProcessInfo.processInfo.arguments.contains(
                 "--capture-derived-analysis-persistence-failure-ui-test"
             )
+        #else
+        false
+        #endif
+    }
+
+    static var usesSlowDerivedAudioAnalysisUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        forcesLocalVoiceNoteUITest && ProcessInfo.processInfo.arguments.contains("--capture-slow-derived-analysis-ui-test")
         #else
         false
         #endif
@@ -424,6 +432,16 @@ enum CaptureLaunchConfiguration {
         return value.isEmpty ? nil : value
         #else
         return nil
+        #endif
+    }
+
+    /// An explicit unsigned Share Sheet test must not restore credentials left
+    /// by a separate authenticated simulator journey. Do not erase that account.
+    nonisolated static var usesSignedOutShareExtensionUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("\(shareOwnerPreviewPrefix)none")
+        #else
+        false
         #endif
     }
 
@@ -2070,7 +2088,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         if mode == .soloVideo, providerRoom.isConnected || providerRoom.isConnecting {
-            errorMessage = "Solo video owns the local microphone. Leave the live room first, or use Podcast camera for a video-only master beside room audio."
+            errorMessage = "Solo video needs the microphone. Leave the call first, or choose Video only and record audio on another device."
             return
         }
         guard AuthManager.shared.stableOwnerSnapshot() != nil else {
@@ -2123,7 +2141,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         if mode == .soloVideo, providerRoom.isConnected || providerRoom.isConnecting {
-            errorMessage = "Solo video includes microphone audio and cannot take over the audio session during a live room. Use Podcast camera or leave the room."
+            errorMessage = "Solo video needs the microphone. Leave the call first, or choose Video only and record audio on another device."
             return
         }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
@@ -2187,7 +2205,7 @@ final class CaptureExperienceModel: ObservableObject {
                 isChangingCapture = false
                 errorMessage = mode == .soloVideo
                     ? "Solo video includes microphone audio. Save current audio and video consent for every required participant before starting."
-                    : "Podcast audio + video creates a separate microphone master. Save current audio and video consent for every required participant before starting."
+                    : "Audio + video records both sources. Everyone being recorded needs to allow audio and video recording before you start."
                 return
             }
         }
@@ -2785,6 +2803,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
         let command = RecorderCommand(
             action: .start,
+            sessionTitle: session.displayTitle,
             projectSlug: usesLocalPersonalVoiceNoteAuthority
                 ? nil
                 : session.projectSlug ?? contextSlugs.projectSlug ?? "capture-inbox",
@@ -2802,8 +2821,8 @@ final class CaptureExperienceModel: ObservableObject {
         )
         audioCapture.handleCommand(command)
 
-        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()
-        guard audioStarted, audioCapture.captureState == .recording else {
+        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal(includingPausedSource: true)
+        guard audioStarted, [.recording, .paused].contains(audioCapture.captureState) else {
             isChangingCapture = false
             errorMessage = audioCapture.lastErrorMessage ?? "The local recorder did not start. Nothing was recorded."
             if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority {
@@ -2825,14 +2844,17 @@ final class CaptureExperienceModel: ObservableObject {
         selectedSessionID = session.id
         isChangingCapture = false
         clearSessionEntryNotice(for: session.id)
+        let captureDescription = audioCapture.captureState == .paused
+            ? "Recording paused. Your audio is retained; tap Resume when you’re ready."
+            : "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone."
 
         if usesPreviewData {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Preview mode does not contact Nest."
+            message = "\(captureDescription) Preview mode does not contact Nest."
             return
         }
 
         if usesLocalPersonalVoiceNoteAuthority {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Your private voice note is safe locally and will sync when Nest reconnects."
+            message = "\(captureDescription) Your private voice note is safe locally and will sync when Nest reconnects."
             return
         }
 
@@ -2840,9 +2862,9 @@ final class CaptureExperienceModel: ObservableObject {
             captureReceiptNotice = persistenceError
         }
         if captureAuthorityBasis == .recentDeviceConsent {
-            message = "Recording safely on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
+            message = "\(captureDescription) The source is safe on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
         } else {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Quipsly syncs the Session in the background."
+            message = "\(captureDescription) Quipsly syncs the Session in the background."
         }
         scheduleReceiptFlush()
         startConsentMonitor(captureID: captureID, audioCapture: audioCapture)
@@ -3546,8 +3568,8 @@ final class CaptureExperienceModel: ObservableObject {
             sourceType: recording.effectiveMediaKind.uploadSourceType,
             captureGroupId: recording.captureGroupId,
             sourceProfileJson: recording.encodedSourceProfileJSON,
-            startedAt: ISO8601DateFormatter().string(from: recording.startedAt),
-            stoppedAt: recording.stoppedAt.map { ISO8601DateFormatter().string(from: $0) },
+            startedAt: CaptureDateCoding.string(from: recording.startedAt),
+            stoppedAt: recording.stoppedAt.map { CaptureDateCoding.string(from: $0) },
             recordingSegmentsJson: recording.recordingSegmentsJson,
             localRecordingID: recording.id,
             ownerAccountID: recording.ownerAccountID

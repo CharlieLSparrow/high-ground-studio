@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 
 import { auth } from "@/auth";
+import { SharedClientSpaces } from "@/components/shared-client-space-list";
+import { listSharedClientSpaces, type SharedClientSpaceList } from "@/lib/server/shared-client-spaces";
 import {
   canAccessPrivateFictionNest,
   PRIVATE_FICTION_ISSUE_SLUG,
@@ -182,6 +184,8 @@ export default async function ProjectsHub({
   let canOpenPrivateFictionNest = false;
   let sharedProjects: Awaited<ReturnType<typeof listAccessibleStudioProjectSummariesForEmail>> = [];
   let actorHomeNestId = "";
+  let clientSpaces: SharedClientSpaceList = { spaces: [], hasMore: false };
+  let clientSpacesUnavailable = false;
   const projectRoles = new Map<string, string>();
   const canManageLiveNests = hasPlatformOwnerRole(session?.user?.roles);
 
@@ -200,6 +204,17 @@ export default async function ProjectsHub({
       actorHomeNestId = actorHomeNest.id;
     } catch {
       // The hub should still render even if the personal Home Nest cannot be created yet.
+    }
+  }
+
+  if (session?.user?.id && prisma) {
+    try {
+      clientSpaces = await listSharedClientSpaces(prisma, session.user.id);
+    } catch (error) {
+      clientSpacesUnavailable = true;
+      console.error("[projects] Client spaces could not be loaded.", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
     }
   }
 
@@ -362,6 +377,8 @@ export default async function ProjectsHub({
             </p>
           </div>
         ) : null}
+
+        <SharedClientSpaces result={clientSpaces} unavailable={clientSpacesUnavailable} />
 
         {projectRegistryUnavailable ? (
           <NestRegistryUnavailableState />

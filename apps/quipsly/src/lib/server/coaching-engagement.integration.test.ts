@@ -2,10 +2,13 @@
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
+jest.mock("livekit-server-sdk", () => ({ ...jest.requireActual("livekit-server-sdk"), RoomServiceClient: jest.fn() }));
 
 import { randomUUID } from "node:crypto";
+import { RoomServiceClient } from "livekit-server-sdk";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { listSharedClientSpaces } from "./shared-client-spaces";
 import { createCoachingClientSpace, coachingClientSchedulingContext } from "./coaching-client-space";
 import {
   coachingEngagementAccessWhere,
@@ -18,6 +21,9 @@ import {
   sessionInvitationAccessWhere,
 } from "./session-access";
 import { captureRoomAccessWhere } from "./mobile-capture-room-join-diagnostics";
+import { loadCoachingSessionHighlights } from "./coaching-session-highlights";
+import { transactionalEmailRecipientHasAccess } from "./transactional-email-worker";
+import { reconcileLiveSessionAccess, reconcileLiveKitParticipantJoin } from "./session-access-reconciliation";
 import {
   acceptCoachingEngagementInvitation,
   changeCoachingEngagementMemberAccess,
@@ -119,6 +125,92 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     }
   });
 
+  it("discovers only current client memberships independently of Nest roles, with revocation and restore", async () => {
+    const visible = async (userId: string) => (await listSharedClientSpaces(prisma, userId)).spaces.map(space => space.id);
+    expect(await visible(ids.client)).toContain(engagementId);
+    expect(await visible(ids.coach)).toContain(engagementId);
+    for (const userId of [ids.outsider, ids.editor, ids.viewer, ids.invitee]) {
+      expect(await visible(userId)).not.toContain(engagementId);
+    }
+    const key = { engagementId_userId: { engagementId, userId: ids.client } };
+    await prisma.coachingEngagementMember.update({ where: key, data: { status: "REMOVED" } });
+    try {
+      expect(await visible(ids.client)).not.toContain(engagementId);
+    } finally {
+      await prisma.coachingEngagementMember.update({ where: key, data: { status: "ACTIVE" } });
+    }
+    expect(await visible(ids.client)).toContain(engagementId);
+  });
+
+  it("selects the real next appointment beyond history limits without exposing another client space", async () => {
+    const now = new Date("2026-09-07T18:00:00Z");
+    const space = await prisma.coachingEngagement.create({ data: {
+      projectId: ids.project, title: "Session priority rehearsal",
+      members: { create: [{ userId: ids.coach, role: "COACH" }, { userId: ids.client, role: "CLIENT" }] },
+    } });
+    const rowId = (name: string) => `highlight-${nonce}-${name}`;
+    const base = { projectId: ids.project, coachingEngagementId: space.id, createdByUserId: ids.coach };
+    const read = (actorId = ids.client) => loadCoachingSessionHighlights({ prisma, engagementId: space.id, actor: { id: actorId, primaryEmail: email(actorId === ids.client ? "client" : "editor") }, now });
+    try {
+      await prisma.callRoom.createMany({ data: [
+        { ...base, id: rowId("stale"), status: "OPEN", scheduledStart: new Date("2026-08-01T18:00:00Z"), scheduledEnd: new Date("2026-08-01T19:00:00Z") },
+        { ...base, id: rowId("late"), status: "PLANNED", scheduledStart: new Date("2026-09-06T18:00:00Z"), scheduledEnd: new Date("2026-09-06T19:00:00Z") },
+        { ...base, id: rowId("next"), status: "PLANNED", scheduledStart: new Date("2026-09-08T18:00:00Z"), scheduledEnd: new Date("2026-09-08T19:00:00Z") },
+        ...Array.from({ length: 105 }, (_, index) => ({ ...base, id: rowId(`later-${index}`), status: "PLANNED" as const,
+          scheduledStart: new Date(now.getTime() + (index + 2) * 86400_000), scheduledEnd: new Date(now.getTime() + (index + 2) * 86400_000 + 3600_000) })),
+      ] });
+      expect((await read()).next?.id).toBe(rowId("next"));
+      expect((await read(ids.coach)).next?.id).toBe(rowId("next"));
+      for (const actorId of [ids.outsider, ids.editor, ids.viewer]) {
+        expect(await read(actorId)).toEqual({ next: null, last: null, overdue: false });
+      }
+      // A session-only guest does not gain the surrounding client's highlights.
+      await prisma.callParticipant.create({ data: { roomId: rowId("next"), userId: ids.invitee, role: "CLIENT" } });
+      expect(await read(ids.invitee)).toEqual({ next: null, last: null, overdue: false });
+      await prisma.callRoom.create({ data: { ...base, id: rowId("current"), status: "OPEN", scheduledStart: now, scheduledEnd: new Date(now.getTime() + 3600_000) } });
+      expect((await read()).next?.id).toBe(rowId("current"));
+      await prisma.callRoom.create({ data: { ...base, id: rowId("recording"), status: "RECORDING" } });
+      expect((await read()).next?.id).toBe(rowId("recording"));
+      await prisma.callRoom.updateMany({ where: { id: { in: [rowId("recording"), rowId("current")] } }, data: { status: "ENDED", endedAt: now } });
+      expect((await read()).next?.id).toBe(rowId("next"));
+      expect((await read()).last?.endedAt).toEqual(now);
+      await prisma.callRoom.updateMany({ where: { coachingEngagementId: space.id, scheduledStart: { gt: now } }, data: { status: "CANCELED" } });
+      expect(await read()).toMatchObject({ next: { id: rowId("late") }, overdue: true });
+      await prisma.callRoom.create({ data: { ...base, id: rowId("unscheduled"), status: "OPEN" } });
+      expect((await read()).next?.id).toBe(rowId("unscheduled"));
+      await prisma.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: space.id, userId: ids.client } }, data: { status: "REMOVED" } });
+      expect(await read()).toEqual({ next: null, last: null, overdue: false });
+    } finally {
+      await prisma.callRoom.deleteMany({ where: { coachingEngagementId: space.id } });
+      await prisma.coachingEngagement.delete({ where: { id: space.id } });
+    }
+  });
+
+  it("stops session email after client-space revocation even with retained booking and participant records", async () => {
+    const original = await prisma.coachingBooking.findUniqueOrThrow({where: {id: bookingId}, select: {status: true}});
+    const check = (userId: string, role: string, recipientEmail: string) => transactionalEmailRecipientHasAccess({prisma, roomId, bookingId, recipientUserId: userId, recipientRole: role, recipientEmail});
+    await prisma.coachingBooking.update({where: {id: bookingId}, data: {status: "CONFIRMED"}});
+    try {
+      expect(await check(ids.client, "CLIENT", email("client"))).toBe(true);
+      expect(await check(ids.coach, "COACH", email("coach"))).toBe(true);
+      expect(await check(ids.editor, "CLIENT", email("editor"))).toBe(false);
+      expect(await check(ids.client, "COACH", email("client"))).toBe(false);
+      expect(await check(ids.client, "CLIENT", email("outsider"))).toBe(false);
+      await prisma.callParticipant.updateMany({where: {roomId, userId: ids.client}, data: {accessStatus: "REMOVED"}});
+      expect(await check(ids.client, "CLIENT", email("client"))).toBe(false);
+      await prisma.callParticipant.updateMany({where: {roomId, userId: ids.client}, data: {accessStatus: "ACTIVE"}});
+      await prisma.coachingEngagementMember.update({where: {engagementId_userId: {engagementId, userId: ids.client}}, data: {status: "REMOVED"}});
+      expect(await check(ids.client, "CLIENT", email("client"))).toBe(false);
+      expect(await check(ids.coach, "COACH", email("coach"))).toBe(true);
+      expect(await prisma.callParticipant.count({where: {roomId, userId: ids.client, accessStatus: "ACTIVE"}})).toBe(1);
+      expect((await prisma.coachingBooking.findUniqueOrThrow({where: {id: bookingId}})).clientUserId).toBe(ids.client);
+    } finally {
+      await prisma.callParticipant.updateMany({where: {roomId, userId: ids.client}, data: {accessStatus: "ACTIVE"}});
+      await prisma.coachingEngagementMember.update({where: {engagementId_userId: {engagementId, userId: ids.client}}, data: {status: "ACTIVE"}});
+      await prisma.coachingBooking.update({where: {id: bookingId}, data: {status: original.status}});
+    }
+  });
+
   it("creates one private client space without a booking, preserves identity, and safely retries", async () => {
     const actor = { id: ids.coach, primaryEmail: email("coach") };
     const [first, second] = await Promise.all([
@@ -145,8 +237,120 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     expect(await prisma.coachingEngagement.findFirst({ where: coachingEngagementAccessWhere(first.id, { id: ids.outsider }, "read") })).toBeNull();
   });
 
-  it("rejects client-space creation by a non-coach and rejects self-coaching", async () => {
-    await expect(createCoachingClientSpace({ prisma, actor: { id: ids.outsider }, email: email("client") })).rejects.toMatchObject({ status: 403 });
+  it("disconnects removed space members, retries provider outages, rejects token reuse, and preserves other spaces and restoration", async () => {
+    const environment = { ...process.env };
+    const spaces: string[] = [];
+    const rooms: string[] = [];
+    const makeSpace = async () => {
+      const space = await prisma.coachingEngagement.create({ data: {
+        projectId: ids.project, title: "Synthetic call access rehearsal",
+        members: { create: [{ userId: ids.coach, role: "COACH" }, { userId: ids.client, role: "CLIENT" }] },
+      } });
+      spaces.push(space.id);
+      const room = await prisma.callRoom.create({ data: {
+        projectId: ids.project, coachingEngagementId: space.id, title: "Synthetic call",
+        createdByUserId: ids.coach, provider: "livekit", providerRoomId: `test-${randomUUID()}`,
+        participants: { create: [{ userId: ids.client, role: "CLIENT" }, { userId: ids.coach, role: "COACH" }] },
+      }, include: { participants: true } });
+      rooms.push(room.id);
+      return { space, room, client: room.participants.find(p => p.userId === ids.client)! };
+    };
+    try {
+      const first = await makeSpace();
+      const second = await makeSpace();
+      const member = await prisma.coachingEngagementMember.findUniqueOrThrow({ where: {
+        engagementId_userId: { engagementId: first.space.id, userId: ids.client },
+      } });
+      const active = new Map([
+        [first.room.providerRoomId!, new Set([`${first.client.id}:web`, `${first.client.id}:ios`, "unrelated-device"])],
+        [second.room.providerRoomId!, new Set([`${second.client.id}:web`])],
+      ]);
+      for (const suffix of ["web", "ios"]) await prisma.callParticipantProviderGrantReceipt.create({ data: {
+        roomId: first.room.id, participantId: first.client.id, tokenJti: randomUUID(),
+        providerIdentity: `${first.client.id}:${suffix}`, providerRoomId: first.room.providerRoomId!,
+        clientKind: suffix, issuedAt: new Date(Date.now() - 120_000), expiresAt: new Date(Date.now() - 60_000),
+      } });
+      const removeParticipant = jest.fn(async (room: string, identity: string) => { active.get(room)?.delete(identity); });
+      const listParticipants = jest.fn(async (room: string) => [...active.get(room) ?? []].map(identity => ({ identity })));
+      listParticipants.mockRejectedValueOnce(new Error("Synthetic provider outage"));
+      jest.mocked(RoomServiceClient).mockImplementation(() => ({
+        listRooms: jest.fn(async () => [...active.keys()].map(name => ({ name }))),
+        listParticipants, removeParticipant,
+      }) as unknown as RoomServiceClient);
+      process.env.LIVEKIT_URL = "wss://synthetic.livekit.cloud";
+      process.env.LIVEKIT_API_KEY = "synthetic-key";
+      process.env.LIVEKIT_API_SECRET = "synthetic-secret";
+      const request = { prisma, engagementId: first.space.id, memberId: member.id,
+        actor: { id: ids.coach }, action: "REMOVE" as const, expectedRevision: 0, requestId: randomUUID() };
+      await expect(changeCoachingEngagementMemberAccess({ ...request, actor: { id: ids.outsider } })).rejects.toMatchObject({ status: 404 });
+      expect(listParticipants).not.toHaveBeenCalled();
+      const removed = await changeCoachingEngagementMemberAccess(request);
+      expect(removed.calls).toMatchObject({ pending: true });
+      expect(await prisma.callRoom.findFirst({ where: captureRoomAccessWhere(first.room.id, { id: ids.client }) })).toBeNull();
+      expect(await prisma.callParticipant.findUnique({ where: { id: first.client.id } })).toMatchObject({ accessStatus: "ACTIVE", providerAccessStatus: "FAILED" });
+      expect(active.get(first.room.providerRoomId!)!.size).toBe(3);
+
+      expect(await reconcileLiveSessionAccess({ prisma })).toMatchObject({ failed: 0, deferred: 0 });
+      expect(active.get(first.room.providerRoomId!)).toEqual(new Set(["unrelated-device"]));
+      expect(active.get(second.room.providerRoomId!)).toEqual(new Set([`${second.client.id}:web`]));
+      expect(await prisma.callParticipantProviderGrantReceipt.count({ where: { participantId: first.client.id } })).toBe(2);
+      expect(await prisma.callParticipant.findUnique({ where: { id: first.client.id } })).toMatchObject({ accessStatus: "ACTIVE", providerAccessStatus: "CONVERGED" });
+      expect(await prisma.callParticipantAccessReceipt.count({ where: { participantId: first.client.id, action: "PROVIDER_RECONCILE" } })).toBe(2);
+
+      const joined = { eventId: randomUUID(), eventType: "participant_joined", createdAt: null, egress: null,
+        raw: { room: { name: first.room.providerRoomId }, participant: { identity: `${first.client.id}:web` } } };
+      active.get(first.room.providerRoomId!)!.add(`${first.client.id}:web`);
+      expect(await reconcileLiveKitParticipantJoin(joined, prisma)).toMatchObject({ status: "CONVERGED" });
+      expect(active.get(first.room.providerRoomId!)!.has(`${first.client.id}:web`)).toBe(false);
+
+      await changeCoachingEngagementMemberAccess({ ...request, action: "RESTORE", expectedRevision: 1, requestId: randomUUID() });
+      active.get(first.room.providerRoomId!)!.add(`${first.client.id}:web`);
+      const callsBeforeRestoreReadback = removeParticipant.mock.calls.length;
+      expect(await reconcileLiveKitParticipantJoin(joined, prisma)).toEqual({ status: "NOT_REQUIRED" });
+      expect(await changeCoachingEngagementMemberAccess(request)).toMatchObject({ replayed: true, member: { status: "ACTIVE" } });
+      expect(removeParticipant.mock.calls).toHaveLength(callsBeforeRestoreReadback);
+      expect(await prisma.callRoom.findFirst({ where: captureRoomAccessWhere(first.room.id, { id: ids.client }) })).not.toBeNull();
+    } finally {
+      process.env = environment;
+      await prisma.callRoom.deleteMany({ where: { id: { in: rooms } } });
+      await prisma.coachingEngagement.deleteMany({ where: { id: { in: spaces } } });
+    }
+  });
+
+  it("lets a new coach create only their own private space without a profile or booking", async () => {
+    const actor = {id: ids.outsider, primaryEmail: email("outsider")};
+    expect(await prisma.coachProfile.count({where: {userId: actor.id}})).toBe(0);
+    const [first, retry] = await Promise.all([
+      createCoachingClientSpace({prisma, actor, email: email("client")}),
+      createCoachingClientSpace({prisma, actor, email: email("client")}),
+    ]);
+    const space = await prisma.coachingEngagement.findUniqueOrThrow({where: {id: first.id}, include: {members: true, bookings: true, callRooms: true}});
+    try {
+      expect(retry.id).toBe(first.id);
+      expect(space.projectId).not.toBe(ids.project);
+      expect(space.members.map(member => ({userId: member.userId, role: member.role}))).toEqual(expect.arrayContaining([
+        {userId: ids.outsider, role: "COACH"}, {userId: ids.client, role: "CLIENT"},
+      ]));
+      expect(space.members).toHaveLength(2);
+      expect(space.bookings).toHaveLength(0);
+      expect(space.callRooms).toHaveLength(0);
+      expect(await prisma.coachProfile.count({where: {userId: actor.id}})).toBe(0);
+      expect(await prisma.userRole.count({where: {userId: actor.id}})).toBe(0);
+      expect(await prisma.coachingEngagement.findFirst({where: coachingEngagementAccessWhere(engagementId, actor, "read")})).toBeNull();
+      expect(await prisma.coachingEngagement.findFirst({where: coachingEngagementAccessWhere(space.id, {id: ids.editor}, "read")})).toBeNull();
+    } finally {
+      await prisma.coachingEngagement.delete({where: {id: space.id}});
+      await prisma.studioProject.delete({where: {id: space.projectId}});
+    }
+  });
+
+  it("rejects inactive accounts, self-coaching, and invalid client emails", async () => {
+    await prisma.user.update({where: {id: ids.outsider}, data: {isActive: false}});
+    try {
+      await expect(createCoachingClientSpace({prisma, actor: {id: ids.outsider}, email: email("client")})).rejects.toMatchObject({status: 403});
+    } finally {
+      await prisma.user.update({where: {id: ids.outsider}, data: {isActive: true}});
+    }
     await expect(createCoachingClientSpace({ prisma, actor: { id: ids.coach }, email: email("coach") })).rejects.toMatchObject({ status: 400 });
     await expect(createCoachingClientSpace({ prisma, actor: { id: ids.coach }, email: "not-an-email" })).rejects.toMatchObject({ status: 400 });
   });
@@ -165,6 +369,63 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       actor: { id: ids.outsider }, email: email("client"), role: "CLIENT", requestId: randomUUID(),
       origin: "http://127.0.0.1:3012" })).rejects.toMatchObject({ status: 404 });
   });
+
+  it.each(["INVITE", "REMOVE", "RESTORE", "REVOKE_INVITE"] as const)(
+    "rejects %s when the manager is removed after preflight but before the write transaction",
+    async (action) => {
+      const secret = process.env.AUTH_SECRET;
+      process.env.AUTH_SECRET = "integration-only-membership-race-secret-1234567890";
+      const space = await prisma.coachingEngagement.create({ data: {
+        projectId: ids.project, title: `Membership race ${action}`,
+        createdByUserId: ids.coach, primaryCoachUserId: ids.coach,
+        primaryClientUserId: ids.client,
+        members: { create: [
+          { userId: ids.coach, role: "COACH", status: "ACTIVE" },
+          { userId: ids.client, role: "CLIENT", status: action === "RESTORE" ? "REMOVED" : "ACTIVE" },
+        ] },
+      }, include: { members: true } });
+      const actor = { id: ids.coach, primaryEmail: email("coach") };
+      const target = space.members.find(member => member.userId === ids.client)!;
+      const manager = space.members.find(member => member.userId === ids.coach)!;
+      const requestId = randomUUID();
+      try {
+        const invitation = action === "REVOKE_INVITE"
+          ? await inviteCoachingEngagementMember({ prisma, engagementId: space.id, actor,
+            email: email("invitee"), role: "OBSERVER", requestId: randomUUID(), origin: "http://127.0.0.1:3012" })
+          : null;
+        const beforeInvites = await prisma.coachingEngagementInvitation.findMany({ where: { engagementId: space.id } });
+        let crossedBoundary = false;
+        // Real database interleaving: preflight passes, then revocation commits
+        // before the mutation transaction starts. No query results are mocked.
+        const interleaved = new Proxy(prisma, { get(client, key) {
+          if (key !== "$transaction") return Reflect.get(client, key);
+          return async (callback: (tx: any) => Promise<unknown>, options: any) => {
+            crossedBoundary = true;
+            await prisma.coachingEngagementMember.update({ where: { id: manager.id },
+              data: { status: "REMOVED", accessRevision: { increment: 1 } } });
+            return prisma.$transaction(callback, options);
+          };
+        } });
+        const operation = action === "INVITE"
+          ? inviteCoachingEngagementMember({ prisma: interleaved, engagementId: space.id, actor,
+            email: email("invitee"), role: "OBSERVER", requestId, origin: "http://127.0.0.1:3012" })
+          : action === "REVOKE_INVITE"
+            ? revokeCoachingEngagementInvitation({ prisma: interleaved, engagementId: space.id, actor,
+              invitationId: invitation!.invitation!.id, requestId })
+            : changeCoachingEngagementMemberAccess({ prisma: interleaved, engagementId: space.id, actor,
+              memberId: target.id, action, expectedRevision: target.accessRevision, requestId });
+        await expect(operation).rejects.toMatchObject({ code: "ACCESS_CHANGED", status: 403 });
+        expect(crossedBoundary).toBe(true);
+        expect(await prisma.coachingEngagementMember.findUnique({ where: { id: target.id } })).toEqual(target);
+        expect(await prisma.coachingEngagementInvitation.findMany({ where: { engagementId: space.id } })).toEqual(beforeInvites);
+        expect(await prisma.coachingEngagementMemberReceipt.count({ where: { requestId } })).toBe(0);
+      } finally {
+        await prisma.coachingEngagement.delete({ where: { id: space.id } });
+        if (secret === undefined) delete process.env.AUTH_SECRET;
+        else process.env.AUTH_SECRET = secret;
+      }
+    },
+  );
 
   it("admits coach/client but does not inherit Nest editor or viewer access", async () => {
     const actors = {

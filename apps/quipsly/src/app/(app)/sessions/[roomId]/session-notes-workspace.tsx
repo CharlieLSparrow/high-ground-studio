@@ -188,7 +188,7 @@ export function SessionNotesWorkspace({
         ...note,
         tags: catalog
           .filter((tag) => tagIds.includes(tag.id))
-          .map(({ id, label, slug }) => ({ id, label, slug })),
+          .map(({ id, label, slug, hexColor }) => ({ id, label, slug, hexColor })),
         updatedAt: payload.updatedAt,
       });
       setNotice("Tags saved.");

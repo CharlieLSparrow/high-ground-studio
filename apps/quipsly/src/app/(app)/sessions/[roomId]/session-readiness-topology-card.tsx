@@ -18,6 +18,7 @@ import {
 
 import { buildSessionRecordingStatus, type SessionRecordingStatus } from "@/lib/session-recording-status";
 import type { SessionReadinessExpectedSource, SessionReadinessSource, SessionReadinessTopology } from "./session-readiness-topology";
+import { useRecordingToolsActive } from "./session-recordings-workspace";
 
 type LiveDevice = {
   id: string;
@@ -139,7 +140,8 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     expectedClientKind: "",
     expectedDeviceLabel: "",
   });
-  const liveReadbackEnabled = topology.generatedAt !== "1970-01-01T00:00:00.000Z";
+  const active = useRecordingToolsActive();
+  const liveReadbackEnabled = active && topology.generatedAt !== "1970-01-01T00:00:00.000Z";
 
   const refreshPresence = useCallback(async (foreground = true) => {
     if (foreground) setRefreshing(true);
@@ -181,19 +183,29 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
 
   useEffect(() => {
     if (!liveReadbackEnabled) return;
-    void refreshPresence(false);
-    const interval = window.setInterval(() => {
+    const refreshVisible = () => {
       if (document.visibilityState === "visible") void refreshPresence(false);
-    }, 20_000);
-    return () => window.clearInterval(interval);
+    };
+    refreshVisible();
+    const interval = window.setInterval(refreshVisible, 20_000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [liveReadbackEnabled, refreshPresence]);
   useEffect(() => {
     if (!liveReadbackEnabled) return;
-    void refreshRecordingStatus();
-    const interval = window.setInterval(() => {
+    const refreshVisible = () => {
       if (document.visibilityState === "visible") void refreshRecordingStatus();
-    }, recordingStatus.safeToLeave ? 30_000 : 8_000);
-    return () => window.clearInterval(interval);
+    };
+    refreshVisible();
+    const interval = window.setInterval(refreshVisible, recordingStatus.safeToLeave ? 30_000 : 8_000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [liveReadbackEnabled, recordingStatus.safeToLeave, refreshRecordingStatus]);
 
   const liveByParticipant = useMemo(() => {

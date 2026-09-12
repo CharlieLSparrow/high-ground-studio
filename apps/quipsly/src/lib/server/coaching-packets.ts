@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readSessionRecordingAttempts } from "./session-recording-attempts";
 import type { Prisma } from "@prisma/client";
 import {
   TRANSCRIPT_ACTION_CANDIDATE_KIND,
@@ -27,12 +28,18 @@ import {
   selectSessionTranscriptSources,
   type SessionTranscriptSourceCandidate,
 } from "@/lib/server/session-transcript-source-selection";
+import {
+  restoreSessionTranscriptAnalysis,
+  type SessionAnalysisSource,
+  type SessionTranscriptAnalysis,
+} from "@/lib/server/session-transcript-analysis";
 
 type BuildCoachingPacketArgs = {
   prisma: any;
   transcriptJobId: string;
   authorUserId?: string | null;
   force?: boolean;
+  requireAnalysisFingerprint?: string;
 };
 
 type SessionPacketPurpose =
@@ -95,7 +102,7 @@ const REVIEW_LANE_DEFINITIONS = [
     label: "Client follow-up notes",
     meaning: "Source-linked recap notes shared in the coaching relationship.",
     pattern:
-      /\b(client|coachee|you|goal|stuck|decision|commitment|homework|follow up|next step)\b/i,
+      /\b(client|coachee|goal|stuck|decision|commitment|homework|follow up|next step)\b/i,
     purposes: ["COACHING"],
   },
   {
@@ -824,6 +831,7 @@ export async function resolveSessionPacketTranscript(input: {
   })) as PacketSourceCandidate[];
   const selected = selectSessionTranscriptSources({
     rows,
+    attempts: await readSessionRecordingAttempts(input.prisma, anchor.roomId, rows),
     anchorRecordingAssetId: cleanText(anchor.assetId || anchor.asset?.id),
   }).filter((source): source is PacketSourceCandidate => Boolean(source));
   if (selected.length < 2) return single;
@@ -1064,8 +1072,13 @@ function distinctWorkSpans(
     const key = JSON.stringify([
       speaker, span.speakerLabel, cleanText(textForWork(span)).toLowerCase(),
     ]);
-    const workText = cleanText(textForWork(span)).toLowerCase().replace(/(?:\.{3}|…)\s*$/, "").trim();
-    if (/(?:\.{3}|…)\s*$/.test(span.text) && spans.some((other) => {
+    const workText = cleanText(textForWork(span)).toLowerCase().replace(/[.!?…]+$/, "").trim();
+    // Recordings can end mid-repeat without the provider adding an ellipsis.
+    // Only collapse an exact prefix with an explicitly unfinished ending;
+    // a complete shorter commitment or a different continuation is distinct.
+    const unfinished = /(?:\.{3}|…)\s*$/.test(span.text) ||
+      /\b(?:a|an|the|my|your|our|their|and|because)$/.test(workText);
+    if (unfinished && spans.some((other) => {
       const otherSpeaker = other.attributedParticipantId || other.sourceBoundParticipantId ||
         `${other.transcriptJobId || ""}:${other.speakerLabel || other.id}`;
       return otherSpeaker === speaker && other.speakerLabel === span.speakerLabel &&
@@ -1342,7 +1355,8 @@ function segmentLine(segment: any) {
 }
 
 function scoreHighlight(segment: any) {
-  const text = cleanText(segment.text);
+  const text = contextExcerpt(segment);
+  if (!text) return 0;
   let score = Math.min(50, text.length / 8);
   if (/\?/.test(text)) score += 8;
   if (
@@ -1357,8 +1371,8 @@ function scoreHighlight(segment: any) {
 }
 
 function titleFromSegment(segment: any) {
-  const text = cleanText(segment.text);
-  const sentences = text.split(/[.!?]/).map((part) => part.trim()).filter(Boolean);
+  const text = contextExcerpt(segment);
+  const sentences = workClauses(text);
   const sentence =
     sentences.find((part) => part.split(/\s+/).length >= 4) || sentences[0] || text;
   const clipped = sentence.slice(0, 82);
@@ -1367,21 +1381,32 @@ function titleFromSegment(segment: any) {
     : clipped || "Session highlight";
 }
 
-function actionSentence(segment: any, kind: "goal" | "task") {
-  const text = cleanText(segment.text);
-  const normalized = text.replace(/^(so|okay|ok|yeah|well|and|but)\s+/i, "");
-  const sentences = normalized
-    .split(/[.!?]/)
+// Provider punctuation is not a semantic boundary. An explicit new task, goal,
+// or note can begin in the middle of an unpunctuated ASR passage. Extract only
+// display quotations; never rewrite the immutable text or narrow its timing.
+function workClauses(value: unknown) {
+  return cleanText(value)
+    .split(/[.!?](?=\s|$)|\s+(?=(?:(?:and\s+)?(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?(?:task|todo|to-do|action item)\b|(?:and\s+)?note that\b|(?:my|our)\s+(?:coaching\s+)?(?:goal|objective)\s+(?:is|will be)\b))/i)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function actionSentence(segment: any, kind: "goal" | "task") {
+  const text = cleanText(segment.text);
+  const sentences = workClauses(text);
   return sentences.find((part) => kind === "goal"
     ? GOAL_PATTERN.test(part)
     : ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(part)),
-  ) || sentences[0] || normalized;
+  ) || sentences[0] || text;
 }
 
 function actionTitle(segment: any, kind: "goal" | "task" = "goal") {
-  const sentence = actionSentence(segment, kind);
+  if (segment.analysisTitle) return segment.analysisTitle;
+  const excerpt = actionSentence(segment, kind);
+  const content = kind === "goal"
+    ? excerpt.replace(/^.*?\b(?:goal|objective|commitment)\s+(?:is|was|will be|:)\s*(?:to\s+)?/i, "")
+    : excerpt;
+  const sentence = content.charAt(0).toUpperCase() + content.slice(1);
   const clipped = sentence.slice(0, 96);
   return clipped.length < sentence.length
     ? `${clipped}...`
@@ -1389,6 +1414,8 @@ function actionTitle(segment: any, kind: "goal" | "task" = "goal") {
 }
 
 function actionExcerpt(segment: PacketTranscriptEvidenceSpan, kind: "goal" | "task") {
+  const analyzedExcerpt = cleanText(packetObject(segment).analysisExcerpt);
+  if (analyzedExcerpt) return analyzedExcerpt;
   const sentence = actionSentence(segment, kind);
   const source = cleanText(segment.text);
   const start = source.indexOf(sentence);
@@ -1399,7 +1426,8 @@ function actionExcerpt(segment: PacketTranscriptEvidenceSpan, kind: "goal" | "ta
 }
 
 function taskTitle(segment: any) {
-  const text = cleanText(segment.text);
+  if (segment.analysisTitle) return segment.analysisTitle;
+  const text = actionSentence(segment, "task");
   const explicitTask = text.match(
     /\b(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?(?:task|todo|to-do|action item)\s+(?:to\s+)?(.+)$/i,
   );
@@ -1411,6 +1439,20 @@ function taskTitle(segment: any) {
   const sentence = taskText.charAt(0).toUpperCase() + taskText.slice(1);
   const clipped = sentence.slice(0, 96);
   return clipped.length < sentence.length ? `${clipped}...` : clipped;
+}
+
+function contextExcerpt(segment: any) {
+  if (segment.analysisExcerpt) return segment.analysisExcerpt;
+  const clauses = workClauses(segment.text);
+  const explicitNote = clauses.find((part) => /^(?:and\s+)?note that\b/i.test(part));
+  if (explicitNote) return explicitNote.replace(/^(?:and\s+)?note that\s*/i, "");
+  const insight = clauses.find((part) =>
+    /\b(?:i|we)\s+(?:realized?|learned|noticed?|feel|felt|struggle|struggled|need support|want accountability)\b|\b(?:that|this)\s+(?:gives|helps|means)\b|\b(?:decided|agreed|settled on|my question is|i wonder)\b/i.test(part));
+  if (insight) return insight;
+  if (GOAL_PATTERN.test(cleanText(segment.text))) return actionExcerpt(segment, "goal");
+  if (ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(cleanText(segment.text))))
+    return actionExcerpt(segment, "task");
+  return "";
 }
 
 function sourceClockSegments(segment: any) {
@@ -1443,9 +1485,9 @@ function transcriptActionCandidate(input: {
     sourceClockSegments(input.segment),
   );
   return createTranscriptActionCandidate({
-    id: `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
+    id: input.segment.analysisItemId || `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
     title: taskTitle(input.segment),
-    detail: segmentLine(input.segment),
+    detail: segmentLine({ ...input.segment, text: input.segment.analysisExcerpt || input.segment.text }),
     transcriptJobId: input.transcriptJobId,
     recordingAssetId: input.recordingAssetId,
     roomId: input.roomId,
@@ -1730,11 +1772,27 @@ function summarizeSegments(
 export async function buildCoachingPacketFromTranscriptJob(
   args: BuildCoachingPacketArgs,
 ) {
+  const loaded = await loadSessionFollowThroughSource(args);
+  if (!loaded.ok) return loaded;
+  const { job, resolvedTranscript } = loaded;
+  return materializeSessionFollowThrough(args, job, resolvedTranscript);
+}
+
+/** One source-selection boundary for analysis and materialization. Model work
+ * uses a detached read; materialization resolves it again inside its write
+ * transaction so corrections and newly uploaded tracks cannot be bypassed. */
+export async function loadSessionFollowThroughSource(
+  args: Pick<BuildCoachingPacketArgs, "prisma" | "transcriptJobId">,
+): Promise<
+  | { ok: true; job: any; resolvedTranscript: ResolvedSessionPacketTranscript }
+  | { ok: false; status: number; error: string; errorCode?: string; explicitReleaseRequired?: boolean }
+> {
   const job = await args.prisma.transcriptJob.findUnique({
     where: { id: args.transcriptJobId },
     include: {
       room: {
         include: {
+          followThroughAnalysis: true,
           booking: true,
           participants: { select: { id: true, userId: true, accessStatus: true } },
           coachingEngagement: {
@@ -1825,6 +1883,47 @@ export async function buildCoachingPacketFromTranscriptJob(
     };
   }
 
+  return { ok: true as const, job, resolvedTranscript };
+}
+
+export function sessionFollowThroughAnalysisSource(
+  job: any,
+  resolvedTranscript: ResolvedSessionPacketTranscript,
+): SessionAnalysisSource {
+  return {
+    roomId: job.roomId,
+    purpose: packetPurpose(job.room?.purpose),
+    segments: distinctWorkSpans(buildTranscriptEvidenceSpans(resolvedTranscript.projected)).map(segment => ({
+      id: `${segment.transcriptJobId || job.id}:${segment.id}`,
+      transcriptJobId: segment.transcriptJobId || job.id,
+      recordingAssetId: segment.recordingAssetId || job.assetId,
+      speakerLabel: segment.speakerLabel,
+      text: segment.text,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+    })),
+  };
+}
+
+function currentSessionAnalysis(job: any, transcript: ResolvedSessionPacketTranscript): SessionTranscriptAnalysis | null {
+  const state = packetObject(job.room?.followThroughAnalysis);
+  if (!["completed", "materialized"].includes(String(state.status))) return null;
+  try {
+    const source = sessionFollowThroughAnalysisSource(job, transcript);
+    return restoreSessionTranscriptAnalysis(source, state.resultJson);
+  } catch { return null; }
+}
+
+async function materializeSessionFollowThrough(
+  args: BuildCoachingPacketArgs,
+  job: any,
+  resolvedTranscript: ResolvedSessionPacketTranscript,
+) {
+  const analysis = currentSessionAnalysis(job, resolvedTranscript);
+  if (args.requireAnalysisFingerprint && analysis?.sourceFingerprint !== args.requireAnalysisFingerprint) {
+    return { ok: false, status: 409, errorCode: "SESSION_ANALYSIS_SOURCE_CHANGED", error: "The transcript changed while follow-through was being prepared. Quipsly will use the updated transcript." };
+  }
+
   const transcriptSnapshot = transcriptPacketSnapshotFromProjected(
     resolvedTranscript.projected,
   );
@@ -1852,6 +1951,7 @@ export async function buildCoachingPacketFromTranscriptJob(
     !args.force &&
     packetCreatesOrdinarySessionWork(existing.sourceJson) &&
     packetTemplateMatches(existing.sourceJson) &&
+    (!analysis || packetObject(existing.sourceJson).analysisSourceFingerprint === analysis.sourceFingerprint) &&
     packetSnapshotMatchesResolvedSession(
       existing.sourceJson,
       resolvedTranscript,
@@ -1899,8 +1999,13 @@ export async function buildCoachingPacketFromTranscriptJob(
   }
 
   const packetSpans = distinctWorkSpans(buildTranscriptEvidenceSpans(packetSegments));
-  const highlights = [...packetSpans]
+  const analysisSpans = (kind: "task" | "goal" | "note") => analysis?.items.filter(item => item.kind === kind).map(item => {
+    const segment = packetSpans.find(span => `${span.transcriptJobId || job.id}:${span.id}` === item.sourceId)!;
+    return { ...segment, analysisItemId: item.id, analysisTitle: item.title, analysisExcerpt: item.excerpt };
+  });
+  const highlights = analysisSpans("note") ?? [...packetSpans]
     .map((segment: any) => ({ segment, score: scoreHighlight(segment) }))
+    .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score)
     .slice(0, 6)
     .map((entry) => entry.segment);
@@ -1932,6 +2037,13 @@ export async function buildCoachingPacketFromTranscriptJob(
     packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
     generatedAt: new Date().toISOString(),
     deterministic: true,
+    ...(analysis ? {
+      deterministic: false,
+      analysisVersion: analysis.version,
+      analysisProvider: analysis.provider,
+      analysisModel: analysis.model,
+      analysisSourceFingerprint: analysis.sourceFingerprint,
+    } : {}),
     reviewRequired: false,
     transcriptSnapshot: transcriptSnapshotEvidence,
     transcriptReviewCoverage: {
@@ -1944,23 +2056,27 @@ export async function buildCoachingPacketFromTranscriptJob(
 
   const reviewLanes = buildTranscriptPacketReviewLanes(
     purpose,
-    packetSpans,
+    packetSpans.filter((segment) => contextExcerpt(segment)),
     highlights,
     actionSegments,
   );
-  const goalSegments = distinctWorkSpans(actionSegments.filter((segment: any) =>
+  const goalSegments = analysisSpans("goal") ?? distinctWorkSpans(actionSegments.filter((segment: any) =>
     GOAL_PATTERN.test(cleanText(segment.text)),
   ), (segment) => actionSentence(segment, "goal"));
-  const taskSegments = distinctWorkSpans(actionSegments.filter((segment: any) => {
+  const taskSegments = analysisSpans("task") ?? distinctWorkSpans(actionSegments.filter((segment: any) => {
     const text = cleanText(segment.text);
     return !GOAL_PATTERN.test(text) || EXPLICIT_TASK_PATTERN.test(text) ||
       ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(text));
   }), (segment) => actionSentence(segment, "task"));
   const packetBrief = buildTranscriptPacketBrief(
     packetSpans,
-    highlights,
+    highlights.map((segment) => ({ ...segment, displayText: contextExcerpt(segment) })),
     taskSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "task") })),
     goalSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "goal") })),
+    (analysis ? highlights : packetSpans).flatMap((segment) => {
+      const displayText = contextExcerpt(segment);
+      return displayText ? [{ ...segment, displayText }] : [];
+    }),
   );
   const actionCandidates: TranscriptActionCandidate[] = taskSegments.map(
     (segment: any) => {
@@ -1974,7 +2090,7 @@ export async function buildCoachingPacketFromTranscriptJob(
         recordingAssetId: sourceRecordingAssetId,
         roomId: job.roomId,
         packetBuildId,
-        committedActionItemId: packetWorkId(
+        committedActionItemId: segment.analysisItemId || packetWorkId(
           "task",
           sourceTranscriptJobId,
           String(segment.id),
@@ -1985,7 +2101,7 @@ export async function buildCoachingPacketFromTranscriptJob(
   const goalOutputs = goalSegments.map((segment: any) => {
     const sourceTranscriptJobId = cleanText(segment.transcriptJobId) || job.id;
     return {
-      id: packetWorkId("goal", sourceTranscriptJobId, String(segment.id)),
+      id: segment.analysisItemId || packetWorkId("goal", sourceTranscriptJobId, String(segment.id)),
       segment,
       transcriptJobId: sourceTranscriptJobId,
       recordingAssetId: cleanText(segment.recordingAssetId) || job.assetId,
@@ -2145,7 +2261,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       const sourceAnchor = buildTranscriptSourceAnchorFields(
         sourceClockSegments(output.segment),
       );
-      const goalDescription = segmentLine(output.segment);
+      const goalDescription = segmentLine({ ...output.segment, text: output.segment.analysisExcerpt || output.segment.text });
       const sourceJson = {
         schema: "quipsly-transcript-follow-through-v1",
         origin: "quipsly-session-follow-through",
@@ -2270,8 +2386,9 @@ export async function buildCoachingPacketFromTranscriptJob(
   for (const segment of highlights) {
     const sourceTranscriptJobId = cleanText(segment.transcriptJobId) || job.id;
     const segmentID = String(segment.id);
-    const title = titleFromSegment(segment);
-    const body = segmentLine(segment);
+    const analysisItemId = cleanText(packetObject(segment).analysisItemId);
+    const title = cleanText(packetObject(segment).analysisTitle) || titleFromSegment(segment);
+    const body = segmentLine({ ...segment, text: contextExcerpt(segment) });
     const sourceTextSha256 =
       cleanText(segment.sourceTextSha256) ||
       packetSha256(cleanText(segment.text));
@@ -2302,6 +2419,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       programStartSeconds: segment.startSeconds,
       programEndSeconds: segment.endSeconds,
       speakerLabel: segment.speakerLabel,
+      ...(analysisItemId ? { analysisItemId } : {}),
     };
     const existingHighlightCandidate =
       typeof args.prisma.coachingNote.findFirst === "function"
@@ -2326,6 +2444,7 @@ export async function buildCoachingPacketFromTranscriptJob(
                 {
                   sourceJson: { path: ["segmentId"], equals: segmentID },
                 },
+                ...(analysisItemId ? [{ sourceJson: { path: ["analysisItemId"], equals: analysisItemId } }] : []),
               ],
             },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -2344,6 +2463,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       cleanText(existingHighlightSource.transcriptJobId) ===
         sourceTranscriptJobId &&
       cleanText(existingHighlightSource.segmentId) === segmentID
+      && (!analysisItemId || cleanText(existingHighlightSource.analysisItemId) === analysisItemId)
         ? existingHighlightCandidate
         : null;
     const refreshHighlight = Boolean(

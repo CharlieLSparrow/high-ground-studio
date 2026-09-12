@@ -549,8 +549,8 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
 
 export type SessionTaxonomy = {
   project: { id: string; name: string; slug: string };
-  tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
-  catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
+  tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string; hexColor?: string | null }>;
+  catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string; hexColor?: string | null }>;
   canManage: boolean;
   canManageVocabulary: boolean;
   updatedAt: string;
@@ -3202,10 +3202,19 @@ function SessionWorkspaceNavigation({
   purpose: string;
 }) {
   const modes = sessionWorkspaceModesForPurpose(purpose);
+  const router = useRouter();
   return (
-    <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-2 shadow-sm sm:p-3">
-      <nav aria-label="Session workspace modes">
-        <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 xl:grid-cols-9">
+      <nav aria-label="Session workspace modes" className="mt-3 border-t border-quipsly-divider pt-2">
+        <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-quipsly-ink sm:hidden">
+          <span>Session section</span>
+          <select aria-label="Session section" value={mode} onChange={event => {
+            const next = modes.find(item => item.id === event.target.value);
+            if (next) router.push(sessionWorkspaceHref(roomId, next.id));
+          }} className="min-h-11 min-w-0 flex-1 rounded-lg border border-quipsly-divider bg-quipsly-surface px-3 text-quipsly-ink">
+            {modes.map(definition => <option key={definition.id} value={definition.id}>{definition.label}</option>)}
+          </select>
+        </label>
+        <div className="hidden min-w-0 flex-wrap gap-1 sm:flex">
           {modes.map((definition) => {
             const selected = definition.id === mode;
             return (
@@ -3213,10 +3222,10 @@ function SessionWorkspaceNavigation({
                 key={definition.id}
                 href={sessionWorkspaceHref(roomId, definition.id)}
                 aria-current={selected ? "page" : undefined}
-                className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition sm:min-h-12 sm:shrink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${selected ? "order-first sm:order-none" : ""} ${
+                className={`flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-quipsly-peacock-700 ${
                   selected
-                    ? "border-violet-300 bg-violet-800 text-white shadow-sm"
-                    : "border-transparent bg-white text-[#5f4d37] hover:border-violet-200 hover:bg-violet-50"
+                    ? "bg-quipsly-peacock-800 text-white"
+                    : "text-quipsly-muted hover:bg-quipsly-surface-muted hover:text-quipsly-ink"
                 }`}
               >
                 <WorkspaceModeIcon mode={definition.id} />
@@ -3226,7 +3235,6 @@ function SessionWorkspaceNavigation({
           })}
         </div>
       </nav>
-    </section>
   );
 }
 
@@ -3831,11 +3839,23 @@ export function SessionReviewClient({
   const [buildingPacket, setBuildingPacket] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const automaticPacketAttempts = useRef(new Set<string>());
+  const activeRead = useRef<AbortController | null>(null);
+  const readGeneration = useRef(0);
+  const readScope = `${roomId}:${focusedRecordingAssetId || ""}`;
+  const currentReadScope = useRef(readScope);
+  currentReadScope.current = readScope;
   const liveDock = useLiveSessionDock();
 
   const load = useCallback(
     async (options?: { background?: boolean }) => {
       const background = options?.background === true;
+      if (currentReadScope.current !== readScope || (background && activeRead.current)) return;
+      activeRead.current?.abort();
+      const controller = new AbortController();
+      const generation = ++readGeneration.current;
+      activeRead.current = controller;
+      let timedOut = false;
+      const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 30_000);
       if (!background) {
         setLoading(true);
         setMessage(null);
@@ -3846,27 +3866,51 @@ export function SessionReviewClient({
           packetParams.set("recordingAssetId", focusedRecordingAssetId);
         const response = await fetch(
           `/api/mobile/capture/transcripts/packet?${packetParams.toString()}`,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
         );
+        if (generation !== readGeneration.current || currentReadScope.current !== readScope) return;
+        if ([401, 403, 404].includes(response.status)) {
+          setPacket(null);
+          throw new Error("This transcript is no longer available. Return to your session workspace.");
+        }
         const body = (await response.json()) as SessionReviewPacket;
+        if (generation !== readGeneration.current || currentReadScope.current !== readScope) return;
+        if (response.ok && body.ok && body.room?.id !== roomId) {
+          setPacket(null);
+          throw new Error("This transcript is no longer available. Return to your session workspace.");
+        }
         if (!response.ok || !body.ok)
           throw new Error(
             body.error || "Quipsly could not read this session packet.",
           );
         setPacket(body);
       } catch (error) {
-        if (!background) setPacket(null);
+        if ((controller.signal.aborted && !timedOut) || generation !== readGeneration.current || currentReadScope.current !== readScope) return;
         setMessage(
-          error instanceof Error
+          timedOut ? "The transcript is taking too long to load. Try Refresh transcript again."
+          : error instanceof Error
             ? error.message
             : "Quipsly could not read this session packet.",
         );
       } finally {
-        if (!background) setLoading(false);
+        window.clearTimeout(timeout);
+        if (generation === readGeneration.current) {
+          activeRead.current = null;
+          if (!background) setLoading(false);
+        }
       }
     },
-    [focusedRecordingAssetId, roomId],
+    [focusedRecordingAssetId, roomId, readScope],
   );
+
+  useEffect(() => {
+    setPacket(null);
+    return () => {
+      ++readGeneration.current;
+      activeRead.current?.abort();
+      activeRead.current = null;
+    };
+  }, [readScope]);
 
   useEffect(() => {
     if (mode !== "transcript") {
@@ -3877,10 +3921,12 @@ export function SessionReviewClient({
   }, [load, mode]);
 
   const transcriptJobStatus = packet?.transcriptJob?.status || "";
+  const generation = packet?.packet?.generation;
+  const generatingWork = generation?.state === "PROCESSING" || generation?.state === "RETRYING";
   useEffect(() => {
     if (
       mode !== "transcript" ||
-      !["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptJobStatus)
+      (!generatingWork && !["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptJobStatus))
     ) {
       return;
     }
@@ -3888,7 +3934,7 @@ export function SessionReviewClient({
       void load({ background: true });
     }, 2_500);
     return () => window.clearInterval(interval);
-  }, [load, mode, transcriptJobStatus]);
+  }, [load, mode, transcriptJobStatus, generatingWork]);
 
   const buildPacket = useCallback(
     async (options?: { automatic?: boolean }) => {
@@ -3900,18 +3946,21 @@ export function SessionReviewClient({
         const response = await fetch("/api/mobile/capture/transcripts/packet", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ transcriptJobId, force: false }),
+          body: JSON.stringify({ transcriptJobId, force: false, retryAnalysis: options?.automatic !== true }),
         });
         const body = (await response.json()) as {
           ok?: boolean;
           error?: string;
           idempotentReplay?: boolean;
+          analysisQueued?: boolean;
         };
         if (!response.ok || !body.ok)
           throw new Error(body.error || "Session follow-through was not created.");
         await load();
         setMessage(
-          options?.automatic
+          body.analysisQueued
+            ? "Automatic notes are being prepared. Your saved work stays available."
+            : options?.automatic
             ? "Your Session recap, notes, tasks, and goals are ready. Everything stays editable and linked to the recording."
             : body.idempotentReplay
               ? "Your current Session follow-through is already up to date."
@@ -4034,7 +4083,7 @@ export function SessionReviewClient({
         : "Not shared yet"
     : followUpReadyForReview
       ? "Ready to use"
-      : buildingPacket && canPrepareReviewMaterial
+      : generatingWork || (buildingPacket && canPrepareReviewMaterial)
         ? "Preparing"
         : packetStale
           ? "Refreshing"
@@ -4043,6 +4092,7 @@ export function SessionReviewClient({
   useEffect(() => {
     if (
       !canPrepareReviewMaterial ||
+      (generation && generation.state !== "READY") ||
       !packetAttemptKey ||
       buildingPacket ||
       automaticPacketAttempts.current.has(packetAttemptKey)
@@ -4051,7 +4101,7 @@ export function SessionReviewClient({
     }
     automaticPacketAttempts.current.add(packetAttemptKey);
     void buildPacket({ automatic: true });
-  }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey]);
+  }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey, generation]);
 
   const reviewLanes = packet?.packet?.reviewLanes ?? [];
   const actionableReviewLanes = reviewLanes.filter(
@@ -4067,7 +4117,6 @@ export function SessionReviewClient({
     sourceEvidence.sources.find(
       (source) => source.recordingAssetId === transcriptRecordingAssetId,
     )?.audioMastery ?? null;
-  const activeMode = sessionWorkspaceDefinitionForPurpose(mode, purpose);
   const liveProjectSlug =
     collaborationContext.project?.slug ||
     collaborationContext.engagement?.projectSlug ||
@@ -4157,6 +4206,17 @@ export function SessionReviewClient({
               </div>
             </section>
           ) : (
+            <>
+            <nav aria-label="Session work" className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+              {parentWorkspaceHref ? <Link href={parentWorkspaceHref}
+                className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-quipsly-ink underline underline-offset-4">
+                <ArrowLeft size={16} aria-hidden="true" /> {parentWorkspaceTitle}
+              </Link> : null}
+              <Link href={sessionWorkspaceHref(roomId, "overview")}
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-quipsly-ink underline underline-offset-4">
+                Session workspace
+              </Link>
+            </nav>
             <CaptureAppHandoff
               roomId={roomId}
               sessionTitle={sessionTitle}
@@ -4166,6 +4226,7 @@ export function SessionReviewClient({
               onContinueInBrowser={() => liveDock.open(liveDockConfig)}
               allowAutomaticBrowserEntry={liveDock.dismissedCallRoomId !== roomId}
             />
+            </>
           )}
 
         </div>
@@ -4174,28 +4235,22 @@ export function SessionReviewClient({
   }
 
   return (
-    <div className="min-w-0 space-y-4 overflow-x-hidden sm:space-y-8">
-      <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-4 shadow-sm sm:p-6">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
+      <section aria-label="Session heading and navigation" className="min-w-0 rounded-2xl border border-quipsly-divider bg-quipsly-surface px-4 py-3 sm:px-5">
         {parentWorkspaceHref ? (
-          <nav aria-label="Parent workspace" className="mb-2">
+          <nav aria-label="Parent workspace">
             <Link href={parentWorkspaceHref} aria-label={`Back to ${parentWorkspaceTitle}`}
-              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg px-1 text-sm font-bold text-[#41624b] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg text-sm font-semibold text-quipsly-peacock-700 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
               <ArrowLeft size={16} className="shrink-0" aria-hidden="true" />
               <span className="break-words">{parentWorkspaceTitle}</span>
             </Link>
           </nav>
         ) : null}
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#987443] sm:text-xs sm:tracking-[0.22em]">
-              Session workspace · {activeMode.eyebrow}
-            </p>
-            <h1 className="mt-1 font-serif text-2xl font-black tracking-tight text-[#3d3122] sm:mt-2 sm:text-4xl">
+          <div className="min-w-0 flex-1">
+            <h1 className="font-serif text-xl font-bold tracking-tight text-quipsly-ink [overflow-wrap:anywhere] sm:text-2xl">
               {sessionTitle}
             </h1>
-            <p className="mt-1 hidden max-w-3xl text-xs font-semibold leading-5 text-[#765f40] sm:mt-2 sm:block sm:text-sm sm:leading-relaxed">
-              {activeMode.description}
-            </p>
           </div>
           {mode === "transcript" ? (
             <button
@@ -4224,13 +4279,12 @@ export function SessionReviewClient({
             {message}
           </p>
         ) : null}
-      </section>
-
       <SessionWorkspaceNavigation
         roomId={roomId}
         mode={mode}
         purpose={purpose}
       />
+      </section>
 
       {mode === "overview" && purpose === "COACHING" ? (
         <SessionCoachingQuickPath
@@ -4495,7 +4549,7 @@ export function SessionReviewClient({
       ) : null}
 
       {mode === "transcript" ? (
-        loading ? (
+        loading && !packet ? (
           <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]">
             <LoaderCircle
               className="mr-2 inline animate-spin"
@@ -4570,7 +4624,7 @@ export function SessionReviewClient({
                   reviewMaterialReady={Boolean(packet.packet?.summary)}
                   packetStale={packetStale}
                   preparingReviewMaterial={
-                    buildingPacket && canPrepareReviewMaterial
+                    generatingWork || (buildingPacket && canPrepareReviewMaterial)
                   }
                   held={held}
                   followUpReady={clientFollowUpReady}
@@ -4678,8 +4732,8 @@ export function SessionReviewClient({
                           : "Start transcription"}
                     </button>
                     <p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">
-                      Uses this recording to create timed text. It does not
-                      create or send notes, tasks, goals, or messages.
+                      Creates timed text and editable Session notes, tasks, and goals.
+                      Nothing is emailed or published automatically.
                     </p>
                   </div>
                 ) : null}
@@ -4706,7 +4760,7 @@ export function SessionReviewClient({
                         : "Nothing has been shared yet. Your transcript and shared Session tools remain available."
                     : followUpReadyForReview
                       ? "Your recap, notes, tasks, and goals are ready to use."
-                      : buildingPacket && canPrepareReviewMaterial
+                      : generatingWork || (buildingPacket && canPrepareReviewMaterial)
                         ? "Quipsly is organizing the transcript into editable Session work."
                         : "Quipsly will organize the transcript into editable Session work when it is ready."}
                 </p>
@@ -4720,6 +4774,16 @@ export function SessionReviewClient({
                   aria-labelledby="summary-heading"
                   className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
                 >
+                  {generation && generation.state !== "READY" ? (
+                    <div role="status" className="mb-4 rounded-xl border border-border bg-muted/40 p-3 text-sm text-foreground">
+                      <p>{generation.message}</p>
+                      {generation.canRetry ? <button type="button" disabled={buildingPacket}
+                        onClick={() => void buildPacket()}
+                        className="mt-2 min-h-11 rounded-lg bg-primary px-3 font-semibold text-primary-foreground disabled:opacity-50">
+                        {buildingPacket ? "Retrying…" : "Retry automatic notes"}
+                      </button> : null}
+                    </div>
+                  ) : null}
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
                     Session recap
                   </p>
@@ -4746,7 +4810,7 @@ export function SessionReviewClient({
                             Your existing work remains editable while the
                             refreshed version is prepared.
                           </p>
-                          <button
+                          {!generation || generation.state === "READY" ? <button
                             type="button"
                             onClick={() => void buildPacket()}
                             disabled={buildingPacket || loading}
@@ -4764,7 +4828,7 @@ export function SessionReviewClient({
                             {buildingPacket
                               ? "Refreshing results…"
                               : "Try again"}
-                          </button>
+                          </button> : null}
                         </div>
                       ) : null}
                     </>
@@ -4774,7 +4838,7 @@ export function SessionReviewClient({
                         Quipsly prepares the recap and follow-through
                         automatically from the completed transcript.
                       </p>
-                      {packetBuildAction ? (
+                      {packetBuildAction && (!generation || generation.state === "READY") ? (
                         <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
                           <button
                             type="button"

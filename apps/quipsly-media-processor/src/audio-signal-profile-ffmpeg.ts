@@ -31,6 +31,8 @@ const FREQUENCY_BANDS = Object.freeze([
 ] as const);
 
 export type FfmpegAudioSignalProfile = {
+  /** Complete-decode fact, before dB display clamping or near-silence thresholds. */
+  hasNonZeroSamples: boolean;
   media: {
     container: string;
     codec: string;
@@ -240,6 +242,7 @@ export class FfmpegAudioSignalProfiler {
       observations,
     });
     return {
+      hasNonZeroSamples: totalPeak > 0,
       media: {
         container: probe.container,
         codec: probe.codec,

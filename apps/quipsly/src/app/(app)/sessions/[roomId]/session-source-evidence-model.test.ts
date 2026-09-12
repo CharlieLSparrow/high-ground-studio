@@ -380,6 +380,7 @@ describe("Session source evidence", () => {
 
   it("exposes audio improvement coordinates only for the canonical Session project", () => {
     const input = fixture();
+    input.audioMasteryAccess = "write";
     input.project = { id: "project-coaching-1", slug: "coach-home" };
     (input.recordingAssets[0].localManifestJson as any).promotion = {
       status: "promoted-to-studio-media",
@@ -391,6 +392,7 @@ describe("Session source evidence", () => {
     };
 
     expect(buildSessionSourceEvidence(input).sources[0].audioMastery).toEqual({
+      canManage: true,
       projectId: "project-coaching-1",
       projectSlug: "coach-home",
       assetId: "studio-media-asset-1",
@@ -399,6 +401,14 @@ describe("Session source evidence", () => {
       sourceKind: "video",
     });
 
+    input.audioMasteryAccess = "read";
+    expect(buildSessionSourceEvidence(input).sources[0].audioMastery?.canManage).toBe(false);
+    input.audioMasteryAccess = undefined;
+    const guest = buildSessionSourceEvidence(input).sources[0];
+    expect(guest.audioMastery).toBeNull();
+    expect(guest.protectedPlayback).toEqual(buildSessionSourceEvidence({...input, audioMasteryAccess: "write"}).sources[0].protectedPlayback);
+
+    input.audioMasteryAccess = "write";
     input.project = { id: "project-other", slug: "other-home" };
     expect(buildSessionSourceEvidence(input).sources[0].audioMastery).toBeNull();
   });
@@ -670,6 +680,25 @@ describe("Session source evidence", () => {
     expect(JSON.stringify(result)).not.toContain("gs://private-import");
   });
 
+  it.each([
+    ["LOCAL_AUDIO", "audio/mp4", "audio"],
+    ["LOCAL_VIDEO", "video/quicktime", "video"],
+  ])("preserves %s playback type from the verified recording", (kind, contentType, playbackKind) => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+    input.recordingAssets[0].kind = kind;
+    input.recordingAssets[0].contentType = contentType;
+    (input.recordingAssets[0].localManifestJson as any).promotion.contentType = "application/octet-stream";
+
+    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toEqual({
+      sourceId: "asset-1",
+      url: "/api/sessions/room-1/recordings/asset-1/media",
+      kind: playbackKind,
+      contentType,
+      durationSeconds: null,
+    });
+  });
+
   it("ignores an external promotion URL and keeps Session playback on its protected route", () => {
     const input = fixture();
     markAsAuditedRecoveryReplica(input);
@@ -679,6 +708,7 @@ describe("Session source evidence", () => {
       sourceId: "asset-1",
       url: "/api/sessions/room-1/recordings/asset-1/media",
       kind: "video",
+      contentType: null,
       durationSeconds: null,
     });
   });
@@ -693,6 +723,7 @@ describe("Session source evidence", () => {
       sourceId: "asset-1",
       url: "/api/sessions/room-1/recordings/asset-1/media",
       kind: "video",
+      contentType: null,
       durationSeconds: null,
     });
   });

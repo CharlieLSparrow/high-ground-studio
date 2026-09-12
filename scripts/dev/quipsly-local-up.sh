@@ -250,6 +250,7 @@ worker_source_paths=(
   pnpm-lock.yaml
   scripts/dev/quipsly-local-up.sh
   scripts/dev/quipsly-local-state.sh
+  scripts/dev/quipsly-source-fingerprint.mjs
   scripts/dev/quipsly-local-transcript-worker.mjs
   scripts/register-ts-extension-loader.mjs
 )
@@ -659,6 +660,7 @@ printf "PASS  %-24s container %s\n" "PostgreSQL" "${database_container}"
 
 echo "Generating the Prisma client from the current worktree schema..."
 DATABASE_URL="${local_database_url}" pnpm db:generate
+node scripts/sync-prisma-pnpm-clients.mjs
 printf "PASS  %-24s current worktree schema\n" "Prisma client"
 
 echo "Applying committed local database migrations..."

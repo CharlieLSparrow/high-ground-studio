@@ -12,6 +12,9 @@ import {
   recordSucceededTranscriptWorkAction,
 } from "@/lib/server/governed-action-runtime";
 import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
+import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
+import { planTranscriptTaskSave, readTranscriptTaskFields, readTranscriptTaskSave, readTranscriptTaskSaveState,
+  sameTranscriptTaskFields } from "@/lib/server/transcript-task-save";
 
 export const dynamic = "force-dynamic";
 
@@ -56,9 +59,14 @@ export async function POST(request: Request) {
   const segmentId = text(input.segmentId, 200);
   const clientRequestId = text(input.clientRequestId, 160);
   const expectedProviderTextSha256 = text(input.expectedProviderTextSha256, 64).toLowerCase();
-  const title = text(input.title, 240);
-  const detail = text(input.detail, 2_000) || null;
-  if (!roomId || !segmentId || !clientRequestId || !expectedProviderTextSha256 || !title) {
+  const fields = readTranscriptTaskFields(input);
+  const save = input.save === undefined ? null : readTranscriptTaskSave(input.save);
+  if (!fields || (input.save !== undefined && !save)
+      || (save?.revision === 0 && !sameTranscriptTaskFields(save.original, fields))) {
+    return NextResponse.json({ ok: false, error: "Use a task title of 1–500 characters and details of up to 5,000 characters. The save revision must match its original draft." }, { status: 400 });
+  }
+  const { title, detail } = fields;
+  if (!roomId || !segmentId || !clientRequestId || !expectedProviderTextSha256) {
     return NextResponse.json({ ok: false, error: "Room, segment, provider evidence, request identity, and task title are required." }, { status: 400 });
   }
 
@@ -95,8 +103,46 @@ export async function POST(request: Request) {
         if (source.schema !== TRANSCRIPT_DERIVED_TASK_SCHEMA
             || source.clientRequestId !== clientRequestId
             || source.createdByUserId !== actor.id
-            || replay.roomId !== roomId) {
+            || replay.roomId !== roomId
+            || source.segmentId !== segmentId
+            || source.providerTextSha256 !== expectedProviderTextSha256) {
           throw new TranscriptCorrectionError("That task request identity is already bound to different evidence.", 409, "IDEMPOTENCY_CONFLICT");
+        }
+        // Compare the original command, not the task's editable current state.
+        // An exact retry must neither undo later edits nor silently discard new
+        // wording from a client that reused its request ID after a lost reply.
+        const savedIntent = record(source.materializationIntent);
+        const original = readTranscriptTaskFields(Object.keys(savedIntent).length ? savedIntent : replay);
+        if (!original || !sameTranscriptTaskFields(original, save?.original ?? fields)) {
+          throw new TranscriptCorrectionError(
+            "This task was already saved with different wording. Your new draft has not replaced it. Open the saved task to continue editing.",
+            409,
+            "IDEMPOTENCY_CONFLICT",
+          );
+        }
+        if (save) {
+          const previous = source.draftSave === undefined ? { revision: 0, fields: original }
+            : readTranscriptTaskSaveState(source.draftSave);
+          const plan = previous ? planTranscriptTaskSave({ previous, revision: save.revision, desired: fields,
+            current: { title: replay.title, detail: replay.detail } }) : { kind: "conflict" as const };
+          if (plan.kind === "conflict") {
+            throw new TranscriptCorrectionError("This task changed elsewhere. Your writing is still here; open the saved task to compare the changes.", 409, "TASK_DRAFT_CONFLICT");
+          }
+          if (plan.kind === "amend") {
+            const edit = await editCanonicalTaskInTransaction({ tx, taskId: id, actorUserId: actor.id,
+              expectedUpdatedAt: replay.updatedAt, ...plan.fields, dueAt: replay.dueAt, dueIntent: null,
+              surface: "ios-capture-transcript" });
+            if (edit.kind !== "saved") {
+              throw new TranscriptCorrectionError("This task changed or is no longer editable. Your writing is still here.", 409, "TASK_DRAFT_CONFLICT");
+            }
+            const edited = await tx.actionItem.findUnique({ where: { id } });
+            if (!edited) throw new TranscriptCorrectionError("The saved task is unavailable. Your draft is still here.", 409, "TASK_DRAFT_CONFLICT");
+            const saved = await tx.actionItem.updateMany({ where: { id, updatedAt: edited.updatedAt }, data: {
+              sourceJson: { ...record(edited.sourceJson), draftSave: { revision: save.revision, fields } },
+            } });
+            if (saved.count !== 1) throw new TranscriptCorrectionError("This task changed while saving. Try again; your writing is still here.", 409, "TASK_DRAFT_CONFLICT");
+            return { task: edited, idempotentReplay: false, governance: readGovernedActionSourceReference(source.governance) };
+          }
         }
         return {
           task: replay,
@@ -154,6 +200,8 @@ export async function POST(request: Request) {
             schema: TRANSCRIPT_DERIVED_TASK_SCHEMA,
             surface: sourceSurface,
             clientRequestId,
+            materializationIntent: save?.original ?? fields,
+            ...(save ? { draftSave: { revision: save.revision, fields } } : {}),
             explicitHumanAction: true,
             createdByUserId: actor.id,
             createdAt: new Date().toISOString(),
@@ -178,7 +226,7 @@ export async function POST(request: Request) {
         },
       });
       return { task, idempotentReplay: false, governance };
-    });
+    }, { isolationLevel: "Serializable" });
     return NextResponse.json({
       ok: true,
       idempotentReplay: result.idempotentReplay,

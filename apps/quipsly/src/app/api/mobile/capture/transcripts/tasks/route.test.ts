@@ -69,6 +69,25 @@ describe("explicit transcript-derived task", () => {
     expect(recordSucceededTranscriptWorkAction).toHaveBeenCalledWith(tx, expect.objectContaining({ targetObjectType: "ActionItem", targetObjectId: expect.stringMatching(/^transcript-task-/), roomId: "room-1" }));
   });
 
+  it.each([
+    { label: "long title", changes: { title: "a".repeat(501) } },
+    { label: "long details", changes: { detail: "b".repeat(5001) } },
+    { label: "negative revision", changes: { save: { revision: -1, original: { title: "Task", detail: null } } } },
+    { label: "mismatched first command", changes: { save: { revision: 0, original: { title: "Different original", detail: null } } } },
+    { label: "invalid original", changes: { save: { revision: 1, original: { title: "a".repeat(501), detail: null } } } },
+  ])("rejects $label before persistence instead of truncating writing", async ({ changes }) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1" } } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "invalid-draft",
+        expectedProviderTextSha256: "a".repeat(64), title: "Task", ...changes }),
+    }));
+    expect(response.status).toBe(400);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(readTranscriptCorrectionDesk).not.toHaveBeenCalled();
+    expect(recordSucceededTranscriptWorkAction).not.toHaveBeenCalled();
+  });
+
   it("fails stale provider evidence without creating work", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
@@ -124,7 +143,7 @@ describe("explicit transcript-derived task", () => {
   it("replays the same actor request without creating a duplicate task", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
-    const replay = { id: "replayed-task", title: "Prepare the opening", detail: null, status: "OPEN", roomId: "room-1", assignedUserId: "user-1", createdAt: new Date(), sourceJson: { schema: "quipsly-transcript-derived-task-v1", clientRequestId: "request-replay", createdByUserId: "user-1" } };
+    const replay = { id: "replayed-task", title: "Prepare the opening", detail: null, status: "OPEN", roomId: "room-1", assignedUserId: "user-1", createdAt: new Date(), sourceJson: { schema: "quipsly-transcript-derived-task-v1", clientRequestId: "request-replay", createdByUserId: "user-1", segmentId: "segment-1", providerTextSha256: "a".repeat(64) } };
     const tx = { actionItem: { findUnique: jest.fn().mockResolvedValue(replay), create: jest.fn() } };
     jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
     const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
@@ -134,6 +153,54 @@ describe("explicit transcript-derived task", () => {
     }));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, idempotentReplay: true, task: { title: "Prepare the opening" } });
+    expect(tx.actionItem.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "a different passage", source: { segmentId: "segment-2" }, title: "Prepare the opening" },
+    { label: "different source words", source: { providerTextSha256: "b".repeat(64) }, title: "Prepare the opening" },
+    { label: "missing source identity", source: { segmentId: null, providerTextSha256: null }, title: "Prepare the opening" },
+    { label: "a changed title after a lost reply", source: {}, title: "Prepare a better opening" },
+  ])("does not report an earlier task as the result for $label", async ({ source, title }) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1" } } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
+    const replay = { id: "replayed-task", title: "Prepare the opening", detail: null, status: "OPEN",
+      roomId: "room-1", assignedUserId: "user-1", createdAt: new Date(), sourceJson: {
+        schema: "quipsly-transcript-derived-task-v1", clientRequestId: "request-replay", createdByUserId: "user-1",
+        segmentId: "segment-1", providerTextSha256: "a".repeat(64),
+        materializationIntent: { title: "Prepare the opening", detail: null }, ...source,
+      } };
+    const tx = { actionItem: { findUnique: jest.fn().mockResolvedValue(replay), create: jest.fn() } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "request-replay",
+        expectedProviderTextSha256: "a".repeat(64), title }),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, code: "IDEMPOTENCY_CONFLICT" });
+    expect(tx.actionItem.create).not.toHaveBeenCalled();
+    expect(recordSucceededTranscriptWorkAction).not.toHaveBeenCalled();
+  });
+
+  it("retries the original command without overwriting later task edits", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1" } } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
+    const replay = { id: "replayed-task", title: "My later title", detail: "My later detail", status: "DONE",
+      roomId: "room-1", assignedUserId: "user-1", createdAt: new Date(), sourceJson: {
+        schema: "quipsly-transcript-derived-task-v1", clientRequestId: "request-replay", createdByUserId: "user-1",
+        segmentId: "segment-1", providerTextSha256: "a".repeat(64),
+        materializationIntent: { title: "Prepare the opening", detail: "Original detail" },
+      } };
+    const tx = { actionItem: { findUnique: jest.fn().mockResolvedValue(replay), create: jest.fn() } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "request-replay",
+        expectedProviderTextSha256: "a".repeat(64), title: "Prepare the opening", detail: "Original detail" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ idempotentReplay: true, task: { title: "My later title", detail: "My later detail", status: "DONE" } });
     expect(tx.actionItem.create).not.toHaveBeenCalled();
   });
 });

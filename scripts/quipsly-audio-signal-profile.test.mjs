@@ -198,6 +198,7 @@ test("FFmpeg profile distinguishes low warmth from high presence on the immutabl
     ]);
     const result = await new FfmpegAudioSignalProfiler().analyze(sourcePath);
     const frequency = result.audioSignal.frequencyProfile;
+    assert.equal(result.hasNonZeroSamples, true);
     assert.ok(frequency, "The complete decode did not produce broad-band frequency evidence.");
     assert.equal(frequency.analyzedFrameCount, result.audioSignal.analyzedFrameCount);
     assert.equal(frequency.windows.at(-1).startSeconds + frequency.windows.at(-1).durationSeconds, result.audioSignal.durationSeconds);
@@ -234,10 +235,27 @@ test("FFmpeg profile completely decodes streamed WebM without container duration
     assert.equal(result.media.container, "matroska");
     assert.equal(result.media.codec, "opus");
     assert.equal(result.audioSignal.signalStatus, "near-digital-silence");
+    assert.equal(result.hasNonZeroSamples, false);
     assert.ok(result.audioSignal.analyzedFrameCount > 0);
     assert.equal(result.audioSignal.durationSeconds, result.media.durationSeconds);
     assert.ok(result.audioSignal.waveform.length > 0 && result.audioSignal.waveform.length <= 1_200);
     assert.equal(result.audioSignal.frequencyProfile?.completeDecode, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("exact-silence evidence does not discard extremely quiet floating-point audio", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-quiet-signal-"));
+  const sourcePath = path.join(root, "quiet.wav");
+  try {
+    await execFile("ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+      "aevalsrc=0.00000001*sin(2*PI*440*t):s=48000:d=0.2", "-c:a", "pcm_f32le", sourcePath,
+    ]);
+    const result = await new FfmpegAudioSignalProfiler().analyze(sourcePath, { frequencyAnalysis: false });
+    assert.equal(result.audioSignal.signalStatus, "near-digital-silence");
+    assert.equal(result.hasNonZeroSamples, true, "A low displayed dB value must not be treated as exact silence.");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

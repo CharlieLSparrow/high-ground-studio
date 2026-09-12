@@ -549,35 +549,10 @@ export async function PATCH(
       },
       403,
     );
-  const endpoint =
-    (await prisma.callParticipantProviderGrantReceipt.findFirst({
-      where: {
-        roomId: room.id,
-        participantId: participant.id,
-        clientInstanceId,
-        clientKind: { equals: clientKind, mode: "insensitive" },
-      },
-      select: { id: true },
-    })) ??
-    (await prisma.callParticipantPreflightReceipt.findFirst({
-      where: {
-        roomId: room.id,
-        participantId: participant.id,
-        clientInstanceId,
-        clientKind: { equals: clientKind, mode: "insensitive" },
-      },
-      select: { id: true },
-    }));
-  if (!endpoint)
-    return privateJson(
-      {
-        ok: false,
-        code: "UNKNOWN_ENDPOINT",
-        error:
-          "Run the device check on this exact installation before recording.",
-      },
-      409,
-    );
+  // An authenticated active participant can report this device's own state,
+  // including when the call provider is unavailable. A sound-check decision is
+  // optional UX, not authorization or proof of media. Upload verification is
+  // separate; this receipt never marks a recording asset verified.
   const directive = await prisma.callRecordingDirective.findFirst({
     where: { id: directiveId, roomId: room.id },
     select: { id: true, action: true },

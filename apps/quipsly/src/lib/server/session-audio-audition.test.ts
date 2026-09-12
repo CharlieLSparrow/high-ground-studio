@@ -25,6 +25,7 @@ jest.mock("@/lib/server/session-access", () => ({
   sessionAccessWhere: jest.fn(() => ({ id: "room-12345678" })),
 }));
 jest.mock("@/lib/server/session-protected-playback", () => ({
+  ...jest.requireActual("@/lib/server/session-protected-playback"),
   sessionProtectedPlaybackBinding: jest.fn(),
 }));
 
@@ -123,6 +124,35 @@ describe("Session audio audition durable outbox", () => {
     expect(storage.objects.size).toBe(2);
   });
 
+  it.each(["audio/x-caf", "audio/caf"])("prepares a browser listening copy for a %s master", async (contentType) => {
+    const binding = jest.mocked(sessionProtectedPlaybackBinding).getMockImplementation()!({} as never)!;
+    jest.mocked(sessionProtectedPlaybackBinding).mockReturnValue({
+      ...binding, contentType, kind: "audio",
+      objectName: "media-vault/recordings/coaching/master.caf",
+    });
+    const result = await prepareSessionAudioAudition({
+      prisma: prisma.client, roomId, recordingAssetId, actor: { id: "coach-12345678", primaryEmail: "coach@example.com" },
+    });
+    expect(result.state).not.toBe("NOT_REQUIRED");
+    expect(prisma.created).toHaveLength(1);
+    expect(prisma.created[0].inputJson).toMatchObject({
+      source: { contentType, sha256: sourceSha, objectName: "media-vault/recordings/coaching/master.caf" },
+      target: { contentType: "audio/mp4" },
+      originalRemainsSourceTruth: true,
+    });
+  });
+
+  it("does not create unnecessary copies for browser-ready audio", async () => {
+    const binding = jest.mocked(sessionProtectedPlaybackBinding).getMockImplementation()!({} as never)!;
+    jest.mocked(sessionProtectedPlaybackBinding).mockReturnValue({ ...binding, kind: "audio", contentType: "audio/mp4" });
+    const result = await prepareSessionAudioAudition({
+      prisma: prisma.client, roomId, recordingAssetId, actor: { id: "coach-12345678", primaryEmail: "coach@example.com" },
+    });
+    expect(result.state).toBe("NOT_REQUIRED");
+    expect(prisma.created).toHaveLength(0);
+    expect(storage.objects.size).toBe(0);
+  });
+
   it("revalidates duration and exact source binding before readback", async () => {
     const prepared = await prepareSessionAudioAudition({
       prisma: prisma.client,
@@ -138,11 +168,28 @@ describe("Session audio audition durable outbox", () => {
         recordingAssetId,
         actor: { id: "coach-12345678", primaryEmail: "coach@example.com" },
       }),
-    ).rejects.toMatchObject<Partial<SessionAudioAuditionError>>({
-      code: "AUDITION_SOURCE_CHANGED",
-      status: 409,
+    ).resolves.toMatchObject({
+      state: "HELD",
+      derivative: null,
     });
     expect(prepared.jobId).toBeTruthy();
+  });
+
+  it("uses the audio frame duration instead of a rounded, pause-inclusive boundary clock", async () => {
+    prisma.asset.contentType = "audio/x-caf";
+    prisma.asset.durationSeconds = 10;
+    prisma.asset.localManifestJson = {
+      durationEvidence: { provisionalUntilMediaDecode: true },
+      reportedSourceProfile: { audioSignal: { schemaVersion: 1, algorithm: "quipsly-audio-signal-window-v1", sampleRate: 48000, analyzedFrameCount: 467968 } },
+    };
+    jest.mocked(sessionProtectedPlaybackBinding).mockReturnValue({
+      schema: "quipsly-session-protected-playback-v1", roomId, recordingAssetId,
+      url: `/api/sessions/${roomId}/recordings/${recordingAssetId}/media`, sha256: sourceSha,
+      byteSize: 4_000_000_000, bucketName: "quipsly-private-media", objectName: "media-vault/recordings/coaching/camera.caf",
+      generation: "101", kind: "audio", contentType: "audio/x-caf",
+    });
+    await prepareSessionAudioAudition({ prisma: prisma.client, roomId, recordingAssetId, actor: { id: "coach-12345678", email: "coach@example.com" } });
+    expect(prisma.created[0].inputJson.source.durationSeconds).toBe(467968 / 48000);
   });
 
   it("applies Session access before creating any derivative state", async () => {

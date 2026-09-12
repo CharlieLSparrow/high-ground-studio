@@ -17,12 +17,10 @@ release_context="$(
 )"
 
 cleanup() {
-  if (
-    [[ -n "${release_context:-}" ]]
-    && [[ "${release_context}" != "/" ]]
-    && [[ -f "${release_context}/.quipsly-release-context" ]]
-    && [[ -f "${release_context}/hgo-web-release-source.json" ]]
-  ); then
+  if [[ -n "${release_context:-}" ]] &&
+    [[ "${release_context}" != "/" ]] &&
+    [[ -f "${release_context}/.quipsly-release-context" ]] &&
+    [[ -f "${release_context}/hgo-web-release-source.json" ]]; then
     rm -rf -- "${release_context}"
   else
     echo "Refusing to remove unmarked HGO web release context: ${release_context:-<missing>}" >&2

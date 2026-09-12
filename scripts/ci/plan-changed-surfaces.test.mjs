@@ -29,6 +29,21 @@ test("Capture workflow changes remain inside the Capture surface", () => {
   assert.equal(plan.quipsly, false);
 });
 
+test("release-gate and result-verifier changes run Nest validation without deploying it", () => {
+  for (const file of [
+    "scripts/hgo-quipsly-coaching-handoff-static-smoke.mjs",
+    "scripts/hgo-quipsly-coaching-handoff-static-smoke.test.mjs",
+    "scripts/ci/pr-contract-lane.test.mjs",
+    "scripts/ci/verify-required-jest-results.mjs",
+    "scripts/ci/verify-required-jest-results.test.mjs",
+  ]) {
+    const plan = planChangedSurfaces([file]);
+    assert.equal(plan.quipsly, true, file);
+    assert.equal(plan.capture, false, file);
+    assert.deepEqual(plan.deployTargets, [], file);
+  }
+});
+
 test("media verifier changes stay manual and do not deploy web services", () => {
   const plan = planChangedSurfaces([
     "apps/quipsly-media-verifier/src/worker.ts",
@@ -111,6 +126,9 @@ test("Capture release-tool families never wake a Nest deployment", () => {
     "scripts/release/quipsly-app-store-connect-diagnostics-readback.mjs",
     "scripts/release/quipsly-testflight-public-link-readback.mjs",
     "scripts/release/quipsly-xcode-cloud-workflow-audit.mjs",
+    "scripts/test-capture-document-note-edits.sh",
+    "scripts/test-capture-task-reminders.sh",
+    "scripts/quipsly-ios-capture-account-isolation.test.mjs",
   ];
 
   for (const path of paths) {

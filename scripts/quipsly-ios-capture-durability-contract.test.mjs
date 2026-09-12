@@ -50,7 +50,7 @@ function check(name, condition) {
 
 const armCall = model.indexOf("try audioCapture.armNextCapture(");
 const recorderStart = model.indexOf("audioCapture.handleCommand(command)", armCall);
-const postStartGuard = model.indexOf("audioCapture.captureState == .recording", recorderStart);
+const postStartGuard = model.indexOf("guard audioStarted,", recorderStart);
 check("model preallocates capture UUID", model.includes("let captureID = UUID()"));
 check("model arms before issuing recorder start", armCall >= 0 && armCall < recorderStart);
 check("model checks recorder state only after start command", recorderStart < postStartGuard);
@@ -92,14 +92,20 @@ check(
     && audio.includes("waitUntilRecordingOrTerminal"),
 );
 check(
-  "the reachable native session surface waits for confirmed PCM before claiming recording",
+  "native start wiring awaits a confirmed source and retains an immediately interrupted take",
   model.includes(
-    "let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()",
+    "let audioStarted = await audioCapture.waitUntilRecordingOrTerminal(includingPausedSource: true)",
   )
     && model.includes(
-      "guard audioStarted, audioCapture.captureState == .recording else",
-    ),
+      "guard audioStarted, [.recording, .paused].contains(audioCapture.captureState) else",
+    )
+    && audio.includes("includingPausedSource: Bool = false")
+    && audio.includes("if includingPausedSource && activeLocalRecordingID != nil { return true }"),
 );
+// This is a source-wiring check, not PCM or interruption proof. The native
+// testAudioInterruptionPausesAndRequiresExplicitResume test forces the source
+// to pause before a deliberately late startup observer wakes past its deadline,
+// then resumes and saves. Do not substitute this string check for that runtime test.
 check(
   "provider start failure takes the terminal media cleanup path",
   audio.includes("if activeLocalRecordingID != nil {")

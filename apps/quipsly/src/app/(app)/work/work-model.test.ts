@@ -21,6 +21,12 @@ function task(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Work Queue model", () => {
+  it("preserves canonical tag color and archived state when projecting tasks", () => {
+    const tag = { id: "research", label: "Research", slug: "research", category: "meaning",
+      projectId: "nest-1", hexColor: "#23543a", isActive: false };
+    const snapshot = buildWorkSnapshot({ now, tasks: [task({tagLinks: [{tag}]})], goals: [], commitments: [] });
+    expect(snapshot.tasks[0].tags).toEqual([tag]);
+  });
   it("shares unbooked production work without leaking booking-backed coaching work to generic room participants", () => {
     expect(sharedWorkRoomIds([
       { id: "episode-room", bookingId: null },
@@ -65,12 +71,13 @@ describe("Work Queue model", () => {
     };
     const snapshot = buildWorkSnapshot({ now, tasks: [task({ sourceJson })], goals: [], commitments: [] });
     expect(snapshot.tasks[0]).toMatchObject({
-      provenance: "Reviewed transcript timestamp",
+      provenance: "Session transcript",
       attentionReason: "Overdue commitment",
       sourceAnchor: { segmentId: "segment-1", startSeconds: 3.66, recordingAssetId: "asset-1" },
     });
-    const mismatch = buildWorkSnapshot({ now, tasks: [task({ sourceJson: { ...sourceJson, roomId: "other-room" } })], goals: [], commitments: [] });
+    const mismatch = buildWorkSnapshot({ now, tasks: [task({ dueAt: null, createdAt: now, sourceJson: { ...sourceJson, roomId: "other-room" } })], goals: [], commitments: [] });
     expect(mismatch.tasks[0].sourceAnchor).toBeNull();
+    expect(mismatch.tasks[0].attentionReason).toBeNull();
   });
 
   it("projects an immutable source-card task anchor only while the project remains visible", () => {
@@ -123,7 +130,7 @@ describe("Work Queue model", () => {
     expect(hiddenProject.tasks[0].sourceCardAnchor).toBeNull();
   });
 
-  it("derives attention from deadlines and recent reviewed transcript work without an unread ledger", () => {
+  it("surfaces recent transcript work without claiming or requiring human review", () => {
     const transcriptSource = {
       schema: "quipsly-transcript-derived-task-v1",
       roomId: "room-1",
@@ -151,7 +158,7 @@ describe("Work Queue model", () => {
       ["overdue", "Overdue commitment"],
       ["soon", "Due within 24 hours"],
       ["later", null],
-      ["reviewed", "Reviewed transcript follow-through"],
+      ["reviewed", "From session transcript"],
     ]);
     expect(snapshot.counts.attentionTasks).toBe(3);
   });
@@ -208,6 +215,8 @@ describe("Work Queue model", () => {
       commitments: [],
     });
     const editability = Object.fromEntries(snapshot.tasks.map((item) => [item.id, item.canEdit]));
+    expect(snapshot.tasks.find(item => item.id === "shared-coaching")?.canManageTags).toBe(true);
+    expect(snapshot.tasks.find(item => item.id === "other-owner")?.canManageTags).toBe(false);
     expect(editability).toEqual({
       editable: true,
       "shared-coaching": true,

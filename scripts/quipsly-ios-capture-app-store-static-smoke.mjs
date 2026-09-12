@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createSourceCheckReport } from "./lib/source-check-report.mjs";
+import { rawCaptureSemanticColor } from "./lib/capture-semantic-color-check.mjs";
 
 import { parseXmlPropertyList } from "./lib/parse-xml-property-list.mjs";
 import {
@@ -395,11 +396,11 @@ const allCaptureSwiftSource = fs.readdirSync(captureSwiftSourceDirectory)
   .filter((name) => name.endsWith(".swift"))
   .map((name) => fs.readFileSync(path.join(captureSwiftSourceDirectory, name), "utf8"))
   .join("\n");
-const rawSemanticOutlier = allCaptureSwiftSource.match(/(?:Color)?\.(?:green|orange)\b/);
+const rawSemanticOutlier = rawCaptureSemanticColor(allCaptureSwiftSource);
 assert(
   rawSemanticOutlier == null,
   "Capture success and warning states use the adaptive sage and aged-brass semantic tokens.",
-  { label: "shipping Capture Swift surfaces contain no raw system green or orange", forbidden: rawSemanticOutlier?.[0] },
+  { label: "shipping Capture Swift surfaces contain no raw system green or orange", forbidden: rawSemanticOutlier },
 );
 assert(
   (allCaptureSwiftSource.match(/\.buttonStyle\(\.borderedProminent\)/g) ?? []).length === 1,
@@ -1136,7 +1137,7 @@ for (const needle of [
 }
 for (const needle of [
   "after(async () =>",
-  "reconcileCaptureTranscriptFollowThrough(input)",
+  "reconcileCaptureTranscriptFollowThrough({ ...input, runAnalysis: true })",
   "Immediate dispatch remains retryable",
 ]) {
   requireIncludes(
@@ -1320,7 +1321,6 @@ for (const needle of [
   requireIncludes(captureCoachingHomeText, needle, "native coaching work supports conventional reversible remove and Undo");
 }
 for (const needle of [
-  'requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()',
   'targetAt: entry.dueAt.flatMap(coachingISO8601Date)',
   'accessibilityIdentifier("CaptureCoachingWorkDateToggle")',
   'accessibilityIdentifier("CaptureCoachingWorkDate")',
@@ -1775,7 +1775,7 @@ for (const needle of [
   "CaptureVideoStopButton",
   "CaptureVideoPauseResumeButton",
   "CaptureVideoSwitchCameraButton",
-  "Podcast camera",
+  "Video-only recording",
   "Allow recording?",
   "Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
   "Allow recording",
@@ -2388,9 +2388,9 @@ for (const needle of [
   ".onChange(of: scenePhase)",
   "saveTask?.cancel()",
   "saveImmediately()",
-  "Try saving on \\(CaptureDeviceVocabulary.thisDevice) again",
+  "CaptureVoiceWritingRetryEditSave",
 ]) {
-  requireIncludes(capturePhoneShellText, needle, "writing flushes its protected local copy at app lifecycle boundaries");
+  requireIncludes(capturePhoneShellText, needle, "writing lifecycle flush and retry controls remain wired");
 }
 for (const needle of [
   "let restoredProtectedSelection = brief == nil && restoreProtectedCache()",

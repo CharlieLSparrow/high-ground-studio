@@ -40,6 +40,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { VoiceWritingRichText } from "@/lib/voice-writing-contract";
+import type { NavigableTag } from "@/components/tag-search-chips";
+import { DocumentTags } from "@/components/document-tags";
+import { writingSaveRetryDelay } from "./voice-writing-save-retry";
 import {
   tiptapToVoiceWritingRichText,
   voiceWritingRichTextToTiptap,
@@ -107,7 +110,7 @@ type WritingDraft = {
   sourceSha256: string | null;
   callRoomId: string | null;
   sources: WritingSource[];
-  tags: Array<{ id: string; label: string; slug: string }>;
+  tags: Array<NavigableTag & { slug: string }>;
   createdAt?: string;
   updatedAt: string;
 };
@@ -254,13 +257,14 @@ function SaveStatus({ state, updatedAt }: { state: SaveState; updatedAt?: string
   </span>;
 }
 
-export function VoiceWritingEditor({ draftId }: { draftId: string }) {
+export function VoiceWritingEditor({ draftId, actorId }: { draftId: string; actorId: string }) {
   const router = useRouter();
   const [draft, setDraft] = useState<WritingDraft | null>(null);
   const [title, setTitle] = useState("");
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [saveRetryAt, setSaveRetryAt] = useState<number | null>(null);
   const [exportingWord, setExportingWord] = useState(false);
   const [exportError, setExportError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -283,6 +287,9 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const loadingEditorRef = useRef(true);
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
+  const failedSaveAttemptsRef = useRef(0);
+  const retryOnReconnectRef = useRef(false);
+  const retryOnEditRef = useRef(true);
   const transcriptAudioRefs = useRef(new Map<string, HTMLAudioElement>());
   const playbackEndRef = useRef<{
     transcriptJobId: string;
@@ -297,7 +304,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const noteChanged = useCallback(() => {
     if (loadingEditorRef.current) return;
     dirtyRef.current = true;
-    setSaveState("unsaved");
+    setSaveState(current => current === "conflict" || (current === "error" && !retryOnEditRef.current) ? current : "unsaved");
     setChangeVersion((value) => value + 1);
   }, []);
 
@@ -345,6 +352,9 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     setConflictingDraft(null);
     setSaveError("");
     setSaveState("saved");
+    setSaveRetryAt(null);
+    failedSaveAttemptsRef.current = 0;
+    retryOnReconnectRef.current = false;
     queueMicrotask(() => { loadingEditorRef.current = false; });
   }, [editor]);
 
@@ -388,6 +398,9 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     const base = draftRef.current;
     const richText = tiptapToVoiceWritingRichText(editor.getJSON() as JSONContent);
     if (!richText.text.trim()) {
+      retryOnEditRef.current = true;
+      retryOnReconnectRef.current = false;
+      setSaveRetryAt(null);
       setSaveState("error");
       setSaveError("Add at least one word before saving this writing.");
       return;
@@ -396,11 +409,18 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     const localRevision = Math.max(base.localRevision, base.serverRevision) + 1;
     savingRef.current = true;
     dirtyRef.current = false;
+    setSaveRetryAt(null);
     setSaveError("");
     setSaveState("saving");
+    let failureStatus: number | undefined;
+    let retryAfter: string | null = null;
+    let saved = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20_000);
     try {
       const response = await fetch("/api/mobile/capture/voice-writing", {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "content-type": "application/json",
           "x-quipsly-writing-version": "2",
@@ -421,9 +441,12 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
           expectedContentRevision: base.contentRevision,
         }),
       });
+      failureStatus = response.status;
+      retryAfter = response.headers?.get("Retry-After") ?? null;
       const payload = await response.json() as SaveResponse;
       if (response.status === 409 && payload.code === "VOICE_WRITING_CONFLICT" && payload.current) {
         dirtyRef.current = true;
+        retryOnReconnectRef.current = false;
         setConflictingDraft(payload.current);
         setSaveError(payload.error || "This writing changed on another device.");
         setSaveState("conflict");
@@ -434,6 +457,9 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       }
       draftRef.current = payload.draft;
       setDraft(payload.draft);
+      saved = true;
+      failedSaveAttemptsRef.current = 0;
+      retryOnReconnectRef.current = false;
       if (dirtyRef.current) {
         setSaveState("unsaved");
       } else {
@@ -441,28 +467,55 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       }
     } catch (error) {
       dirtyRef.current = true;
-      setSaveError(error instanceof Error ? error.message : "Your changes have not reached your Nest yet.");
+      setSaveError(controller.signal.aborted ? "Saving is taking longer than expected. Your changes are still here."
+        : error instanceof Error ? error.message : "Your changes have not reached your Nest yet.");
       setSaveState("error");
+      retryOnReconnectRef.current = !retryAfter && (failureStatus === undefined || failureStatus === 408 || failureStatus >= 500);
+      retryOnEditRef.current = failureStatus === 400 || failureStatus === 422;
+      const delay = writingSaveRetryDelay(++failedSaveAttemptsRef.current, failureStatus, retryAfter);
+      setSaveRetryAt(delay === null ? null : Date.now() + delay);
     } finally {
+      window.clearTimeout(timeout);
       savingRef.current = false;
-      if (saveAgainRef.current || dirtyRef.current) {
-        saveAgainRef.current = false;
+      if (saved && (saveAgainRef.current || dirtyRef.current)) {
         setChangeVersion((value) => value + 1);
       }
+      saveAgainRef.current = false;
     }
   }, [editor]);
 
   useEffect(() => {
-    if (!draft || !dirtyRef.current || saveState === "conflict") return;
+    if (!draft || !dirtyRef.current || saveState !== "unsaved") return;
     const timer = window.setTimeout(() => { void persist(); }, 900);
     return () => window.clearTimeout(timer);
   }, [changeVersion, draft, persist, saveState]);
+
+  useEffect(() => {
+    if (saveState !== "error" || saveRetryAt === null) return;
+    const timer = window.setTimeout(() => { void persist(); }, Math.max(0, saveRetryAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [persist, saveRetryAt, saveState]);
+
+  useEffect(() => {
+    const retry = () => {
+      if (saveState !== "error" || !retryOnReconnectRef.current) return;
+      failedSaveAttemptsRef.current = 0;
+      void persist();
+    };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [persist, saveState]);
 
   function changeTitle(value: string) {
     const next = value.slice(0, 320);
     titleRef.current = next;
     setTitle(next);
     noteChanged();
+  }
+
+  function retrySave() {
+    failedSaveAttemptsRef.current = 0;
+    void persist();
   }
 
   function jumpToHeading(position: number) {
@@ -796,6 +849,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#87663d]">{audience.eyebrow} · {draft.projectName}</p>
           <input value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={320} aria-label="Writing title" className="mt-1 w-full border-0 bg-transparent p-0 font-serif text-3xl font-black leading-tight text-[#33281d] outline-none placeholder:text-[#a18b6c] sm:text-4xl" placeholder="Give this a title" />
+          <DocumentTags key={`${actorId}:${draft.projectId}:${draft.documentId}`} actorId={actorId} documentId={draft.documentId} projectId={draft.projectId} />
         </div>
       </div>
     </header>
@@ -803,7 +857,8 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     {saveError ? <section role="alert" className={`mt-4 rounded-2xl border p-4 ${saveState === "conflict" ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}>
       <p className="font-black text-[#3d3122]">{saveState === "conflict" ? "This writing changed on another device." : "Your latest changes are still in this editor."}</p>
       <p className="mt-1 text-sm font-semibold text-[#765f40]">{saveError}</p>
-      <div className="mt-3 flex flex-wrap gap-2">{saveState === "conflict" ? <><button type="button" onClick={keepMyVersion} className="min-h-11 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white">Keep my version</button><button type="button" onClick={useNestVersion} className="min-h-11 rounded-full border border-amber-300 bg-white px-5 text-sm font-black text-amber-900">Use the other version</button></> : <button type="button" onClick={() => void persist()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white"><RefreshCw className="h-4 w-4" />Save again</button>}</div>
+      {saveRetryAt !== null && <p className="mt-2 text-sm">Trying again shortly. You can keep writing.</p>}
+      <div className="mt-3 flex flex-wrap gap-2">{saveState === "conflict" ? <><button type="button" onClick={keepMyVersion} className="min-h-11 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white">Keep my version</button><button type="button" onClick={useNestVersion} className="min-h-11 rounded-full border border-amber-300 bg-white px-5 text-sm font-black text-amber-900">Use the other version</button></> : <button type="button" onClick={retrySave} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white"><RefreshCw className="h-4 w-4" />Save again</button>}</div>
     </section> : null}
 
     {exportError ? <section role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">

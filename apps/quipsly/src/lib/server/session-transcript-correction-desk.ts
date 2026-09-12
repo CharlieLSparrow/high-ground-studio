@@ -1,4 +1,5 @@
 import "server-only";
+import { readSessionRecordingAttempts } from "./session-recording-attempts";
 
 import {
   readTranscriptCorrectionDesk,
@@ -114,6 +115,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
   })) as Candidate[];
   const selected = selectSessionTranscriptSources({
     rows,
+    attempts: await readSessionRecordingAttempts(input.prisma, input.roomId, rows),
     anchorRecordingAssetId: anchor.recording?.id ?? null,
   }).filter((source): source is Candidate => Boolean(source));
   if (!selected.length) {

@@ -106,6 +106,7 @@ struct MobileCoachingBooking: Codable, Identifiable, Hashable {
     let callRoomId: String?
     let callRoomStatus: String?
     let clientInvitationDelivery: MobileCoachingInvitationDelivery?
+    var scheduleNotification: MobileCoachingScheduleNotification? = nil
     let clientEntryPath: String?
     let engagementPath: String?
     let liveSessionPath: String?
@@ -322,16 +323,25 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     @Published private(set) var isSaving = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var pendingUndo: MobileCoachingWorkUndo?
+    private(set) var lastSavedEntry: MobileCoachingEngagementWorkEntry?
     private var createAttempts: [String: CaptureCoachingCreateAttempt] = [:]
+    private var workUpdateRequestIDs: [Data: String] = [:]
+    private var history = MobileCoachingWorkHistory()
+    private var loadGeneration = 0
+    var searchQuery: String { history.query }
+    var searchKind: String { history.kind }
+    var searchTag: String { history.tag }
 
     let engagementID: String
+    private let itemID: String?
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
 
-    init(engagementID: String) {
+    init(engagementID: String, itemID: String? = nil) {
         self.engagementID = engagementID
+        self.itemID = itemID
     }
 
     func loadPreview(includeSourceWork: Bool = false) {
@@ -352,7 +362,13 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                     body: "Return to what we discussed, then choose the next step.", status: "OPEN",
                     owner: nil, visibility: "SHARED", dueAt: nil, canEdit: true,
                     canChangeVisibility: false, createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z",
-                    sourceHref: "/sessions/room-preview-coaching-ready?mode=transcript&source=preview-recording-asset&at=3.66"
+                    sourceHref: ProcessInfo.processInfo.arguments.contains("--capture-conversation-history-preview")
+                        ? "/coaching/engagements/\(engagementID)?message=preview-work-idea#relationship-conversation"
+                        : "/sessions/room-preview-coaching-ready?mode=transcript&source=preview-recording-asset&at=3.66",
+                    tags: [
+                        MobileWorkTagLabel(id: "research", label: "Research and source material", hexColor: "#23543a", isActive: true),
+                        MobileWorkTagLabel(id: "next", label: "Next conversation", hexColor: "#f2e4c5", isActive: true),
+                    ]
                 ),
                 MobileCoachingEngagementWorkEntry(
                     id: "preview-manual-note", kind: "NOTE", title: "Questions for next time",
@@ -364,21 +380,39 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         )
     }
 
-    func load() async {
-        guard !isLoading else { return }
+    func load(search: String? = nil, kind: String? = nil, tag: String? = nil, including nextCursor: String? = nil, force: Bool = false) async {
+        let query = search.map(MobileCoachingWorkHistory.normalizedSearch) ?? history.query
+        let kind = kind ?? history.kind
+        let tag = tag ?? history.tag
+        guard force || !isLoading || query != history.query || kind != history.kind || tag != history.tag else { return }
+        let cursors = history.request(search: query, kind: kind, tag: tag, including: nextCursor)
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if loadGeneration == generation { isLoading = false } }
         errorMessage = nil
         do {
-            let (payload, response) = try await request(method: "GET")
-            guard response.statusCode < 400, payload.ok, let engagement = payload.engagement,
-                  engagement.id == engagementID else {
-                if response.statusCode < 400 { workspace = nil; pendingUndo = nil }
-                throw coachingClientError(payload.error ?? "This coaching space could not load.")
+            var latest: MobileCoachingEngagementWorkspace?
+            var collected: [String: MobileCoachingEngagementWorkEntry] = [:]
+            for cursor in cursors {
+                let (payload, response) = try await request(method: "GET", query: query, kind: kind, tag: tag, cursor: cursor)
+                guard generation == loadGeneration else { return }
+                guard response.statusCode < 400, payload.ok, let engagement = payload.engagement,
+                      engagement.id == engagementID,
+                      latest == nil || latest?.currentUserId == engagement.currentUserId else {
+                    if response.statusCode < 400 { workspace = nil; pendingUndo = nil }
+                    throw coachingClientError(payload.error ?? "This coaching space could not load.")
+                }
+                latest = engagement
+                for entry in engagement.entries { collected[entry.id] = entry }
             }
-            workspace = engagement
+            guard let latest else { return }
+            history.didLoad(cursors)
+            workspace = MobileCoachingEngagementWorkspace(id: latest.id, title: latest.title, status: latest.status,
+                canWrite: latest.canWrite, currentUserId: latest.currentUserId, members: latest.members,
+                entries: collected.values.sorted { $0.updatedAt > $1.updatedAt }, page: latest.page)
         } catch {
-            errorMessage = error.localizedDescription
+            if generation == loadGeneration { errorMessage = error.localizedDescription }
         }
     }
 
@@ -390,7 +424,9 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         body: String,
         visibility: String,
         ownerUserID: String,
-        targetAt: Date?
+        targetAt: Date?,
+        sourceMessageID: String? = nil,
+        tags: CaptureTaskTagSelection? = nil
     ) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
@@ -400,13 +436,14 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             kind: kind, title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             body: body.trimmingCharacters(in: .whitespacesAndNewlines), visibility: visibility,
             ownerUserID: ownerUserID, status: kind == "GOAL" ? "ACTIVE" : "OPEN",
-            targetAt: targetAt.map(coachingISO8601String)
+            targetAt: targetAt.map(coachingISO8601String), tags: tags
         )
         let attempt = createAttempts[clientRequestID]
-            ?? CaptureCoachingCreateAttempt(requestID: clientRequestID, original: draft)
+            ?? CaptureCoachingCreateAttempt(requestID: clientRequestID, original: draft, sourceMessageID: sourceMessageID)
         createAttempts[clientRequestID] = attempt
         do {
-            guard kind == attempt.original.kind else {
+            guard kind == attempt.original.kind, sourceMessageID == attempt.sourceMessageID,
+                  tags == attempt.original.tags else {
                 throw coachingClientError("Finish saving this item before changing its type.")
             }
             // Replay the original command even if the person has since edited
@@ -442,7 +479,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 }
             }
             createAttempts[clientRequestID] = nil
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -462,32 +499,34 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         visibility: String,
         ownerUserID: String,
         status: String,
-        targetAt: Date?
+        targetAt: Date?,
+        tags: CaptureTaskTagSelection? = nil
     ) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
+        lastSavedEntry = nil
         do {
-            var requestBody: [String: Any] = [
-                "id": entry.id,
-                "kind": entry.kind,
-                "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
-                "body": body.trimmingCharacters(in: .whitespacesAndNewlines),
-                "expectedUpdatedAt": entry.updatedAt,
-            ]
-            if entry.kind == "NOTE" {
-                requestBody["visibility"] = visibility
-            } else {
-                requestBody["ownerUserId"] = ownerUserID
-                requestBody["status"] = status
-                requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()
-            }
+            let draft = CaptureCoachingWorkDraft(
+                kind: entry.kind, title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                body: body.trimmingCharacters(in: .whitespacesAndNewlines), visibility: visibility,
+                ownerUserID: ownerUserID, status: status,
+                targetAt: targetAt.map(coachingISO8601String), tags: tags
+            )
+            var requestBody = draft.updateBody(entryID: entry.id, expectedUpdatedAt: entry.updatedAt)
+            let identity = try JSONSerialization.data(withJSONObject: requestBody, options: [.sortedKeys])
+            let requestID = workUpdateRequestIDs[identity] ?? UUID().uuidString.lowercased()
+            workUpdateRequestIDs[identity] = requestID
+            requestBody["clientRequestId"] = requestID
             let (payload, response) = try await request(method: "PATCH", body: requestBody)
-            guard response.statusCode < 400, payload.ok, payload.entry != nil else {
+            guard response.statusCode < 400, payload.ok, let savedEntry = payload.entry,
+                  savedEntry.id == entry.id, savedEntry.kind == entry.kind else {
                 throw coachingClientError(payload.error ?? "That coaching item could not be updated.")
             }
-            await load()
+            lastSavedEntry = savedEntry
+            workUpdateRequestIDs[identity] = nil
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -514,12 +553,34 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 throw coachingClientError(payload.error ?? "That coaching item could not be removed.")
             }
             pendingUndo = MobileCoachingWorkUndo(removal: removal, title: entry.displayTitle)
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    /// Read the current task before changing only the person's completion intent.
+    /// The existing revision-checked save preserves its text, owner, dates, and tags.
+    func setTaskCompletion(id: String, completed: Bool) async -> MobileCoachingEngagementWorkEntry? {
+        guard let owner = AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+        await load(force: true)
+        guard owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+        guard errorMessage == nil, let workspace, workspace.canWrite,
+              let entry = workspace.entries.first(where: { $0.id == id && $0.kind == "TASK" }),
+              entry.canEdit else {
+            errorMessage = errorMessage ?? "This task is unavailable or read-only."
+            return nil
+        }
+        let status = completed ? "DONE" : "OPEN"
+        // A lost reply may already have saved this intent. Readback is enough;
+        // do not turn a retry into a second toggle or overwrite unrelated edits.
+        if entry.status == status { return entry }
+        guard await update(entry: entry, title: entry.displayTitle, body: entry.body ?? "",
+                           visibility: entry.visibility, ownerUserID: entry.owner?.id ?? workspace.currentUserId,
+                           status: status, targetAt: entry.dueAt.flatMap(coachingISO8601Date)) else { return nil }
+        return lastSavedEntry
     }
 
     @discardableResult
@@ -538,7 +599,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 throw coachingClientError(payload.error ?? "That coaching item could not be restored.")
             }
             self.pendingUndo = nil
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -546,14 +607,45 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         }
     }
 
+    func loadWorkTags(kind: String, entryID: String?) async throws -> [MobileWorkTagLabel] {
+        guard ["NOTE", "TASK", "GOAL"].contains(kind) else { throw coachingClientError("Choose a note, task, or goal first.") }
+        guard var components = URLComponents(string: "\(baseURL)/api/work/tags") else {
+            throw coachingClientError("Tags couldn't open.")
+        }
+        components.queryItems = [URLQueryItem(name: "entityKind", value: kind.lowercased()),
+            URLQueryItem(name: entryID == nil ? "engagementId" : "entityId", value: entryID ?? engagementID)]
+        guard let url = components.url else { throw coachingClientError("Tags couldn't open.") }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+        let payload = try decodeCoachingResponse(MobileTaskTagContextResponse.self, from: data, response: response)
+        guard response.statusCode < 400, payload.ok, let tags = payload.tags else {
+            throw coachingClientError(payload.error ?? "Tags couldn't load. Try again.")
+        }
+        return tags
+    }
+
     private func request(
         method: String,
-        body: [String: Any]? = nil
+        body: [String: Any]? = nil,
+        query: String = "",
+        kind: String = "ALL",
+        tag: String = "",
+        cursor: String? = nil
     ) async throws -> (MobileCoachingEngagementWorkspaceResponse, HTTPURLResponse) {
         guard let encodedID = engagementID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(baseURL)/api/coaching/engagements/\(encodedID)/work") else {
+              var components = URLComponents(string: "\(baseURL)/api/coaching/engagements/\(encodedID)/work") else {
             throw coachingClientError("The configured Nest URL is not valid.")
         }
+        var items: [URLQueryItem] = []
+        if method == "GET", let itemID { items.append(URLQueryItem(name: "item", value: itemID)) }
+        if !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        if kind != "ALL" { items.append(URLQueryItem(name: "kind", value: kind)) }
+        if !tag.isEmpty { items.append(URLQueryItem(name: "tag", value: tag)) }
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        if !items.isEmpty { components.queryItems = items }
+        guard let url = components.url else { throw coachingClientError("This work list could not be opened.") }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -962,6 +1054,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
 
     func load() async {
         guard !isLoading else { return }
+        guard let owner = AuthManager.shared.stableOwnerSnapshot() else { return }
         guard let url = URL(string: "\(baseURL)/api/coaching/runway") else {
             errorMessage = "The configured Nest URL is not valid."
             return
@@ -984,6 +1077,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 for: request,
                 allowOfflineRecovery: true
             )
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner), !Task.isCancelled else { return }
             let payload = try? JSONDecoder().decode(MobileCoachingRunwayResponse.self, from: data)
 
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
@@ -1017,11 +1111,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 }
             )
             await loadPublicOfferings()
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner), !Task.isCancelled else { return }
             persistProtectedSnapshot(payload)
             status = payload.user?.isCoach == true
                 ? "Coaching ready"
                 : payload.user?.isClient == true ? "Your coaching is ready" : "Coaching ready"
         } catch {
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner), !Task.isCancelled else { return }
             if Self.isTransportUnavailable(error) {
                 AuthManager.shared.suspendNetworkActionsForCachedFallback(
                     reason: error.localizedDescription
@@ -1315,7 +1411,8 @@ final class MobileCoachingRunwayClient: ObservableObject {
     func rescheduleBooking(
         _ booking: MobileCoachingBooking,
         scheduledStart: Date,
-        durationMinutes: Int
+        durationMinutes: Int,
+        notifyClient: Bool
     ) async -> Bool {
         guard !isMutating else { return false }
         guard scheduledStart > Date() else {
@@ -1345,19 +1442,17 @@ final class MobileCoachingRunwayClient: ObservableObject {
         errorMessage = nil
 
         do {
-            let payload = try await performAction([
-                "action": "reschedule-booking",
-                "bookingId": booking.id,
-                "scheduledStart": ISO8601DateFormatter().string(from: scheduledStart),
-                "durationMinutes": max(15, durationMinutes),
-                "timezone": TimeZone.current.identifier,
-                "reason": "Rescheduled from Quipsly Capture on \(CaptureDeviceVocabulary.deviceName).",
-            ])
+            let command = MobileCoachingScheduleChange(
+                bookingID: booking.id, scheduledStart: scheduledStart,
+                durationMinutes: durationMinutes, timezone: TimeZone.current.identifier,
+                notifyClient: notifyClient
+            )
+            let payload = try await performAction(command.body)
             guard payload.ok, payload.result?.bookingId == booking.id else {
                 throw coachingClientError(payload.error ?? "This Session could not be rescheduled.")
             }
             await load()
-            status = "Session rescheduled"
+            status = payload.result?.nextAction ?? "Session rescheduled"
             return true
         } catch {
             status = "Rescheduling needs attention"
@@ -1915,6 +2010,7 @@ private struct MobileCoachingInvitationShareSheet: UIViewControllerRepresentable
 
 struct CaptureCoachingHomeView: View {
     @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject private var client: MobileCoachingRunwayClient
     @Binding var visibleTab: CaptureRootTab
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsNewAppointment = false
@@ -1928,7 +2024,14 @@ struct CaptureCoachingHomeView: View {
     @State private var selectedPublicTime: MobileCoachingPublicTimeSelection?
     @State private var invitationToShare: MobileCoachingInvitationShare?
 
-    private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
+    init(model: CaptureExperienceModel, visibleTab: Binding<CaptureRootTab>) {
+        _model = ObservedObject(wrappedValue: model)
+        _visibleTab = visibleTab
+        // Scheduling must respond while unrelated startup work is still
+        // loading. The root deliberately coalesces/suppresses child refreshes
+        // during initialization; this screen owns observation of its workflow.
+        _client = ObservedObject(wrappedValue: model.coachingRunwayClient)
+    }
 
     var body: some View {
         bookingTimeDialog
@@ -2161,9 +2264,10 @@ struct CaptureCoachingHomeView: View {
             MobileCoachingRescheduleSheet(
                 client: client,
                 booking: booking,
-                preferredStart: requestedRescheduleStart
+                preferredStart: requestedRescheduleStart,
+                previewOnly: model.usesPreviewData
             )
-                .presentationDetents([.medium])
+                .presentationDetents([.large])
         }
         .sheet(item: $bookingToRequestChange) { booking in
             if let engagement = engagement(for: booking) {
@@ -2562,9 +2666,7 @@ struct CaptureCoachingHomeView: View {
                         }
                         .captureProminentButton()
                         .accessibilityIdentifier("CaptureCoachingOpen_Handoff_\(roomID)")
-                        if !model.usesPreviewData {
-                            appointmentManagementMenu(for: booking)
-                        }
+                        appointmentManagementMenu(for: booking)
                     }
                 }
                 invitationActions(for: booking)
@@ -2639,9 +2741,7 @@ struct CaptureCoachingHomeView: View {
                                     .captureProminentButton()
                                     .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                                 }
-                                if !model.usesPreviewData {
-                                    appointmentManagementMenu(for: booking)
-                                }
+                                appointmentManagementMenu(for: booking)
                             }
                             if let engagement = engagement(for: booking) {
                                 MobileCoachingScheduleRequestReviewCard(
@@ -2714,6 +2814,7 @@ struct CaptureCoachingHomeView: View {
                         systemImage: "envelope"
                     )
                 }
+                .disabled(model.usesPreviewData)
             }
             Button {
                 bookingToReschedule = booking
@@ -2725,6 +2826,7 @@ struct CaptureCoachingHomeView: View {
             } label: {
                 Label("Cancel Session", systemImage: "calendar.badge.minus")
             }
+            .disabled(model.usesPreviewData)
         } label: {
             Image(systemName: "ellipsis.circle")
                 .frame(width: 44, height: 44)
@@ -2744,6 +2846,12 @@ struct CaptureCoachingHomeView: View {
 
     @ViewBuilder
     private func invitationActions(for booking: MobileCoachingBooking) -> some View {
+        if let notification = booking.scheduleNotification {
+            Label(notification.label, systemImage: notification.needsAttention ? "exclamationmark.triangle" : "envelope")
+                .font(.caption)
+                .foregroundStyle(notification.needsAttention ? CapturePalette.brass : CapturePalette.secondaryText)
+                .accessibilityIdentifier("CaptureCoachingScheduleNotification_\(booking.id)")
+        }
         if let roomID = booking.callRoomId,
            let recipientEmail = booking.client?.email?.nonemptyCoachingText {
             VStack(alignment: .leading, spacing: 8) {
@@ -2811,21 +2919,28 @@ struct CaptureCoachingHomeView: View {
                     } label: {
                         HStack(alignment: .center, spacing: 12) {
                             VStack(alignment: .leading, spacing: 5) {
-                                Label(engagement.title, systemImage: "person.2.fill")
-                                    .font(.headline)
+                                if dynamicTypeSize.isAccessibilitySize {
+                                    Text(engagement.title)
+                                        .font(.headline)
+                                        .lineLimit(2)
+                                } else {
+                                    Label(engagement.title, systemImage: "person.2.fill")
+                                        .font(.headline)
+                                        .lineLimit(2)
+                                }
                                 if !engagement.participantLine.isEmpty {
                                     Text(engagement.participantLine)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
-                                Text("Open shared notes, goals, tasks, conversation, and Sessions")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
+                            .layoutPriority(1)
                             Spacer()
                             Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                         }
                         .contentShape(Rectangle())
                     }
@@ -2833,6 +2948,7 @@ struct CaptureCoachingHomeView: View {
                     .captureCard()
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Open client space, \(engagement.title)")
+                    .accessibilityValue(engagement.participantLine)
                     .accessibilityHint("Open this relationship's conversation, shared notes, goals, tasks, and Sessions.")
                     .accessibilityIdentifier("CaptureCoachingRelationship_\(engagement.id)")
                 }
@@ -3170,6 +3286,15 @@ private enum MobileCoachingWorkFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var apiKind: String {
+        switch self {
+        case .all: "ALL"
+        case .notes: "NOTE"
+        case .tasks: "TASK"
+        case .goals: "GOAL"
+        }
+    }
+
     func includes(_ entry: MobileCoachingEngagementWorkEntry) -> Bool {
         switch self {
         case .all: true
@@ -3198,6 +3323,7 @@ private struct MobileCoachingInlineWarning: View {
 }
 
 struct CaptureCoachingEngagementWorkspaceView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let engagement: MobileCaptureCoachingEngagement
     let sessions: [MobileCaptureSession]
     let previewOnly: Bool
@@ -3209,6 +3335,13 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     @State private var filter: MobileCoachingWorkFilter = .all
     @State private var newWorkDraft: MobileCoachingWorkDraft?
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
+    @State private var workSearch = ""
+    @State private var selectedTag: MobileWorkTagLabel?
+    private struct ConversationDestination: Identifiable {
+        let messageID: String?
+        var id: String { messageID ?? "latest" }
+    }
+    @State private var conversationDestination: ConversationDestination?
 
     init(
         engagement: MobileCaptureCoachingEngagement,
@@ -3231,7 +3364,9 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     }
 
     private var entries: [MobileCoachingEngagementWorkEntry] {
-        (client.workspace?.entries ?? []).filter(filter.includes)
+        (client.workspace?.entries ?? []).filter {
+            filter.includes($0) && (selectedTag == nil || $0.tags?.contains(where: { $0.id == selectedTag?.id }) == true)
+        }
     }
 
     var body: some View {
@@ -3251,16 +3386,18 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("CaptureCoachingWorkFilter")
 
-                if client.isLoading, client.workspace == nil {
+                if client.isLoading, client.workspace == nil || entries.isEmpty {
                     ProgressView("Loading client space…")
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 40)
                 } else if entries.isEmpty {
                     ContentUnavailableView {
-                        Label("Ready when you are", systemImage: "square.and.pencil")
+                        Label(selectedTag != nil || !workSearch.isEmpty ? "No matching work" : "Ready when you are", systemImage: "square.and.pencil")
                     } description: {
                         Text(
-                            client.workspace?.canWrite == true
+                            selectedTag != nil || !workSearch.isEmpty
+                                ? "Try another search or clear the tag filter."
+                                : client.workspace?.canWrite == true
                                 ? "Use Note, Task, or Goal above whenever something is worth keeping."
                                 : "Shared work will appear here when it is available to you."
                         )
@@ -3272,10 +3409,25 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                     }
                 }
 
+                if let page = client.workspace?.page, let cursor = page.nextCursor,
+                   page.kind == filter.apiKind, page.query == MobileCoachingWorkHistory.normalizedSearch(workSearch),
+                   (page.tag ?? "") == (selectedTag?.id ?? "") {
+                    Button {
+                        Task { await client.load(including: cursor) }
+                    } label: {
+                        Label("Show more work", systemImage: "chevron.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(client.isLoading)
+                    .accessibilityIdentifier("CaptureCoachingWorkLoadMore")
+                }
+
                 MobileEngagementChatCard(
                     client: conversation,
                     engagement: engagement,
-                    previewOnly: previewOnly
+                    previewOnly: previewOnly,
+                    onWorkChanged: { if !previewOnly { await client.load(force: true) } }
                 )
 
                 sessionContinuity
@@ -3289,10 +3441,43 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         }
         .background(CaptureCanvas())
         .navigationTitle(client.workspace?.title ?? engagement.title)
+        .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let selectedTag {
+                HStack {
+                    CaptureWorkTags(tags: [selectedTag], workID: "filter")
+                    Button { self.selectedTag = nil } label: {
+                        Label("Clear filter", systemImage: "xmark")
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                        .accessibilityIdentifier("CaptureCoachingClearTagFilter")
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+                .background(CapturePalette.canvas)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureCoachingActiveTagFilter")
+            }
+        }
+        .searchable(text: $workSearch, prompt: "Find notes, tasks, or goals")
+        .task(id: "\(workSearch)|\(filter.apiKind)|\(selectedTag?.id ?? "")") {
+            guard !previewOnly, MobileCoachingWorkHistory.normalizedSearch(workSearch) != client.searchQuery || filter.apiKind != client.searchKind || (selectedTag?.id ?? "") != client.searchTag else { return }
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            await client.load(search: workSearch, kind: filter.apiKind, tag: selectedTag?.id ?? "")
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(CapturePalette.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    conversationDestination = ConversationDestination(messageID: nil)
+                } label: {
+                    Label("Conversation", systemImage: "bubble.left.and.bubble.right")
+                }
+                .accessibilityIdentifier("CaptureCoachingConversationToolbarButton")
+            }
             if client.workspace?.canWrite == true {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -3319,6 +3504,9 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         .task(id: "\(engagement.id)|\(previewOnly)") {
             if previewOnly {
                 client.loadPreview(includeSourceWork: CaptureLaunchConfiguration.usesCoachingWorkSourcePreview)
+                if CaptureLaunchConfiguration.usesCoachingWorkSourcePreview {
+                    conversation.loadPreview(engagement: engagement)
+                }
             } else {
                 async let workLoad: Void = client.load()
                 async let conversationLoad: Void = conversation.load(
@@ -3329,6 +3517,15 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             }
         }
         .onDisappear { conversation.stopPolling() }
+        .sheet(item: $conversationDestination, onDismiss: { conversation.clearMessageFocus() }) { destination in
+            MobileEpisodeChatThread(
+                client: conversation,
+                target: .engagement(engagement),
+                previewOnly: previewOnly,
+                onWorkChanged: { if !previewOnly { await client.load(force: true) } },
+                focusMessageID: destination.messageID
+            )
+        }
         .sheet(item: $newWorkDraft) { draft in
             if let workspace = client.workspace {
                 MobileCoachingWorkEditorSheet(
@@ -3375,20 +3572,17 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .accessibilityIdentifier("CaptureCoachingRemovalUndoBar")
             }
         }
-        .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
     }
 
     private var quickAddWork: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Add")
-                .font(.headline)
-            HStack(spacing: 8) {
-                quickAddButton(title: "Note", kind: "NOTE", systemImage: "note.text")
-                quickAddButton(title: "Task", kind: "TASK", systemImage: "checkmark.circle")
-                quickAddButton(title: "Goal", kind: "GOAL", systemImage: "target")
-            }
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
+            quickAddButton(title: "Note", kind: "NOTE", systemImage: "note.text")
+            quickAddButton(title: "Task", kind: "TASK", systemImage: "checkmark.circle")
+            quickAddButton(title: "Goal", kind: "GOAL", systemImage: "target")
         }
-        .captureCard()
     }
 
     private func quickAddButton(
@@ -3419,21 +3613,16 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         let privateNotes = visibleNotes.filter { $0.visibility == "PRIVATE" }
         let pulseSession = relationshipPulseSession
 
-        return VStack(alignment: .leading, spacing: 14) {
-            Label("Client space", systemImage: "person.2.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
-
+        return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(relationshipPulseEyebrow(session: pulseSession))
                     .font(.caption2.weight(.black))
                     .textCase(.uppercase)
                     .foregroundStyle(CapturePalette.accent)
                 Text(relationshipPulseTitle(session: pulseSession))
-                    .font(.title3.weight(.black))
+                    .font(.headline)
                 Text(relationshipPulseDetail(session: pulseSession))
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if let pulseSession {
@@ -3485,6 +3674,29 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 }
             }
 
+            if !allEntries.isEmpty {
+                DisclosureGroup("Space summary") {
+                    relationshipSummary(openTasks: openTasks, overdueTasks: overdueTasks,
+                                        activeGoals: activeGoals, visibleNotes: visibleNotes,
+                                        privateNotes: privateNotes)
+                }
+                .font(.subheadline)
+                .accessibilityIdentifier("CaptureCoachingSpaceSummary")
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoachingRelationshipPulse")
+    }
+
+    private func relationshipSummary(
+        openTasks: [MobileCoachingEngagementWorkEntry],
+        overdueTasks: [MobileCoachingEngagementWorkEntry],
+        activeGoals: [MobileCoachingEngagementWorkEntry],
+        visibleNotes: [MobileCoachingEngagementWorkEntry],
+        privateNotes: [MobileCoachingEngagementWorkEntry]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             if !openTasks.isEmpty || !overdueTasks.isEmpty || !activeGoals.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -3533,9 +3745,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .foregroundStyle(CapturePalette.brass)
             }
         }
-        .captureCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureCoachingRelationshipPulse")
+        .padding(.top, 8)
     }
 
     private var canonicalPriority: MobileCaptureCoachingClientPriority? {
@@ -3794,11 +4004,14 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             Text(entry.displayTitle)
                 .font(.headline)
                 .strikethrough(entry.isComplete)
+            if let tags = entry.tags, !tags.isEmpty {
+                CaptureWorkTags(tags: tags, workID: entry.id, onSelect: { selectedTag = $0 })
+            }
             if entry.visibility == "PRIVATE" {
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill")
                         .accessibilityHidden(true)
-                    Text("Only you can read this note")
+                    Text("Only me")
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(CapturePalette.brass)
@@ -3806,13 +4019,26 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(CapturePalette.brass.opacity(0.12), in: Capsule())
+                .accessibilityIdentifier("CaptureCoachingWorkPrivacy_\(entry.id)")
             }
             if let body = entry.body?.nonemptyCoachingText, body != entry.displayTitle {
                 Text(body)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            if let source = entry.sourceLink {
+            if let href = entry.sourceHref,
+               let source = CaptureConversationWorkLink(href: href, engagementID: engagement.id) {
+                Button {
+                    conversationDestination = ConversationDestination(messageID: source.messageID)
+                } label: {
+                    Label("From conversation", systemImage: "bubble.left.and.bubble.right")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .tint(CapturePalette.accent)
+                .accessibilityLabel("From conversation: \(entry.displayTitle)")
+                .accessibilityIdentifier("CaptureCoachingWorkSource_\(entry.id)")
+            } else if let source = entry.sourceLink {
                 NavigationLink {
                     CaptureTranscriptReviewView(
                         roomID: source.roomID,
@@ -3909,19 +4135,33 @@ struct CaptureCoachingWorkItemEditor: View {
         self.entryID = entryID
         self.kind = kind
         self.previewEntry = previewEntry
-        _client = StateObject(wrappedValue: MobileCoachingEngagementWorkspaceClient(engagementID: engagementID))
+        _client = StateObject(wrappedValue: MobileCoachingEngagementWorkspaceClient(engagementID: engagementID, itemID: entryID))
     }
 
     var body: some View {
         Group {
             if let workspace = client.workspace,
-               let entry = previewEntry ?? workspace.entries.first(where: { $0.id == entryID && $0.kind == kind }),
-               workspace.canWrite, entry.canEdit {
-                MobileCoachingWorkEditorSheet(
-                    client: client, workspace: workspace, entry: entry,
-                    // Removal stays beside the client-space undo banner.
-                    previewOnly: previewEntry != nil, allowsRemoval: false
-                )
+               let entry = previewEntry ?? workspace.entries.first(where: { $0.id == entryID && $0.kind == kind }) {
+                if workspace.canWrite, entry.canEdit {
+                    MobileCoachingWorkEditorSheet(
+                        client: client, workspace: workspace, entry: entry,
+                        // Removal stays beside the client-space undo banner.
+                        previewOnly: previewEntry != nil, allowsRemoval: false
+                    )
+                } else {
+                    NavigationStack {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(entry.displayTitle).font(.title2.bold())
+                                if let tags = entry.tags { CaptureWorkTags(tags: tags, workID: entry.id) }
+                                if let body = entry.body { Text(body).textSelection(.enabled) }
+                            }.frame(maxWidth: .infinity, alignment: .leading).padding()
+                        }
+                        .background(CapturePalette.canvas)
+                        .navigationTitle(entry.kindLabel)
+                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+                    }
+                }
             } else {
                 NavigationStack {
                     Group {
@@ -3951,12 +4191,16 @@ struct CaptureCoachingWorkItemEditor: View {
 }
 
 struct MobileCoachingWorkEditorSheet: View {
+    private enum Field: Hashable { case title, detail }
+
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: Field?
     @ObservedObject var client: MobileCoachingEngagementWorkspaceClient
     let workspace: MobileCoachingEngagementWorkspace
     let entry: MobileCoachingEngagementWorkEntry?
     let previewOnly: Bool
     let allowsRemoval: Bool
+    let sourceMessage: NestChatMessage?
 
     @State private var kind: String
     @State private var title: String
@@ -3968,6 +4212,10 @@ struct MobileCoachingWorkEditorSheet: View {
     @State private var targetDate: Date
     @State private var isConfirmingRemoval = false
     @State private var createRequestID = UUID().uuidString.lowercased()
+    @State private var tagSelection: CaptureTaskTagSelection
+    @State private var tagCatalog: [MobileWorkTagLabel] = []
+    @State private var tagsLoaded = false
+    @State private var tagLoadError: String?
 
     init(
         client: MobileCoachingEngagementWorkspaceClient,
@@ -3975,19 +4223,22 @@ struct MobileCoachingWorkEditorSheet: View {
         entry: MobileCoachingEngagementWorkEntry?,
         preferredKind: String = "NOTE",
         previewOnly: Bool = false,
-        allowsRemoval: Bool = true
+        allowsRemoval: Bool = true,
+        sourceMessage: NestChatMessage? = nil
     ) {
         self.client = client
         self.workspace = workspace
         self.entry = entry
         self.previewOnly = previewOnly
         self.allowsRemoval = allowsRemoval
+        self.sourceMessage = sourceMessage
         _kind = State(initialValue: entry?.kind ?? preferredKind)
-        _title = State(initialValue: entry?.title ?? "")
-        _detail = State(initialValue: entry?.body ?? "")
+        _title = State(initialValue: entry?.title ?? sourceMessage?.suggestedTaskTitle ?? "")
+        _detail = State(initialValue: entry?.body ?? sourceMessage?.body ?? "")
         _visibility = State(initialValue: entry?.visibility ?? "SHARED")
         _ownerUserID = State(initialValue: entry?.owner?.id ?? workspace.currentUserId)
         _status = State(initialValue: entry?.status ?? "OPEN")
+        _tagSelection = State(initialValue: CaptureTaskTagSelection(tagIDs: (entry?.tags ?? []).map(\.id).sorted()))
         let existingTargetDate = entry?.dueAt.flatMap(coachingISO8601Date)
         _hasTargetDate = State(initialValue: existingTargetDate != nil)
         _targetDate = State(
@@ -4000,13 +4251,38 @@ struct MobileCoachingWorkEditorSheet: View {
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (kind == "NOTE" || !ownerUserID.isEmpty)
+            && tagSelection.isValid
+    }
+
+    private var editedTags: CaptureTaskTagSelection? {
+        let original = CaptureTaskTagSelection(tagIDs: (entry?.tags ?? []).map(\.id).sorted())
+        return tagSelection == original ? nil : tagSelection
+    }
+
+    private var selectedTags: [MobileWorkTagLabel] {
+        let catalog = tagCatalog.isEmpty ? (entry?.tags ?? []) : tagCatalog
+        return catalog.filter { tagSelection.tagIDs.contains($0.id) }
+            + tagSelection.newTagLabels.map { MobileWorkTagLabel(id: "new-\($0)", label: $0, hexColor: nil, isActive: true) }
+    }
+
+    private func loadTags() async {
+        tagLoadError = nil
+        tagsLoaded = false
+        if previewOnly {
+            var seen = Set<String>()
+            tagCatalog = (entry?.tags ?? workspace.entries.flatMap { $0.tags ?? [] }).filter { seen.insert($0.id).inserted }
+            tagsLoaded = true
+            return
+        }
+        do { tagCatalog = try await client.loadWorkTags(kind: kind, entryID: entry?.id); tagsLoaded = true }
+        catch { tagLoadError = error.localizedDescription }
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section(entry == nil ? "New item" : "Details") {
-                    if entry == nil {
+                    if entry == nil, sourceMessage == nil {
                         Picker("Type", selection: $kind) {
                             Text("Note").tag("NOTE")
                             Text("Task").tag("TASK")
@@ -4017,12 +4293,36 @@ struct MobileCoachingWorkEditorSheet: View {
                         .accessibilityIdentifier("CaptureCoachingWorkKind")
                     }
 
-                    TextField(kind == "NOTE" ? "Note title" : kind == "TASK" ? "Task title" : "Goal title", text: $title)
+                    TextField(kind == "NOTE" ? "Note title" : kind == "TASK" ? "Task title" : "Goal title", text: $title, axis: .vertical)
+                        .lineLimit(1 ... 4)
+                        .focused($focusedField, equals: .title)
                         .accessibilityIdentifier("CaptureCoachingWorkTitle")
                     TextEditor(text: $detail)
                         .frame(minHeight: 120)
+                        .focused($focusedField, equals: .detail)
                         .accessibilityLabel("Details")
                         .accessibilityIdentifier("CaptureCoachingWorkDetail")
+                }
+
+                if ["NOTE", "TASK", "GOAL"].contains(kind) {
+                    Section {
+                        NavigationLink {
+                            CaptureTaskTagPicker(tags: tagCatalog, selection: $tagSelection, workLabel: kind.lowercased())
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Tags", systemImage: "tag")
+                                if !selectedTags.isEmpty { CaptureWorkTags(tags: selectedTags, workID: "draft") }
+                            }
+                        }
+                        .disabled(!tagsLoaded || client.hasPendingCreation(requestID: createRequestID))
+                        .accessibilityIdentifier("CaptureCoachingWorkTags")
+                        if let tagLoadError {
+                            Text(tagLoadError).font(.caption).foregroundStyle(.secondary)
+                            Button("Retry loading tags") { Task { await loadTags() } }
+                        } else if !tagsLoaded {
+                            ProgressView("Loading tags…")
+                        }
+                    }
                 }
 
                 if kind == "NOTE" {
@@ -4043,12 +4343,16 @@ struct MobileCoachingWorkEditorSheet: View {
                     }
                 } else {
                     Section(kind == "TASK" ? "Task owner" : "Goal owner") {
-                        Picker("Owner", selection: $ownerUserID) {
-                            ForEach(workspace.members) { member in
-                                Text(member.label).tag(member.id)
+                        if entry?.visibility == "PRIVATE" {
+                            Label("Only me", systemImage: "lock")
+                        } else {
+                            Picker("Owner", selection: $ownerUserID) {
+                                ForEach(workspace.members) { member in
+                                    Text(member.label).tag(member.id)
+                                }
                             }
+                            .accessibilityIdentifier("CaptureCoachingWorkOwner")
                         }
-                        .accessibilityIdentifier("CaptureCoachingWorkOwner")
 
                         if entry != nil {
                             Picker("Status", selection: $status) {
@@ -4087,7 +4391,10 @@ struct MobileCoachingWorkEditorSheet: View {
                 }
 
                 if let error = client.errorMessage {
-                    Section { MobileCoachingInlineWarning(text: error) }
+                    Section {
+                        MobileCoachingInlineWarning(text: error)
+                            .accessibilityIdentifier("CaptureCoachingWorkSaveError")
+                    }
                 }
 
                 if let entry, allowsRemoval {
@@ -4106,9 +4413,10 @@ struct MobileCoachingWorkEditorSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureCoachingWorkEditorForm")
+            .scrollDismissesKeyboard(.interactively)
             .disabled(client.isSaving)
             .captureFormSurface()
-            .navigationTitle(entry == nil ? "Add coaching work" : "Edit \(entry?.kindLabel ?? "item")")
+            .navigationTitle(entry == nil ? (sourceMessage == nil ? "Add coaching work" : "New task") : "Edit \(entry?.kindLabel ?? "item")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -4127,7 +4435,8 @@ struct MobileCoachingWorkEditorSheet: View {
                                     visibility: visibility,
                                     ownerUserID: ownerUserID,
                                     status: status,
-                                    targetAt: hasTargetDate ? targetDate : nil
+                                    targetAt: hasTargetDate ? targetDate : nil,
+                                    tags: editedTags
                                 )
                             } else {
                                 saved = await client.create(
@@ -4137,7 +4446,9 @@ struct MobileCoachingWorkEditorSheet: View {
                                     body: detail,
                                     visibility: visibility,
                                     ownerUserID: ownerUserID,
-                                    targetAt: hasTargetDate ? targetDate : nil
+                                    targetAt: hasTargetDate ? targetDate : nil,
+                                    sourceMessageID: sourceMessage?.id,
+                                    tags: editedTags
                                 )
                             }
                             if saved { dismiss() }
@@ -4145,6 +4456,11 @@ struct MobileCoachingWorkEditorSheet: View {
                     }
                     .disabled(previewOnly || client.isSaving || !canSave)
                     .accessibilityIdentifier("CaptureCoachingSaveWork")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .accessibilityIdentifier("CaptureCoachingWorkKeyboardDone")
                 }
             }
         }
@@ -4165,6 +4481,7 @@ struct MobileCoachingWorkEditorSheet: View {
             Text("It will disappear from this coaching space. Undo is available when you return.")
         }
         .interactiveDismissDisabled(client.isSaving)
+        .task(id: kind) { await loadTags() }
         .accessibilityIdentifier("CaptureCoachingWorkEditor")
     }
 }
@@ -4175,6 +4492,8 @@ private struct MobileCoachingRescheduleSheet: View {
     let booking: MobileCoachingBooking
     @State private var scheduledStart: Date
     @State private var durationMinutes: Int
+    @State private var notifyClient = true
+    let previewOnly: Bool
 
     private var scheduleConflict: MobileCoachingBooking? {
         client.scheduleConflict(
@@ -4194,10 +4513,12 @@ private struct MobileCoachingRescheduleSheet: View {
     init(
         client: MobileCoachingRunwayClient,
         booking: MobileCoachingBooking,
-        preferredStart: Date? = nil
+        preferredStart: Date? = nil,
+        previewOnly: Bool = false
     ) {
         self.client = client
         self.booking = booking
+        self.previewOnly = previewOnly
         _scheduledStart = State(
             initialValue: max(preferredStart ?? booking.scheduledDate ?? Date(), Date())
         )
@@ -4248,10 +4569,16 @@ private struct MobileCoachingRescheduleSheet: View {
                     }
                 }
 
+                Section {
+                    Toggle("Email client about the new time", isOn: $notifyClient)
+                        .accessibilityIdentifier("CaptureCoachingRescheduleNotifyClient")
+                }
+
                 if let error = client.errorMessage {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
+            .accessibilityIdentifier("CaptureCoachingRescheduleForm")
             .captureFormSurface()
             .navigationTitle("Reschedule")
             .navigationBarTitleDisplayMode(.inline)
@@ -4265,7 +4592,8 @@ private struct MobileCoachingRescheduleSheet: View {
                             if await client.rescheduleBooking(
                                 booking,
                                 scheduledStart: scheduledStart,
-                                durationMinutes: durationMinutes
+                                durationMinutes: durationMinutes,
+                                notifyClient: notifyClient
                             ) {
                                 dismiss()
                             }
@@ -4273,12 +4601,14 @@ private struct MobileCoachingRescheduleSheet: View {
                     }
                     .disabled(
                         client.isMutating
+                            || previewOnly
                             || client.isUsingProtectedCache
                             || scheduledStart <= Date()
                             || scheduleConflict != nil
                             || isOutsideWorkingHours
                     )
                     .accessibilityIdentifier("CaptureCoachingSaveReschedule")
+                    .accessibilityLabel(notifyClient ? "Save and notify client" : "Save new time")
                 }
             }
         }

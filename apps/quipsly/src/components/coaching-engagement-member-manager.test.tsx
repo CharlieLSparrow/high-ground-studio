@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CoachingEngagementMemberManager } from "./coaching-engagement-member-manager";
 
 const boundary = { members: [{ id: "member", userId: "client", role: "CLIENT", status: "ACTIVE", accessRevision: 1,
@@ -61,5 +61,22 @@ describe("client-space sharing", () => {
     const writes = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
     expect(writes).toHaveLength(1);
     expect(JSON.parse(writes[0][1].body)).toMatchObject({ action: "INVITE", email: "new@example.test", role: "CLIENT" });
+  });
+
+  it("shows unresolved call disconnection and clears it on automatic readback without another user action", async () => {
+    jest.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ boundary: {
+        ...boundary, pendingCallDisconnectionUserIds: ["client"],
+      } }) });
+      render(<CoachingEngagementMemberManager engagementId="space" />);
+      expect(await screen.findByRole("status")).toHaveTextContent("Live call disconnection hasn’t been confirmed yet.");
+      await act(async () => { jest.advanceTimersByTime(5_000); });
+      await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+      expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
+      const calls = fetchMock.mock.calls.length;
+      await act(async () => { jest.advanceTimersByTime(10_000); });
+      expect(fetchMock).toHaveBeenCalledTimes(calls);
+    } finally { jest.useRealTimers(); }
   });
 });

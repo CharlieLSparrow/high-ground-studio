@@ -1,4 +1,5 @@
 import Link from "next/link";
+import LocalDateTime from "./LocalDateTime";
 import {
   AlertCircle,
   ArrowRight,
@@ -58,13 +59,7 @@ function dateTime(value: string | null) {
   if (!value) return "Time not set";
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime())
-    ? new Intl.DateTimeFormat(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }).format(parsed)
+    ? <LocalDateTime value={value} mode="appointment" />
     : "Time not set";
 }
 
@@ -72,7 +67,7 @@ function date(value: string | null) {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime())
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(parsed)
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(parsed)
     : null;
 }
 
@@ -125,7 +120,7 @@ export function CoachingRelationshipOverview({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">
-            {nextIsLive ? "Happening now" : "Next session"}
+            {overview.nextSession?.status === "RECORDING" ? "Recording in progress" : nextIsLive ? "Session open" : "Next session"}
           </p>
           <h2
             id="relationship-overview-heading"
@@ -139,9 +134,10 @@ export function CoachingRelationshipOverview({
           {overview.nextSession ? (
             <p className="mt-2 flex items-center gap-2 text-sm font-black text-[#5f4d37]">
               <Clock3 size={16} aria-hidden="true" />
-              {nextIsLate
-                ? `Scheduled for ${dateTime(overview.nextSession.startsAt)} · open it or reschedule`
-                : dateTime(overview.nextSession.startsAt)}
+              <span>{nextIsLate ? "Scheduled for " : null}
+                {dateTime(overview.nextSession.startsAt)}
+                {nextIsLate ? " · open it or reschedule" : null}
+              </span>
             </p>
           ) : (
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">

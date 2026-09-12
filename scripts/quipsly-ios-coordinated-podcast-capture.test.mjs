@@ -43,9 +43,9 @@ function check(name, condition) {
 }
 
 check(
-  "Capture exposes a distinct podcast audio plus video mode",
+  "Capture exposes coordinated audio plus video with a purpose-neutral label",
   model.includes("case podcastAV")
-    && model.includes('case .podcastAV: "Podcast audio + video"')
+    && model.includes('case .podcastAV: "Audio + video"')
     && model.includes("self == .audio || self == .podcastAV"),
 );
 check(

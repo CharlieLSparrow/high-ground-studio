@@ -5,6 +5,7 @@ export type ScheduleTranscriptSourceAnchor = TranscriptDerivedTaskSourceAnchor |
 
 export type ScheduleTag = {
   id: string;
+  hexColor?: string | null;
   label: string;
   isActive: boolean;
 };

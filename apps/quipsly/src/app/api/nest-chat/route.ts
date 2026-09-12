@@ -8,6 +8,8 @@ import {
   sessionMutationAccessWhere,
 } from "@/lib/server/session-access";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
+import { WORK_TAG_LINKS_SELECT } from "@/lib/server/coaching-work-projection";
+import { nestSharedTaskAccessWhere } from "@/lib/server/task-access";
 
 import {
   findStudioProjectForAccess,
@@ -566,6 +568,25 @@ export async function GET(request: NextRequest) {
 
     const hasMore = rawMessages.length > limit;
     const messagesToReturn = rawMessages.slice(0, limit).reverse();
+    // A source link may point behind the latest page. Include that exact
+    // authorized message without changing the normal history cursor.
+    const requestedMessageId = request.nextUrl.searchParams.get("message");
+    if (requestedMessageId && !messagesToReturn.some(message => message.id === requestedMessageId)) {
+      const sourceMessage = await prisma.studioNestChatMessage.findFirst({ where: { ...where, id: requestedMessageId } });
+      if (sourceMessage) messagesToReturn.unshift(sourceMessage);
+    }
+    const includesTaskLinks = Boolean(loaded.engagement || (loaded.thread.key === "default" && actor.id));
+    const linkedTasks = includesTaskLinks && messagesToReturn.length ? await prisma.actionItem.findMany({
+      where: { projectId: loaded.project.id, AND: [
+        ...(loaded.engagement ? [{ engagementId: loaded.engagement.id,
+          sourceJson: { path: ["visibility"], equals: "engagement-shared" } }]
+          : [nestSharedTaskAccessWhere(actor.id!)]),
+        { sourceJson: { path: ["conversationSource", "threadId"], equals: loaded.thread.id } },
+        { OR: messagesToReturn.map(message => ({ sourceJson: { path: ["conversationSource", "messageId"], equals: message.id } })) },
+      ] },
+      orderBy: { createdAt: "desc" }, take: 500,
+      select: { id: true, title: true, status: true, sourceJson: true, tagLinks: WORK_TAG_LINKS_SELECT },
+    }) : [];
 
     return NextResponse.json({
       ok: true,
@@ -590,7 +611,12 @@ export async function GET(request: NextRequest) {
         name: actor.name,
         role: loaded.access.role,
       },
-      messages: messagesToReturn.map(serializeMessage),
+      messages: messagesToReturn.map(message => ({ ...serializeMessage(message),
+        ...(includesTaskLinks ? { linkedTasks: linkedTasks.filter(task =>
+          objectValue(objectValue(task.sourceJson)?.conversationSource)?.messageId === message.id
+          && objectValue(objectValue(task.sourceJson)?.relationshipWorkRemoval)?.active !== true)
+          .map(({ id, title, status, tagLinks }) => ({ id, title, status, tags: (tagLinks ?? []).map(link => link.tag) })) } : {}),
+      })),
     });
   } catch (error) {
     if (isPrismaConnectionPressure(error)) return chatUnavailableResponse();

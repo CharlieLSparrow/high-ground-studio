@@ -183,6 +183,7 @@ describe("mobile Capture Work contract", () => {
           projectId: "project-1",
           slug: "episode-4",
           label: "Episode 4",
+          hexColor: "#506b46",
           isActive: true,
           archivedAt: null,
           updatedAt,
@@ -194,6 +195,7 @@ describe("mobile Capture Work contract", () => {
           projectId: "project-1",
           slug: "old",
           label: "Old",
+          hexColor: null,
           isActive: false,
           archivedAt: new Date("2026-07-20T18:00:00.000Z"),
           updatedAt,
@@ -252,6 +254,7 @@ describe("mobile Capture Work contract", () => {
           {
             id: "tag-1",
             usageCount: 3,
+            hexColor: "#506b46",
             isActive: true,
             archivedAt: null,
             updatedAt: "2026-07-24T18:00:00.000Z",
@@ -261,6 +264,7 @@ describe("mobile Capture Work contract", () => {
           {
             id: "tag-old",
             usageCount: 0,
+            hexColor: null,
             isActive: false,
             archivedAt: "2026-07-20T18:00:00.000Z",
             mergedInto: { id: "tag-1", label: "Episode 4", slug: "episode-4" },
@@ -278,6 +282,11 @@ describe("mobile Capture Work contract", () => {
     expect(payload.workspace.tasks).toHaveLength(1);
     expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ AND: expect.any(Array) }),
+    }));
+    const normalScope = prisma.actionItem.findMany.mock.calls[0][0].where;
+    await GET(new Request("http://localhost/api/mobile/capture/work?projectId=project-1&taskId=older-linked-task"));
+    expect(prisma.actionItem.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { AND: [normalScope, { id: "older-linked-task" }] },
     }));
     jest.useRealTimers();
   });

@@ -232,23 +232,50 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
                 sourceStartSeconds: 0,
                 sourceEndSeconds: 50,
                 extractionStartSeconds: 0,
-                extractionEndSeconds: 50
+                extractionEndSeconds: 52
             ),
             OnDeviceTranscriptRecognitionWindow(
                 sourceStartSeconds: 50,
                 sourceEndSeconds: 100,
-                extractionStartSeconds: 49.25,
-                extractionEndSeconds: 100
+                extractionStartSeconds: 48,
+                extractionEndSeconds: 102
             ),
             OnDeviceTranscriptRecognitionWindow(
                 sourceStartSeconds: 100,
                 sourceEndSeconds: 130,
-                extractionStartSeconds: 99.25,
+                extractionStartSeconds: 98,
                 extractionEndSeconds: 130
             ),
         ])
-        precondition(longWindows[1].owns(relativeStartSeconds: 0.5, relativeEndSeconds: 1.5))
+        precondition(longWindows[1].owns(relativeStartSeconds: 1.5, relativeEndSeconds: 2.5))
         precondition(!longWindows[1].owns(relativeStartSeconds: 0, relativeEndSeconds: 0.5))
+        // The unique owner must receive the entire crossing word, not just
+        // its midpoint. Exercise both sides and exact midpoint ties; identical
+        // recognition in the overlapping chunks must only be accepted once.
+        for seam in [50.0, 100.0] {
+            for (startOffset, endOffset) in [(-0.6, 0.4), (-0.5, 0.5), (-0.4, 0.6), (-2.0, 1.5), (-1.5, 2.0)] {
+                let start = seam + startOffset
+                let end = seam + endOffset
+                let owners = longWindows.filter {
+                    $0.owns(relativeStartSeconds: start - $0.extractionStartSeconds,
+                            relativeEndSeconds: end - $0.extractionStartSeconds)
+                }
+                precondition(owners.count == 1)
+                precondition(owners[0].extractionStartSeconds <= start)
+                precondition(owners[0].extractionEndSeconds >= end)
+            }
+        }
+        for duration in [0.01, 55.0, 55.01, 100.0, 130.0, 3_600.25] {
+            let windows = OnDeviceTranscriptDeliveryPolicy.compatibleRecognitionWindows(sourceDurationSeconds: duration)
+            precondition(windows.first?.extractionStartSeconds == 0)
+            precondition(windows.last?.extractionEndSeconds == duration)
+            for (index, window) in windows.enumerated() {
+                precondition(window.extractionDurationSeconds > 0 && window.extractionDurationSeconds <= 55)
+                precondition(window.extractionStartSeconds <= window.sourceStartSeconds)
+                precondition(window.extractionEndSeconds >= window.sourceEndSeconds)
+                if index > 0 { precondition(windows[index - 1].sourceEndSeconds == window.sourceStartSeconds) }
+            }
+        }
         precondition(
             OnDeviceTranscriptDeliveryPolicy
                 .compatibleRecognitionWindows(sourceDurationSeconds: .infinity)

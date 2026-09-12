@@ -47,6 +47,7 @@ private func decodeMobileCaptureResponse<Payload: Decodable>(
 
 struct RecorderCommand: Codable {
     let action: ActionType
+    let sessionTitle: String?
     let projectSlug: String?
     let episodeSlug: String?
     let callRoomId: String?
@@ -64,6 +65,7 @@ struct RecorderCommand: Codable {
 
     init(
         action: ActionType,
+        sessionTitle: String? = nil,
         projectSlug: String? = nil,
         episodeSlug: String? = nil,
         callRoomId: String? = nil,
@@ -76,6 +78,7 @@ struct RecorderCommand: Codable {
         captureAuthorityBasis: CaptureRecordingAuthorityBasis? = nil
     ) {
         self.action = action
+        self.sessionTitle = sessionTitle
         self.projectSlug = projectSlug
         self.episodeSlug = episodeSlug
         self.callRoomId = callRoomId
@@ -1698,6 +1701,7 @@ struct MobileCaptureTag: Codable, Identifiable, Hashable {
     let slug: String
     let label: String
     var isActive: Bool? = nil
+    var hexColor: String? = nil
 }
 
 struct MobileCaptureProjectDestination: Codable, Identifiable, Hashable {
@@ -1941,6 +1945,24 @@ struct MobileCaptureTodayReminderIntent: Codable, Identifiable, Hashable {
     }
 }
 
+struct MobileCaptureWorkTagScope: Codable, Hashable {
+    let projectId: String
+    var displayProject: MobileCaptureTodayProject {
+        .init(id: projectId, name: "Shared space", slug: "")
+    }
+}
+
+struct MobileCaptureWorkTagContext: Decodable {
+    let ok: Bool
+    let entityId: String?
+    let projectId: String?
+    let updatedAt: String?
+    let selectedTagIds: [String]?
+    let tags: [MobileWorkTagLabel]?
+    let canCreateTags: Bool?
+    let error: String?
+}
+
 struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let id: String
     let title: String
@@ -1961,6 +1983,8 @@ struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let todayReason: String?
     let recurrence: MobileCaptureTodayRecurrence?
     let reminder: MobileCaptureTodayReminderIntent?
+    var tagScope: MobileCaptureWorkTagScope? = nil
+    var tagEditorProject: MobileCaptureTodayProject? { project ?? tagScope?.displayProject }
 }
 
 struct MobileCaptureTodayGoal: Codable, Identifiable, Hashable {
@@ -1981,6 +2005,8 @@ struct MobileCaptureTodayGoal: Codable, Identifiable, Hashable {
     let tagLabels: [String]?
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
     let lastMergedTranscriptEvidence: MobileCaptureTodayGoalTranscriptEvidence?
+    var tagScope: MobileCaptureWorkTagScope? = nil
+    var tagEditorProject: MobileCaptureTodayProject? { project ?? tagScope?.displayProject }
 }
 
 struct MobileCaptureTodayGoalTranscriptEvidence: Codable, Hashable {
@@ -2157,6 +2183,7 @@ struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
     let slug: String
     let label: String
     let isActive: Bool
+    var hexColor: String? = nil
 }
 
 struct MobileCaptureClientFollowUpAttention: Codable, Identifiable, Hashable {
@@ -2378,6 +2405,7 @@ struct MobileCaptureWorkTag: Codable, Identifiable, Hashable {
     let updatedAt: String?
     let mergedInto: MobileCaptureWorkTagRedirect?
     let aliases: [MobileCaptureWorkTagAlias]?
+    var hexColor: String? = nil
 }
 
 struct MobileCaptureWorkTagAlias: Codable, Identifiable, Hashable {
@@ -2401,6 +2429,7 @@ struct MobileCaptureWorkTagTaxonomyResponse: Codable {
         let archivedAt: String?
         let updatedAt: String
         let aliases: [MobileCaptureWorkTagAlias]
+        let hexColor: String?
     }
 
     let ok: Bool
@@ -2423,6 +2452,7 @@ struct MobileCaptureWorkTagCreateResponse: Codable {
         let archivedAt: String?
         let updatedAt: String
         let aliases: [MobileCaptureWorkTagAlias]
+        let hexColor: String?
     }
 
     let ok: Bool
@@ -2935,6 +2965,7 @@ struct MobileCapturePacketReviewLane: Codable, Hashable, Identifiable {
 
 struct MobileCapturePacketBuildResponse: Codable {
     let ok: Bool
+    let analysisQueued: Bool?
     let error: String?
     let packetKind: String?
     let generatedAt: String?
@@ -4731,6 +4762,28 @@ final class CaptureTodayClient: ObservableObject {
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+
+    func loadSharedTagContext(kind: PendingWorkTagDecision.EntityKind, entityID: String,
+                              projectID: String) async throws -> MobileCaptureWorkTagContext {
+        guard var components = URLComponents(string: "\(baseURL)/api/work/tags") else {
+            throw NSError(domain: "CaptureTags", code: 0, userInfo: [NSLocalizedDescriptionKey: "Tags couldn't open."])
+        }
+        components.queryItems = [.init(name: "entityKind", value: kind.rawValue), .init(name: "entityId", value: entityID)]
+        guard let url = components.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+        let context = try JSONDecoder().decode(MobileCaptureWorkTagContext.self, from: data)
+        guard response.statusCode == 200, context.ok, context.entityId == entityID,
+              context.projectId == projectID, context.updatedAt != nil,
+              context.tags != nil, context.selectedTagIds != nil else {
+            throw NSError(domain: "CaptureTags", code: response.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: context.error ?? "These tags aren't available. Refresh your work and try again."])
+        }
+        return context
+    }
     private let focusDecisionOutbox = FocusBlockDecisionOutbox.shared
     private let focusPlanOutbox = FocusBlockPlanOutbox.shared
     private let reminderDecisionOutbox = TaskReminderDecisionOutbox.shared
@@ -4976,7 +5029,7 @@ final class CaptureTodayClient: ObservableObject {
                         playbackSourceId: "preview-playback-source"
                     )
                 ),
-                todayReason: "Planned focus · reviewed transcript",
+                todayReason: "Planned focus · session transcript",
                 recurrence: MobileCaptureTodayRecurrence(
                     seriesId: "preview-series",
                     occurrenceKey: "2026-07-20T09:00[America/Denver]",
@@ -5870,7 +5923,10 @@ final class CaptureTodayClient: ObservableObject {
                 "clientRequestId": decision.clientRequestID,
                 "expectedUpdatedAt": decision.expectedAnnotationUpdatedAt,
             ])
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6011,7 +6067,10 @@ final class CaptureTodayClient: ObservableObject {
             ]
             body["expectedUpdatedAt"] = decision.expectedUpdatedAt ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6106,7 +6165,10 @@ final class CaptureTodayClient: ObservableObject {
                 "expectedUpdatedAt": plan.expectedTaskUpdatedAt,
                 "clientRequestId": plan.clientRequestID,
             ])
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: plan.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6200,7 +6262,10 @@ final class CaptureTodayClient: ObservableObject {
                 requestBody["actualMinutes"] = actualMinutes
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6288,7 +6353,10 @@ final class CaptureTodayClient: ObservableObject {
             body["remindAtLocal"] = decision.requestedLocalDateTime ?? NSNull()
             body["expectedReminderUpdatedAt"] = decision.expectedReminderUpdatedAt ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6379,7 +6447,10 @@ final class CaptureTodayClient: ObservableObject {
                 body["expectedTagRevision"] = expectedTagRevision
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureWorkTagMutationResponse.self,
                 from: data,
@@ -7200,7 +7271,8 @@ final class CaptureWorkClient: ObservableObject {
     @discardableResult
     func createTagVocabulary(
         projectID: String,
-        label: String
+        label: String,
+        hexColor: String? = nil
     ) async -> Bool {
         guard !isMutatingTagVocabulary else { return false }
         guard !projectID.hasPrefix("preview-") else {
@@ -7235,6 +7307,11 @@ final class CaptureWorkClient: ObservableObject {
             return false
         }
 
+        let normalizedColor = CaptureTagColor(hex: hexColor)?.hexString
+        guard hexColor == nil || normalizedColor != nil else {
+            tagVocabularyMessage = "Choose a valid tag color."
+            return false
+        }
         isMutatingTagVocabulary = true
         defer { isMutatingTagVocabulary = false }
         errorMessage = nil
@@ -7248,6 +7325,7 @@ final class CaptureWorkClient: ObservableObject {
                 "operation": "CREATE",
                 "projectId": projectID,
                 "label": normalizedLabel,
+                "hexColor": normalizedColor.map { $0 as Any } ?? NSNull(),
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try decodeMobileCaptureResponse(
@@ -7297,7 +7375,8 @@ final class CaptureWorkClient: ObservableObject {
     func changeTagVocabulary(
         tag: MobileCaptureWorkTag,
         operation: String,
-        label: String? = nil
+        label: String? = nil,
+        hexColor: String? = nil
     ) async -> Bool {
         let canonicalOperation = operation.uppercased()
         guard !isMutatingTagVocabulary else { return false }
@@ -7323,7 +7402,9 @@ final class CaptureWorkClient: ObservableObject {
         let normalizedLabel = label?
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ") ?? ""
-        guard ["RENAME", "ARCHIVE", "RESTORE"].contains(canonicalOperation),
+        let normalizedColor = CaptureTagColor(hex: hexColor)?.hexString
+        guard ["RENAME", "ARCHIVE", "RESTORE", "COLOR"].contains(canonicalOperation),
+              canonicalOperation != "COLOR" || hexColor == nil || normalizedColor != nil,
               canonicalOperation != "RENAME" || !normalizedLabel.isEmpty,
               let url = URL(string: "\(baseURL)/api/work/tags") else {
             tagVocabularyMessage = "Choose a valid vocabulary change and name."
@@ -7347,6 +7428,9 @@ final class CaptureWorkClient: ObservableObject {
             if canonicalOperation == "RENAME" {
                 body["label"] = normalizedLabel
             }
+            if canonicalOperation == "COLOR" {
+                body["hexColor"] = normalizedColor.map { $0 as Any } ?? NSNull()
+            }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try decodeMobileCaptureResponse(
@@ -7362,6 +7446,7 @@ final class CaptureWorkClient: ObservableObject {
                   payload.projectId == workspace?.project.id,
                   let savedTag = payload.tag,
                   savedTag.id == tag.id,
+                  canonicalOperation != "COLOR" || savedTag.hexColor == normalizedColor,
                   let receiptID = payload.receiptId,
                   !receiptID.isEmpty else {
                 tagVocabularyMessage = payload.error
@@ -7373,6 +7458,8 @@ final class CaptureWorkClient: ObservableObject {
             }
 
             switch canonicalOperation {
+            case "COLOR":
+                tagVocabularyMessage = "Updated the shared color for #\(savedTag.label)."
             case "RENAME":
                 tagVocabularyMessage = "Renamed to #\(savedTag.label). #\(tag.label) remains an alias, so existing links and older language still resolve."
             case "ARCHIVE":
@@ -7539,7 +7626,8 @@ final class CaptureWorkClient: ObservableObject {
                                 label: "Episode four",
                                 slug: "episode-four"
                             ),
-                        ]
+                        ],
+                        hexColor: "#506b46"
                     ),
                     MobileCaptureWorkTag(
                         id: "preview-proof-listen",
@@ -7583,6 +7671,22 @@ final class CaptureWorkClient: ObservableObject {
         )
         isUsingProtectedCache = false
         errorMessage = nil
+    }
+
+    /// Opens linked work beyond the overview's bounded recent-task list. This
+    /// query uses the same scoped projection without replacing that overview.
+    func task(id: String, projectID: String) async -> MobileCaptureTodayTask? {
+        guard AuthManager.shared.networkActionsAllowed,
+              var components = URLComponents(string: "\(baseURL)/api/mobile/capture/work") else { return nil }
+        components.queryItems = [URLQueryItem(name: "projectId", value: projectID), URLQueryItem(name: "taskId", value: id)]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: URLRequest(url: url))
+            let payload = try JSONDecoder().decode(MobileCaptureWorkResponse.self, from: data)
+            guard (200...299).contains(response.statusCode), payload.ok,
+                  payload.workspace?.project.id == projectID else { return nil }
+            return payload.workspace?.tasks.first { $0.id == id }
+        } catch { return nil }
     }
 
     func load(projectID: String? = nil) async {
@@ -7725,7 +7829,10 @@ final class CaptureWorkClient: ObservableObject {
             request.httpBody = try JSONEncoder().encode(
                 MobileCaptureWorkNoteEditRequest(edit: edit)
             )
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: edit.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureWorkNoteEditResponse.self,
                 from: data,
@@ -8471,7 +8578,7 @@ final class CaptureSessionClient: ObservableObject {
                 "callRoomId": session.callRoomId,
                 "action": normalizedAction,
                 "receiptId": roomStateReceipt.receiptID.uuidString.lowercased(),
-                "occurredAt": ISO8601DateFormatter().string(from: roomStateReceipt.occurredAt),
+                "occurredAt": CaptureDateCoding.string(from: roomStateReceipt.occurredAt),
                 "source": "ios-direct-room-control",
             ]
             if let captureID = roomStateReceipt.captureID {
@@ -8634,7 +8741,7 @@ final class CaptureSessionClient: ObservableObject {
                 "receiptId": receipt.id.uuidString.lowercased(),
                 "captureId": receipt.captureID.uuidString.lowercased(),
                 "sourceType": receipt.sourceType ?? "audio",
-                "occurredAt": ISO8601DateFormatter().string(from: receipt.occurredAt),
+                "occurredAt": CaptureDateCoding.string(from: receipt.occurredAt),
                 "source": "ios-capture-outbox",
             ])
 
@@ -8980,7 +9087,10 @@ final class CaptureSessionClient: ObservableObject {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(MobileQuickEntrySaveRequest(entry: entry))
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: entry.ownerAccountID
+            )
             let payload = try decodeCaptureSessionResponse(
                 MobileQuickEntrySaveResponse.self,
                 from: data,
@@ -9030,7 +9140,10 @@ final class CaptureSessionClient: ObservableObject {
             request.httpMethod = "PATCH"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(MobileSessionNoteEditRequest(edit: edit))
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: edit.ownerAccountID
+            )
             let payload = try decodeCaptureSessionResponse(
                 MobileSessionNoteEditResponse.self,
                 from: data,

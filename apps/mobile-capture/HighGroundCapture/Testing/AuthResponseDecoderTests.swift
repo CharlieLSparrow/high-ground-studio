@@ -46,7 +46,35 @@ enum AuthResponseDecoderTests {
             expectedMessage: "Session expired"
         )
 
-        print("PASS 6 authentication response decoding tests")
+        requestFailuresKeepTheirScope()
+        print("PASS 6 authentication response decoding tests and request connectivity classification")
+    }
+
+    private static func requestFailuresKeepTheirScope() {
+        let disconnected: [URLError.Code] = [
+            .notConnectedToInternet, .internationalRoamingOff, .dataNotAllowed,
+        ]
+        for code in disconnected {
+            expect(AuthRequestConnectivity.requiresOfflineAccess(for: URLError(code)),
+                   "explicit unavailable connectivity enters offline access: \(code)")
+        }
+        let scoped: [URLError.Code] = [
+            .timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost,
+            .dnsLookupFailed, .secureConnectionFailed, .serverCertificateHasBadDate,
+            .serverCertificateUntrusted, .serverCertificateHasUnknownRoot,
+            .serverCertificateNotYetValid, .clientCertificateRejected,
+            .clientCertificateRequired, .cannotLoadFromNetwork, .resourceUnavailable,
+            .badServerResponse, .cancelled, .cannotWriteToFile,
+        ]
+        for code in scoped {
+            expect(!AuthRequestConnectivity.requiresOfflineAccess(for: URLError(code)),
+                   "individual request failure preserves the authenticated workspace: \(code)")
+        }
+        expect(!AuthRequestConnectivity.requiresOfflineAccess(for: CancellationError()),
+               "task cancellation is not lost connectivity")
+        expect(!AuthRequestConnectivity.requiresOfflineAccess(for: NSError(
+            domain: "QuipslySession", code: URLError.notConnectedToInternet.rawValue
+        )), "an unrelated error domain cannot imitate a connectivity failure")
     }
 
     private static func decode(

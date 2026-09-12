@@ -14,11 +14,79 @@ import {
   sessionRecordingShareAudioMixSourceIds,
   sessionRecordingShareProgramClock,
   recordingShareSourcesForTake,
+  recordingShareAttempts,
   sessionRecordingSharePlaybackPlan,
   stableJson,
   transitionSessionRecordingShare,
 } from "./session-recording-share";
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
+
+describe("recording attempts within one Session", () => {
+  const at = (seconds: number) => new Date(Date.parse("2026-09-09T12:00:00Z") + seconds * 1000);
+  const captureId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  const sources = [0, 1, 2, 3].map(n => ({
+    id: `source-${n}`, roomId: "room", participantId: n === 1 ? "client" : "coach", kind: "LOCAL_AUDIO",
+    contentType: "audio/webm", byteSize: 1000, checksum: "a".repeat(64),
+    recordedStartedAt: at([0, 1, 1200, 3600][n]!), recordedStoppedAt: at([1190, 1800, 1800, 3612][n]!),
+    localManifestJson: {captureGroupId: "same-session", captureId: captureId(n), exactBytesVerified: true},
+    participant: {displayName: n === 1 ? "Client" : "Coach"},
+  }));
+  const receipts = sources.map((source, n) => ({
+    captureId: captureId(n), participantId: source.participantId,
+    directive: {id: n === 3 ? "second" : "first", issuedAt: at(n === 3 ? 3600 : 0)},
+  }));
+
+  it("keeps long reconnect segments with their START and separates a later explicit recording", () => {
+    const before = structuredClone(sources);
+    const groups = recordingShareAttempts(sources, receipts);
+    expect(groups.map(group => ({id: group.id, sources: group.sources.map(source => source.id)}))).toEqual([
+      {id: "start:second", sources: ["source-3"]},
+      {id: "start:first", sources: ["source-0", "source-1", "source-2"]},
+    ]);
+    expect(sources).toEqual(before);
+  });
+
+  it("never binds a source to a receipt owned by another participant", () => {
+    const groups = recordingShareAttempts([sources[3]!], [{...receipts[3]!, participantId: "unrelated"}]);
+    expect(groups[0]?.id).toBe("group:same-session");
+  });
+
+  async function read(takeId?: string, role = "coach") {
+    const room = {id: "room", title: "Coaching", captureGroupId: "same-session",
+      booking: {coachUserId: "coach", clientUserId: "client", coachUser: {id: "coach"}, clientUser: {id: "client"}}};
+    const client: any = {
+      callRoom: {findFirst: jest.fn().mockResolvedValueOnce(room).mockResolvedValueOnce(role === "coach" ? room : null)},
+      sessionOutput: {findFirst: jest.fn().mockResolvedValue(null)},
+      recordingAsset: {findMany: jest.fn().mockResolvedValue(sources)},
+      callRecordingEndpointReceipt: {findMany: jest.fn().mockResolvedValue(receipts)},
+      transcriptJob: {findMany: jest.fn().mockResolvedValue([])},
+    };
+    const result = await readSessionRecordingShare(client, {roomId: "room", actor: {id: role, primaryEmail: `${role}@example.test`, isStaff: false}, takeId});
+    return {result, client};
+  }
+
+  it("defaults to the latest attempt on a new private edit, without hours of silence", async () => {
+    const {result, client} = await read();
+    expect(result.available.selectedTakeId).toBe("start:second");
+    expect(result.available.sources.map(source => source.id)).toEqual(["source-3"]);
+    expect(result.available.programDurationSeconds).toBe(12);
+    expect(client.callRecordingEndpointReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {roomId: "room", captureId: {in: sources.map((_, n) => captureId(n))}, state: "STARTED", directive: {roomId: "room", action: "START"}},
+    }));
+  });
+
+  it("lets the coach reopen earlier attempts including their reconnect segments", async () => {
+    expect((await read("start:first")).result.available.sources.map(source => source.id)).toEqual(["source-0", "source-1", "source-2"]);
+    await expect(read("start:another-room")).rejects.toMatchObject({status: 404, code: "RECORDING_ATTEMPT_NOT_FOUND"});
+  });
+
+  it("does not expose private recording attempts to the client", async () => {
+    const {result, client} = await read("start:first", "client");
+    expect(result.available.sources).toEqual([]);
+    expect(result.available.takes).toEqual([]);
+    expect(client.callRecordingEndpointReceipt.findMany).not.toHaveBeenCalled();
+  });
+});
 
 describe("Recording workspace current output selection", () => {
   it.each(["coach", "client"])("keeps the %s on the latest relevant edit", async (role) => {

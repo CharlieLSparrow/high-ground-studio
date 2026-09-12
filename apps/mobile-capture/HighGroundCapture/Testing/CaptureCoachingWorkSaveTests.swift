@@ -9,11 +9,33 @@ enum CaptureCoachingWorkSaveTests {
                 ownerUserID: "client", status: kind == "GOAL" ? "ACTIVE" : "OPEN", targetAt: nil
             )
             let attempt = CaptureCoachingCreateAttempt(requestID: "one-command", original: original)
+            var tagged = original
+            tagged.tags = CaptureTaskTagSelection(tagIDs: ["research"], newTagLabels: ["Writing"])
+            let taggedBody = tagged.createBody(requestID: "tagged-command")
+            let tags = taggedBody["tags"] as? [String: Any]
+            expect(tags?["tagIds"] as? [String] == ["research"], "\(kind) creation retains canonical selections")
+            expect(tags?["newTagLabels"] as? [String] == ["Writing"], "\(kind) creation includes new labels in its single save")
+            let update = tagged.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")
+            expect((update["tags"] as? [String: Any])?["tagIds"] as? [String] == ["research"], "\(kind) edits use the same canonical tags")
+            expect(update["id"] as? String == "saved-item", "updates retain item identity")
+            expect(update["expectedUpdatedAt"] as? String == "saved-revision", "updates retain their revision guard")
+            expect(original.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")["tags"] == nil, "editing text alone does not replace tags")
+            tagged.tags = CaptureTaskTagSelection()
+            let cleared = tagged.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")["tags"] as? [String: Any]
+            expect(cleared?["tagIds"] as? [String] == [], "explicit removal clears tags for \(kind)")
+            if kind == "NOTE" {
+                expect(update["visibility"] as? String == "PRIVATE", "tagging does not widen note visibility")
+                expect(update["ownerUserId"] == nil && update["targetAt"] == nil, "tagging does not turn a note into assigned work")
+            }
             var edited = original
             edited.title = "A clearer first step"
             expect(attempt.body["title"] as? String == original.title, "retry retains submitted content")
             expect(attempt.body["clientRequestId"] as? String == "one-command", "retry identity remains stable")
             expect(attempt.body["kind"] as? String == kind, "kind remains bound to the command")
+            expect(attempt.body["sourceMessageId"] == nil, "manual work does not invent a conversation source")
+            let sourced = CaptureCoachingCreateAttempt(requestID: "message-command", original: original, sourceMessageID: "message-1")
+            expect(sourced.body["sourceMessageId"] as? String == "message-1", "retries retain their exact source message")
+            expect(sourced.body["clientRequestId"] as? String == "message-command", "sourced work uses normal idempotency")
             var latest = original
             latest.body = "A collaborator's additional context"
             let merged = edited.amendment(from: original, to: latest)
@@ -29,13 +51,136 @@ enum CaptureCoachingWorkSaveTests {
                 expect(merged.body["visibility"] as? String == "PRIVATE", "private stays private")
             } else {
                 expect(attempt.body["targetAt"] is NSNull, "no date is JSON null")
+                var dated = original
+                dated.targetAt = "2026-09-10T16:00:00Z"
+                expect(dated.createBody(requestID: "dated-command")["targetAt"] as? String == dated.targetAt,
+                       "\(kind) creation keeps the selected exact date")
+                let datedUpdate = dated.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")
+                expect(datedUpdate["targetAt"] as? String == dated.targetAt,
+                       "\(kind) update keeps the selected exact date")
+                dated.targetAt = nil
+                expect(dated.updateBody(entryID: "saved-item", expectedUpdatedAt: "saved-revision")["targetAt"] is NSNull,
+                       "\(kind) clearing a saved date sends explicit JSON null")
                 latest.status = kind == "TASK" ? "DONE" : "ACHIEVED"
                 let result = edited.amendment(from: original, to: latest)
                 expect(result.body["status"] as? String == latest.status, "collaborator completion survives retry")
                 expect(result.body["targetAt"] is NSNull, "cleared date remains JSON null")
             }
         }
-        print("PASS 32 canonical work creation retry and amendment checks")
+        print("PASS canonical work creation retry, source binding, and amendment checks")
+        expect(CaptureTaskTagSelection().isValid, "empty tags are optional")
+        expect(!CaptureTaskTagSelection(tagIDs: ["one", "one"]).isValid, "duplicate IDs are invalid")
+        expect(!CaptureTaskTagSelection(newTagLabels: [String(repeating: "x", count: 81)]).isValid, "long labels are rejected")
+        expect(!CaptureTaskTagSelection(newTagLabels: ["  "]).isValid, "blank labels are rejected")
+        testScheduleUpdates()
+        testTranscriptDrafts()
+    }
+
+    private static func testTranscriptDrafts() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("quipsly-transcript-drafts-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = CaptureTranscriptWorkDraftStore(directory: directory)
+        let scope = CaptureTranscriptWorkDraftScope(ownerAccountID: "alex", origin: "http://localhost:3012",
+            roomID: "session", segmentID: "passage", providerTextSha256: "source-hash")
+        var drafts = CaptureTranscriptWorkDrafts()
+        for kind in CaptureTranscriptWorkKind.allCases {
+            drafts[kind].start(title: "Source words", body: "Original thought")
+            drafts[kind].title = "My \(kind.rawValue) title"
+            drafts[kind].body = "My own writing"
+            drafts[kind].start(title: "Must not reset my title", body: "Must not reset my writing")
+            expect(drafts[kind].title == "My \(kind.rawValue) title", "reopening \(kind) retains the edited title")
+            expect(drafts[kind].body == "My own writing", "reopening \(kind) retains the body")
+        }
+        drafts.note.noteKind = "SUMMARY"
+        drafts.note.visibility = "PARTICIPANTS"
+        do {
+            let requestID = drafts.task.requestID
+            expect(drafts.task.prepareTaskSave(), "valid task is ready to save")
+            let first = drafts.task.taskSaveAttempt!
+            expect(first.revision == 0, "first save starts at revision zero")
+            expect(drafts.task.prepareTaskSave() && drafts.task.taskSaveAttempt == first, "an exact retry retains its command")
+            try store.save(drafts, for: scope)
+            let relaunched = CaptureTranscriptWorkDraftStore(directory: directory)
+            let restored = try relaunched.load(scope)
+            expect(restored == drafts, "all writing, audience, purpose and request IDs survive a new store instance")
+            drafts = restored
+            drafts.task.title = "Second wording after a lost reply"
+            expect(drafts.task.prepareTaskSave(), "new writing after relaunch is ready")
+            expect(drafts.task.taskSaveAttempt?.revision == 1 && drafts.task.taskSaveAttempt?.original == first.original,
+                   "new wording advances the command but preserves its original")
+            try store.save(drafts, for: scope)
+            drafts = try relaunched.load(scope)
+            drafts.task.body = "Third wording after another lost reply"
+            expect(drafts.task.prepareTaskSave(), "another lost reply still permits editing")
+            expect(drafts.task.taskSaveAttempt?.revision == 2 && drafts.task.requestID == requestID,
+                   "all revisions target the same task")
+            let valid = drafts.task
+            drafts.task.title = String(repeating: "a", count: 501)
+            expect(!drafts.task.prepareTaskSave() && drafts.task.taskSaveAttempt == valid.taskSaveAttempt,
+                   "invalid input cannot poison the original save command or truncate writing")
+            drafts.task = valid
+            let legacyData = try JSONSerialization.data(withJSONObject: ["title": "Old draft", "body": "Writing",
+                "noteKind": "SESSION_NOTE", "visibility": "AUTHOR_PRIVATE", "hasStarted": true, "requestID": "old-request"])
+            let legacy = try JSONDecoder().decode(CaptureTranscriptWorkDraft.self, from: legacyData)
+            expect(legacy.taskSaveAttempt == nil && legacy.body == "Writing", "existing drafts decode without losing writing")
+            for otherScope in [
+                CaptureTranscriptWorkDraftScope(ownerAccountID: "morgan", origin: scope.origin, roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: "https://nest.quipsly.com", roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: scope.origin, roomID: "other-session", segmentID: scope.segmentID, providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: scope.origin, roomID: scope.roomID, segmentID: "other-passage", providerTextSha256: scope.providerTextSha256),
+                CaptureTranscriptWorkDraftScope(ownerAccountID: scope.ownerAccountID, origin: scope.origin, roomID: scope.roomID, segmentID: scope.segmentID, providerTextSha256: "changed-source"),
+            ] {
+                let isolated = try relaunched.load(otherScope)
+                expect(!isolated.note.hasStarted && !isolated.task.hasStarted && !isolated.goal.hasStarted,
+                       "different account, server, session, passage or source cannot restore this writing")
+            }
+            for kind in CaptureTranscriptWorkKind.allCases {
+                let submitted = drafts[kind]
+                drafts[kind].body = "New writing while saving"
+                drafts.acknowledge(submitted, kind: kind)
+                expect(drafts[kind].body == "New writing while saving", "an older acknowledgement cannot discard a new \(kind) draft")
+                let current = drafts[kind]
+                drafts.acknowledge(current, kind: kind)
+                expect(!drafts[kind].hasStarted && drafts[kind].requestID != current.requestID,
+                       "successful \(kind) save clears only the acknowledged draft and renews its request ID")
+            }
+            try store.save(drafts, for: scope)
+            let afterSave = try relaunched.load(scope)
+            expect(afterSave == drafts, "acknowledged drafts do not reappear after relaunch")
+            let file = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)[0]
+            let corrupt = Data("unreadable retained draft".utf8)
+            try corrupt.write(to: file)
+            do {
+                _ = try relaunched.load(scope)
+                fatalError("A corrupt saved draft must not be reported as an empty successful load")
+            } catch {
+                let preserved = try Data(contentsOf: file)
+                expect(preserved == corrupt, "failed reads preserve the original file for recovery")
+            }
+        } catch { fatalError("Transcript draft persistence failed: \(error)") }
+        print("PASS transcript draft seeding, recovery, identity isolation, and acknowledgement checks")
+    }
+
+    private static func testScheduleUpdates() {
+        let start = ISO8601DateFormatter().date(from: "2026-11-01T08:30:00Z")!
+        for notify in [true, false] {
+            let body = MobileCoachingScheduleChange(bookingID: "retained-booking", scheduledStart: start,
+                durationMinutes: 60, timezone: "America/Denver", notifyClient: notify).body
+            expect(body["action"] as? String == "reschedule-booking", "native uses the canonical reschedule endpoint")
+            expect(body["bookingId"] as? String == "retained-booking", "reschedule retains booking identity")
+            expect(body["scheduledStart"] as? String == "2026-11-01T08:30:00Z", "ambiguous daylight-saving hours retain their exact instant")
+            expect(body["notifyClient"] as? Bool == notify, "the explicit notification choice reaches the server")
+            expect(body["timezone"] as? String == "America/Denver", "time zone is explicit")
+        }
+        for (status, label) in [("PLANNED", "queued"), ("SENT", "delivery pending"),
+            ("DELIVERED", "delivered"), ("FAILED", "retry"), ("BOUNCED", "could not be delivered")] {
+            let data = Data("{\"id\":\"retained-update\",\"status\":\"\(status)\"}".utf8)
+            let notice = try! JSONDecoder().decode(MobileCoachingScheduleNotification.self, from: data)
+            expect(notice.label.contains(label), "delivery state must not overstate email success")
+        }
+        let local = MobileCoachingScheduleNotification(id: "local", status: "CANCELED", errorCode: "LOCAL_TEST_RECIPIENT")
+        expect(local.label.contains("without sending"), "synthetic retention is not delivery")
+        print("PASS 16 scheduling command and notification projection checks")
     }
 
     private static func expect(_ condition: @autoclosure () -> Bool, _ message: String) {

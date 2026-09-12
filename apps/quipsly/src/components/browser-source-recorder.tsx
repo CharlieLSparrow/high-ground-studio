@@ -291,7 +291,8 @@ export function BrowserSourceRecorder({
   stopRequestVersion = 0,
   onSourceLockChange,
   onGuardianEvidenceChange,
-  onPreparationStateChange,
+  onRecordingConsentChange,
+  onOpenDeviceSettings,
 }: {
   callRoomId: string;
   captureGroupId: string;
@@ -311,10 +312,11 @@ export function BrowserSourceRecorder({
   onGuardianEvidenceChange?: (
     evidence: BrowserRetainedSourceGuardianEvidence,
   ) => void;
-  onPreparationStateChange?: (state: {
-    participantReady: boolean;
-    everyoneReady: boolean;
+  onRecordingConsentChange?: (state: {
+    participantConsentGranted: boolean;
+    everyoneConsentGranted: boolean;
   }) => void;
+  onOpenDeviceSettings?: () => void;
 }) {
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
   const [message, setMessage] = useState("Getting recording ready…");
@@ -367,6 +369,7 @@ export function BrowserSourceRecorder({
   const [roomStatus, setRoomStatus] = useState<string | null>(null);
   const [canControlRoom, setCanControlRoom] = useState(false);
   const [vaultAvailable, setVaultAvailable] = useState(false);
+  const [vaultChecked, setVaultChecked] = useState(false);
   const [vaultPersistent, setVaultPersistent] = useState(false);
   const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
   const [usageBytes, setUsageBytes] = useState<number | null>(null);
@@ -711,6 +714,7 @@ export function BrowserSourceRecorder({
         const savedChoiceCoversDefault =
           sessionKind === "episode" ? savedVideoConsent : savedAudioConsent;
         setVaultAvailable(vault.available);
+        setVaultChecked(true);
         setVaultPersistent(vault.persistent);
         setQuotaBytes(vault.quotaBytes);
         setUsageBytes(vault.usageBytes);
@@ -801,11 +805,11 @@ export function BrowserSourceRecorder({
   const waitingForParticipantConsent =
     myConsentCoversSource && !consentReady;
   useEffect(() => {
-    onPreparationStateChange?.({
-      participantReady: myConsentCoversSource,
-      everyoneReady: consentReady,
+    onRecordingConsentChange?.({
+      participantConsentGranted: myConsentCoversSource,
+      everyoneConsentGranted: consentReady,
     });
-  }, [consentReady, myConsentCoversSource, onPreparationStateChange]);
+  }, [consentReady, myConsentCoversSource, onRecordingConsentChange]);
   const readiness = useMemo(
     () =>
       browserSourceCanBegin({
@@ -941,7 +945,7 @@ export function BrowserSourceRecorder({
       setStatus("ready");
       setMessage(
         session.allRegisteredParticipantConsentGranted === true
-          ? "Everyone is ready to record."
+          ? "Everyone has allowed recording."
           : "Your choice is saved. Waiting for the other participant.",
       );
     } catch (error) {
@@ -2361,6 +2365,28 @@ export function BrowserSourceRecorder({
             updatedAt: stoppedAt,
           };
           await updateLedger(current);
+          const activeDirective = recordingDirectiveRef.current;
+          if (activeDirective?.captureGroupId === current.captureGroupId && participantId) {
+            // The file is closed, hashed, and journaled. Report that local stop
+            // for START (device stop) and STOP (host stop) alike. Delivery is
+            // queued durably; a slow status request must not delay the upload.
+            void acknowledgeBrowserRecordingDirective({
+              ownerParticipantId: participantId,
+              roomId: callRoomId,
+              directiveId: activeDirective.id,
+              state: "STOPPED",
+              captureId,
+              detail: "This endpoint saved its local recording; upload continues independently.",
+            }).then(async (result) => {
+              directiveHandlingRef.current.set(activeDirective.id, "STOPPED");
+              setPendingCoordinationReceiptCount(result.pendingCount);
+              setCoordinationReceiptError(result.latestError);
+              if (result.pendingCount === 0) {
+                const refreshed = await readBrowserRecordingDirective(callRoomId);
+                if (refreshed?.id === recordingDirectiveRef.current?.id) setRecordingDirective(refreshed);
+              }
+            }).catch(() => undefined);
+          }
           try {
             current = await repairStopReceipt(current);
           } catch (error) {
@@ -2368,19 +2394,6 @@ export function BrowserSourceRecorder({
             // exact STOP request remains in this durable ledger and retries
             // independently while upload preserves the participant source.
             current = await rememberStopReceiptFailure(current, error);
-          }
-          const activeDirective = recordingDirectiveRef.current;
-          if (activeDirective?.action === "START" && participantId) {
-            await acknowledgeBrowserRecordingDirective({
-              ownerParticipantId: participantId,
-              roomId: callRoomId,
-              directiveId: activeDirective.id,
-              state: "STOPPED",
-              captureId,
-              detail:
-                "This endpoint stopped its retained local source safely; upload recovery remains independent.",
-            }).catch(() => undefined);
-            directiveHandlingRef.current.set(activeDirective.id, "STOPPED");
           }
           setStatus("ready");
           setMessage(
@@ -2808,6 +2821,24 @@ export function BrowserSourceRecorder({
   const latestRecordingExit = latestRecordingReceipt
     ? browserSourceReceiptExitStatus(latestRecordingReceipt, exitSafety)
     : null;
+  const recorderStatusLabel = conversationEnded
+    ? exitSafety.label
+    : status === "ready" && !activeLedger && !recoveryRows.length && !retainedReadiness.ok
+      ? retainedReadiness.blocker === "my-consent" ? "Recording off"
+        : retainedReadiness.blocker === "participant-consent" ? "Waiting for others"
+        : "Needs attention"
+      : browserRetainedRecorderStatusLabel({
+        status,
+        elapsedSeconds,
+        hasProtectedSource: Boolean(activeLedger || recoveryRows.length),
+      });
+  // Storage being available is only one prerequisite, not proof that the
+  // selected source can record. Reuse the same status as the Record control.
+  const recordingHealthLabel = !vaultChecked
+    ? status === "error" ? "Not checked" : "Checking…"
+    : !vaultAvailable || preflightStorageIssue || operationalIssue
+      ? "Needs attention"
+      : recorderStatusLabel;
 
   return (
     <section
@@ -2830,16 +2861,16 @@ export function BrowserSourceRecorder({
           >
             {conversationEnded
               ? exitSafety.label
-              : sessionKind === "coaching"
-                ? "Record this coaching Session"
-                : "Record the selected studio source"}
+              : !canControlRoom
+                ? "Your recording"
+                : "Record session"}
           </h3>
           <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
             {conversationEnded
               ? exitSafety.detail
-              : sessionKind === "coaching"
-                ? "Joining never starts recording. Once everyone agrees, Record starts the high-quality copy on this device."
-                : "Joining never starts recording. Record saves a high-quality copy on this device for the shared timeline."}
+              : !canControlRoom
+                ? `Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording. Once you allow it, this device saves and uploads your high-quality copy when recording starts.`
+                : "Joining never starts recording. Once everyone agrees, select Record to start the high-quality recordings."}
           </p>
           <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
             <summary className="cursor-pointer">
@@ -2853,19 +2884,9 @@ export function BrowserSourceRecorder({
           </details>
         </div>
         <span
-          className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
+          className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : recorderStatusLabel === "Needs attention" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
         >
-          {conversationEnded
-            ? exitSafety.label
-            : status === "ready" && !activeLedger && !recoveryRows.length && !retainedReadiness.ok
-              ? retainedReadiness.blocker === "my-consent" ? "Recording off"
-                : retainedReadiness.blocker === "participant-consent" ? "Waiting for others"
-                : "Needs attention"
-              : browserRetainedRecorderStatusLabel({
-                status,
-                elapsedSeconds,
-                hasProtectedSource: Boolean(activeLedger || recoveryRows.length),
-              })}
+          {recorderStatusLabel}
         </span>
       </div>
 
@@ -3002,7 +3023,7 @@ export function BrowserSourceRecorder({
               ) : null}
               <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
                 {consentReady
-                  ? "Everyone is ready to record."
+                  ? "Everyone has allowed recording."
                   : consentId
                     ? "Your choice is saved. Waiting for the other participant."
                     : "Not agreed yet."}
@@ -3057,18 +3078,19 @@ export function BrowserSourceRecorder({
               {exitSafety.detail}
             </p>
           </section>
-        ) : (
+        ) : !activeLedger && !recoveryRows.length ? (
           <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
-            Next, check your microphone and camera, then join the call. Joining
-            does not start recording; the Record button appears after you join.
+            {canControlRoom
+              ? "Check your microphone and camera, then join the call. The Record button appears after you join."
+              : `Check your microphone and camera, then join the call. Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording once everyone agrees.`}
           </p>
-        )
+        ) : null
       ) : null}
 
       <div
-        className={conversationConnected ? "" : "hidden"}
-        aria-hidden={!conversationConnected}
+        hidden={!conversationConnected && !conversationEnded && !activeLedger && !recoveryRows.length}
       >
+        <div hidden={!conversationConnected}>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {["ENDED", "CANCELED", "FAILED"].includes(
             roomStatus?.toUpperCase() ?? "",
@@ -3136,7 +3158,7 @@ export function BrowserSourceRecorder({
               aria-label="Waiting for recording consent"
               aria-live="polite"
             >
-              Your choice is saved. Recording starts when everyone is ready.
+              Your choice is saved. Waiting for everyone to allow recording.
             </span>
           ) : canControlRoom ? (
             <button
@@ -3195,15 +3217,21 @@ export function BrowserSourceRecorder({
             {directiveError}
           </p>
         ) : null}
-        {status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? (
+        {vaultChecked && status !== "checking" && status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? (
           <p
             data-testid="recording-readiness-message"
             role="status"
             className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950"
           >
             {retainedReadiness.reason}
+            {onOpenDeviceSettings && ["microphone", "camera"].includes(retainedReadiness.blocker ?? "") ? (
+              <button type="button" onClick={onOpenDeviceSettings} className="ml-2 min-h-11 rounded-full border border-amber-300 px-3 font-bold underline underline-offset-2">
+                Choose devices
+              </button>
+            ) : null}
           </p>
         ) : null}
+        </div>
         {pendingCoordinationReceiptCount > 0 || coordinationReceiptError ? (
           <p
             role="status"
@@ -3292,24 +3320,27 @@ export function BrowserSourceRecorder({
         <details
           className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]"
           open={
-            !vaultAvailable ||
+            (vaultChecked && !vaultAvailable) ||
             Boolean(preflightStorageIssue) ||
             Boolean(operationalIssue)
           }
         >
           <summary className="cursor-pointer">
             Recording health ·{" "}
-            {vaultAvailable && !preflightStorageIssue && !operationalIssue
-              ? "Ready"
-              : "Needs attention"}
+            {recordingHealthLabel}
           </summary>
-          <p className="mt-2">
+          {vaultChecked ? <p className="mt-2">
             On-device protection {vaultAvailable ? "ready" : "unavailable"} ·{" "}
             {vaultPersistent
               ? "persistent storage granted"
               : "browser-managed retention"}{" "}
             · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}
-          </p>
+          </p> : <p className="mt-2">Recording setup has not finished yet.</p>}
+          {operationalIssue || preflightStorageIssue ? <p
+            role="status"
+            data-testid="recording-health-issue"
+            className="mt-2 text-amber-950"
+          >{(operationalIssue ?? preflightStorageIssue)?.detail}</p> : null}
           {operationalIssue?.technicalDetail ? (
             <p
               className="mt-2 break-words font-mono font-medium"

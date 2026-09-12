@@ -40,6 +40,57 @@ function isoSample(overrides: Record<string, unknown> = {}) {
 }
 
 describe("capture source alignment proposal", () => {
+  it("does not claim millisecond alignment from old whole-second timestamps", () => {
+    const proposal = buildCaptureSourceAlignmentProposal({
+      sourceProfile: { schemaVersion: 1, monotonicStartedNanoseconds: "1500000000", clockSamples: [isoSample({
+        deviceWallSentAt: "2026-07-27T18:00:00Z", deviceWallReceivedAt: "2026-07-27T18:00:00Z",
+        serverReceivedAt: "2026-07-27T18:00:00Z", serverSentAt: "2026-07-27T18:00:00Z",
+        uncertaintyMilliseconds: 0.1,
+      })] },
+      callRoomId: "room-1", captureId: "capture-1", captureGroupId: "group-1", actorUserId: "user-1",
+    });
+    expect(proposal.sourceClockEvidence).toBe("lowest-rtt-monotonic-projection");
+    expect(proposal.uncertaintyMilliseconds).toBeGreaterThanOrEqual(1000);
+  });
+  it("matches Foundation uppercase UUIDs to canonical capture groups without conflating other IDs", () => {
+    const group = "eefbfdb6-e0d2-43f3-8495-9ac26c2462d3";
+    const build = (expected: string, sampled: string) => buildCaptureSourceAlignmentProposal({
+      sourceProfile: { schemaVersion: 1, monotonicStartedNanoseconds: "1500000000", clockSamples: [isoSample({ captureGroupId: sampled })] },
+      callRoomId: "room-1", captureId: "capture-1", captureGroupId: expected,
+      actorUserId: "user-1", startReceiptId: "receipt-1", startReceipt: receipt,
+    });
+    expect(build(group, group.toUpperCase()).sourceClockEvidence).toBe("lowest-rtt-monotonic-projection");
+    expect(build(group.toUpperCase(), group).captureGroupId).toBe(group);
+    expect(build("group-A", "group-a").sourceClockEvidence).toBe("clock-samples-invalid");
+    expect(build(group, "eefbfdb6-e0d2-43f3-8495-9ac26c2462d4").sourceClockEvidence).toBe("clock-samples-invalid");
+  });
+  it("prefers precise timestamps over a faster sample whose precision was discarded", () => {
+    const proposal = buildCaptureSourceAlignmentProposal({
+      sourceProfile: {
+        schemaVersion: 1,
+        monotonicStartedNanoseconds: "1500000000",
+        clockSamples: [
+          isoSample({
+            sampleId: "fast-but-rounded",
+            deviceWallSentAt: "2026-07-27T18:00:00Z",
+            deviceWallReceivedAt: "2026-07-27T18:00:00Z",
+            serverReceivedAt: "2026-07-27T18:00:00Z",
+            serverSentAt: "2026-07-27T18:00:00Z",
+            deviceMonotonicReceivedNanoseconds: "1001000000",
+            networkRoundTripMilliseconds: 1,
+            uncertaintyMilliseconds: 0.5,
+          }),
+          isoSample({ sampleId: "precise" }),
+        ],
+      },
+      callRoomId: "room-1",
+      captureId: "capture-1",
+      captureGroupId: "group-1",
+      actorUserId: "user-1",
+    });
+    expect(proposal.selectedClockSample?.sampleId).toBe("precise");
+    expect(proposal.uncertaintyMilliseconds).toBe(102);
+  });
   it("selects the lowest-RTT sample and projects monotonic source time onto server time", () => {
     const proposal = buildCaptureSourceAlignmentProposal({
       sourceProfile: {

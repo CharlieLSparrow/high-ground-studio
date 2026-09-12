@@ -74,6 +74,7 @@ describe("removed Session participant provider reconciliation", () => {
       "https://project.livekit.cloud",
       "key",
       "secret",
+      { requestTimeout: 5, failover: false },
     );
     expect(removeParticipant.mock.calls.map((call) => call[1])).toEqual([
       "participant-1:ios-two",

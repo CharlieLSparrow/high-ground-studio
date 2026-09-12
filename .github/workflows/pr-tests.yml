@@ -20,7 +20,7 @@ permissions:
 jobs:
   test:
     name: Run Quipsly Validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: pgvector/pgvector:pg15
@@ -61,6 +61,20 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
+      - name: Check release shell syntax before dependency installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in \
+            scripts/release/materialize-release-context.sh \
+            scripts/release/materialize-release-context.test.sh \
+            scripts/release/hgo-web-build-image.sh \
+            scripts/release/quipsly-deploy-preview.sh \
+            scripts/release/quipsly-promote-preview.sh \
+            scripts/release/quipsly-hotfix-deploy.sh; do
+            bash -n "$script"
+          done
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -72,6 +86,7 @@ jobs:
           node --test scripts/ci/audit-repository-contract.test.mjs
           node --test scripts/ci/pr-contract-lane.test.mjs
           node --test scripts/ci/verify-required-jest-results.test.mjs
+          node --test scripts/sync-prisma-pnpm-clients.test.mjs
           node scripts/ci/audit-repository-contract.mjs
           node --test scripts/ci/audit-tracked-artifacts.test.mjs
           node scripts/ci/audit-tracked-artifacts.mjs
@@ -105,6 +120,17 @@ jobs:
             --head HEAD \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Install and verify media test tools
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true' || steps.changes.outputs.media_processor == 'true'
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+          ffmpeg -version
+          ffprobe -version
+
       - name: Install dependencies
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true' || steps.changes.outputs.media_verifier == 'true' || steps.changes.outputs.media_processor == 'true' || steps.changes.outputs.transcript_worker == 'true'
         run: pnpm install --frozen-lockfile
@@ -116,6 +142,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/quipsly_ci
           QUIPSLY_LOCAL_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/quipsly_ci
           QUIPSLY_LOCAL_DB_SMOKE: '1'
+          QUIPSLY_RECURRENCE_DB_SMOKE: '1'
         run: |
           set -o pipefail
           pnpm exec prisma migrate deploy 2>&1 | tee "${RUNNER_TEMP}/quipsly-db-migrations.log"
@@ -126,11 +153,22 @@ jobs:
             src/lib/server/canonical-document-note-edit.integration.test.ts
             src/lib/server/nest-project-follow-through.integration.test.ts
             src/app/api/nest-chat/route.integration.test.ts
+            src/lib/server/nest-conversation-task.integration.test.ts
             src/lib/server/quipsly-core.integration.test.ts
             src/lib/server/coaching-engagement.integration.test.ts
             src/app/api/coaching/runway/route.integration.test.ts
             src/lib/server/session-access.integration.test.ts
+            src/lib/server/session-recording-attempts.integration.test.ts
+            src/lib/server/recording-sound-analysis.integration.test.ts
             src/lib/server/session-work.integration.test.ts
+            src/lib/server/workspace-search.integration.test.ts
+            'src/app/(app)/operating-shell.integration.test.ts'
+            src/lib/server/session-transcript-analysis-job.integration.test.ts
+            src/lib/server/capture-transcript-follow-through-worker.integration.test.ts
+            src/lib/server/work-queue-task-access.integration.test.ts
+            src/lib/server/shared-goal-tags.integration.test.ts
+            src/lib/server/task-recurrence.integration.test.ts
+            'src/app/(app)/work/creation.integration.test.ts'
             src/app/api/mobile/capture/transcripts/packet/transcript-work.integration.test.ts
             'src/app/api/coaching/engagements/[engagementId]/work/route.integration.test.ts'
           )
@@ -157,7 +195,7 @@ jobs:
         env:
           QUIPSLY_LOCAL_DB_SMOKE: '0'
         run: |
-          node --test apps/quipsly/scripts/typescript-config.test.mjs
+          node --test apps/quipsly/scripts/typescript-config.test.mjs apps/quipsly/scripts/next-config.test.mjs
           set -o pipefail
           pnpm --filter quipsly --fail-if-no-match test --maxWorkers=2 --json --outputFile="${RUNNER_TEMP}/quipsly-jest-results.json" 2>&1 | tee "${RUNNER_TEMP}/quipsly-jest.log"
 
@@ -197,6 +235,7 @@ jobs:
           pnpm --filter @high-ground/quipsly-media-processing --fail-if-no-match typecheck
           pnpm quipsly:media-processor:build
           pnpm quipsly:media-processor:test
+          node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test packages/quipsly-media-processing/src/local-media-job-storage.test.ts packages/quipsly-media-processing/src/session-audio-audition.test.ts apps/quipsly-media-processor/src/session-audio-audition-worker.test.ts apps/quipsly-media-processor/src/session-audio-audition-ffmpeg.test.ts
 
       - name: Build and fault-test Quipsly transcript worker
         if: steps.changes.outputs.transcript_worker == 'true'
@@ -212,6 +251,10 @@ jobs:
           set -o pipefail
           pnpm quipsly:contracts:test 2>&1 | tee "${RUNNER_TEMP}/quipsly-contracts.log"
 
+      - name: Test local transcription against decoded audio
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/dev/quipsly-local-transcript-worker.test.mjs
+
       - name: Preserve contract test results
         if: always() && (steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -220,6 +263,11 @@ jobs:
           path: ${{ runner.temp }}/quipsly-contracts.log
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Test CI and coaching release-gate behavior
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: |
+          node --test scripts/ci/pr-contract-lane.test.mjs scripts/ci/verify-required-jest-results.test.mjs scripts/hgo-quipsly-coaching-handoff-static-smoke.test.mjs
 
       - name: Run source and production-build release gate
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'

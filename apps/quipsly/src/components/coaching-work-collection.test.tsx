@@ -57,3 +57,34 @@ it("allows completing a task from the list without opening its editor", () => {
   rerender(<CoachingWorkCollection entries={[task]} selectedId={null} onSelect={select} onToggleTask={toggle} busyIds={new Set([task.id])}>{null}</CoachingWorkCollection>);
   expect(screen.getByRole("button", {name: `Reopen task: ${task.title}`})).toBeDisabled();
 });
+
+it("retains authorized server results that match a member email rather than the displayed name", () => {
+  const search = jest.fn();
+  const more = jest.fn();
+  render(<CoachingWorkCollection entries={[note]} selectedId={null} onSelect={jest.fn()}
+    search="riley@example.test" onSearch={search} hasMore onLoadMore={more}>{null}</CoachingWorkCollection>);
+  expect(screen.getByRole("button", {name: `Open note: ${note.title}`})).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "older reflection"}});
+  expect(search).toHaveBeenCalledWith("older reflection");
+  fireEvent.click(screen.getByRole("button", {name: "Show more work"}));
+  expect(more).toHaveBeenCalledTimes(1);
+});
+
+it("shows shared tag colors and searches their names without nesting links inside item buttons", () => {
+  render(<CoachingWorkCollection entries={[note, {...task, tags: [{id: "research", label: "Research", hexColor: "#23543a", isActive: true}]}]}
+    selectedId={null} onSelect={jest.fn()}>{null}</CoachingWorkCollection>);
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "Research"}});
+  expect(screen.getByRole("button", {name: `Open task: ${task.title}`})).toBeVisible();
+  expect(screen.queryByRole("button", {name: `Open note: ${note.title}`})).not.toBeInTheDocument();
+  expect(screen.getByText("#Research")).toHaveStyle({backgroundColor: "#23543a", color: "#ffffff"});
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
+it("explains an empty tag result and provides a direct way back", () => {
+  const clear = jest.fn();
+  render(<CoachingWorkCollection entries={[]} selectedId={null} onSelect={jest.fn()}
+    tagFilter={{id: "research", label: "Research", hexColor: "#23543a", isActive: true}} onTagFilter={clear}>{null}</CoachingWorkCollection>);
+  expect(screen.getByRole("status")).toHaveTextContent("No matching work. Try another search or clear the tag filter.");
+  fireEvent.click(screen.getByRole("button", {name: "Clear filter"}));
+  expect(clear).toHaveBeenCalledWith(null);
+});

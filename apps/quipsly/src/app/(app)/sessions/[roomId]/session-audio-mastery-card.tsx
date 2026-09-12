@@ -1,5 +1,7 @@
 "use client";
 
+import { useRecordingToolsActive } from "./session-recordings-workspace";
+
 import { LoaderCircle, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
@@ -27,6 +29,14 @@ async function parseStatus(response: Response) {
 }
 
 export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMasteryCoordinates }) {
+  // A different source or access level must not inherit the previous source's
+  // playback, pending requests, or automatic-processing state.
+  return <SessionAudioMasterySourceCard key={`${coordinates.projectId}:${coordinates.assetId}:${coordinates.sourceId}:${coordinates.canManage}`} coordinates={coordinates} />;
+}
+
+function SessionAudioMasterySourceCard({ coordinates }: { coordinates: AudioMasteryCoordinates }) {
+  const active = useRecordingToolsActive();
+  const canManage = coordinates.canManage === true;
   const [status, setStatus] = useState<MasteryStatus | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -46,6 +56,11 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
   }, [coordinates.assetId, coordinates.projectId, coordinates.projectSlug]);
 
   const operate = useCallback(async (action: "queue" | "reconcile") => {
+    if (!canManage) {
+      const next = await parseStatus(await fetch(statusUrl()));
+      setStatus(next);
+      return next;
+    }
     const response = await fetch("/api/media-vault/audio-mastery", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -61,14 +76,16 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
     const next = await parseStatus(response);
     setStatus(next);
     return next;
-  }, [coordinates]);
+  }, [canManage, coordinates, statusUrl]);
 
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     setChecking(true);
     fetch(statusUrl(), { signal: controller.signal })
       .then(parseStatus)
       .then((next) => {
+        if (controller.signal.aborted) return;
         setStatus(next);
         setNotice(null);
         setRetryAvailable(false);
@@ -81,17 +98,17 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
         if (!controller.signal.aborted) setChecking(false);
       });
     return () => controller.abort();
-  }, [statusUrl]);
+  }, [active, statusUrl]);
 
   useEffect(() => {
-    if (!status || !["queued", "processing", "output-ready"].includes(status.status) || busy) return;
+    if (!active || !status || !["queued", "processing", "output-ready"].includes(status.status) || busy) return;
     const timer = window.setTimeout(() => {
       operate("reconcile").catch((error) => {
         setNotice(error instanceof Error ? error.message : "Audio improvement is still processing.");
       });
     }, 2_500);
     return () => window.clearTimeout(timer);
-  }, [busy, operate, status]);
+  }, [active, busy, operate, status]);
 
   const improve = useCallback(async (options?: { automatic?: boolean }) => {
     if (operationInFlight.current) return;
@@ -153,10 +170,10 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
   }, [coordinates, status?.jobId]);
 
   useEffect(() => {
-    if (checking || status?.status !== "not-queued" || busy || automaticAttempted.current) return;
+    if (!active || !canManage || checking || status?.status !== "not-queued" || busy || automaticAttempted.current) return;
     automaticAttempted.current = true;
     void improve({ automatic: true });
-  }, [busy, checking, improve, status?.status]);
+  }, [active, busy, canManage, checking, improve, status?.status]);
 
   const working = status && ["queued", "processing", "output-ready"].includes(status.status);
   const failed = status?.status === "failed" || status?.status === "blocked" || retryAvailable;
@@ -189,7 +206,7 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
           ? "Audio is balanced"
           : failed
             ? "Audio check needs attention"
-            : "Audio check starting";
+            : canManage ? "Audio check starting" : "Original audio";
 
   return (
     <section className="mt-3 rounded-xl border border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-white p-4" aria-label="Audio improvement">
@@ -226,7 +243,7 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
           diagnosis={audition.diagnosis}
           review={audition.review}
           isReviewing={reviewing}
-          onReview={reviewImprovement}
+          onReview={canManage ? reviewImprovement : undefined}
           presentation="session"
         />
       ) : improvedUrl ? (
@@ -251,7 +268,7 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
         <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-black text-emerald-900">
           This recording already meets Quipsly&apos;s spoken-word loudness target, so no extra copy was needed.
         </p>
-      ) : (
+      ) : canManage ? (
         <button
           type="button"
           onClick={() => void improve()}
@@ -264,7 +281,7 @@ export function SessionAudioMasteryCard({ coordinates }: { coordinates: AudioMas
             <><SlidersHorizontal className="mr-2 h-4 w-4" aria-hidden="true" /> {failed ? "Try again" : "Check audio now"}</>
           )}
         </button>
-      )}
+      ) : <p className="mt-3 text-xs font-semibold">The original recording is available to listen to. An improved copy will appear here when ready.</p>}
 
       {notice ? <p role="status" className={`mt-3 text-xs font-bold leading-5 ${failed ? "text-rose-800" : "text-fuchsia-900"}`}>{notice}</p> : null}
       {failed && status?.error ? (

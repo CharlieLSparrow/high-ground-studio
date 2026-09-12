@@ -45,9 +45,38 @@ function response(value: unknown) {
 }
 
 describe("SessionRecordingShareCard", () => {
+  const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  const scrollIntoView = jest.fn();
   beforeEach(() => {
     jest.restoreAllMocks();
     Reflect.deleteProperty(global, "fetch");
+    // jsdom has no layout engine. Model this browser method and assert its
+    // target; whether scrolling feels right still needs browser workflow proof.
+    scrollIntoView.mockReset();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+  });
+  afterEach(() => {
+    if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+    else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  });
+
+  it("switches recording attempts without combining their sources or gaps", async () => {
+    const takes = [{id: "start:latest", startedAt: "2026-09-09T12:00:00Z", sourceCount: 1},
+      {id: "start:earlier", startedAt: "2026-09-09T11:00:00Z", sourceCount: 1}];
+    const latest = {...snapshot, available: {...snapshot.available, takes, selectedTakeId: "start:latest"}};
+    const earlier = {...snapshot, available: {...snapshot.available, takes, selectedTakeId: "start:earlier", programDurationSeconds: 20,
+      sources: [{...snapshot.available.sources[0]!, id: "earlier-source", stoppedAt: "2026-08-22T12:00:20.000Z"}], transcriptSegments: []}};
+    const fetchMock = jest.fn(async (url: string) => response(url.includes("start%3Aearlier") ? earlier : latest));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const selector = await screen.findByRole("combobox", {name: /Recording attempt/});
+    expect(selector).toHaveValue("start:latest");
+    await userEvent.selectOptions(selector, "start:earlier");
+    await waitFor(() => expect(selector).toHaveValue("start:earlier"));
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("20");
+    expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/sessions/session_room_0001/recording-share?takeId=start%3Aearlier", expect.anything());
   });
 
   it("shows loading rather than a permission failure while the workspace is being read", () => {
@@ -55,6 +84,28 @@ describe("SessionRecordingShareCard", () => {
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading recording tools");
     expect(screen.queryByText(/unavailable|recipient boundary/i)).not.toBeInTheDocument();
+  });
+
+  it("does not keep a queued notice after the prepared edit is ready to play and share", async () => {
+    let prepared = false;
+    const ready = { ...snapshot, output: {
+      id: "private-edit-1", status: "DRAFT", title: "First coaching session recording", revision: 2,
+      contentSha256: "d".repeat(64), recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "a".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/private-edit-1",
+      body: { edit: { startSeconds: 0, endSeconds: 30 } },
+    } };
+    const requests: string[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") { prepared = true; requests.push(JSON.parse(String(init.body)).action); }
+      return response(prepared ? ready : snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create private preview" }));
+    expect(await screen.findByLabelText("Private recording preview")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
+    expect(screen.queryByText(/preview queued/i)).not.toBeInTheDocument();
+    expect(requests).toEqual(["PREPARE"]);
   });
 
   it("recovers a failed read through Try again without mutating or sharing the recording", async () => {
@@ -78,6 +129,89 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.queryByText(/A draft stays coach-only/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Only you can see the preview/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes recording availability without replacing an unfinished trim or text cut", async () => {
+    const requests: Record<string, unknown>[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const start = await screen.findByRole("slider", { name: "Recording start" });
+    fireEvent.change(start, { target: { value: "2" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Recording end" }), { target: { value: "28" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: `Keep in recording: ${transcriptSegment.text}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(start).toHaveValue("2");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("28");
+    expect(screen.getByRole("checkbox", { name: `Restore to recording: ${transcriptSegment.text}` })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({ startSeconds: 2, endSeconds: 28,
+      excludedTranscriptSegments: [expect.objectContaining({ segmentId: transcriptSegment.segmentId })] }));
+  });
+
+  it("reuses an exact failed preparation request but gives changed edits a new identity", async () => {
+    const requests: Record<string, unknown>[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") {
+        requests.push(JSON.parse(String(init.body)));
+        throw new Error(`Preview connection interrupted ${requests.length}`);
+      }
+      return response(snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const prepare = await screen.findByRole("button", { name: "Create private preview" });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await userEvent.click(prepare);
+      await screen.findByText(`Preview connection interrupted ${attempt}`);
+    }
+    fireEvent.change(screen.getByRole("slider", { name: "Recording start" }), { target: { value: "2" } });
+    await userEvent.click(prepare);
+    await screen.findByText("Preview connection interrupted 3");
+    expect(requests[0].clientRequestId).toBe(requests[1].clientRequestId);
+    expect(requests[2].clientRequestId).not.toBe(requests[1].clientRequestId);
+    expect(requests[2].startSeconds).toBe(2);
+  });
+
+  it("updates untouched defaults as participant recordings become available", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response({ ...snapshot,
+      available: { ...snapshot.available, programDurationSeconds: 0, sources: [], transcriptSegments: [] },
+      readiness: { ...snapshot.readiness, hasVerifiedParticipantSources: false },
+    })).mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByRole("button", { name: "Create private preview" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create private preview" })).toBeEnabled());
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("30");
+  });
+
+  it("removes cached recording tools after an explicit access denial", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response(snapshot))
+      .mockResolvedValue({ ok: false, status: 403, json: async () => ({ok: false, error: "Access removed"}) });
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", { name: "Create private preview" });
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText("Access removed");
+    expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
+    expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+  });
+
+  it("can recover when a previously selected recording attempt is no longer available", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response({...snapshot,
+      available: {...snapshot.available, selectedTakeId: "start:removed"},
+    })).mockResolvedValueOnce({ok: false, status: 404, json: async () => ({ok: false, error: "Recording attempt unavailable"})})
+      .mockResolvedValueOnce(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", {name: "Create private preview"});
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    await screen.findByText("Recording attempt unavailable");
+    await userEvent.click(screen.getByRole("button", {name: "Try again"}));
+    await screen.findByRole("button", {name: "Create private preview"});
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain("takeId=start%3Aremoved");
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toBe("/api/sessions/session_room_0001/recording-share");
   });
 
   it("shows automatic sync quality without making it another required workflow", async () => {
@@ -394,7 +528,9 @@ describe("SessionRecordingShareCard", () => {
     fireEvent.loadedMetadata(source);
     expect(source.currentTime).toBeCloseTo(8.1, 3);
     expect(play).toHaveBeenCalled();
-    expect(screen.getByText(/plays only the exact source passage/i)).toBeInTheDocument();
+    expect(screen.getByText(/plays the original passage.*original recording stays unchanged/i)).toBeInTheDocument();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "nearest" }));
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(document.getElementById("recording-cut-audition"));
   });
 
   it("keeps overlapping speech included and explains why", async () => {
@@ -489,7 +625,7 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByRole("button", { name: "Create new private edit" })).toBeInTheDocument();
   });
 
-  it("records optional listening evidence without turning it into a share gate", async () => {
+  it.each(["audio", "video"])("keeps %s playback read-only and shares only on the coach's explicit action", async (mediaKind) => {
     const draftOutput = {
       id: "session_output_review_0001",
       status: "DRAFT",
@@ -497,25 +633,22 @@ describe("SessionRecordingShareCard", () => {
       revision: 2,
       contentSha256: "d".repeat(64),
       recipient: { id: "client_user_0001", label: "Client" },
-      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      render: { status: "VERIFIED", mediaKind, durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
       mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_review_0001",
       playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: false, reviewedAt: null, clientTrackedPlaybackIsNotProofOfAudibility: true },
       body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
     };
-    const reviewedOutput = { ...draftOutput, revision: 3, playbackReview: { ...draftOutput.playbackReview, reviewed: true, reviewedAt: "2026-08-24T12:00:00.000Z" } };
-    let currentOutput: typeof draftOutput | typeof reviewedOutput = draftOutput;
     const requests: Array<Record<string, any>> = [];
     global.fetch = jest.fn(async (_url, init) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         requests.push(body);
-        if (body.action === "REVIEW") currentOutput = reviewedOutput;
       }
-      return response({ ...snapshot, output: currentOutput });
+      return response({ ...snapshot, output: draftOutput });
     }) as jest.MockedFunction<typeof fetch>;
 
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
-    const audio = await screen.findByLabelText("Private recording preview") as HTMLAudioElement;
+    const audio = await screen.findByLabelText(mediaKind === "video" ? "Private video preview" : "Private recording preview") as HTMLMediaElement;
     Object.defineProperties(audio, {
       duration: { configurable: true, value: 30 },
       paused: { configurable: true, value: false },
@@ -529,17 +662,16 @@ describe("SessionRecordingShareCard", () => {
       fireEvent.pause(audio);
     }
 
-    await waitFor(() => expect(requests.some((request) => request.action === "REVIEW")).toBe(true));
-    expect(requests.find((request) => request.action === "REVIEW")).toMatchObject({
-      outputId: draftOutput.id,
-      expectedRevision: 2,
-      playbackEvidence: { listenedSecondBins: [0, 15, 29], clientTrackedPlaybackIsNotProofOfAudibility: true },
-    });
-    expect(await screen.findByText(/listening review saved for this exact private preview/i)).toBeInTheDocument();
+    fireEvent.ended(audio);
+    expect(requests).toEqual([]);
+    expect(screen.queryByText(/listening review saved|You listened through/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", {name: "Share with Client"}));
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({action: "RELEASE", outputId: draftOutput.id, expectedRevision: 2});
   });
 
-  it("describes a client release without claiming somebody completed an optional review", async () => {
+  it("keeps a client recording simple with technical evidence available in file details", async () => {
     const output = {
       id: "session_output_released_0001",
       status: "RELEASED",
@@ -558,6 +690,14 @@ describe("SessionRecordingShareCard", () => {
 
     expect(await screen.findByText("Your coach shared this private recording in your Session.")).toBeInTheDocument();
     expect(screen.queryByText(/released this reviewed copy/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Download recording"})).toHaveAttribute("href", `${output.mediaUrl}?download=1`);
+    expect(screen.getByText("Ready")).toBeVisible();
+    const checksum = screen.getByText(output.render.sha256);
+    expect(checksum.closest("details")).not.toHaveAttribute("open");
+    expect(checksum).not.toBeVisible();
+    await userEvent.click(screen.getByText("File details"));
+    expect(checksum).toBeVisible();
+    expect(screen.getByText("VERIFIED")).toBeVisible();
   });
 
   it("reopens the current edit without losing transcript cuts and cancels safely", async () => {
@@ -598,6 +738,13 @@ describe("SessionRecordingShareCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Edit private preview" }));
     const restored = screen.getByText(transcriptSegment.text).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(restored).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Restore all" }));
+    await userEvent.click(screen.getByRole("button", { name: "Use full recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(screen.getByRole("slider", { name: "Recording start" })).toHaveValue("0");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("30");
+    expect(restored).toBeChecked();
   });
 
   it("reopens from the exact reviewed source manifest instead of substituting the current default track", async () => {

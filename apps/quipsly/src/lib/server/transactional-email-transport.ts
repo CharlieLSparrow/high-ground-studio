@@ -1,4 +1,5 @@
 import "server-only";
+import { isSyntheticEmailRecipient } from "./synthetic-email-recipient";
 
 import type { TransactionalEmailKind } from "@prisma/client";
 
@@ -117,6 +118,13 @@ function sessionTime(input: { scheduledStart: Date; timezone: string }) {
 }
 
 function copyForKind(kind: TransactionalEmailKind) {
+  if (kind === "BOOKING_RESCHEDULED") {
+    return {
+      subjectPrefix: "Your Quipsly session time has changed",
+      headline: "Your session has a new time.",
+      action: "View updated session",
+    };
+  }
   if (kind === "SESSION_REMINDER_24H") {
     return {
       subjectPrefix: "Your Quipsly Session is tomorrow",
@@ -159,7 +167,7 @@ export async function sendTransactionalEmail(input: {
       retryAfterSeconds: null,
     };
   }
-  if (recipientEmail.endsWith("@dev.test")) {
+  if (isSyntheticEmailRecipient(recipientEmail)) {
     return {
       ok: false,
       provider: "resend",

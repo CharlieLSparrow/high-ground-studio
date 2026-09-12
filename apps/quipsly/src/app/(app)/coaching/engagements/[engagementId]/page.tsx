@@ -11,6 +11,8 @@ import {
 import { notFound } from "next/navigation";
 
 import { CollaborationThread } from "@/components/session-thread";
+import LocalDateTime from "@/components/LocalDateTime";
+import { coachingSessionSummarySelect, loadCoachingSessionHighlights } from "@/lib/server/coaching-session-highlights";
 import { CoachingEngagementMemberManager } from "@/components/coaching-engagement-member-manager";
 import { CoachingSpaceTabs } from "@/components/coaching-space-tabs";
 import {
@@ -24,8 +26,9 @@ import {
 } from "@/components/coaching-relationship-overview";
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
-import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
-import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
+import { coachingSpaceTaskWhere, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { NOTE_SELECT, TASK_SELECT, GOAL_SELECT, notePayload, taskPayload, goalPayload } from "@/lib/server/coaching-work-projection";
+import { coachingWorkPage } from "@/lib/server/coaching-work-page";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +74,7 @@ export default async function CoachingEngagementPage({
     );
   }
   const prisma = getPrismaClient();
+  const workPage = coachingWorkPage(new URLSearchParams(), engagementId, session.user.id);
   const engagement = await prisma.coachingEngagement.findFirst({
     where: coachingEngagementAccessWhere(engagementId, session.user, "read"),
     select: {
@@ -92,85 +96,25 @@ export default async function CoachingEngagementPage({
       callRooms: {
         orderBy: [{ scheduledStart: "desc" }, { createdAt: "desc" }],
         take: 100,
-        select: {
-          id: true,
-          title: true,
-          purpose: true,
-          status: true,
-          scheduledStart: true,
-          scheduledEnd: true,
-          endedAt: true,
-          createdAt: true,
-          transcriptJobs: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: { status: true },
-          },
-          outputs: {
-            where: { status: "RELEASED" },
-            take: 1,
-            select: { id: true },
-          },
-          _count: { select: { recordingAssets: true } },
-        },
+        select: coachingSessionSummarySelect,
       },
       notes: {
         where: {
+          ...workPage.where("NOTE"),
           OR: [
             { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
             { authorUserId: session.user.id },
           ],
         },
-        orderBy: { updatedAt: "desc" },
-        take: 100,
-        select: {
-          id: true,
-          title: true,
-          body: true,
-          visibility: true,
-          authorUserId: true,
-          roomId: true,
-          sourceJson: true,
-          createdAt: true,
-          updatedAt: true,
-          authorUser: { select: { name: true, primaryEmail: true } },
-        },
-      },
-      actionItems: {
-        where: sharedCoachingWorkVisibilityWhere(),
-        orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-        take: 100,
-        select: {
-          id: true,
-          title: true,
-          detail: true,
-          status: true,
-          dueAt: true,
-          assignedUserId: true,
-          roomId: true,
-          sourceJson: true,
-          createdAt: true,
-          updatedAt: true,
-          assignedUser: { select: { name: true, primaryEmail: true } },
-        },
+        orderBy: workPage.orderBy,
+        take: workPage.take,
+        select: NOTE_SELECT,
       },
       goals: {
-        where: sharedCoachingWorkVisibilityWhere(),
-        orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-        take: 100,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          status: true,
-          targetAt: true,
-          ownerUserId: true,
-          roomId: true,
-          sourceJson: true,
-          createdAt: true,
-          updatedAt: true,
-          owner: { select: { name: true, primaryEmail: true } },
-        },
+        where: {...sharedCoachingWorkVisibilityWhere(), ...workPage.where("GOAL")},
+        orderBy: workPage.orderBy,
+        take: workPage.take,
+        select: GOAL_SELECT,
       },
       formAssignments: {
         where: { status: { not: "CANCELED" } },
@@ -187,6 +131,10 @@ export default async function CoachingEngagementPage({
     },
   });
   if (!engagement) notFound();
+  const tasks = await prisma.actionItem.findMany({
+    where: { AND: [coachingSpaceTaskWhere(engagementId, session.user), workPage.where("TASK")] },
+    orderBy: workPage.orderBy, take: workPage.take, select: TASK_SELECT,
+  });
   const ownMembership = engagement.members.find(
     (member) => member.userId === session.user.id,
   );
@@ -209,102 +157,19 @@ export default async function CoachingEngagementPage({
     }),
   );
   const activeNotes = engagement.notes.filter((note) => !isRelationshipWorkRemoved(note.sourceJson));
-  const activeTasks = engagement.actionItems.filter((task) => !isRelationshipWorkRemoved(task.sourceJson));
+  const activeTasks = tasks.filter((task) => !isRelationshipWorkRemoved(task.sourceJson));
   const activeGoals = engagement.goals.filter((goal) => !isRelationshipWorkRemoved(goal.sourceJson));
   const workEntries: CoachingEngagementWorkEntry[] = [
-    ...activeNotes.map((note) => ({
-      id: note.id,
-      kind: "NOTE" as const,
-      title: note.title,
-      body: note.body,
-      sourceHref: sessionWorkSourceHref(note.roomId, note.sourceJson),
-      status: null,
-      owner: note.authorUser
-        ? { id: note.authorUserId!, label: personLabel(note.authorUser) }
-        : null,
-      visibility:
-        note.visibility === "AUTHOR_PRIVATE"
-          ? ("PRIVATE" as const)
-          : ("SHARED" as const),
-      dueAt: null,
-      canEdit: canPost && (
-        note.authorUserId === session.user.id ||
-        note.visibility !== "AUTHOR_PRIVATE"
-      ),
-      canChangeVisibility: note.authorUserId === session.user.id,
-      createdAt: note.createdAt.toISOString(),
-      updatedAt: note.updatedAt.toISOString(),
-    })),
-    ...activeTasks.map((task) => ({
-      id: task.id,
-      kind: "TASK" as const,
-      title: task.title,
-      body: task.detail,
-      sourceHref: sessionWorkSourceHref(task.roomId, task.sourceJson),
-      status: String(task.status),
-      owner: task.assignedUser
-        ? { id: task.assignedUserId!, label: personLabel(task.assignedUser) }
-        : null,
-      visibility: "SHARED" as const,
-      dueAt: task.dueAt?.toISOString() ?? null,
-      canEdit: canPost,
-      canChangeVisibility: false,
-      createdAt: task.createdAt.toISOString(),
-      updatedAt: task.updatedAt.toISOString(),
-    })),
-    ...activeGoals.map((goal) => ({
-      id: goal.id,
-      kind: "GOAL" as const,
-      title: goal.title,
-      body: goal.description,
-      sourceHref: sessionWorkSourceHref(goal.roomId, goal.sourceJson),
-      status: String(goal.status),
-      owner: { id: goal.ownerUserId, label: personLabel(goal.owner) },
-      visibility: "SHARED" as const,
-      dueAt: goal.targetAt?.toISOString() ?? null,
-      canEdit: canPost,
-      canChangeVisibility: false,
-      createdAt: goal.createdAt.toISOString(),
-      updatedAt: goal.updatedAt.toISOString(),
-    })),
-  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    ...activeNotes.map(note => notePayload(note, session.user.id, canPost)),
+    ...activeTasks.map(task => taskPayload(task, canPost)),
+    ...activeGoals.map(goal => goalPayload(goal, canPost)),
+  ];
+  const initialWork = workPage.result(workEntries);
 
   const now = Date.now();
-  const liveRoom = engagement.callRooms.find((room) =>
-    ["OPEN", "RECORDING"].includes(room.status),
-  );
-  const lateRoom = engagement.callRooms
-    .filter(
-      (room) =>
-        room.status === "PLANNED" &&
-        room.scheduledStart &&
-        room.scheduledStart.getTime() < now,
-    )
-    .sort(
-      (left, right) =>
-        (right.scheduledStart?.getTime() || 0) -
-        (left.scheduledStart?.getTime() || 0),
-    )[0];
-  const upcomingRoom = engagement.callRooms
-    .filter(
-      (room) =>
-        room.status === "PLANNED" &&
-        room.scheduledStart &&
-        room.scheduledStart.getTime() >= now,
-    )
-    .sort(
-      (left, right) =>
-        (left.scheduledStart?.getTime() || 0) -
-        (right.scheduledStart?.getTime() || 0),
-    )[0];
-  const nextRoom = liveRoom || lateRoom || upcomingRoom || null;
-  const lastRoom = engagement.callRooms
-    .filter((room) => room.status === "ENDED")
-    .sort(
-      (left, right) =>
-        (right.endedAt ?? right.scheduledStart ?? right.createdAt).getTime() -
-        (left.endedAt ?? left.scheduledStart ?? left.createdAt).getTime(),
-    )[0];
+  const highlights = await loadCoachingSessionHighlights({ prisma, engagementId, actor: session.user, now: new Date(now) });
+  const nextRoom = highlights.next;
+  const lastRoom = highlights.last;
   const overview: CoachingRelationshipOverviewItem = {
     nextSession: nextRoom
       ? {
@@ -312,7 +177,7 @@ export default async function CoachingEngagementPage({
           title: nextRoom.title || "Coaching Session",
           startsAt: nextRoom.scheduledStart?.toISOString() ?? null,
           status:
-            nextRoom === lateRoom && nextRoom.status === "PLANNED"
+            highlights.overdue && nextRoom.status === "PLANNED"
               ? "PLANNED_LATE"
               : nextRoom.status,
         }
@@ -412,7 +277,8 @@ export default async function CoachingEngagementPage({
         <CoachingSpaceTabs
           work={<CoachingEngagementWorkspace
             engagementId={engagement.id}
-            initialEntries={workEntries}
+            initialEntries={initialWork.entries}
+            initialPage={initialWork.page}
             members={engagement.members.map((member) => ({
               id: member.userId,
               label: personLabel(member.user),
@@ -466,9 +332,19 @@ export default async function CoachingEngagementPage({
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
                 Your history
               </p>
-              <h2 className="mt-2 flex items-center gap-2 font-serif text-3xl font-black text-[#3d3122]">
-                <CalendarDays size={22} /> Session history
-              </h2>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 font-serif text-3xl font-black text-[#3d3122]">
+                  <CalendarDays size={22} /> Sessions
+                </h2>
+                {canSchedule ? (
+                  <Link
+                    href={`/coaching?clientSpace=${encodeURIComponent(engagement.id)}#create-appointment`}
+                    className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground"
+                  >
+                    Schedule session
+                  </Link>
+                ) : null}
+              </div>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
                 Every call returns to the same client space, so the recording,
                 transcript, follow-up, and work between Sessions stay easy to
@@ -504,15 +380,16 @@ export default async function CoachingEngagementPage({
                       >
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div>
-                            <p className="font-black text-[#3d3122]">
-                              {room.title || "Coaching Session"}
-                            </p>
+                            <h3>
+                              <Link href={`/sessions/${encodeURIComponent(room.id)}?mode=overview`}
+                                aria-label={`Open session: ${room.title || "Coaching Session"}`}
+                                className="inline-flex min-h-11 items-center font-black text-[#3d3122] underline-offset-4 hover:underline focus-visible:underline">
+                                {room.title || "Coaching Session"}
+                              </Link>
+                            </h3>
                             <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#8a7354]">
                               {room.scheduledStart
-                                ? new Intl.DateTimeFormat("en", {
-                                    dateStyle: "medium",
-                                    timeStyle: "short",
-                                  }).format(room.scheduledStart)
+                                ? <LocalDateTime value={room.scheduledStart.toISOString()} mode="appointment" />
                                 : "Time not set"}
                             </p>
                           </div>

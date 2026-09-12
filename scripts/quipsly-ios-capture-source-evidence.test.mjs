@@ -206,17 +206,22 @@ check(
       < audio.indexOf("queueUploadIfPossible(recording: finalized")
     && library.includes("analyzeAudioSignal(")
     && library.includes("guard decodedFrames == frameCount, decodedFrames > 0")
-    && library.includes("sourceProfile.audioSignal = validation.audioSignal"),
+    && library.includes("if let signal = validation.audioSignal { sourceProfile.audioSignal = signal }"),
 );
 check(
-  "native audible-event analysis is versioned, bounded, review-only, and persisted before upload",
-  library.includes("async let pendingAudibleEventAnalysis = LocalAudibleEventAnalyzer.analyze(")
-    && library.includes("sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis")
+  "native sound analysis runs after source saving and synchronizes separately from upload",
+  library.includes("private func startPendingAudibleAnalyses()")
+    && library.includes("Task.detached(priority: .utility)")
+    && library.includes("await LocalAudibleEventAnalyzer.analyze(fileURL: fileURL,")
+    && library.includes("if let events = validation.audibleEventAnalysis { sourceProfile.audibleEventAnalysis = events }")
+    && library.includes("try await CaptureSoundAnalysisSync.deliver(recording: recording)")
+    && library.includes("current.soundAnalysisSyncedID = receipt.analysisId")
     && audibleAnalysis.includes('static let algorithm = "apple-sound-classifier-file-v1"')
     && audibleAnalysis.includes("static let maximumSuggestions = 500")
     && audibleAnalysis.includes("classifierOutputIsListeningTriageOnly: true")
     && audibleAnalysis.includes("noRepairOrEditAuthorized: true")
     && audibleAnalysis.includes("`speech` and")
+    && !library.includes("async let pendingAudibleEventAnalysis")
     && audio.indexOf("await localRecordingLibrary.validateFinalizedSource(")
       < audio.indexOf("queueUploadIfPossible(recording: finalized"),
 );

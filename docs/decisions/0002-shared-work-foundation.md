@@ -42,9 +42,40 @@ Sessions: explicit space members inherit their current role, while a guest
 invited to one Session does not gain the whole relationship. Removed space
 members cannot regain API access through retained bookings, participant rows,
 or Nest grants. This does not yet unify the underlying membership tables.
-Disconnecting already-connected provider clients after a space-level removal
-still needs to be integrated with the existing participant-provider
-reconciliation mechanism; database authorization alone does not prove that.
+Space removal now marks provider disconnection pending in that same database
+transaction, then attempts it through the existing LiveKit administrator client.
+The participant and source records remain intact. A signed participant-join
+webhook and `/api/cron/session-access` reuse the canonical Session join policy;
+they do not maintain another membership table. Pending provider status survives
+process failure, and the maintenance pass also checks active rooms for reused
+self-hosted tokens. Restoring membership cancels pending removal work without
+automatically rejoining a device. A concurrent restore during a provider request
+can require one rejoin; PostgreSQL and LiveKit cannot commit atomically.
+
+The local three-browser LiveKit test proves targeted disconnection and restore,
+including actual signed join-webhook delivery from an isolated local provider
+through the application HTTP handler. Concurrent join/removal persistence uses
+bounded retries of aborted database transactions with fresh access checks; it
+does not repeat the external provider action as part of a transaction retry.
+Production completion additionally requires the room-level join webhook and an
+OIDC-authenticated scheduler targeting this route, using
+`SESSION_ACCESS_WORKER_SERVICE_ACCOUNT` and `SESSION_ACCESS_WORKER_AUDIENCE`.
+Those external settings are not established by the implementation or local test.
+The normal preview deployment now supplies the worker identity and service
+audience whenever LiveKit is enabled. After that exact revision is qualified and
+promoted, `EXPECTED_SOURCE_SHA=<commit> node scripts/release/quipsly-session-access-scheduler.mjs`
+reads the serving revision and prints a read-only configuration plan. With
+explicit cost/access approval, add `--apply` to configure the dedicated
+service-scoped invoker and minute scheduler. The command checks readback, never
+treats an API/authentication failure as a missing resource, and does not resume
+paused jobs. Cloud Scheduler must already be enabled. Each scheduled invocation
+is the retry; overlapping exponential retry chains are disabled. Configure the
+global participant webhook separately at the provider, not only an egress
+webhook. Scheduled configuration readback is not proof of successful delivery;
+check an actual invocation and provider disconnection after activation.
+Self-hosted tokens are not invalidated by removal: webhook/periodic enforcement
+is eventual, unlike LiveKit Cloud token revocation. Do not label that boundary
+as instantaneous or imply recorded token expiry covers provider-refreshed tokens.
 
 ## Decision
 
@@ -96,6 +127,29 @@ end. Do not put a second membership or chat subsystem into ordinary navigation
 as an experiment.
 
 ## First complete replacement slice
+
+### Tasks created from Nest conversations
+
+Use `ActionItem` and its existing tag links, not a chat-specific task store.
+`isNestShared` separates visibility from responsibility: a shared task follows
+current Nest membership even when assigned, while existing personal and
+client-space tasks keep their own access rules. Only default Nest conversations
+use the Nest-wide creation command; private Session/client messages cannot be
+promoted into that scope by supplying their IDs.
+
+The existing `StudioProjectAccessGrant` now has a stable `memberUserId`; its
+email remains the invitation address. The migration binds unambiguous historical
+identities and materializes recognized workspace ownership without reactivating
+revoked grants. Normal invite/owner creation writes both fields. Broader legacy
+Nest resolution still uses email and must be replaced coherently; this change
+does not claim that migration is complete. Assignment never substitutes for a
+current membership when reading or editing a newly shared task.
+
+Deploy the additive migration before the application. Rolling application code
+back should disable the new creation surface, not drop task rows or membership
+bindings; before reverting task-access code, account for retained shared tasks
+so the old unassigned-task rules do not reinterpret their visibility. Tags and
+source links remain canonical, with transactional retry and private-space tests.
 
 Build one private client space: create it, invite a second account, converse,
 write shared notes, schedule/join a call, return to the same space with its

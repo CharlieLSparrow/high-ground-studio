@@ -213,8 +213,8 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       kind: "NOTE",
       href: `/sessions/${roomId}?mode=notes#session-note-${note.id}`,
       projectName: "Quick capture Nest",
-      stateLabel: "iPhone capture · author private",
-      badges: expect.arrayContaining(["#Follow through", "Offline retry safe"]),
+      stateLabel: "Private note",
+      badges: expect.arrayContaining(["#Follow through"]),
     });
     expect(library.counts.notes).toBe(1);
 
@@ -305,9 +305,8 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       title,
       detail: body,
       projectName: expect.stringContaining("Home Nest"),
-      href: expect.stringContaining(`document=${encodeURIComponent(document.id)}`),
-      stateLabel: "Writing note",
-      badges: expect.arrayContaining(["Document-kernel note", "Stable document identity"]),
+      href: `/notes/${encodeURIComponent(document.id)}`,
+      badges: expect.arrayContaining([`#Odyssey idea ${nonce}`]),
     });
     expect(library.homeNest).toMatchObject({ id: homeProjectId });
 

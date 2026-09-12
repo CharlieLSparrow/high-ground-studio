@@ -1,5 +1,25 @@
 import Foundation
 
+/// Classifies connectivity for an already authenticated feature request, not
+/// sign-in or token refresh. A slow/broken endpoint does not invalidate the
+/// account or justify replacing the person's workspace with Offline Notes.
+enum AuthRequestConnectivity {
+    static func requiresOfflineAccess(for error: Error) -> Bool {
+        let failure = error as NSError
+        guard failure.domain == NSURLErrorDomain else { return false }
+        switch URLError.Code(rawValue: failure.code) {
+        case .notConnectedToInternet, .internationalRoamingOff, .dataNotAllowed:
+            return true
+        default:
+            // Timeouts, dropped individual connections, DNS, TLS, response,
+            // and download failures remain errors of the requesting feature.
+            // The original error still reaches its caller; this is not a retry
+            // or permission to treat an unsuccessful save as successful.
+            return false
+        }
+    }
+}
+
 /// Converts remote authentication responses into stable, supportable errors.
 ///
 /// Foundation's default `DecodingError.localizedDescription` says only that

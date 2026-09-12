@@ -1,7 +1,11 @@
 import XCTest
+import UIKit
 
 final class CaptureExperienceUITests: XCTestCase {
     private var app: XCUIApplication!
+    // Writing previews use the real local draft store. Keep one owner through
+    // this test's relaunches without inheriting notes from another test/run.
+    private let writingPreviewOwner = "writing-ui-\(UUID().uuidString.lowercased())"
 
     /// Permission alerts belong to SpringBoard, and their animation can finish
     /// after the first app-side tap that normally wakes an interruption
@@ -35,6 +39,22 @@ final class CaptureExperienceUITests: XCTestCase {
                 return
             }
         } while Date() < deadline
+    }
+
+    /// Cold hosted simulators can present Speech Recognition well after the
+    /// microphone prompt. Keep handling system prompts until the requested UI
+    /// actually appears, rather than spending the entire assertion timeout
+    /// behind a second alert. Never tap Start again to conceal a failed start.
+    private func waitForElementAfterSystemPermissions(
+        _ element: XCUIElement,
+        timeout: TimeInterval = 30
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            allowSystemPermissionIfPresented(timeout: 1)
+            if element.exists { return true }
+        }
+        return element.exists
     }
 
     #if !targetEnvironment(simulator)
@@ -85,6 +105,13 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         #endif
         app.launchArguments = ["--capture-ui-preview"]
+        if name.contains("testBackgroundFollowThroughKeepsExistingWorkEditable") {
+            app.launchArguments.append("--capture-follow-through-processing-preview")
+        }
+        if name.contains("testLibraryOffersPrivateKeyboardWritingBesideVoiceWriting")
+            || name.contains("testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture") {
+            app.launchArguments.append("--capture-share-owner-ui-preview=\(writingPreviewOwner)")
+        }
         let clientPreview = name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
             || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly")
             || name.contains("testClientCoachingFormDraftSurvivesRelaunch")
@@ -178,7 +205,14 @@ final class CaptureExperienceUITests: XCTestCase {
             app.launchArguments += [
                 "--capture-force-local-voice-note-ui-test",
                 "--capture-derived-analysis-persistence-failure-ui-test",
-                "--capture-share-owner-ui-preview=derived-analysis-failure-owner",
+                "--capture-share-owner-ui-preview=derived-analysis-failure-\(UUID().uuidString.lowercased())",
+            ]
+        }
+        if name.contains("testSlowSoundAnalysisDoesNotDelaySavingOrPlayback") {
+            app.launchArguments += [
+                "--capture-force-local-voice-note-ui-test",
+                "--capture-slow-derived-analysis-ui-test",
+                "--capture-share-owner-ui-preview=slow-analysis-\(UUID().uuidString.lowercased())",
             ]
         }
         if name.contains("testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground") {
@@ -598,6 +632,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-app-store-presentation",
             "--capture-ui-preview-tab=library",
+            "--capture-share-owner-ui-preview=\(writingPreviewOwner)",
         ]
         app.launch()
         XCTAssertTrue(app.navigationBars["Notes"].waitForExistence(timeout: 12))
@@ -1170,7 +1205,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let resume = app.buttons["CaptureVoiceWritingPauseResumeButton"]
         XCTAssertTrue(
-            resume.waitForExistence(timeout: 15),
+            waitForElementAfterSystemPermissions(resume),
             "The retained source should expose an ordinary pause/resume control after capture starts."
         )
         expectation(
@@ -1186,8 +1221,12 @@ final class CaptureExperienceUITests: XCTestCase {
 
         // The simulated system end notification carries shouldResume, but
         // Quipsly deliberately waits for this visible person-owned action.
-        sleep(1)
+        // Also let the deliberately delayed startup observer finish. Checking
+        // only the paused UI can miss a later, contradictory failure banner.
+        sleep(5)
         XCTAssertEqual(resume.label, "Resume")
+        XCTAssertFalse(app.staticTexts["The local recorder did not start. Nothing was recorded."].exists,
+            "An interruption during startup must retain the started source and its resumable context.")
         resume.tap()
         expectation(
             for: NSPredicate(format: "label == %@", "Pause"),
@@ -1248,6 +1287,18 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testDerivedAudioAnalysisFailureKeepsSourcePlayable() {
+        exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: false)
+    }
+
+    func testSlowSoundAnalysisDoesNotDelaySavingOrPlayback() {
+        exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: true)
+    }
+
+    func testSlowSoundAnalysisDoesNotDelaySavingOrPlaybackOnRegularWidthIPad() {
+        exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: true)
+    }
+
+    private func exerciseSavedSourceDuringOptionalAnalysis(expectsBackgroundAnalysis: Bool) {
         let speakToWrite = app.frame.width >= 700
             ? app.buttons["CaptureIPadSpeakToWrite"]
             : app.buttons["CaptureStartVoiceNote"]
@@ -1271,11 +1322,11 @@ final class CaptureExperienceUITests: XCTestCase {
         allowSystemPermissionIfPresented()
         let stop = app.buttons["CaptureStopButton"]
         XCTAssertTrue(stop.waitForExistence(timeout: 15))
-        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        RunLoop.current.run(until: Date().addingTimeInterval(4))
         stop.tap()
         XCTAssertTrue(
             stop.waitForNonExistence(timeout: 12),
-            "Optional analysis failure must not leave source finalization stuck."
+            "Optional analysis must not leave source finalization stuck."
         )
         allowSystemPermissionIfPresented()
 
@@ -1294,7 +1345,7 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(savedRow, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
             savedRow.waitForExistence(timeout: 12),
-            "The decoded source must remain in Notes after derived analysis rejects its payload."
+            "The decoded source must remain in Notes independently of derived analysis."
         )
         let play = savedRow.buttons["Play"].firstMatch
         XCTAssertTrue(play.exists && play.isEnabled)
@@ -1314,6 +1365,13 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             savedRow.label.localizedCaseInsensitiveContains("capture failed")
         )
+        if expectsBackgroundAnalysis {
+            XCTAssertTrue(warning.label.localizedCaseInsensitiveContains("background"))
+        }
+        reveal(play, searchAboveFirst: true)
+        play.tap()
+        XCTAssertTrue(savedRow.buttons["Stop"].waitForExistence(timeout: 2),
+                      "The saved source should actually play while optional analysis is unavailable.")
     }
 
     func testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture() {
@@ -1428,7 +1486,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = [
             "--capture-ui-preview",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -1442,7 +1500,7 @@ final class CaptureExperienceUITests: XCTestCase {
             library.swipeUp()
         }
         XCTAssertTrue(previewDraft.waitForExistence(timeout: 5))
-        reveal(previewDraft)
+        reveal(previewDraft, requireHittable: false)
         previewDraft.tap()
 
         XCTAssertTrue(
@@ -1452,23 +1510,32 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Writing"].isHittable)
         XCTAssertTrue(app.buttons["Transcript"].isHittable)
         XCTAssertTrue(app.textFields["CaptureVoiceWritingTitle"].isHittable)
+        let writingBody = app.descendants(matching: .any)["CaptureVoiceWritingBody"].firstMatch
+        let writingForm = app.collectionViews.firstMatch
+        for _ in 0..<8 where !writingBody.isHittable {
+            writingForm.swipeUp()
+        }
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureVoiceWritingBody"].isHittable,
+            writingBody.isHittable,
             "The spoken draft must remain directly editable at the largest accessibility text size."
         )
+        writingBody.tap()
+        writingBody.typeText(" Accessible writing check.")
+        XCTAssertTrue((writingBody.value as? String)?.contains("Accessible writing check.") == true)
         XCTAssertTrue(
             app.staticTexts["CaptureVoiceWritingWordCount"].exists,
             "A paper-writing surface should show a useful word count without adding another workflow."
         )
         XCTAssertTrue(
-            app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
-            "The persistent microphone action must not disappear when text grows."
+            app.buttons["CaptureVoiceWritingContinueToolbar"].isHittable
+                || app.buttons["CaptureVoiceWritingContinueKeyboard"].isHittable,
+            "Adding voice must remain reachable, including above the open keyboard."
         )
 
-        // Hit regions and descriptions were audited above on this same
-        // transcript surface. Defer the task row's clipped-text audit until
-        // the operated journey is complete so XCTest cannot leave the lazy
-        // accessibility hierarchy half-walked before the edit interaction.
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "largest-text-writing-edit.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     func testVoiceWritingDeletesTheDraftWithoutDeletingItsSource() {
@@ -1517,6 +1584,48 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(editor.exists)
     }
 
+    func testVoiceWritingKeepsSharedTagsAndArchivedContext() {
+        exerciseVoiceWritingSharedTags()
+    }
+
+    func testVoiceWritingKeepsSharedTagsAndArchivedContextOnRegularWidthIPad() {
+        exerciseVoiceWritingSharedTags()
+    }
+
+    private func exerciseVoiceWritingSharedTags() {
+        openRootDestination("Notes")
+        app.buttons["Writing"].tap()
+        let draft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        XCTAssertTrue(draft.waitForExistence(timeout: 5))
+        draft.tap()
+        let editTags = app.buttons["CaptureVoiceWritingEditTags"]
+        let editor = app.descendants(matching: .any)["CaptureVoiceWritingEditor"].firstMatch
+        for _ in 0..<6 where !editTags.exists || !editTags.isHittable { editor.swipeUp() }
+        XCTAssertTrue(editTags.isHittable)
+        let archivedChip = app.descendants(matching: .any)["CaptureWorkTag_writing_preview-writing-earlier"].firstMatch
+        XCTAssertTrue(archivedChip.exists, "Existing archived tags must remain visible on writing.")
+        XCTAssertTrue(archivedChip.label.contains("archived"))
+        editTags.tap()
+        let active = app.buttons["CaptureTodayWorkTag_preview-writing-research"]
+        let archived = app.buttons["CaptureTodayWorkTag_preview-writing-earlier"]
+        XCTAssertTrue(active.waitForExistence(timeout: 5))
+        XCTAssertEqual(archived.value as? String, "Selected")
+        active.tap()
+        XCTAssertEqual(archived.value as? String, "Selected")
+        XCTAssertTrue(app.buttons["CaptureTodayWorkTagsSave"].isEnabled,
+            "Keeping earlier context must not prevent another tag change.")
+        XCTAssertFalse(app.staticTexts["Remove archived selections before saving a new tag set."].exists)
+        archived.tap()
+        XCTAssertEqual(archived.value as? String, "Not selected")
+        archived.tap()
+        XCTAssertEqual(archived.value as? String, "Selected", "Removing a tag from an unsaved draft must remain undoable.")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "writing-shared-tag-context"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.buttons["Cancel"].tap()
+    }
+
     func testVoiceWritingKeepsTimedSourceBesideEditableText() {
         openRootDestination("Notes")
         app.buttons["Writing"].tap()
@@ -1562,6 +1671,46 @@ final class CaptureExperienceUITests: XCTestCase {
             app.staticTexts["CaptureVoiceWritingTranscriptSourceBoundary"].exists,
             "Direct correction should never obscure which words still come from the retained source."
         )
+    }
+
+    func testCoachingRescheduleMakesEmailChoiceExplicit() {
+        exerciseCoachingRescheduleEmailChoice()
+    }
+
+    func testCoachingRescheduleMakesEmailChoiceExplicitOnRegularWidthIPad() {
+        exerciseCoachingRescheduleEmailChoice()
+    }
+
+    private func exerciseCoachingRescheduleEmailChoice() {
+        relaunchCoachingPreview(role: "coach")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let manage = app.buttons["CaptureCoachingManage_preview-booking"]
+        reveal(manage, searchAboveFirst: false)
+        XCTAssertTrue(manage.waitForExistence(timeout: 5))
+        manage.tap()
+        app.buttons["Reschedule"].tap()
+        let form = app.descendants(matching: .any)["CaptureCoachingRescheduleForm"].firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+        let notice = app.switches["CaptureCoachingRescheduleNotifyClient"]
+        for _ in 0..<4 {
+            if notice.exists && notice.isHittable { break }
+            form.swipeUp()
+        }
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        XCTAssertTrue(notice.isHittable)
+        XCTAssertEqual(notice.value as? String, "1")
+        let save = app.buttons["CaptureCoachingSaveReschedule"]
+        XCTAssertEqual(save.label, "Save and notify client")
+        notice.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        expectation(for: NSPredicate(format: "value == %@", "0"), evaluatedWith: notice)
+        waitForExpectations(timeout: 3)
+        XCTAssertEqual(notice.value as? String, "0")
+        XCTAssertEqual(save.label, "Save new time")
+        XCTAssertFalse(save.isEnabled, "Preview exercises the real form without sending external messages.")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 5))
     }
 
     func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
@@ -1691,8 +1840,8 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.scrollViews["CaptureRecorderView"].firstMatch.waitForExistence(timeout: 15))
         let open = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
-        reveal(open, searchAboveFirst: false)
         XCTAssertTrue(open.waitForExistence(timeout: 10))
+        XCTAssertTrue(open.isHittable, "The ongoing client space should be available without scrolling past the recording tools.")
         open.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].exists)
@@ -1714,6 +1863,175 @@ final class CaptureExperienceUITests: XCTestCase {
         exerciseCoachingWorkSourceNavigation()
     }
 
+    func testConversationIdeaOpensNativeTaskDraft() {
+        exerciseConversationTaskDraft()
+    }
+
+    func testConversationIdeaOpensNativeTaskDraftOnRegularWidthIPad() {
+        exerciseConversationTaskDraft()
+    }
+
+    private func exerciseConversationTaskDraft() {
+        relaunchCoachingPreview(role: "coach", additionalArguments: ["--capture-coaching-work-source-preview"])
+        openRootDestination("Home")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
+        reveal(relationship)
+        relationship.tap()
+        let conversation = app.buttons["CaptureCoachingConversationToolbarButton"]
+        XCTAssertTrue(conversation.waitForExistence(timeout: 5))
+        XCTAssertTrue(conversation.isHittable)
+        conversation.tap()
+        let create = app.buttons["CaptureConversationCreateTask_preview-work-idea"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertTrue(create.isHittable)
+        XCTAssertTrue(app.buttons["CaptureConversationTask_preview-linked-task"].exists,
+                      "Tasks already created on the web remain visible in the native conversation.")
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingConversationBoundary"].exists,
+                       "Online conversation should not be preceded by technical boundary explanations.")
+        let conversationImage = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        conversationImage.name = "conversation-linked-task.png"
+        conversationImage.lifetime = .keepAlways
+        add(conversationImage)
+        create.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Outline chapter one before our next conversation.")
+        XCTAssertEqual(app.textViews["CaptureCoachingWorkDetail"].value as? String,
+                       "Outline chapter one before our next conversation.")
+        XCTAssertFalse(app.segmentedControls["CaptureCoachingWorkKind"].exists,
+                       "Create task should open a task, not ask the person to choose the type again.")
+        let draftImage = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        draftImage.name = "conversation-task-draft.png"
+        draftImage.lifetime = .keepAlways
+        add(draftImage)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(create.waitForExistence(timeout: 5), "Cancel returns to the original conversation.")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
+    }
+
+    func testCoachingWorkDraftKeepsSharedTagsAndWritingTogether() {
+        exerciseCoachingWorkTags()
+    }
+
+    func testCoachingTaskReturnsToOriginalConversationMessage() {
+        exerciseCoachingConversationSource()
+    }
+
+    func testCoachingTaskReturnsToOriginalConversationMessageOnRegularWidthIPad() {
+        exerciseCoachingConversationSource()
+    }
+
+    private func exerciseCoachingConversationSource() {
+        relaunchCoachingPreview(role: "coach", additionalArguments: [
+            "--capture-coaching-work-source-preview", "--capture-conversation-history-preview",
+        ])
+        openRootDestination("Home")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
+        reveal(relationship)
+        relationship.tap()
+        let source = app.buttons["CaptureCoachingWorkSource_preview-linked-task"]
+        reveal(source, searchAboveFirst: false)
+        XCTAssertTrue(source.isHittable)
+        XCTAssertEqual(source.label, "From conversation: Review the final cut")
+        source.tap()
+        let original = app.staticTexts["CaptureConversationSourceMessage_preview-work-idea"]
+        XCTAssertTrue(original.waitForExistence(timeout: 5))
+        XCTAssertTrue(original.isHittable, "The source opens in view even with 55 newer messages, without manual scrolling.")
+        XCTAssertTrue(app.buttons["CaptureConversationTask_preview-linked-task"].isHittable)
+        XCTAssertFalse(app.staticTexts["CaptureConversationSourceUnavailable"].exists)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "coaching-task-conversation-source.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
+        app.buttons["CaptureCoachingConversationToolbarButton"].tap()
+        let latest = app.otherElements["CaptureCoachingConversationMessage_preview-newer-55"]
+            .staticTexts["Later conversation update 55."]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        XCTAssertTrue(latest.isHittable, "Opening conversation normally returns to the latest messages, not the old source.")
+        app.buttons["Done"].tap()
+    }
+
+    func testCoachingWorkDraftKeepsSharedTagsAndWritingTogetherOnRegularWidthIPad() {
+        exerciseCoachingWorkTags()
+    }
+
+    private func exerciseCoachingWorkTags() {
+        relaunchCoachingPreview(role: "coach", additionalArguments: ["--capture-coaching-work-source-preview"])
+        openRootDestination("Home")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
+        reveal(relationship)
+        relationship.tap()
+        let firstWork = app.descendants(matching: .any)["CaptureCoachingWork_preview-linked-task"]
+            .staticTexts["Review the final cut"].firstMatch
+        XCTAssertTrue(firstWork.waitForExistence(timeout: 5))
+        XCTAssertTrue(firstWork.isHittable, "Actual work must be visible on entry, before scrolling past the relationship summary.")
+        XCTAssertFalse(app.staticTexts["Bring forward"].exists, "Optional context must not crowd out the work by default.")
+        let summary = app.buttons["Space summary"].firstMatch
+        XCTAssertTrue(summary.isHittable)
+        summary.tap()
+        XCTAssertTrue(app.staticTexts["Bring forward"].waitForExistence(timeout: 3))
+        summary.tap()
+        XCTAssertTrue(app.staticTexts["Bring forward"].waitForNonExistence(timeout: 3))
+        let workspaceShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        workspaceShot.name = "client-space-work-visible-on-entry.png"
+        workspaceShot.lifetime = .keepAlways
+        add(workspaceShot)
+        let addNote = app.buttons["CaptureCoachingQuickAdd_NOTE"]
+        reveal(addNote, searchAboveFirst: true)
+        XCTAssertTrue(addNote.isHittable)
+        addNote.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        title.typeText("Make writing feel easier")
+        let tags = app.buttons["CaptureCoachingWorkTags"]
+        reveal(tags)
+        XCTAssertTrue(tags.isHittable, "Notes, tasks, and goals should use the same visible tag picker.")
+        tags.tap()
+        let research = app.buttons["CaptureTaskTagChoice_research"]
+        XCTAssertTrue(research.waitForExistence(timeout: 5))
+        research.tap()
+        XCTAssertEqual(research.value as? String, "Selected")
+        let newLabel = app.textFields["CaptureTaskTagNewLabel"]
+        reveal(newLabel)
+        newLabel.tap()
+        newLabel.typeText("Writing practice")
+        XCTAssertTrue(app.staticTexts["Tags are saved with the note. An existing name reuses the same tag and color."].exists)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(title.value as? String, "Make writing feel easier")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_research"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_draft_new-Writing practice"].exists)
+        let kindPicker = app.segmentedControls["CaptureCoachingWorkKind"]
+        reveal(kindPicker, searchAboveFirst: true)
+        kindPicker.buttons["Goal"].tap()
+        XCTAssertEqual(title.value as? String, "Make writing feel easier", "Changing a draft's kind keeps its writing.")
+        reveal(tags)
+        tags.tap()
+        XCTAssertEqual(research.value as? String, "Selected", "Changing a note draft to a goal keeps its canonical tags.")
+        XCTAssertEqual(newLabel.value as? String, "Writing practice")
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "coaching-note-to-goal-tags-draft.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        XCTAssertFalse(app.buttons["CaptureCoachingSaveWork"].isEnabled,
+                       "Preview must not claim that draft exploration saved canonical work.")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5))
+    }
+
     private func exerciseCoachingWorkSourceNavigation() {
         relaunchCoachingPreview(
             role: "coach",
@@ -1725,7 +2043,36 @@ final class CaptureExperienceUITests: XCTestCase {
         coaching.tap()
         let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
         reveal(relationship)
+        XCTAssertLessThan(relationship.frame.height, app.frame.height * 0.6,
+                          "A client-space navigation row should not fill the screen at accessibility text sizes.")
         relationship.tap()
+        let researchTag = app.buttons["CaptureWorkTagFilter_preview-linked-task_research"]
+        let nextTag = app.buttons["CaptureWorkTagFilter_preview-linked-task_next"]
+        reveal(researchTag, searchAboveFirst: false)
+        XCTAssertTrue(researchTag.waitForExistence(timeout: 5))
+        XCTAssertEqual(researchTag.label, "Show work tagged Research and source material")
+        XCTAssertTrue(nextTag.exists)
+        let location = app.buttons["CaptureGlobalWorkLocation"]
+        if location.exists {
+            XCTAssertLessThan(location.frame.height, app.frame.height * 0.2,
+                              "The persistent location header must leave room for work at large text sizes.")
+        }
+        for tag in [researchTag, nextTag] {
+            XCTAssertGreaterThanOrEqual(tag.frame.minX, app.frame.minX)
+            XCTAssertLessThanOrEqual(tag.frame.maxX, app.frame.maxX,
+                                     "Shared tag labels must wrap inside the screen, not push it sideways.")
+        }
+        let tagsScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        tagsScreenshot.name = "shared-work-native-tags.png"
+        tagsScreenshot.lifetime = .keepAlways
+        add(tagsScreenshot)
+        researchTag.tap()
+        let clearTag = app.buttons["CaptureCoachingClearTagFilter"]
+        XCTAssertTrue(clearTag.waitForExistence(timeout: 5),
+                      "Tapping a shared tag should filter work in this client space.")
+        XCTAssertTrue(app.staticTexts["CaptureWorkTag_filter_research"].exists)
+        clearTag.tap()
+        XCTAssertFalse(clearTag.exists, "Clearing the tag returns to the unfiltered client space.")
         let source = app.descendants(matching: .any)["CaptureCoachingWorkSource_preview-linked-task"].firstMatch
         reveal(source, searchAboveFirst: false)
         if !source.exists || !source.isHittable {
@@ -1743,14 +2090,20 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"].firstMatch.waitForExistence(timeout: 8),
                       "The source-local timestamp should resolve to the linked passage.")
         let passage = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "My goal is to publish a thoughtful first episode")).firstMatch
-        XCTAssertTrue(passage.exists && passage.isHittable,
-                      "The linked words must be visible on arrival, not merely present offscreen.")
-        XCTAssertTrue(app.buttons["CaptureTranscriptCorrectButton_preview-segment"].isHittable,
-                      "Editing the linked words must not require scrolling through confidence and history.")
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "shared-work-native-source.png"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+        if !passage.exists || !passage.isHittable {
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "shared-work-source-arrival.txt"
+            tree.lifetime = .keepAlways
+            add(tree)
+        }
+        XCTAssertTrue(passage.exists && passage.isHittable,
+                      "The linked words must be visible on arrival, not merely present offscreen.")
+        XCTAssertTrue(app.buttons["CaptureTranscriptCorrectButton_preview-segment"].isHittable,
+                      "Editing the linked words must not require scrolling through confidence and history.")
         let viewPicker = app.segmentedControls["CaptureTranscriptPresentationMode"].firstMatch
         reveal(viewPicker)
         viewPicker.buttons["Conversation"].tap()
@@ -1792,7 +2145,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-coach-booking-preview",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launchEnvironment["CAPTURE_COACHING_PREVIEW_ROLE"] = "coach"
         app.launch()
@@ -2451,6 +2804,14 @@ final class CaptureExperienceUITests: XCTestCase {
 
         localOnly.tap()
         XCTAssertTrue(consent.waitForExistence(timeout: 5))
+        // Compare adjoining sections before scrolling to later tools. A lazy
+        // stack may release the lobby's accessibility node once it is far above
+        // the viewport; reading its frame then tests caching, not layout order.
+        XCTAssertLessThan(
+            call.frame.minY,
+            consent.frame.minY,
+            "The normal call path must come before recording administration and production tools."
+        )
         let quickCapture = app.descendants(matching: .any)["CaptureQuickEntryBar"]
         reveal(
             quickCapture,
@@ -2458,11 +2819,6 @@ final class CaptureExperienceUITests: XCTestCase {
             requireHittable: false
         )
         XCTAssertTrue(quickCapture.exists)
-        XCTAssertLessThan(
-            call.frame.minY,
-            consent.frame.minY,
-            "The normal call path must come before recording administration and production tools."
-        )
         XCTAssertLessThan(
             consent.frame.minY,
             quickCapture.frame.minY,
@@ -2538,6 +2894,45 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].exists,
             "A safe returning caller should regain the actual this-iPhone route control without another setup ceremony."
         )
+    }
+
+    func testSessionToolsOpenEpisodeSourcesFromLobbyAndStayContextualForCoaching() {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-ui-preview-session=preview-studio-group-ready",
+        ]
+        app.launch()
+        openSessionToolsMenu()
+        let script = app.buttons["CaptureEpisodeScriptToolbar"]
+        XCTAssertTrue(script.waitForExistence(timeout: 3))
+        script.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureEpisodeManuscriptReader"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["Homer"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Charlie"].exists)
+        app.buttons["CaptureEpisodeManuscriptDone"].tap()
+        openEpisodeWatchIfNeeded()
+        XCTAssertTrue(app.staticTexts["Ted Lasso · Be Curious"].waitForExistence(timeout: 5))
+        app.buttons["CaptureEpisodeWatchDone"].tap()
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        XCTAssertTrue(localOnly.waitForExistence(timeout: 5))
+        XCTAssertEqual(localOnly.label, "Record without a call", "Opening source material must not open recording or join the call.")
+
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-ui-preview-session=preview-coaching-ready",
+        ]
+        app.launch()
+        openSessionToolsMenu()
+        XCTAssertTrue(app.buttons["CaptureDeviceSoundCheckToolbar"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["CaptureEpisodeScriptToolbar"].exists)
+        XCTAssertFalse(app.buttons["CaptureEpisodeWatchToolbar"].exists)
     }
 
     func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
@@ -2879,7 +3274,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(soundCheckBoundary.label.contains("deleted automatically"))
 
         let runCheck = app.buttons["CaptureRehearsalRunCheck"]
-        reveal(runCheck)
+        // This fixture intentionally disables device checks. Verify the
+        // visible disabled state, not an impossible interactive hit target.
+        XCTAssertTrue(reveal(runCheck, requireHittable: false),
+            "The disabled device check must actually be visible without exhausting the scroll search.")
         XCTAssertTrue(runCheck.exists)
         XCTAssertFalse(
             runCheck.isEnabled,
@@ -2952,7 +3350,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         let coachingSpace = app.buttons[
             "CaptureSpaceSwitcherChoice_coaching:preview-engagement"
-        ]
+        ].firstMatch // The same Space can also appear in Recent Spaces.
         XCTAssertTrue(
             coachingSpace.waitForExistence(timeout: 3),
             "Repeat coaching Sessions should roll up into one durable client Space."
@@ -3002,6 +3400,52 @@ final class CaptureExperienceUITests: XCTestCase {
             evaluatedWith: location
         )
         wait(for: [selected], timeout: 5)
+    }
+
+    func testHomeOpensTasksAndGoalsWithoutChoosingANest() {
+        assertHomeOpensTasksAndGoals()
+    }
+
+    func testHomeOpensTasksAndGoalsWithoutChoosingANestOnRegularWidthIPad() {
+        assertHomeOpensTasksAndGoals()
+    }
+
+    private func assertHomeOpensTasksAndGoals() {
+        let open = app.buttons["CaptureHomeWorkOpen"]
+        reveal(open)
+        XCTAssertTrue(open.isHittable, "Home should offer an obvious route to tasks and goals.")
+        open.tap()
+        XCTAssertTrue(app.navigationBars["Tasks & goals"].waitForExistence(timeout: 5))
+        let task = app.staticTexts["CaptureTodayTask_preview-task"]
+        XCTAssertTrue(task.waitForExistence(timeout: 5))
+        XCTAssertTrue(task.isHittable, "Tasks should be visible immediately, before session summaries or focus reports.")
+        let tags = app.descendants(matching: .any)["CaptureTodayTaskTags_preview-task"].firstMatch
+        XCTAssertTrue(tags.isHittable, "Shared tags should be visible beside the work without opening details.")
+        XCTAssertFalse(app.buttons["CaptureTodayTaskPlanFocus_preview-task"].exists, "Scheduling controls should start collapsed.")
+        XCTAssertFalse(app.buttons["CaptureTodaySkipMissed_preview-task"].exists, "Repeat maintenance belongs inside the schedule.")
+        XCTAssertFalse(app.buttons["CaptureTodayTaskMergedEvidenceSource_preview-task"].exists, "Extra source history should start collapsed.")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "home-tasks-and-shared-colors"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let schedule = app.buttons["CaptureTodayTaskSchedule_preview-task"].firstMatch
+        reveal(schedule)
+        XCTAssertTrue(schedule.isHittable)
+        schedule.tap()
+        let plan = app.buttons["CaptureTodayTaskPlanFocus_preview-task"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 3), "The existing planner must remain one tap away.")
+        reveal(schedule)
+        schedule.tap()
+        XCTAssertFalse(plan.exists, "The task list should return to its compact state.")
+        let sourceDetails = app.buttons["CaptureTodayTaskSourceDetails_preview-task"].firstMatch
+        reveal(sourceDetails)
+        XCTAssertTrue(sourceDetails.isHittable)
+        sourceDetails.tap()
+        XCTAssertTrue(app.buttons["CaptureTodayTaskMergedEvidenceSource_preview-task"].waitForExistence(timeout: 3),
+            "Collapsing source history must not remove the original evidence link.")
+        reveal(sourceDetails)
+        sourceDetails.tap()
+        XCTAssertFalse(app.buttons["CaptureTodayTaskMergedEvidenceSource_preview-task"].exists)
     }
 
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
@@ -3060,6 +3504,21 @@ final class CaptureExperienceUITests: XCTestCase {
             previewCreateTag.isEnabled,
             "Preview must explain direct vocabulary creation without pretending to mutate the Nest."
         )
+        previewCreateField.tap()
+        previewCreateField.typeText("Session prep")
+        app.buttons["CaptureTagVocabularyKeyboardDone"].tap()
+        let colorPicker = app.descendants(matching: .any)["CaptureTagColorPicker"].firstMatch
+        XCTAssertTrue(colorPicker.waitForExistence(timeout: 3),
+            "A new shared tag should offer the native color picker right where it is created.")
+        let resetColor = app.buttons["CaptureTagColorReset"]
+        reveal(resetColor)
+        XCTAssertTrue(resetColor.isEnabled)
+        resetColor.tap()
+        XCTAssertFalse(resetColor.isEnabled, "Theme color is a deliberate, reversible choice.")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_new-tag-preview_new"].exists)
+        previewCreateField.tap()
+        previewCreateField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Session prep".count))
+        app.buttons["CaptureTagVocabularyKeyboardDone"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTagVocabularyAliases_preview-episode-4"].exists)
         let previewManageTag = app.buttons["CaptureTagVocabularyManage_preview-episode-4"]
         XCTAssertTrue(previewManageTag.exists)
@@ -3199,6 +3658,40 @@ final class CaptureExperienceUITests: XCTestCase {
             "Returning to shared work should preserve the same one-control navigation model."
         )
         XCTAssertEqual(app.staticTexts["Access"].value as? String, "Can edit")
+    }
+
+    func testNestConversationKeepsIdeasTasksAndSharedTagsTogether() {
+        exerciseNestConversationTaskDraft()
+    }
+
+    func testNestConversationKeepsIdeasTasksAndSharedTagsTogetherOnRegularWidthIPad() {
+        exerciseNestConversationTaskDraft()
+    }
+
+    private func exerciseNestConversationTaskDraft() {
+        openRootDestination("Nests")
+        let open = app.buttons["CaptureNestConversationOpenButton"]
+        reveal(open)
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+        let create = app.buttons["CaptureNestConversationCreateTask_preview-nest-idea"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["CaptureNestConversationTask_preview-nest-task"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTag_preview-nest-task_research"].exists)
+        XCTAssertFalse(app.textFields["Nest URL"].exists)
+        create.tap()
+        let title = app.descendants(matching: .any)["CaptureNestConversationTaskTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Collect three examples for our opening chapter.")
+        XCTAssertFalse(app.buttons["CaptureNestConversationTaskSave"].isEnabled,
+            "Preview explores the real editor without pretending to create shared work")
+        app.buttons["CaptureNestConversationTaskTags"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTaskTagPicker"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTaskTagChoice_")).count > 0)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Nest conversation task tags"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     func testNestNoteWorkingDraftSurvivesDismissalAndRelaunch() {
@@ -4009,6 +4502,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         let complete = app.buttons["CaptureTodayFocusDoneButton"]
+        reveal(complete)
         XCTAssertTrue(complete.exists)
         XCTAssertFalse(complete.isEnabled, "Preview work must never call Nest or imply a real task/focus mutation.")
 
@@ -4026,7 +4520,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(taskTags.exists)
         XCTAssertTrue(taskTags.label.contains("High Ground Odyssey"))
         XCTAssertTrue(taskTags.label.contains("Proof listen"))
+        let schedule = app.buttons["CaptureTodayTaskSchedule_preview-task"].firstMatch
+        reveal(schedule)
+        XCTAssertTrue(schedule.isHittable)
+        schedule.tap()
         let planFocus = app.buttons["CaptureTodayTaskPlanFocus_preview-task"]
+        XCTAssertTrue(planFocus.waitForExistence(timeout: 3), "Expanding the task schedule should expose its planner.")
         reveal(planFocus)
         XCTAssertTrue(planFocus.exists)
         XCTAssertEqual(planFocus.label, "Plan focus")
@@ -4269,6 +4768,10 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {
         openAcrossNestsFollowThrough()
+        let schedule = app.buttons["CaptureTodayTaskSchedule_preview-task"].firstMatch
+        reveal(schedule)
+        XCTAssertTrue(schedule.isHittable)
+        schedule.tap()
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_preview-series_preview-task"]
         reveal(recurrence)
         XCTAssertTrue(recurrence.exists)
@@ -4652,6 +5155,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     private func openTranscriptPassageCreationMenu() {
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkComposer"].firstMatch.waitForNonExistence(timeout: 5))
         let create = app.buttons["CaptureTranscriptCreateFromPassage_preview-segment"].firstMatch
         reveal(create)
         XCTAssertTrue(create.waitForExistence(timeout: 5))
@@ -4677,8 +5181,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse((words.value as? String ?? "").isEmpty)
         XCTAssertFalse(confidence.exists, "Correcting words must not require opening source diagnostics.")
         let keepDraft = app.buttons["Keep draft"].firstMatch
-        reveal(keepDraft)
+        XCTAssertTrue(keepDraft.waitForExistence(timeout: 5))
+        // This editor is already materialized. Let XCTest scroll its button
+        // into view for the tap instead of searching the lazy transcript with
+        // 32 gestures while the text field owns focus (minutes on hosted CI).
         keepDraft.tap()
+        XCTAssertFalse(words.exists, "Keep draft should close the correction editor and return to the passage.")
 
         for kind in ["Note", "Task", "Goal"] {
             openTranscriptPassageCreationMenu()
@@ -4687,14 +5195,36 @@ final class CaptureExperienceUITests: XCTestCase {
             action.tap()
             let field = app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 5))
+            XCTAssertTrue(field.isHittable, "Opening work must present the editor in view, without scrolling the transcript to find it.")
+            XCTAssertTrue(app.buttons["CaptureTranscriptCancel\(kind)Button"].isHittable,
+                "Close must stay available in the sheet toolbar.")
             XCTAssertFalse((field.value as? String ?? "").isEmpty, "The passage should seed useful work, not an empty form.")
+            for otherKind in ["Note", "Task", "Goal"] where otherKind != kind {
+                XCTAssertFalse(app.textFields["CaptureTranscript\(otherKind)TitleField"].exists,
+                    "Only one work composer should be presented at a time.")
+            }
+            field.tap()
+            field.typeText(" - my retained draft")
+            let expectedTitle = field.value as? String
+            XCTAssertTrue(expectedTitle?.contains("my retained draft") == true,
+                "The composer must accept writing before recovery is evaluated.")
             let save = app.buttons["CaptureTranscriptCreate\(kind)Button"].firstMatch
             XCTAssertFalse(save.isEnabled, "Preview must not write to a real account.")
-            let cancel = kind == "Note"
-                ? app.buttons["CaptureTranscriptCancelNoteButton"].firstMatch
-                : app.buttons["Cancel"].firstMatch
-            reveal(cancel)
+            let cancel = app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch
+            XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+            // The focused composer is already materialized. XCTest can reveal
+            // its button for the tap; our lazy-list search scrolls underneath
+            // the keyboard and can never establish its own viewport condition.
             cancel.tap()
+            openTranscriptPassageCreationMenu()
+            let reopen = app.buttons["CaptureTranscriptMake\(kind)Button"].firstMatch
+            XCTAssertTrue(reopen.waitForExistence(timeout: 5))
+            reopen.tap()
+            let restored = app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch
+            XCTAssertTrue(restored.waitForExistence(timeout: 5))
+            XCTAssertEqual(restored.value as? String, expectedTitle,
+                "Closing and reopening must not replace writing with the original transcript.")
+            app.buttons["CaptureTranscriptCancel\(kind)Button"].firstMatch.tap()
         }
         let details = app.buttons["CaptureTranscriptSegmentDetails_preview-segment"].firstMatch
         reveal(details)
@@ -4808,7 +5338,7 @@ final class CaptureExperienceUITests: XCTestCase {
             edit.tap()
             let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
             XCTAssertTrue(editor.waitForExistence(timeout: 8), "Each result opens the existing client-space editor.")
-            let title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+            let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
             XCTAssertEqual(title.value as? String, expectedTitle)
             XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkKind"].firstMatch.exists,
                 "Editing an existing item should not present a disabled type chooser.")
@@ -4820,6 +5350,25 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["Cancel"].firstMatch.tap()
             XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].firstMatch.waitForExistence(timeout: 8))
         }
+    }
+
+    func testBackgroundFollowThroughKeepsExistingWorkEditable() {
+        openPreviewTranscriptReview()
+        let progress = app.descendants(matching: .any)["CaptureFollowThroughProgress"].firstMatch
+        reveal(progress, searchAboveFirst: true)
+        XCTAssertTrue(progress.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["CaptureFollowThroughRetry"].exists,
+            "Background work must not ask the person to restart an in-flight job.")
+        let edit = app.buttons["CaptureTranscriptEditWork_TASK_preview-task"].firstMatch
+        reveal(edit, searchAboveFirst: false)
+        XCTAssertTrue(edit.waitForExistence(timeout: 8))
+        edit.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        XCTAssertEqual(title.value as? String, "Block 30 minutes for the first step")
+        title.tap()
+        title.typeText(" after lunch")
+        XCTAssertTrue((title.value as? String ?? "").contains("after lunch"))
     }
 
     func testTranscriptFollowUpExpandsAllNotesTasksAndGoals() {
@@ -5057,10 +5606,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptNoteKindPicker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptNoteVisibilityPicker"].exists)
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateNoteButton"].isEnabled)
-        let noteBoundary = app.staticTexts["CaptureTranscriptNoteBoundary"]
+        let noteBoundary = app.staticTexts["CaptureTranscriptNoteAudienceBoundary"]
         reveal(noteBoundary)
-        XCTAssertTrue(noteBoundary.label.contains("Saved privately by default"))
-        XCTAssertTrue(noteBoundary.label.contains("link back to this transcript moment"))
+        XCTAssertEqual(noteBoundary.label, "Only you.", "A new note should start private without an approval step.")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptWorkDraftSource"].exists,
+            "The composer should retain an identifiable transcript source.")
         app.buttons["CaptureTranscriptCancelNoteButton"].tap()
 
         openTranscriptPassageCreationMenu()
@@ -5074,7 +5624,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "Task capture should finish presenting before its preview-only controls are inspected."
         )
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateTaskButton"].isEnabled)
-        app.buttons["Cancel"].tap()
+        app.buttons["CaptureTranscriptCancelTaskButton"].tap()
 
         openTranscriptPassageCreationMenu()
         let makeGoal = app.buttons["CaptureTranscriptMakeGoalButton"]
@@ -5090,7 +5640,7 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(goalBoundary)
         XCTAssertTrue(goalBoundary.isHittable, "The concise goal ownership and source-link detail should remain readable.")
         XCTAssertTrue(goalBoundary.label.contains("Owned by you"))
-        XCTAssertTrue(goalBoundary.label.contains("link back to this transcript moment"))
+        XCTAssertTrue(goalBoundary.label.contains("linked to this passage"))
 
     }
 
@@ -5397,7 +5947,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["00:08 · Possible dropout · listen before classifying"].exists
         )
-        XCTAssertTrue(app.staticTexts["Sounds to review"].exists)
+        XCTAssertTrue(app.staticTexts["Detected sounds"].exists)
         XCTAssertTrue(app.staticTexts["00:12 · Cough · 86% score"].exists)
         let audibleEventBoundary = app.descendants(matching: .any)["CaptureAudibleEventPreviewBoundary"]
         XCTAssertTrue(audibleEventBoundary.exists)
@@ -5671,7 +6221,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-ui-preview-tab=record",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -5679,11 +6229,21 @@ final class CaptureExperienceUITests: XCTestCase {
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("High Ground pre-show")
         let consentNeededSession = app.staticTexts["High Ground pre-show"]
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
         consentNeededSession.tap()
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        XCTAssertTrue(app.navigationBars["Choose session"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(reveal(localOnly, requireHittable: false))
         openLocalRecorderIfNeeded()
-        app.buttons["CaptureConfirmConsentButton"].tap()
+        let confirmConsent = app.buttons["CapturePersistentRecorderConsentButton"]
+        XCTAssertTrue(confirmConsent.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmConsent.isHittable, "Consent should be available directly from the persistent recording control.")
+        confirmConsent.tap()
 
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
@@ -5702,15 +6262,7 @@ final class CaptureExperienceUITests: XCTestCase {
             .hitRegion,
             .sufficientElementDescription,
             .textClipped,
-        ]) { issue in
-            guard issue.auditType == .textClipped else { return false }
-            // XCTest reports one synthetic issue without an element and also
-            // flags the fully visible, fixed-height primary button at AX3.
-            // Both are verified directly above. Keep every other element and
-            // every other audit type fatal.
-            return issue.element == nil
-                || issue.element?.identifier == "CaptureConsentSaveChoicesButton"
-        }
+        ])
     }
 
     func testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission() {
@@ -5792,12 +6344,23 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-ui-preview-tab=record",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
+        let location = app.buttons["CaptureGlobalWorkLocation"]
+        XCTAssertTrue(location.waitForExistence(timeout: 5))
+        XCTAssertEqual(location.value as? String, "High Ground Odyssey, Coaching with Homer")
+        XCTAssertLessThan(location.frame.height, app.frame.height * 0.2,
+            "The pinned location selector must leave room to work at the largest text size; full names remain available in its accessibility value and switcher.")
+
+        // Materialize the lazy row, then let XCTest scroll its tap target fully
+        // into view. The large-text recording dock can obscure part of a row.
+        let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
+        XCTAssertTrue(reveal(localOnly, requireHittable: false))
         openLocalRecorderIfNeeded()
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
+        reveal(modePicker)
         XCTAssertTrue(modePicker.waitForExistence(timeout: 12))
         modePicker.buttons["A/V"].tap()
         let qualityPicker = app.buttons["CaptureVideoQualityPicker"]
@@ -5953,14 +6516,24 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCoreShellPassesAccessibilityAuditAtLargestTextSize() throws {
+        continueAfterFailure = true
+        defer { continueAfterFailure = false }
         app.terminate()
         app.launchArguments = [
             "--capture-ui-preview",
             "--capture-ui-preview-tab=today",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
+
+        let preview = app.descendants(matching: .any)["CapturePreviewModeBadge"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 12))
+        XCTAssertEqual(
+            preview.value as? String,
+            "Text size: accessibility5",
+            "Verify the app actually renders at the largest Dynamic Type size; an ignored launch value must not produce a false pass."
+        )
 
         let destinations: [(tab: String, root: XCUIElement)] = [
             ("Home", app.staticTexts["CaptureTodayCreateHeading"]),
@@ -5981,6 +6554,10 @@ final class CaptureExperienceUITests: XCTestCase {
                 .sufficientElementDescription,
                 .textClipped,
             ])
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "largest-text-\(destination.tab.lowercased()).png"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
             if hidSidebar { restoreIPadSidebarAfterAccessibilityAudit() }
         }
     }
@@ -5992,7 +6569,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview-tab=record",
             "--capture-ui-preview-session=preview-studio-group-ready",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -6008,11 +6585,11 @@ final class CaptureExperienceUITests: XCTestCase {
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5)
         )
 
-        let start = app.buttons["CaptureStartButton"]
-        reveal(start)
+        let start = app.buttons["CapturePersistentRecorderStartButton"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
         XCTAssertTrue(
             start.isHittable,
-            "The primary recording action must remain reachable at the largest accessibility text size."
+            "The persistent recording action must remain reachable without scrolling at the largest accessibility text size."
         )
         assertAccessibleTapTarget(
             start,
@@ -6048,13 +6625,9 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         closeDeviceSoundCheckIfNeeded()
 
-        let manuscript = app.descendants(matching: .any)[
-            "CaptureEpisodeManuscriptCard"
-        ]
-        reveal(manuscript, searchAboveFirst: false)
-        XCTAssertTrue(manuscript.exists)
-        let openManuscript = app.buttons["CaptureEpisodeManuscriptOpenButton"]
-        reveal(openManuscript)
+        openSessionToolsMenu()
+        let openManuscript = app.buttons["CaptureEpisodeScriptToolbar"]
+        XCTAssertTrue(openManuscript.waitForExistence(timeout: 3))
         XCTAssertTrue(
             openManuscript.isHittable,
             "The canonical episode manuscript must remain reachable at the largest accessibility text size."
@@ -6063,6 +6636,15 @@ final class CaptureExperienceUITests: XCTestCase {
             openManuscript,
             "The canonical episode manuscript"
         )
+        openManuscript.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureEpisodeManuscriptReader"]
+                .waitForExistence(timeout: 5),
+            "The episode script should open directly without scrolling through recording setup."
+        )
+        let manuscriptDone = app.buttons["CaptureEpisodeManuscriptDone"]
+        XCTAssertTrue(manuscriptDone.isHittable)
+        manuscriptDone.tap()
 
         openEpisodeWatchIfNeeded()
         let watch = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
@@ -6244,7 +6826,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-ui-preview-tab=account",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
 
@@ -6524,28 +7106,64 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    @discardableResult
     private func reveal(
         _ element: XCUIElement,
         searchAboveFirst: Bool = true,
         requireHittable: Bool = true
-    ) {
+    ) -> Bool {
         let sourceFilingForm = app.descendants(matching: .any)["CaptureSourceFilingForm"].firstMatch
-        let navigationBar = app.navigationBars.firstMatch
+        // Dismissed sheets and inactive tabs can retain navigation bars in
+        // the tree. Their offscreen frames are not the current scroll inset.
+        let navigationBar = app.navigationBars.allElementsBoundByIndex.first {
+            $0.isHittable && $0.frame.intersects(app.frame)
+        }
         let visibleTop = max(
             app.frame.minY + 72,
-            navigationBar.exists ? navigationBar.frame.maxY + 4 : app.frame.minY + 72
+            navigationBar.map { $0.frame.maxY + 4 } ?? app.frame.minY + 72
         )
-        let visibleBottom = app.frame.maxY - (sourceFilingForm.exists ? 12 : 96)
+        let recordingDock = app.otherElements["CapturePersistentRecorderDock"].firstMatch
+        let dockIsVisible = recordingDock.exists && recordingDock.isHittable
+        let tabBar = app.tabBars.firstMatch
+        let tabBarIsVisible = tabBar.exists && tabBar.isHittable
+        // Presented tools cover the recorder dock and main tab bar. Their
+        // retained accessibility nodes must not shrink the sheet's usable
+        // viewport; controls near its bottom cannot scroll above hidden chrome.
+        var visibleBottom: CGFloat {
+            var bottom = min(
+                app.frame.maxY - 12,
+                tabBarIsVisible ? tabBar.frame.minY - 4 : app.frame.maxY,
+                dockIsVisible ? recordingDock.frame.minY - 4 : app.frame.maxY
+            )
+            let keyboard = app.keyboards.firstMatch
+            if keyboard.exists, keyboard.frame.width >= app.frame.width * 0.8 {
+                bottom = min(bottom, keyboard.frame.minY - 8)
+                // iOS can call a row hittable even when the transparent
+                // keyboard accessory covers its tap center. Its toolbar is
+                // above the reported key grid, so exclude that region too.
+                for toolbar in app.toolbars.allElementsBoundByIndex where
+                    toolbar.frame.minY > visibleTop
+                    && toolbar.frame.maxY <= keyboard.frame.minY
+                    && toolbar.frame.width >= app.frame.width * 0.8 {
+                    bottom = min(bottom, toolbar.frame.minY - 8)
+                }
+            }
+            return bottom
+        }
         let elementIsReachable = {
             element.exists && (!requireHittable || element.isHittable)
         }
         // Native navigation controls live above the scrollable content by
         // design. Do not scroll the entire document looking for an already
         // reachable toolbar button (for example, the current Nest switcher).
-        if elementIsReachable(), navigationBar.exists,
+        if elementIsReachable(), let navigationBar,
            !element.frame.isEmpty,
            navigationBar.frame.contains(element.frame) {
-            return
+            return true
+        }
+        if elementIsReachable(), dockIsVisible,
+           !element.frame.isEmpty, recordingDock.frame.contains(element.frame) {
+            return true
         }
         let elementHasRequiredVisibleFrame = {
             if requireHittable {
@@ -6560,11 +7178,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 && element.frame.minY < visibleBottom
         }
         if sourceFilingForm.exists, elementIsReachable() {
-            return
+            return true
         }
         if elementIsReachable(),
            elementHasRequiredVisibleFrame() {
-            return
+            return true
         }
         // On iPad, an iPhone-first app can run inside a movable window whose
         // origin does not match the SpringBoard screen. A gesture synthesized
@@ -6574,10 +7192,13 @@ final class CaptureExperienceUITests: XCTestCase {
         // windowed iPad layouts. Bounded drags avoid oscillating above and
         // below a short control when a full-page swipe overshoots it.
         let namedForm = app.descendants(matching: .any)["CaptureQuickEntryForm"].firstMatch
+        let coachingWorkEditorForm = app.collectionViews["CaptureCoachingWorkEditorForm"].firstMatch
         let transcriptReview = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
         let coachingFormResponse = app.scrollViews["CaptureCoachingFormResponse"].firstMatch
         let coachingFormsHome = app.scrollViews["CaptureCoachingFormsHome"].firstMatch
-        let scrollSurface = sourceFilingForm.exists
+        let scrollSurface = coachingWorkEditorForm.exists && coachingWorkEditorForm.isHittable
+            ? coachingWorkEditorForm
+            : sourceFilingForm.exists
             ? sourceFilingForm
             : namedForm.exists
                 ? namedForm
@@ -6609,12 +7230,26 @@ final class CaptureExperienceUITests: XCTestCase {
                     // target, but it may occupy only 44 points. Use a finer
                     // adjustment for those targets so the helper does not
                     // alternate above and below them forever.
-                    let startY = requireHittable
-                        ? (shouldMoveContentDown ? 0.34 : 0.72)
-                        : (shouldMoveContentDown ? 0.44 : 0.56)
-                    let endY = requireHittable
-                        ? (shouldMoveContentDown ? 0.64 : 0.42)
-                        : (shouldMoveContentDown ? 0.56 : 0.44)
+                    let searchingUnmaterializedRow = !element.exists
+                    let startFraction = searchingUnmaterializedRow
+                        ? (shouldMoveContentDown ? 0.2 : 0.85)
+                        : requireHittable
+                            ? (shouldMoveContentDown ? 0.34 : 0.72)
+                            : (shouldMoveContentDown ? 0.44 : 0.56)
+                    let endFraction = searchingUnmaterializedRow
+                        ? (shouldMoveContentDown ? 0.85 : 0.2)
+                        : requireHittable
+                            ? (shouldMoveContentDown ? 0.64 : 0.42)
+                            : (shouldMoveContentDown ? 0.56 : 0.44)
+                    // A safe-area recording dock can occupy much of the
+                    // ScrollView's reported frame. Drag the exposed content,
+                    // not the stationary controls covering its lower edge.
+                    let frame = scrollSurface.frame
+                    let exposedTop = max(frame.minY, visibleTop)
+                    let exposedBottom = min(frame.maxY, visibleBottom)
+                    let exposedHeight = max(1, exposedBottom - exposedTop)
+                    let startY = (exposedTop + exposedHeight * startFraction - frame.minY) / max(1, frame.height)
+                    let endY = (exposedTop + exposedHeight * endFraction - frame.minY) / max(1, frame.height)
                     scrollSurface
                         .coordinate(
                             withNormalizedOffset: CGVector(dx: 0.5, dy: startY)
@@ -6635,14 +7270,15 @@ final class CaptureExperienceUITests: XCTestCase {
                 }
                 if sourceFilingForm.exists {
                     if elementIsReachable() {
-                        return
+                        return true
                     }
                 } else if elementIsReachable(),
                           elementHasRequiredVisibleFrame() {
-                    return
+                    return true
                 }
             }
         }
+        return false
     }
 
     func testAccountMakesOwnerNestBackupAndPreviewFirstRestoreReachable() throws {
@@ -6774,8 +7410,8 @@ final class CaptureExperienceUITests: XCTestCase {
     private func openEpisodeWatchIfNeeded() {
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         guard !card.exists else { return }
-        let open = app.buttons["CaptureEpisodeWatchOpen"].firstMatch
-        reveal(open, searchAboveFirst: false)
+        openSessionToolsMenu()
+        let open = app.buttons["CaptureEpisodeWatchToolbar"].firstMatch
         XCTAssertTrue(
             open.waitForExistence(timeout: 5),
             "An episode Session should keep its focused Watch workspace directly reachable beside the recorder."
@@ -6793,8 +7429,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "CaptureRehearsalReadinessCard"
         ]
         guard !card.exists else { return }
-        let open = app.buttons["CaptureDeviceSoundCheckOpen"].firstMatch
-        reveal(open)
+        openSessionToolsMenu()
+        let open = app.buttons["CaptureDeviceSoundCheckToolbar"].firstMatch
         XCTAssertTrue(
             open.waitForExistence(timeout: 5),
             "The familiar pre-record device and sound check should remain directly reachable from the recorder."
@@ -6805,6 +7441,13 @@ final class CaptureExperienceUITests: XCTestCase {
             card.waitForExistence(timeout: 5),
             "The focused device and sound check should open without expanding the entire Session workspace."
         )
+    }
+
+    private func openSessionToolsMenu() {
+        let menu = app.buttons["CaptureSessionToolsMenu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        XCTAssertTrue(menu.isHittable, "Session tools must stay reachable without scrolling.")
+        menu.tap()
     }
 
     private func closeDeviceSoundCheckIfNeeded() {
@@ -7249,7 +7892,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
         app.launchArguments = [
             "--capture-login-ui-preview",
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue,
         ]
         app.launch()
         XCTAssertTrue(
@@ -7322,7 +7965,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
             app.buttons[
                 "QuipslyCaptureShareSignInSupport"
             ]
-        reveal(share)
+        reveal(share, swipingDownFirst: true)
         XCTAssertTrue(share.isHittable)
         XCTAssertEqual(
             email.value as? String,
@@ -7424,9 +8067,15 @@ final class CaptureLoginExperienceUITests: XCTestCase {
 
     private func reveal(_ element: XCUIElement, swipingDownFirst: Bool = false) {
         if element.exists, element.isHittable { return }
-        if swipingDownFirst { app.swipeDown() }
-        for _ in 0..<4 where !element.isHittable {
-            app.swipeUp()
+        for _ in 0..<8 where !element.isHittable {
+            let searchAbove = element.exists
+                ? element.frame.maxY < app.frame.minY + 120
+                : swipingDownFirst
+            if searchAbove {
+                app.swipeDown()
+            } else {
+                app.swipeUp()
+            }
         }
     }
 
@@ -7491,6 +8140,18 @@ final class ShareCaptureExtensionUITests: XCTestCase {
     }
 
     private func openSafariShareSheet(_ safari: XCUIApplication) {
+        // Fresh Safari installs teach the relocated toolbar with a popover
+        // that covers More. Dismiss that observed system UI explicitly rather
+        // than tapping through it and waiting on Safari's animation timeout.
+        let toolbarTip = safari.descendants(matching: .popover).containing(
+            .staticText, identifier: "View Bookmarks, Share Menu, and Open Tabs"
+        ).firstMatch
+        if toolbarTip.waitForExistence(timeout: 2) {
+            let close = toolbarTip.buttons["Close"].firstMatch
+            XCTAssertTrue(close.exists, safari.debugDescription)
+            close.tap()
+            XCTAssertTrue(toolbarTip.waitForNonExistence(timeout: 3), safari.debugDescription)
+        }
         let share = safari.buttons.matching(
             NSPredicate(format: "label ==[c] %@ OR identifier == %@", "Share", "ShareButton")
         ).firstMatch

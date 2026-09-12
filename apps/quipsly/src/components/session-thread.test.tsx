@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { CollaborationThread, SessionThread } from "./session-thread";
+import { WorkspacePanelActivity } from "./workspace-panel-activity";
 import {
   CHAT_PERSISTED_OUTGOING_EVENT,
   chatPersistedLiveHint,
@@ -29,6 +30,62 @@ describe("SessionThread", () => {
 
   const message = { id: "message-1", body: "Ready", authorName: "Coach", authorEmail: "coach@example.test", gifUrl: null, createdAt: "2026-09-06T12:00:00Z" };
   const response = (payload: unknown) => ({ ok: true, json: async () => payload }) as Response;
+
+  it("fits the call panel with an independently scrolling log and a retained composer", async () => {
+    await act(async () => { render(<SessionThread projectSlug="coaching" roomId="room-1" sessionTitle="Coaching" heading="Chat" fillHeight />); });
+    expect(screen.getByRole("region", { name: "Chat" })).toHaveClass("h-full", "min-h-0");
+    expect(screen.getByRole("region", { name: "Chat" })).not.toHaveClass("min-h-[30rem]");
+    expect(screen.getByRole("log", { name: "Chat" })).toHaveClass("overflow-y-auto", "flex-1");
+    expect(screen.getByRole("log", { name: "Chat" })).not.toHaveClass("max-h-[32rem]");
+    expect(screen.getByRole("textbox", { name: "Message" }).closest("form")).toHaveClass("shrink-0");
+  });
+
+  it("pauses hidden-panel polling and refreshes on return without losing a draft", async () => {
+    const thread = (active: boolean) => <WorkspacePanelActivity.Provider value={active}>
+      <SessionThread projectSlug="coaching" roomId="room-1" sessionTitle="Coaching" />
+    </WorkspacePanelActivity.Provider>;
+    const view = render(thread(false));
+    await act(async () => { jest.advanceTimersByTime(9_000); });
+    expect(fetch).not.toHaveBeenCalled();
+    await act(async () => { view.rerender(thread(true)); });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByRole("textbox", {name: "Message"}), {target: {value: "Keep this thought"}});
+    await act(async () => { view.rerender(thread(false)); });
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+      window.dispatchEvent(new Event("online"));
+      document.dispatchEvent(new Event("visibilitychange"));
+      const hint = chatPersistedLiveHint("session:room-1", "later");
+      expect(hint).not.toBeNull();
+      dispatchChatPersistedIncoming(hint!);
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    jest.mocked(fetch).mockResolvedValue(response({ok: true, messages: [message]}));
+    await act(async () => { view.rerender(thread(true)); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Ready")).toBeVisible();
+    expect(screen.getByRole("textbox", {name: "Message"})).toHaveValue("Keep this thought");
+  });
+
+  it("keeps a send acknowledgment when its panel becomes hidden", async () => {
+    let finish!: (result: Response) => void;
+    jest.mocked(fetch).mockImplementation((_url, init) => init?.method === "POST"
+      ? new Promise(resolve => { finish = resolve; })
+      : Promise.resolve(response({ok: true, messages: []})));
+    const thread = (active: boolean) => <WorkspacePanelActivity.Provider value={active}>
+      <SessionThread projectSlug="coaching" roomId="room-1" sessionTitle="Coaching" />
+    </WorkspacePanelActivity.Provider>;
+    const view = render(thread(true));
+    await act(async () => {});
+    fireEvent.change(screen.getByRole("textbox"), {target: {value: "Ready"}});
+    fireEvent.click(screen.getByRole("button", {name: "Send collaboration message"}));
+    await act(async () => { view.rerender(thread(false)); });
+    await act(async () => { finish(response({ok: true, message})); });
+    await act(async () => { view.rerender(thread(true)); });
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    expect(screen.getAllByText("Ready")).toHaveLength(1);
+    expect(jest.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  });
 
   it("keeps failed text and reuses its request identity after an uncertain save", async () => {
     const fetchMock = globalThis.fetch as jest.Mock;

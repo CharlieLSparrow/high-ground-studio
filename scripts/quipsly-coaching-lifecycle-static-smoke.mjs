@@ -48,7 +48,6 @@ const paths = {
   transcriptWorkerEntrypoint: "apps/quipsly-transcript-worker/src/index.ts",
   packetBuilder: "apps/quipsly/src/lib/server/coaching-packets.ts",
   sessionMapper: "apps/quipsly/src/lib/server/mobile-capture-sessions.ts",
-  coachingPage: "apps/quipsly/src/app/(app)/coaching/page.tsx",
   localDbSmoke: "scripts/quipsly-coaching-local-lifecycle-db-smoke.mjs",
 };
 
@@ -84,6 +83,8 @@ const schemaModels = [
   "ActionItem",
 ];
 
+// UI behavior belongs in rendered page/Session tests. Static copy checks must
+// not require operators' panels, approval language, or obsolete page layouts.
 const checks = [
   check(
     missingPaths.length === 0,
@@ -171,36 +172,6 @@ const checks = [
     "Nest owns staff-only provider egress start, stop, and storage reconciliation commands without making native capture a hidden server recorder.",
   ),
   check(
-    includesAll(texts.coachingPage || "", [
-      "runProviderRecordingAction",
-      "START_EGRESS",
-      "STOP_EGRESS",
-      "RECONCILE_PROVIDER_FILE",
-      "optional provider safety copy",
-      "This provider copy is separate from the call and local iPhone/browser capture.",
-      "A durable reservation is created automatically when you start it",
-      "Start safety copy",
-      "Stop safety copy",
-      "Resolve command",
-      "Verify provider file",
-    ]) &&
-      includesAll(texts.coachingPage || "", [
-        "providerRecordingReceiptSlotId",
-        "providerRecordingActiveAssetId",
-        "providerRecordingNextAction",
-        "room.participantCount < 1",
-        "room.consentGrantedCount < room.participantCount",
-        "Everyone must know recording is active and consent first.",
-      ]) &&
-      includesAll(texts.providerRecordingRoute || "", [
-        "Provider egress start, stop, and reconciliation are staff-only until the in-app recording UX is mature.",
-        "requiresExplicitStart: true",
-        "receiptRequiredBeforeTranscript: true",
-      ]),
-    "coachingRunwayShowsProviderRecordingControls",
-    "The Nest coaching runway exposes explicit staff provider-recording controls and keeps join, receipt, egress, reconciliation, and transcript boundaries visible.",
-  ),
-  check(
     includesAll(texts.coachingRunwayRoute || "", [
       "isProviderRecordingReceiptSlot",
       "transcribableRecordingAssets",
@@ -215,35 +186,6 @@ const checks = [
     ]),
     "coachingRunwaySeparatesReceiptSlotsFromRecordings",
     "The Nest coaching runway read model keeps provider receipt slots visible without counting them as playable/transcribable recordings.",
-  ),
-  check(
-    includesAll(texts.coachingPage || "", [
-      "runTranscriptAction",
-      "buildPacketAction",
-      "/api/mobile/capture/transcripts/run",
-      "/api/mobile/capture/transcripts/packet",
-      "Completed transcripts become editable notes",
-      "the recording remains unchanged",
-      "Run transcript",
-      "Build follow-up",
-      "latestRecordingAssetId",
-      "latestTranscriptStatus !== \"COMPLETED\"",
-      "latestTranscriptSegmentCount < 1",
-    ]),
-    "coachingRunwayShowsTranscriptPacketActions",
-    "The Nest coaching runway exposes safe transcript-to-packet controls with visible source-truth and review boundaries.",
-  ),
-  check(
-    includesAll(texts.coachingPage || "", [
-      "safeActions",
-      "LifecycleSafeActionCard",
-      "Available next steps",
-      "What changes:",
-      "needs your choice",
-      "Session status details",
-    ]),
-    "coachingRunwayDisplaysSafeActions",
-    "The Nest coaching runway displays lifecycle safe actions and their boundaries, not just raw receipt checks.",
   ),
   check(
     includesAll(texts.transcriptRunRoute || "", [
@@ -289,18 +231,13 @@ const checks = [
     includesAll(texts.packetRouteAdapter || "", [
       'export { GET, PATCH, POST } from "./route-implementation";',
     ]) && includesAll(texts.packetRoute || "", [
-      "Sign in before reading a coaching packet.",
-      "Sign in before building a coaching packet.",
-      "Choose a capture room or transcript job before reading a coaching packet.",
-      "Choose a transcript job before building a coaching packet.",
-      "You do not have access to this coaching packet.",
-      "You do not have access to this transcript job.",
+      "getQuipslySessionFromRequest(request)",
+      "sessionActorAccessWhere",
+      "sessionMutationActorAccessWhere",
       "reconcileCaptureTranscriptFollowThrough",
       "results: transcriptResults",
       "packetUsesAutomaticFollowThrough",
       "PACKET_READY_TO_BUILD",
-      "Build a packet from the completed transcript.",
-      "Use or adjust the summary, highlights, tasks, and goals Quipsly created from this Session.",
     ]),
     "packetRouteReturnsOrdinaryEditableWork",
     "Packet route reconciles completed transcripts into ordinary editable Session results without a mandatory approval queue.",

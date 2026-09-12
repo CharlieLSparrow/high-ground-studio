@@ -5,7 +5,17 @@ import { recordMobileCaptureIngestion } from "./mobile-capture-records";
 jest.mock("server-only", () => ({}));
 
 describe("mobile capture transcript durability", () => {
-  it("persists a time-bounded device transcript expectation with the canonical job", async () => {
+  it.each([true, false])("persists the transcript expectation and retains only source-matched analysis (match=%s)", async (matchesSource) => {
+    const soundAnalysis = {
+      schemaVersion: 1, analysisId: "audible_analysis_ingest_retry", supersedesAnalysisId: null,
+      status: "completed", algorithm: "apple-sound-classifier-file-v1", classifierIdentifier: "SNClassifierIdentifierVersion1",
+      analyzedAt: "2026-09-09T18:00:00Z", sourceSHA256: (matchesSource ? "a" : "c").repeat(64), sourceByteCount: 48_000, durationSeconds: 3600,
+      requestedWindowDurationSeconds: 1.5, effectiveWindowDurationSeconds: 1.5, overlapFactor: 0.5,
+      minimumCandidateConfidence: 0.35, knownClassificationCount: 300, knownClassificationsSHA256: "b".repeat(64),
+      resultWindowCount: 12, suggestions: [], failureCode: null, failureDetail: null,
+      boundaries: { classifierOutputIsListeningTriageOnly: true, classifierScoreIsNotAudibility: true,
+        noMediaChanged: true, noRepairOrEditAuthorized: true, humanReviewRequired: true },
+    };
     const room = {
       id: "room-1",
       createdByUserId: "coach-1",
@@ -45,7 +55,8 @@ describe("mobile capture transcript durability", () => {
       recordedStartedAt: new Date("2026-09-01T10:00:00.000Z"),
       recordedStoppedAt: new Date("2026-09-01T11:00:00.000Z"),
       durationSeconds: 3_600,
-      localManifestJson: {},
+      localManifestJson: { reportedSourceProfile: { audibleEventAnalysis: soundAnalysis } },
+      updatedAt: new Date("2026-09-09T18:00:01Z"),
       segmentsJson: [],
     };
     const prisma = {
@@ -100,6 +111,14 @@ describe("mobile capture transcript durability", () => {
       onDeviceTranscriptExpected: true,
     });
 
+    expect(prisma.recordingAsset.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: asset.id, updatedAt: asset.updatedAt },
+      data: expect.objectContaining({ localManifestJson: expect.objectContaining({
+        reportedSourceProfile: matchesSource
+          ? expect.objectContaining({ audibleEventAnalysis: soundAnalysis })
+          : expect.not.objectContaining({ audibleEventAnalysis: expect.anything() }),
+      }) }),
+    }));
     expect(prisma.transcriptJob.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         assetId: asset.id,

@@ -1,4 +1,5 @@
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
+import { conversationWorkSourceHref } from "@/lib/conversation-work-source";
 import {
   readTranscriptDerivedGoalSource,
   readTranscriptDerivedTaskSource,
@@ -46,6 +47,7 @@ export type SourceCardTaskAnchor = {
 };
 export type WorkTag = {
   id: string;
+  hexColor?: string | null;
   label: string;
   slug: string;
   category: string;
@@ -85,7 +87,9 @@ export type RawWorkTask = {
   createdAt: Date | string;
   updatedAt: Date | string;
   assignedUserId?: string | null;
+  isNestShared?: boolean;
   canEditByActor?: boolean;
+  canManageTagsByActor?: boolean;
   sourceJson?: unknown;
   project?: WorkProject | null;
   tagLinks?: Array<{ tag: WorkTag }>;
@@ -131,6 +135,7 @@ export type RawCanonicalGoal = {
   id: string;
   ownerUserId?: string;
   canEditByActor?: boolean;
+  canManageTagsByActor?: boolean;
   title: string;
   description?: string | null;
   status: WorkGoalStatus;
@@ -188,6 +193,7 @@ export type RawWorkPlanBlock = {
 };
 
 export type WorkTask = {
+  conversationSourceHref?: string | null;
   id: string;
   title: string;
   detail: string | null;
@@ -202,7 +208,7 @@ export type WorkTask = {
   updatedAt: string;
   isOverdue: boolean;
   historicalLocked?: boolean;
-  attentionReason: "Overdue commitment" | "Due within 24 hours" | "Reviewed transcript follow-through" | null;
+  attentionReason: "Overdue commitment" | "Due within 24 hours" | "From session transcript" | null;
   assigneeLabel: string | null;
   provenance: string;
   roomId: string | null;
@@ -377,7 +383,7 @@ export function taskProvenance(sourceValue: unknown) {
     return "Recurring task";
   }
   if (readTranscriptDerivedTaskSource(sourceValue)) {
-    return "Reviewed transcript timestamp";
+    return "Session transcript";
   }
   if (source.source === SESSION_CONTEXT_SOURCE && source.contextKind === "task") {
     return "Session context";
@@ -443,8 +449,8 @@ export function buildWorkSnapshot(input: {
           ? "Overdue commitment" as const
           : dueAtMs !== null && dueAtMs <= nowMs + 24 * 60 * 60 * 1000
             ? "Due within 24 hours" as const
-            : provenance === "Reviewed transcript timestamp" && new Date(createdAt).getTime() >= nowMs - 7 * 24 * 60 * 60 * 1000
-              ? "Reviewed transcript follow-through" as const
+            : sourceAnchor !== null && new Date(createdAt).getTime() >= nowMs - 7 * 24 * 60 * 60 * 1000
+              ? "From session transcript" as const
               : null;
       const recurrenceSeries = task.recurrenceOccurrence?.series;
       const recurrenceUnit = recurrenceSeries?.frequency === "DAILY" ? "day" : recurrenceSeries?.frequency === "WEEKLY" ? "week" : "month";
@@ -478,6 +484,7 @@ export function buildWorkSnapshot(input: {
         historicalLocked,
         attentionReason,
         assigneeLabel: personLabel(task.assignedUser),
+        conversationSourceHref: conversationWorkSourceHref(task.engagement?.id, task.sourceJson, task.project),
         provenance,
         roomId: room?.id ?? null,
         sessionTitle: sessionTitle(task),
@@ -486,10 +493,10 @@ export function buildWorkSnapshot(input: {
         project: task.project ? { id: task.project.id, name: task.project.name, slug: task.project.slug } : null,
         tags: (task.tagLinks ?? []).map((link) => link.tag),
         canEdit: Boolean(input.actorUserId)
-          && (task.assignedUserId === input.actorUserId || task.canEditByActor === true)
+          && ((!task.isNestShared && task.assignedUserId === input.actorUserId) || task.canEditByActor === true)
           && !recurrence
           && !historicalLocked,
-        canManageTags: Boolean(input.actorUserId) && task.assignedUserId === input.actorUserId,
+        canManageTags: task.canManageTagsByActor ?? (Boolean(input.actorUserId) && ((!task.isNestShared && task.assignedUserId === input.actorUserId) || task.canEditByActor === true)),
         canManageReminder: Boolean(input.actorUserId)
           && task.assignedUserId === input.actorUserId
           && !recurrence,
@@ -541,7 +548,8 @@ export function buildWorkSnapshot(input: {
         tags: (goal.tagLinks ?? []).map((link) => link.tag),
         canEdit: Boolean(input.actorUserId)
           && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true),
-        canManageTags: Boolean(input.actorUserId) && goal.ownerUserId === input.actorUserId,
+        canManageTags: goal.canManageTagsByActor ?? (Boolean(input.actorUserId)
+          && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true)),
         parent: goal.parent ? { id: goal.parent.id, title: goal.parent.title } : null,
         childCount: goal._count?.children ?? 0,
         linkedTasks: (goal.taskLinks ?? []).map((link) => ({ relationship: link.relationship, task: link.actionItem })),

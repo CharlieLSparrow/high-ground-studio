@@ -15,7 +15,10 @@ on:
 
 concurrency:
   group: capture-apple-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Cold simulator startup is expensive. Finish one run while GitHub replaces
+  # the single pending run with the newest push; do not queue every revision.
+  # Fast Linux PR validation remains independently cancelable.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -39,7 +42,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Test Capture CI routing
-        run: node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs scripts/ci/plan-changed-surfaces.test.mjs packages/repository-governance/src/release-manifest.test.ts apps/mobile-capture/HighGroundCapture/scripts/warm-local-runtime.test.mjs
+        run: node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs scripts/ci/plan-changed-surfaces.test.mjs packages/repository-governance/src/release-manifest.test.ts apps/mobile-capture/HighGroundCapture/scripts/warm-local-runtime.test.mjs apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.test.mjs
 
       - name: Plan Capture validation
         id: plan
@@ -57,17 +60,32 @@ jobs:
               --base "${base}" --head HEAD --github-output "${GITHUB_OUTPUT}"
           fi
 
+      - name: Check Capture source wiring before Mac startup
+        if: steps.plan.outputs.capture == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/quipsly-ios-capture-durability-contract.test.mjs scripts/quipsly-ios-coordinated-podcast-capture.test.mjs scripts/quipsly-ios-capture-account-isolation.test.mjs apps/mobile-capture/HighGroundCapture/scripts/runtime-result-verification.test.mjs
+          node --test scripts/lib/source-check-report.test.mjs scripts/lib/capture-semantic-color-check.test.mjs scripts/quipsly-ios-capture-app-store-static-smoke.test.mjs
+          node scripts/quipsly-ios-capture-app-store-static-smoke.mjs --summary
+
   deterministic-ui:
     needs: changes
     if: needs.changes.outputs.capture == 'true'
-    name: Deterministic Apple UX (${{ matrix.shard == 0 && 'critical' || format('full {0}/4', matrix.shard) }})
+    name: Deterministic Apple UX (${{ matrix.platform }}, ${{ matrix.shard == 0 && 'critical' || format('full {0}/4', matrix.shard) }})
     runs-on: macos-26
-    timeout-minutes: 45
+    # Cold compilation took 16m of the former 55m test step, killing the final
+    # batch after 32 passing tests. Build once, then test those same products.
+    # Separate bounded phases preserve evidence without adding test attempts.
+    timeout-minutes: 95
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
+        platform: [iphone, ipad]
         shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.depth == 'full' && '[1,2,3,4]' || '[0]') }}
     env:
+      CAPTURE_TEST_PLATFORM: ${{ matrix.platform }}
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       CAPTURE_PROJECT: apps/mobile-capture/HighGroundCapture/HighGroundCapture.xcodeproj
       CAPTURE_SCHEME: HighGroundCapture
@@ -82,6 +100,7 @@ jobs:
           set -euo pipefail
           test -d "${DEVELOPER_DIR}"
           xcodebuild -version
+          xcrun simctl list runtimes
           xcrun simctl list devices available
 
       - name: Setup Node.js
@@ -90,16 +109,21 @@ jobs:
           node-version-file: .node-version
 
       - name: Validate Capture release source
-        if: matrix.shard == 0 || matrix.shard == 1
+        if: matrix.platform == 'iphone' && (matrix.shard == 0 || matrix.shard == 1)
         shell: bash
         run: |
           set -euo pipefail
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
           bash scripts/test-capture-session-deep-links.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-coaching-work-save.sh
+          bash apps/mobile-capture/HighGroundCapture/scripts/test-auth-response-decoder.sh
+          bash apps/mobile-capture/HighGroundCapture/scripts/test-protected-session-cache-identity.sh
+          bash scripts/test-capture-document-note-edits.sh
+          bash scripts/test-capture-task-reminders.sh
+          bash scripts/test-capture-voice-writing-continuation.sh
+          bash scripts/test-capture-voice-writing-account-context.sh
+          node --test scripts/quipsly-ios-capture-account-isolation.test.mjs
           node apps/mobile-capture/HighGroundCapture/scripts/test-recording-content-summary.mjs
-          node --test scripts/lib/source-check-report.test.mjs scripts/quipsly-ios-capture-app-store-static-smoke.test.mjs
-          node scripts/quipsly-ios-capture-app-store-static-smoke.mjs --summary
           node --test scripts/release/quipsly-capture-ui-test-plan.test.mjs
           node --test scripts/release/quipsly-capture-ui-test-runner.test.mjs
           node --test scripts/release/quipsly-app-store-connect-readback.test.mjs
@@ -120,11 +144,23 @@ jobs:
           node scripts/release/quipsly-capture-privacy-questionnaire.mjs --strict
 
       - name: Prewarm deterministic simulator services
+        # Boot only the device this matrix job will actually test.
+        timeout-minutes: 15
+        shell: bash
         run: |
-          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2"
-          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPad Air 13-inch (M3)" "26.2"
+          set -euo pipefail
+          case "${CAPTURE_TEST_PLATFORM}" in
+            iphone)
+              CAPTURE_SIMULATOR_DESTINATION_VARIABLE=CAPTURE_DESTINATION bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-iphone.log"
+              ;;
+            ipad)
+              CAPTURE_SIMULATOR_DESTINATION_VARIABLE=CAPTURE_IPAD_DESTINATION bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPad Air 13-inch (M3)" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-ipad.log"
+              ;;
+            *) echo "Unknown Capture platform" >&2; exit 1 ;;
+          esac
 
-      - name: Run bounded deterministic Capture UI lane serially
+      - name: Build deterministic Capture test products
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           if [[ "${{ matrix.shard }}" == "0" ]]; then
@@ -134,27 +170,56 @@ jobs:
             suite="full"
             shard="${{ matrix.shard }}"
           fi
-          evidence_root="${RUNNER_TEMP}/capture-ui-${suite}-${shard}"
-          build_log="${evidence_root}/capture-ui-tests.log"
+          evidence_root="${RUNNER_TEMP}/capture-ui-${suite}-${shard}-${CAPTURE_TEST_PLATFORM}"
+          build_log="${evidence_root}/capture-ui-build.log"
           mkdir -p "${evidence_root}"
           node scripts/release/quipsly-capture-ui-test-runner.mjs \
+            --phase=build \
             --suite="${suite}" \
+            --platform="${CAPTURE_TEST_PLATFORM}" \
             --shard="${shard}" \
             --shards=4 \
             --destination="${CAPTURE_DESTINATION}" \
             --ipad-destination="${CAPTURE_IPAD_DESTINATION}" \
-            --derived-data="${RUNNER_TEMP}/capture-ui-derived-${shard}" \
+            --derived-data="${RUNNER_TEMP}/capture-ui-derived-${shard}-${CAPTURE_TEST_PLATFORM}" \
             --evidence-root="${evidence_root}" \
             2>&1 | tee "${build_log}"
+
+      - name: Run bounded deterministic Capture UI lane serially
+        timeout-minutes: 55
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.shard }}" == "0" ]]; then
+            suite="critical"
+            shard="1"
+          else
+            suite="full"
+            shard="${{ matrix.shard }}"
+          fi
+          evidence_root="${RUNNER_TEMP}/capture-ui-${suite}-${shard}-${CAPTURE_TEST_PLATFORM}"
+          mkdir -p "${evidence_root}"
+          node scripts/release/quipsly-capture-ui-test-runner.mjs \
+            --phase=test \
+            --suite="${suite}" \
+            --platform="${CAPTURE_TEST_PLATFORM}" \
+            --shard="${shard}" \
+            --shards=4 \
+            --destination="${CAPTURE_DESTINATION}" \
+            --ipad-destination="${CAPTURE_IPAD_DESTINATION}" \
+            --derived-data="${RUNNER_TEMP}/capture-ui-derived-${shard}-${CAPTURE_TEST_PLATFORM}" \
+            --evidence-root="${evidence_root}" \
+            2>&1 | tee "${evidence_root}/capture-ui-tests.log"
 
       - name: Preserve native test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: capture-apple-test-evidence-${{ github.run_attempt }}-${{ matrix.shard == 0 && 'critical' || format('full-{0}-of-4', matrix.shard) }}
+          name: capture-apple-test-evidence-${{ github.run_attempt }}-${{ matrix.platform }}-${{ matrix.shard == 0 && 'critical' || format('full-{0}-of-4', matrix.shard) }}
           path: |
+            ${{ runner.temp }}/capture-prewarm-*.log
             ${{ runner.temp }}/capture-ui-*/*.xcresult
             ${{ runner.temp }}/capture-ui-*/capture-ui-tests.log
+            ${{ runner.temp }}/capture-ui-*/capture-ui-build.log
           if-no-files-found: warn
           retention-days: 14
 

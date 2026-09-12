@@ -88,6 +88,12 @@ preserve personal edits. Controlled SQL interleavings check row-version guards
 on automatic task/goal refresh and removal; this is not a two-connection race test.
 Cleanup also retains work with deadlines, reminders, tags, planned time, progress,
 or dependent work, and notes with private visibility, revisions, or linked work.
+The follow-through maintenance integration suite uses disposable real database
+rows to test fair recovery across transcript states, exhausted older analyses,
+small batch sizes, concurrent sweep claims, and process failure. It verifies
+that a sweep updates only its recovery cursor, not source evidence or business
+timestamps. The downstream processor is mocked; existing analysis and
+transcript-work suites separately exercise materialization and retry budgets.
 Late reminder/progress insertion exercises deletion predicates even when the
 parent row version has not changed. Unused generated output still clears automatically.
 This replaces the retired retained-account, mandatory-playback-review merge
@@ -158,6 +164,15 @@ tokens, cookies, passwords, or database credentials.
 
 ## Capture
 
+The native UI runner resolves build settings for the requested simulator before
+starting tests, verifies the app target's simulator platform and device ID, and
+uses that exact ID for the test invocation. A successful Safari launch or a
+generic entry in Xcode's destination list does not establish this. Resolution
+has a bounded timeout; ambiguous, missing, or substituted destinations fail
+without retry. Only the resolved identity is logged, not inherited build-setting
+values. Failed app tests are never retried into green. Missing device coverage
+remains a failure even if the other platform passes.
+
 Capture evaluates PRs into every branch. A lightweight Linux job uses the same
 release-manifest planner as local validation to decide whether Mac tests are
 needed; there is no separate workflow path allowlist. Manual runs always test
@@ -166,6 +181,26 @@ validation` check distinguishes an unaffected change from successful simulator
 tests and fails if required planning or testing failed, was cancelled, or was
 unexpectedly skipped. Use this stable check when configuring branch protection;
 workflow files alone do not enable protection. Pushes alone do not run this lane.
+
+Hosted iPhone and iPad checks run in separate required matrix jobs, with at most
+two Mac jobs active. Each boots only its own simulator. `--platform=iphone` and
+`--platform=ipad` partition the same named critical/full-shard plan; regression
+tests require their union to contain every planned test exactly once. Empty
+platform lanes fail. Local and release runner defaults still exercise both
+devices. Artifact names include the platform so neither result overwrites the
+other. This replaces serial hosted execution that repeatedly exhausted the test
+deadline before iPad coverage finished; it does not shorten coverage, retry app
+failures, or extend the per-job timeout. Separate cold builds are a cost tradeoff
+to evaluate using completed runner minutes, not just elapsed wall time.
+
+New pushes to an open PR do not cancel its active Apple run. GitHub keeps one
+active run and, by default, replaces the single pending run as new revisions
+arrive. This avoids repeatedly paying for cold simulator startup without ever
+reaching the tests, while development continues. Do not opt into queueing every
+intermediate commit. Fast web PR checks still cancel superseded runs. An older
+Apple result proves only that older SHA, never the latest release candidate;
+the final candidate must finish its own checks. See GitHub's
+[concurrency behavior](https://docs.github.com/en/actions/concepts/workflows-and-actions/concurrency).
 
 The routing regression test executes the workflow's actual shell steps against
 a disposable Git repository, including multi-commit PRs, web-only changes,
@@ -193,10 +228,34 @@ Matching counts alone are insufficient: substituted, missing, skipped, failed,
 or repeated tests fail the run. Results are retained in the requested evidence
 directory, or a printed temporary directory for local runs. Missing or unreadable
 result bundles fail rather than falling back to a console-only success.
+The runner finishes a separate result bundle after each batch of up to eight
+tests, reusing the build directory and resolved device. Earlier bundles remain
+readable if the job deadline interrupts a later batch. Every planned test must
+still pass exactly once; batching does not raise the CI time limit or turn a
+partial run into success.
+Each device builds its test products once, then uses `test-without-building`
+for every batch. CI separates `--phase=build` (20 minutes) from `--phase=test`
+(55 minutes), using the same checkout and derived-data path; the job reserves
+95 minutes including simulator preparation and evidence upload. Local runs
+default to both phases. A build-only result is not test qualification.
+Before testing, the runner verifies Xcode's resolved simulator identity. If
+Xcode reports the exact destination-not-found diagnostic (exit 64 from
+`-showBuildSettings`, or 70) and lists only placeholder devices, an
+exact-UUID request can recover once: recheck that UUID in simctl's available
+iOS devices, wait for its boot status, then resolve it again. A missing device,
+concrete competing destination, absent runtime, ambiguous match, package error,
+or persistent failure still fails. This is bounded setup recovery, not a retry
+of app tests; the selected test identities and result requirements are unchanged.
 Fastlane qualification and pre-upload evidence readback use this same identity
 verifier. CI and Fastlane route tests containing `RegularWidthIPad` to iPad;
 an executable parity test checks all currently discovered selectors, avoiding a
 separate release-only list that can silently omit new iPad coverage.
+
+The signed-in runtime runner uses the same exact-test verifier before reporting
+success, in addition to its summary and runtime-warning checks. Its current
+`voice-writing` mode records audio and saves a **separate typed draft**; it is
+not evidence of source-to-transcript-to-writing continuity. That requires opening
+the recording's own draft and checking its source-linked text and persistence.
 
 Native shared-work save recovery has a local fault-injection lane. Start Nest
 and Firebase Auth emulators, then run the proxy in a separate terminal:
@@ -215,6 +274,9 @@ real create and amendment persist, then substitutes a failure response once
 for each. The UI must retain the draft and finish with one work card. Also
 read back the client-space API and confirm one canonical entry, not merely
 one visible title. Stop the proxy after the run. Never use real client data.
+Set `CAPTURE_WORK_RETRY_FAILURE=disconnect` on the proxy to drop the actual
+connection after persistence instead of returning HTTP 503. The same native
+journey must keep the workspace and draft open through both lost replies.
 
 `test-coaching-work-save.sh` tests immutable retry commands and field-level
 amendments without a server. The native runtime runner also warms local
@@ -287,6 +349,8 @@ for installation on a physical iPhone.
 
 - Add forward-only Prisma migrations.
 - Generate the client and validate affected packages.
+- Use `pnpm db:generate`, which synchronizes generated clients across pnpm peer
+  contexts. A direct `prisma generate` can leave Nest resolving a stale client.
 - Apply only to an explicit safe target.
 - Prove runtime behavior after migration.
 - Document rollback or forward-repair strategy.

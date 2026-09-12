@@ -45,7 +45,7 @@ export type SessionWorkspaceNote = {
   revisionCount: number;
   createdAt: string;
   updatedAt: string;
-  tags: Array<{ id: string; label: string; slug: string }>;
+  tags: Array<{ id: string; label: string; slug: string; hexColor?: string | null }>;
   sourceAnchor?: TranscriptDerivedNoteSourceAnchor | null;
   lastMergedSource?: TranscriptMergedNoteSource | null;
 };

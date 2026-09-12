@@ -30,6 +30,15 @@ function liveKitServiceURL(value: string) {
   return value.replace(/\/+$/, "");
 }
 
+export function liveKitAccessAdmin() {
+  const url = text(process.env.LIVEKIT_URL);
+  const key = text(process.env.LIVEKIT_API_KEY);
+  const secret = text(process.env.LIVEKIT_API_SECRET);
+  return url && key && secret
+    ? new RoomServiceClient(liveKitServiceURL(url), key, secret, { requestTimeout: 5, failover: false })
+    : null;
+}
+
 function isLiveKitCloud(value: string) {
   try {
     return new URL(value).hostname.endsWith(".livekit.cloud");
@@ -107,13 +116,14 @@ export async function reconcileRemovedParticipantProviderAccess(input: {
 
   const serviceURL = liveKitServiceURL(configuredURL);
   const tokenRevocationGuaranteed = isLiveKitCloud(serviceURL);
-  const roomService = new RoomServiceClient(serviceURL, apiKey, apiSecret);
+  const roomService = liveKitAccessAdmin()!;
   const knownIdentities = identitiesForParticipant(
     input.participantId,
     input.grants.map((grant) => grant.providerIdentity),
   );
 
   try {
+    const deadline = Date.now() + 8_000;
     const activeBefore = await roomService.listParticipants(providerRoomId);
     const activeIdentities = identitiesForParticipant(
       input.participantId,
@@ -127,6 +137,7 @@ export async function reconcileRemovedParticipantProviderAccess(input: {
     );
     let removedIdentityCount = 0;
     for (const identity of identities) {
+      if (Date.now() >= deadline) throw new Error("LIVEKIT_RECONCILIATION_TIME_BUDGET");
       try {
         await roomService.removeParticipant(providerRoomId, identity, {
           revokeTokenTs,
@@ -172,7 +183,7 @@ export async function reconcileRemovedParticipantProviderAccess(input: {
       latestGrantExpiry,
       nextAction: tokenRevocationGuaranteed
         ? "Quipsly access is removed and LiveKit Cloud reports no active device; current participant tokens were revoked."
-        : "Quipsly access is removed and LiveKit reports no active device. Self-hosted tokens remain bounded by their recorded expiry.",
+        : "Quipsly access is removed and LiveKit reports no active device. Self-hosted tokens are not revoked; reconnects must be checked against current access.",
     };
   } catch {
     return {

@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import "@testing-library/jest-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const refresh = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -9,6 +9,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
+import { RecordingDetails } from "./session-recordings-workspace";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 import { buildSessionRecordingStatus } from "@/lib/session-recording-status";
 
@@ -146,6 +147,31 @@ const topology: SessionReadinessTopology = {
 describe("Session readiness topology card", () => {
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it("does not query diagnostics while collapsed and resumes on opening or returning to the tab", async () => {
+    jest.useFakeTimers();
+    let visibility: DocumentVisibilityState = "visible";
+    jest.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+    const fetchMock = jest.fn(async () => ({ ok: false, json: async () => ({ ok: false, error: "Temporarily unavailable" }) }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<RecordingDetails><SessionReadinessTopologyCard roomId="room-1" topology={topology} /></RecordingDetails>);
+    const details = screen.getByText("Recording details & troubleshooting").closest("details")!;
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await act(async () => { details.open = true; fireEvent(details, new Event("toggle")); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    visibility = "hidden";
+    await act(async () => { fireEvent(document, new Event("visibilitychange")); jest.advanceTimersByTime(30_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    visibility = "visible";
+    await act(async () => { fireEvent(document, new Event("visibilitychange")); });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    await act(async () => { details.open = false; fireEvent(details, new Event("toggle")); });
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("merges safe current presence into the durable person/source projection", async () => {

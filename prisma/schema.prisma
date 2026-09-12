@@ -451,6 +451,7 @@ enum EmailRecipientDeliveryStatus {
 
 enum TransactionalEmailKind {
   BOOKING_CONFIRMED
+  BOOKING_RESCHEDULED
   SESSION_REMINDER_24H
   SESSION_REMINDER_1H
 }
@@ -1084,6 +1085,7 @@ model User {
   marketingCampaigns               MarketingCampaign[]
   organizationMemberships          OrganizationMember[]
   studioProjectAccessGrantsCreated StudioProjectAccessGrant[]   @relation("StudioProjectAccessGrantCreatedBy")
+  studioProjectMemberships         StudioProjectAccessGrant[]   @relation("StudioProjectAccessGrantMember")
   nativeAuthCodes                  StudioNativeAuthCode[]
   nativeDeviceSessions             StudioNativeDeviceSession[]
   feedbackTickets                  FeedbackTicket[]
@@ -2553,6 +2555,7 @@ model CallRoom {
   sourceAlignmentDecisions       SessionAudioAlignmentDecisionReceipt[]
   audioAuditionJobs              SessionAudioAuditionJob[]
   transcriptJobs                 TranscriptJob[]
+  followThroughAnalysis          SessionFollowThroughAnalysis?
   transcriptCorrections          TranscriptCorrection[]
   transcriptVerifications        TranscriptSegmentVerification[]
   transcriptSpeakerAttributions  TranscriptSpeakerAttribution[]
@@ -3516,6 +3519,28 @@ model UploadChunk {
   @@index([status, createdAt])
 }
 
+// Latest source-bound semantic analysis for a Session. Its lease belongs to
+// processing, not the UI; generated notes/tasks/goals remain canonical work.
+model SessionFollowThroughAnalysis {
+  roomId            String    @id
+  sourceFingerprint String
+  provider          String
+  model             String
+  version           String
+  status            String
+  leaseId           String?
+  leaseUntil        DateTime?
+  attemptCount      Int       @default(0)
+  nextAttemptAt     DateTime?
+  resultJson        Json?
+  errorCode         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  room              CallRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+}
+
 model TranscriptJob {
   id                       String              @id @default(cuid())
   roomId                   String?
@@ -3538,6 +3563,8 @@ model TranscriptJob {
   providerResponseObject   String?
   workerBuildId            String?
   resultJson               Json                @default("{}")
+  // Recovery cursor, independent of source edits and provider retry budgets.
+  followThroughCheckedAt   DateTime?
   createdAt                DateTime            @default(now())
   updatedAt                DateTime            @updatedAt
 
@@ -3560,6 +3587,7 @@ model TranscriptJob {
   @@index([studioProjectId, status, createdAt])
   @@index([episodeProductionId, status, createdAt])
   @@index([status, createdAt])
+  @@index([status, followThroughCheckedAt, id])
 }
 
 model TranscriptSegment {
@@ -4187,6 +4215,9 @@ model ActionItem {
   assignedUserId String?
   projectId      String?
   engagementId   String?
+  // Responsibility and sharing are independent. Existing personal and
+  // Session/client-space tasks retain their own access rules.
+  isNestShared   Boolean          @default(false)
   title          String
   detail         String?
   status         ActionItemStatus @default(OPEN)
@@ -4904,6 +4935,7 @@ model StudioProjectAccessGrant {
   id              String                    @id @default(cuid())
   projectId       String
   email           String
+  memberUserId    String?
   role            StudioProjectAccessRole   @default(VIEWER)
   status          StudioProjectAccessStatus @default(ACTIVE)
   createdByUserId String?
@@ -4914,10 +4946,12 @@ model StudioProjectAccessGrant {
 
   project   StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy User?         @relation("StudioProjectAccessGrantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  member    User?         @relation("StudioProjectAccessGrantMember", fields: [memberUserId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, email])
   @@index([email, status])
   @@index([projectId, status])
+  @@index([memberUserId, status, projectId])
 }
 
 model StudioDocument {

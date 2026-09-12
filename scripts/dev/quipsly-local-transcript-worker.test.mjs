@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   currentConsentAllowsLocalTranscription,
@@ -9,6 +12,7 @@ import {
   normalizeWhisperTranscript,
   reconcileLocalTranscriptFollowThrough,
   requireLocalDatabase,
+  runWhisper,
   safeLocalSourcePath,
   validateLocalSourceReceipt,
 } from "./quipsly-local-transcript-worker.mjs";
@@ -181,6 +185,33 @@ test("Whisper normalization preserves timed provider evidence without inventing 
     ],
   });
   assert.throws(() => normalizeWhisperTranscript({ segments: [] }), /no usable/);
+});
+
+test("digital silence never reaches Whisper or creates a hallucinated transcript", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-silent-transcript-"));
+  const sourcePath = path.join(root, "silence.wav");
+  const audio = Buffer.alloc(44 + 4800 * 2);
+  audio.write("RIFF", 0);
+  audio.writeUInt32LE(audio.length - 8, 4);
+  audio.write("WAVEfmt ", 8);
+  audio.writeUInt32LE(16, 16);
+  audio.writeUInt16LE(1, 20);
+  audio.writeUInt16LE(1, 22);
+  audio.writeUInt32LE(48000, 24);
+  audio.writeUInt32LE(96000, 28);
+  audio.writeUInt16LE(2, 32);
+  audio.writeUInt16LE(16, 34);
+  audio.write("data", 36);
+  audio.writeUInt32LE(audio.length - 44, 40);
+  try {
+    await writeFile(sourcePath, audio);
+    await assert.rejects(runWhisper({
+      sourcePath, executable: path.join(root, "must-not-run-whisper"), model: "test", device: "cpu", language: "en",
+    }), /recording contains no audio signal/);
+    assert.deepEqual(await readFile(sourcePath), audio);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("local Whisper routing preserves participant-owned speaker authority", () => {

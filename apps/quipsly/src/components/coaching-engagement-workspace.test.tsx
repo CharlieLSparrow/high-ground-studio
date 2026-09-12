@@ -10,6 +10,8 @@ import userEvent from "@testing-library/user-event";
 
 import { CoachingEngagementWorkspace } from "./coaching-engagement-workspace";
 
+jest.mock("next/navigation", () => ({useSearchParams: () => new URLSearchParams(window.location.search)}));
+
 const members = [
   { id: "coach-1", label: "Morgan Coach", role: "COACH" },
   { id: "client-1", label: "Riley Client", role: "CLIENT" },
@@ -20,10 +22,139 @@ const sharedTask = {
   status: "OPEN", owner: {id: "client-1", label: "Riley Client"}, visibility: "SHARED" as const,
   dueAt: "2026-09-20T15:30:00.000Z", canEdit: true,
   sourceHref: "/sessions/room-1?mode=transcript&source=asset-1&at=2.34",
+  sourceKind: "recording" as const,
   createdAt: "2026-09-07T00:00:00.000Z", updatedAt: "2026-09-07T00:00:00.000Z",
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it.each(["NOTE", "TASK", "GOAL"] as const)("saves client-created tags with a new %s and preserves them on retry", async kind => {
+    const entry = {...sharedTask, kind, tags: [{id: "writing", label: "Writing rhythm", hexColor: null, isActive: true}]};
+    const fetchMock = jest.fn().mockResolvedValueOnce({ok: true, json: async () => ({ok: true, canCreateTags: false, tags: []})})
+      .mockRejectedValueOnce(new Error("Reply lost"))
+      .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, entry})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="space" initialEntries={[]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.change(screen.getByLabelText("Type"), {target: {value: kind}});
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: entry.title}});
+    fireEvent.click(screen.getByRole("button", {name: "Add tags"}));
+    await screen.findByText("Type a name to create your first tag.");
+    fireEvent.change(screen.getByRole("searchbox", {name: `Find ${kind.toLowerCase()} tags`}), {target: {value: "Writing rhythm"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add “Writing rhythm” tag"}));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByText("Reply lost");
+    expect(screen.getByRole("button", {name: "Remove new Writing rhythm tag"})).toBeVisible();
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByRole("heading", {name: entry.title});
+    const saves = fetchMock.mock.calls.filter(([,options]) => options?.method === "POST");
+    expect(saves).toHaveLength(2);
+    expect(saves[1][1].body).toBe(saves[0][1].body);
+    expect(JSON.parse(saves[0][1].body)).toMatchObject({kind, tags: {tagIds: [], newTagLabels: ["Writing rhythm"]}});
+  });
+
+  it("keeps long task text full-width and places completion below its reading content", () => {
+    const entry = {...sharedTask, title: "A long writing outline for our next coaching conversation", body: `Source: https://example.test/${"long-source-name".repeat(20)}`};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
+    const heading = screen.getByRole("heading", {name: entry.title});
+    const card = heading.closest("article")!;
+    const body = within(card).getByText(entry.body, {selector: "p"});
+    const completion = within(card).getByRole("button", {name: "Complete"});
+    // The former row let the action steal half the text width on a phone.
+    expect(completion.parentElement).toHaveClass("flex-col");
+    expect(completion.parentElement).not.toHaveClass("flex-wrap");
+    expect(heading).toHaveClass("[overflow-wrap:anywhere]");
+    expect(body).toHaveClass("[overflow-wrap:anywhere]");
+    expect(card).toHaveClass("bg-card", "text-foreground");
+  });
+
+  it.each([true, false])("keeps canonical tag colors in the reading view without requiring edit access (%s)", (canWrite) => {
+    const entry = {...sharedTask, tags: [
+      {id: "research", label: "Research", hexColor: "#23543a", isActive: true},
+      {id: "old", label: "Earlier work", hexColor: "url(https://example.test/track)", isActive: false},
+    ]};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="client-1" canWrite={canWrite} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
+    const tags = within(screen.getByRole("group", {name: "Tags on this work"}));
+    expect(tags.getByText("Research")).toHaveStyle({backgroundColor: "#23543a", color: "#ffffff"});
+    expect(tags.getByText("Earlier work · archived")).not.toHaveAttribute("style");
+    expect(tags.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", {name: "Tags on this work"}).closest("details")).toBeNull();
+    if (canWrite) expect(screen.getByRole("textbox", {name: "task name"}).closest("details")).not.toHaveAttribute("open");
+    else expect(screen.queryByRole("textbox", {name: "task name"})).not.toBeInTheDocument();
+  });
+
+  it("opens a chat-linked task after client navigation without remounting the workspace", () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState({}, "", "/coaching/engagements/engagement-1#relationship-conversation");
+    try {
+      const props = {engagementId: "engagement-1", initialEntries: [sharedTask], members, currentUserId: "client-1", canWrite: true};
+      const {rerender} = render(<CoachingEngagementWorkspace {...props} />);
+      expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
+      fireEvent.click(within(screen.getByRole("group", {name: "Filter work"})).getByRole("button", {name: "Goals"}));
+      window.history.pushState({}, "", `/coaching/engagements/engagement-1?work=${sharedTask.id}#relationship-work`);
+      rerender(<CoachingEngagementWorkspace {...props} />);
+      expect(screen.getByRole("heading", {name: sharedTask.title})).toBeVisible();
+      expect(screen.getByRole("button", {name: "All"})).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("link", {name: `From recording: ${sharedTask.title}`})).toHaveAttribute("href", sharedTask.sourceHref);
+    } finally { window.history.replaceState({}, "", originalUrl); }
+  });
+  it("does not replace unchanged archived tags when editing task wording", async () => {
+    const entry = {...sharedTask, tags: [{id: "archived", label: "Earlier research", hexColor: "#23543a", isActive: false}]};
+    const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, entry: {...entry, body: "Revised wording"}})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="coach-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
+    fireEvent.click(screen.getByText("Edit"));
+    expect(screen.getByRole("button", {name: "Remove Earlier research tag"})).toBeVisible();
+    fireEvent.change(screen.getByLabelText("task details"), {target: {value: "Revised wording"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const command = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(command.body).toBe("Revised wording");
+    expect(command).not.toHaveProperty("tags");
+    await screen.findByText("Revised wording");
+  });
+  it.each(["TASK", "GOAL", "NOTE"] as const)("creates and edits a tagged %s with stable retries after lost responses", async (kind) => {
+    const tag = {id: "research", label: "Research", hexColor: "#23543a", isActive: true};
+    const saved = {...sharedTask, kind, status: kind === "TASK" ? "OPEN" : "ACTIVE", tags: [tag]};
+    let attempts = 0;
+    let editAttempts = 0;
+    const fetchMock = jest.fn(async (url: string, options?: RequestInit) => {
+      if (url.startsWith("/api/work/tags?")) return {ok: true, json: async () => ({ok: true, tags: [tag]})};
+      if (options?.method === "POST" && ++attempts === 1) throw new Error("Response lost");
+      if (options?.method === "PATCH" && ++editAttempts === 1) throw new Error("Edit response lost");
+      return {ok: true, json: async () => ({ok: true, entry: options?.method === "PATCH" ? {...saved, tags: [], body: "Three examples"} : saved})};
+    });
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[]} members={members} currentUserId="coach-1" canWrite />);
+    fireEvent.change(screen.getByLabelText("Type"), {target: {value: kind}});
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: sharedTask.title}});
+    fireEvent.click(screen.getByRole("button", {name: "Add tags"}));
+    fireEvent.click(await screen.findByRole("checkbox", {name: "Research"}));
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByText("Response lost");
+    expect(screen.getByRole("checkbox", {name: "Research"})).toBeChecked();
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByRole("heading", {name: sharedTask.title});
+    const creates = fetchMock.mock.calls.filter(([, options]) => options?.method === "POST");
+    expect(creates).toHaveLength(2);
+    expect(creates[0][1]?.body).toBe(creates[1][1]?.body);
+    expect(JSON.parse(String(creates[0][1]?.body))).toMatchObject({kind, tags: {tagIds: [tag.id]}});
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.click(screen.getByRole("button", {name: "Remove Research tag"}));
+    fireEvent.change(screen.getByLabelText(`${kind.toLowerCase()} details`), {target: {value: "Three examples"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await screen.findByText("Edit response lost");
+    expect(screen.getByLabelText(`${kind.toLowerCase()} details`)).toHaveValue("Three examples");
+    expect(screen.queryByRole("button", {name: "Remove Research tag"})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await screen.findByText("Three examples");
+    const updates = fetchMock.mock.calls.filter(([, options]) => options?.method === "PATCH");
+    expect(updates).toHaveLength(2);
+    expect(updates[0][1]?.body).toBe(updates[1][1]?.body);
+    expect(JSON.parse(String(updates[0][1]?.body))).toMatchObject({kind, clientRequestId: expect.any(String), body: "Three examples", tags: {tagIds: []}, expectedUpdatedAt: saved.updatedAt});
+  });
   it("restores a selected item from its space URL without exposing an unknown item", () => {
     const originalUrl = window.location.href;
     window.history.replaceState({}, "", `/coaching/engagements/engagement-1?work=${sharedTask.id}#relationship-work`);
@@ -70,7 +201,7 @@ describe("CoachingEngagementWorkspace", () => {
     expect(screen.getByRole("heading", {name: note.title})).toBeVisible();
     expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
     fireEvent.click(filters.getByRole("button", {name: "Goals"}));
-    expect(screen.getByText("No goals yet.")).toBeVisible();
+    expect(screen.getByText("Finding your work…")).toBeVisible();
     fireEvent.click(filters.getByRole("button", {name: "Tasks"}));
     fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     expect(task.getByRole("textbox", {name: "task details"})).toHaveValue("Keep my unfinished thought");
@@ -206,6 +337,15 @@ describe("CoachingEngagementWorkspace", () => {
     expect(screen.getByRole("link", {name: `From recording: ${sharedTask.title}`})).toHaveAttribute("href", sharedTask.sourceHref);
   });
 
+  it("labels a chat-created task with its actual conversation source", () => {
+    const entry = {...sharedTask, sourceKind: "conversation" as const,
+      sourceHref: "/coaching/engagements/engagement-1?message=idea-1#relationship-conversation"};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[entry]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
+    expect(screen.getByRole("link", {name: `From conversation: ${entry.title}`})).toHaveAttribute("href", entry.sourceHref);
+    expect(screen.queryByRole("link", {name: /From recording/})).not.toBeInTheDocument();
+  });
+
   it("makes sources available to read-only members without adding fake links to manual notes", () => {
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[
       sharedTask, { ...sharedTask, id: "manual-note", kind: "NOTE", title: "My own words", sourceHref: null },
@@ -330,6 +470,7 @@ describe("CoachingEngagementWorkspace", () => {
       title: "Practice reflective listening",
       body: "Try it twice before Friday.",
       sourceHref: sharedTask.sourceHref,
+      sourceKind: sharedTask.sourceKind,
       status: "OPEN",
       owner: { id: "client-1", label: "Riley Client" },
       visibility: "SHARED" as const,

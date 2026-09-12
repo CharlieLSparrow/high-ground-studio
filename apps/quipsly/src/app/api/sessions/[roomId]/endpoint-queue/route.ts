@@ -125,24 +125,9 @@ export async function POST(
         }
         return { kind: "ok" as const, receipt: existing, replay: true };
       }
-      const endpointIdentity = await tx.callParticipantProviderGrantReceipt.findFirst({
-        where: {
-          roomId: room.id,
-          participantId: participant.id,
-          clientInstanceId: evidence.clientInstanceId,
-          clientKind: { equals: evidence.clientKind, mode: "insensitive" },
-        },
-        select: { id: true },
-      }) ?? await tx.callParticipantPreflightReceipt.findFirst({
-        where: {
-          roomId: room.id,
-          participantId: participant.id,
-          clientInstanceId: evidence.clientInstanceId,
-          clientKind: { equals: evidence.clientKind, mode: "insensitive" },
-        },
-        select: { id: true },
-      });
-      if (!endpointIdentity) return { kind: "unknown-endpoint" as const };
+      // Local capture/recovery works without a provider connection or optional
+      // sound check. Membership authorizes this participant's report; the
+      // source ownership and verification checks below establish drained state.
       const latest = await tx.callEndpointQueueReceipt.findFirst({
         where: { roomId: room.id, clientInstanceId: evidence.clientInstanceId },
         orderBy: { queueRevision: "desc" },
@@ -215,7 +200,6 @@ export async function POST(
       return { kind: "ok" as const, receipt, replay: false };
     });
     if (result.kind === "conflict") return NextResponse.json({ ok: false, code: "REQUEST_ID_CONFLICT", error: "That request ID belongs to different endpoint evidence." }, { status: 409, headers: PRIVATE_HEADERS });
-    if (result.kind === "unknown-endpoint") return NextResponse.json({ ok: false, code: "UNKNOWN_ENDPOINT", error: "Run the Session join or private playback check on this exact installation first." }, { status: 409, headers: PRIVATE_HEADERS });
     if (result.kind === "stale") return NextResponse.json({ ok: false, code: "STALE_QUEUE_REVISION", error: "A newer snapshot from this exact installation is already durable.", latest: receiptView(result.latest) }, { status: 409, headers: PRIVATE_HEADERS });
     if (result.kind === "server-incomplete") return NextResponse.json({ ok: false, code: "SERVER_COPY_INCOMPLETE", error: "The endpoint cannot claim drained until every listed local source has matching verified, released server bytes and capture identity." }, { status: 409, headers: PRIVATE_HEADERS });
     return NextResponse.json({

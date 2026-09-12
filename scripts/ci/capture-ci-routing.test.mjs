@@ -37,6 +37,19 @@ test("Capture evaluates every PR and only starts Mac jobs for affected inputs", 
   assert.match(workflow, /name: Capture validation\n    needs: \[changes, deterministic-ui\]\n    if: always\(\)/);
 });
 
+test("new pushes do not starve Apple tests or queue every intermediate revision", () => {
+  // Check our policy, not a simulated implementation of GitHub's scheduler.
+  // Its default is one running and one replaceable pending run per group.
+  const concurrency = workflow.split("\nconcurrency:\n")[1]?.split("\npermissions:")[0];
+  assert.ok(concurrency);
+  assert.match(concurrency, /group: capture-apple-tests-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}/);
+  assert.match(concurrency, /^  cancel-in-progress: false$/m);
+  assert.doesNotMatch(concurrency, /^  queue:/m, "Do not accumulate every development push on paid Mac runners");
+  const web = readFileSync(path.join(root, ".github/workflows/pr-tests.yml"), "utf8");
+  assert.match(web.split("\nconcurrency:\n")[1]?.split("\npermissions:")[0],
+    /^  cancel-in-progress: true$/m, "Cheap web validation should still replace obsolete runs");
+});
+
 test("both Capture jobs select the repository Node toolchain before running Node commands", () => {
   for (const job of ["changes", "deterministic-ui"]) {
     const source = workflow.split(`\n  ${job}:\n`)[1]?.split(/\n  [a-z][a-z-]+:\n/)[0];
@@ -45,6 +58,24 @@ test("both Capture jobs select the repository Node toolchain before running Node
     assert.ok(setup >= 0, `${job} must not depend on the runner image's default Node`);
     assert.match(source.slice(setup).split("\n      - name:")[0], /node-version-file: \.node-version/);
     assert.ok(setup < source.search(/\bnode (?:--|scripts\/)/), `${job} runs Node before selecting its version`);
+  }
+});
+
+test("cheap Capture source checks run in Linux planning and preserve failures before Mac startup", () => {
+  const name = "Check Capture source wiring before Mac startup";
+  const changes = workflow.split("\n  changes:\n")[1]?.split("\n  deterministic-ui:\n")[0];
+  assert.ok(changes?.includes(`- name: ${name}`));
+  assert.match(changes, /if: steps.plan.outputs.capture == 'true'/);
+  assert.match(stepScript(name), /quipsly-ios-capture-app-store-static-smoke\.test\.mjs/);
+  assert.doesNotMatch(stepScript("Validate Capture release source"), /quipsly-ios-capture-app-store-static-smoke/);
+  const result = runStep(name, {});
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  for (const exitCode of [17, 143]) {
+    const failed = spawnSync("bash", ["-c", `
+      node() { return ${exitCode}; }
+      ${stepScript(name)}
+    `], { encoding: "utf8" });
+    assert.equal(failed.status, exitCode, "Planning must fail instead of starting the costly native job");
   }
 });
 
@@ -79,12 +110,41 @@ test("native preflight executes every command and stops at each injected failure
   }
 });
 
+for (const [platform, device, variable] of [["iphone", "iPhone 17 Pro", "CAPTURE_DESTINATION"], ["ipad", "iPad Air 13-inch (M3)", "CAPTURE_IPAD_DESTINATION"]]) {
+ for (const fails of [false, true]) {
+  test(`simulator prewarm prepares only ${platform} and preserves ${fails ? "failure" : "success"}`, (t) => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-prewarm-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const step = workflow.split("      - name: Prewarm deterministic simulator services\n")[1]?.split("\n      - name:")[0];
+    assert.match(step, /timeout-minutes: 15/);
+    assert.match(workflow, /\$\{\{ runner.temp \}\}\/capture-prewarm-\*\.log/);
+    const result = spawnSync("bash", ["-c", `
+      bash() {
+        [[ "$1" == apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh ]] || return 98
+        [[ "$2" == "$EXPECTED_DEVICE" && "$CAPTURE_SIMULATOR_DESTINATION_VARIABLE" == "$EXPECTED_VARIABLE" ]] || return 99
+        echo "Preparing $2"
+        echo "Simulator diagnostics" >&2
+        [[ "$2" != "$FAILURE_DEVICE" ]] || return 37
+      }
+      ${stepScript("Prewarm deterministic simulator services")}
+    `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory, CAPTURE_TEST_PLATFORM: platform,
+      EXPECTED_DEVICE: device, EXPECTED_VARIABLE: variable, FAILURE_DEVICE: fails ? device : "none" } });
+    assert.equal(result.status, fails ? 37 : 0, result.stdout + result.stderr);
+    assert.deepEqual(readdirSync(directory), [`capture-prewarm-${platform}.log`]);
+    assert.equal(readFileSync(path.join(directory, `capture-prewarm-${platform}.log`), "utf8"),
+      `Preparing ${device}\nSimulator diagnostics\n`);
+  });
+ }
+}
+
+for (const platform of ["iphone", "ipad"]) {
 for (const shard of [0, 3]) {
+ for (const phase of ["build", "test"]) {
   for (const exitCode of [0, 17, 143]) {
-    test(`native CI shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {
+    test(`native CI ${phase} ${platform} shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {
       const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-ci-"));
       t.after(() => rmSync(directory, { recursive: true, force: true }));
-      const script = stepScript("Run bounded deterministic Capture UI lane serially")
+      const script = stepScript(phase === "build" ? "Build deterministic Capture test products" : "Run bounded deterministic Capture UI lane serially")
         .replaceAll("${{ matrix.shard }}", String(shard));
       const suite = shard === 0 ? "critical" : "full";
       const selected = shard || 1;
@@ -92,19 +152,51 @@ for (const shard of [0, 3]) {
         node() {
           [[ "$1" == scripts/release/quipsly-capture-ui-test-runner.mjs ]] || return 98
           [[ " $* " == *" --suite=${suite} "* && " $* " == *" --shard=${selected} "* ]] || return 99
+          [[ " $* " == *" --platform=${platform} "* ]] || return 98
+          [[ " $* " == *" --phase=${phase} "* ]] || return 98
+          [[ " $* " == *" --derived-data=$RUNNER_TEMP/capture-ui-derived-${selected}-${platform} "* ]] || return 98
           echo "native test stdout"
           echo "native test stderr" >&2
           return "$TEST_EXIT"
         }
         ${script}
       `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory,
-        TEST_EXIT: String(exitCode), CAPTURE_DESTINATION: "synthetic iPhone", CAPTURE_IPAD_DESTINATION: "synthetic iPad" } });
+        TEST_EXIT: String(exitCode), CAPTURE_TEST_PLATFORM: platform, CAPTURE_DESTINATION: "synthetic iPhone", CAPTURE_IPAD_DESTINATION: "synthetic iPad" } });
       assert.equal(result.status, exitCode, result.stdout + result.stderr);
-      assert.equal(readFileSync(path.join(directory, `capture-ui-${suite}-${selected}/capture-ui-tests.log`), "utf8"),
+      assert.equal(readFileSync(path.join(directory, `capture-ui-${suite}-${selected}-${platform}/capture-ui-${phase === "build" ? "build" : "tests"}.log`), "utf8"),
         "native test stdout\nnative test stderr\n");
     });
   }
+ }
 }
+}
+
+test("both platform jobs are required, bounded, and retain independently named evidence", () => {
+  const job = workflow.split("  deterministic-ui:\n")[1]?.split("  validation:\n")[0];
+  assert.match(job, /platform: \[iphone, ipad\]/);
+  assert.match(job, /fail-fast: false/);
+  assert.match(job, /max-parallel: 2/);
+  assert.match(job, /CAPTURE_TEST_PLATFORM: \$\{\{ matrix.platform \}\}/);
+  assert.match(job, /name: capture-apple-test-evidence-.*\$\{\{ matrix.platform \}\}/);
+  assert.doesNotMatch(job, /continue-on-error:/);
+  assert.match(job, /if: matrix.platform == 'iphone' && \(matrix.shard == 0 \|\| matrix.shard == 1\)/);
+});
+
+test("the native execution budget leaves time to upload evidence after timeout", () => {
+  const job = workflow.split("  deterministic-ui:\n")[1]?.split("  validation:\n")[0];
+  const testStep = job.split("      - name: Run bounded deterministic Capture UI lane serially\n")[1]?.split("\n      - name:")[0];
+  const prewarm = job.split("      - name: Prewarm deterministic simulator services\n")[1]?.split("\n      - name:")[0];
+  const build = job.split("      - name: Build deterministic Capture test products\n")[1]?.split("\n      - name:")[0];
+  const minutes = (source) => Number(source?.match(/timeout-minutes: (\d+)/)?.[1]);
+  assert.ok(minutes(testStep) > 0 && minutes(prewarm) > 0 && minutes(build) > 0);
+  assert.ok(minutes(job) >= minutes(testStep) + minutes(prewarm) + minutes(build) + 3,
+    "Startup and test timeouts must leave at least three minutes for setup and retained evidence");
+  assert.match(job, /name: Preserve native test evidence\n\s+if: always\(\)/);
+  assert.ok(job.indexOf("name: Build deterministic Capture test products") < job.indexOf("name: Run bounded deterministic Capture UI lane serially"));
+  assert.match(job, /capture-ui-\*\/capture-ui-build\.log/);
+  assert.doesNotMatch(build, /continue-on-error:|if: always/);
+  assert.doesNotMatch(testStep, /continue-on-error:|if: always/);
+});
 
 test("Capture routes committed changes using the manifest and rejects an invalid comparison", (t) => {
   const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-capture-ci-"));
@@ -178,7 +270,8 @@ test("Capture routes committed changes using the manifest and rejects an invalid
   commit();
   assert.match(runPlan({ PR_BASE_SHA: beforeHarness }).output, /^capture=true$/m);
 
-  for (const file of ["scripts/lib/source-check-report.mjs", "scripts/lib/source-check-report.test.mjs"]) {
+  for (const file of ["scripts/lib/source-check-report.mjs", "scripts/lib/source-check-report.test.mjs",
+    "scripts/lib/capture-semantic-color-check.mjs", "scripts/lib/capture-semantic-color-check.test.mjs"]) {
     const beforeReporter = git("rev-parse", "HEAD");
     writeFileSync(path.join(fixture, file), "// changed source-check reporter\n");
     commit();

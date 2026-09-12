@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readSessionRecordingAttempts } from "@/lib/server/session-recording-attempts";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -158,6 +159,7 @@ async function readCompleteCoachingTranscript(input: {
   })) as TranscriptSourceCandidate[];
   const selected = selectSessionTranscriptSources({
     rows,
+    attempts: await readSessionRecordingAttempts(input.prisma, input.roomId, rows),
     participantIds,
     anchorRecordingAssetId: input.recordingAssetId ?? anchor.recording.id,
   });

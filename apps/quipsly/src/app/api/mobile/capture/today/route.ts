@@ -16,6 +16,7 @@ import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets"
 import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { readSharedWorkTagSummaries } from "@/lib/server/work-tags";
 import {
   createWritingDraftFromSourceAnnotation,
   setSourceAnnotationStatus,
@@ -158,10 +159,14 @@ export async function GET(request: Request) {
         take: 200,
         select: {
           id: true, title: true, detail: true, status: true, dueAt: true, updatedAt: true, sourceJson: true, assignedUserId: true,
+          isNestShared: true,
           evidenceReceipts: { where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1, select: { evidenceJson: true } },
           reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
-          project: { select: { id: true, name: true, slug: true } },
-          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          project: { select: { id: true, name: true, slug: true, accessGrants: {
+            where: { memberUserId: userId, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
+            take: 1, select: { id: true },
+          } } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, hexColor: true, isActive: true } } } },
           room: { select: { id: true, title: true } },
           booking: { select: { clientUserId: true, coachUserId: true } },
           engagement: { select: {
@@ -188,7 +193,7 @@ export async function GET(request: Request) {
         select: {
           id: true, ownerUserId: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true,
           project: { select: { id: true, name: true, slug: true } },
-          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, hexColor: true, isActive: true } } } },
           room: { select: { id: true, title: true } },
           booking: { select: { clientUserId: true, coachUserId: true } },
           engagement: { select: {
@@ -274,11 +279,12 @@ export async function GET(request: Request) {
         where: { projectId: { in: visibleProjectIds }, isActive: true },
         orderBy: [{ label: "asc" }, { id: "asc" }],
         take: 500,
-        select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+        select: { id: true, projectId: true, slug: true, label: true, hexColor: true, isActive: true },
       }) : Promise.resolve([]),
       prisma.actionItem.findMany({
         where: {
           assignedUserId: userId,
+          AND: [{ OR: personalOrSharedSessionTaskAccessWhere(userId) }],
           OR: [
             { status: "OPEN" },
             { completedAt: { gte: reviewWindowStartsAt, lt: reviewWindowEndsAt } },
@@ -318,7 +324,7 @@ export async function GET(request: Request) {
       const updatedAtMs = task.updatedAt.getTime();
       const isPlanned = plannedTaskIds.has(task.id);
       const isDueSoon = dueAtMs <= now.getTime() + 24 * 3_600_000;
-      const isRecentReviewedSource = Boolean(sourceAnchor) && updatedAtMs >= now.getTime() - 7 * 86_400_000;
+      const isRecentTranscriptSource = Boolean(sourceAnchor) && updatedAtMs >= now.getTime() - 7 * 86_400_000;
       const projectVisible = task.project && visibleProjectIds.includes(task.project.id);
       return {
         id: task.id,
@@ -337,12 +343,12 @@ export async function GET(request: Request) {
         updatedAt: task.updatedAt.toISOString(),
         roomId: task.room?.id ?? null,
         sessionTitle: task.room?.title ?? null,
-        project: projectVisible ? task.project : null,
-        canEdit: task.assignedUserId === userId
+        project: projectVisible ? { id: task.project.id, name: task.project.name, slug: task.project.slug } : null,
+        canEdit: task.isNestShared ? Boolean(task.project?.accessGrants?.length) : task.assignedUserId === userId
           || (!task.engagement && task.booking?.clientUserId === userId)
           || (!task.engagement && task.booking?.coachUserId === userId)
           || Boolean(task.engagement?.members?.length),
-        canEditTags: projectVisible ? writableProjectIds.has(task.project.id) : false,
+        canEditTags: projectVisible ? (task.isNestShared ? Boolean(task.project?.accessGrants?.length) : writableProjectIds.has(task.project.id)) : false,
         tagIds: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.label) : [],
         sourceAnchor,
@@ -361,13 +367,13 @@ export async function GET(request: Request) {
           ownerCanManage: task.recurrenceOccurrence.series.ownerUserId === userId,
         } : null,
         todayReason: isPlanned
-          ? sourceAnchor ? "Planned focus · reviewed transcript" : "Planned focus"
+          ? sourceAnchor ? "Planned focus · session transcript" : "Planned focus"
           : isDueSoon
             ? dueAtMs < now.getTime() ? "Overdue commitment" : "Due within 24 hours"
-            : isRecentReviewedSource
-              ? "Reviewed transcript follow-through"
+            : isRecentTranscriptSource
+              ? "From session transcript"
               : null,
-        _todayRank: isPlanned ? 0 : isDueSoon ? 1 : isRecentReviewedSource ? 2 : 3,
+        _todayRank: isPlanned ? 0 : isDueSoon ? 1 : isRecentTranscriptSource ? 2 : 3,
         _dueAtMs: dueAtMs,
         _updatedAtMs: updatedAtMs,
       };
@@ -500,6 +506,19 @@ export async function GET(request: Request) {
       if (!entity.project || !visibleProjectIds.includes(entity.project.id)) continue;
       for (const link of entity.tagLinks) tagCatalogById.set(link.tag.id, link.tag);
     }
+    const sharedTagSummaries = await readSharedWorkTagSummaries({ prisma, actorUserId: userId, actorEmail,
+      taskIds: tasks.filter((task: any) => !task.project).map((task: any) => task.id),
+      goalIds: goals.filter((goal: any) => !goal.project).map((goal: any) => goal.id),
+    });
+    for (const [kind, entries] of [["task", tasks], ["goal", goals]] as const) {
+      for (const entry of entries) {
+        const summary = sharedTagSummaries.get(`${kind}:${entry.id}`);
+        if (!summary) continue;
+        Object.assign(entry, { canEditTags: true, tagScope: { projectId: summary.projectId },
+          tagIds: summary.tags.map(tag => tag.id), tagLabels: summary.tags.map(tag => tag.label) });
+        for (const tag of summary.tags) tagCatalogById.set(tag.id, tag);
+      }
+    }
     return NextResponse.json({
       ok: true,
       briefKind: "quipsly-mobile-today-v1",
@@ -547,6 +566,7 @@ export async function GET(request: Request) {
         projectId: tag.projectId,
         slug: tag.slug,
         label: tag.label,
+        hexColor: tag.hexColor ?? null,
         isActive: tag.isActive,
       })),
       boundaries: responseBoundaries(reminderRows.length <= 500),

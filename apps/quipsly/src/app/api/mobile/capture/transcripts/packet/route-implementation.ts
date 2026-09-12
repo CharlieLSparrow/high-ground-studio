@@ -34,6 +34,7 @@ import {
 } from "@/lib/server/coaching-packets";
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { buildSessionTranscriptConfidence } from "@/lib/session-transcript-confidence";
+import { sessionFollowThroughProgress } from "@/lib/session-follow-through-progress";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { sessionTranscriptResults } from "@/lib/server/session-transcript-results";
 import {
@@ -41,6 +42,7 @@ import {
   reconcileCaptureTranscriptFollowThrough,
 } from "@/lib/server/capture-transcript-follow-through";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { mobileSessionNoteVisibilityWhere } from "@/lib/server/session-note-access";
 import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
 import {
@@ -969,6 +971,7 @@ export async function GET(request: Request) {
       where: { id: roomId },
       select: {
         id: true,
+        followThroughAnalysis: { select: { status: true, attemptCount: true, errorCode: true } },
         title: true,
         purpose: true,
         status: true,
@@ -1497,6 +1500,11 @@ export async function GET(request: Request) {
           explicitReleaseRequired: true,
         },
     packet: {
+      generation: transcriptProcessingAllowed
+        ? sessionFollowThroughProgress(room?.followThroughAnalysis, canReviewPrivatePacket,
+          process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED === "true"
+          && sourceJson(sourceJson(latestTranscriptJob?.resultJson).followThrough).packetStatus === "waiting"
+        ) : null,
       reviewAccess: {
         canReviewPrivatePacket,
         role: canReviewPrivatePacket
@@ -1698,6 +1706,7 @@ export async function POST(request: Request) {
     },
     select: {
       id: true,
+      roomId: true,
       requestedBy: true,
       room: {
         select: {
@@ -1729,6 +1738,12 @@ export async function POST(request: Request) {
 
   const result = await prisma.$transaction(
     async (tx: any) => {
+      // Match the background materializer and transcript correction order:
+      // Session first, then source. Waiting builders read the winner's result.
+      await acquirePrismaAdvisoryTransactionLock(
+        tx,
+        `capture-transcript-follow-through-room:${job.roomId}`,
+      );
       await acquirePrismaAdvisoryTransactionLock(
         tx,
         `transcript-job-packet-source:${transcriptJobId}`,
@@ -1740,6 +1755,7 @@ export async function POST(request: Request) {
         },
         select: {
           id: true,
+          resultJson: true,
           requestedBy: true,
           room: {
             select: {
@@ -1762,20 +1778,41 @@ export async function POST(request: Request) {
             "Session access changed before the packet build began. Refresh before trying again.",
         };
       }
-      return buildCoachingPacketFromTranscriptJob({
+      const built = await buildCoachingPacketFromTranscriptJob({
         prisma: tx,
         transcriptJobId,
         authorUserId: canonicalAuthorUserId,
         force,
       });
+      if (!built.ok || process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED !== "true") return built;
+      if (body.retryAnalysis === true) {
+        await tx.sessionFollowThroughAnalysis.updateMany({
+          where: { roomId: job.roomId, status: "failed" },
+          data: { attemptCount: 0, nextAttemptAt: null },
+        });
+      }
+      // Persist the request with the ordinary work. If the process exits before
+      // after() runs, scheduled recovery still sees it; a ready older packet
+      // must not hide the pending semantic upgrade. Keep earlier work intact.
+      const previous = sourceJson(authorizedJob.resultJson);
+      await tx.transcriptJob.update({ where: { id: transcriptJobId }, data: {
+        resultJson: { ...previous, followThrough: { ...sourceJson(previous.followThrough), packetStatus: "waiting" } },
+      } });
+      return { ...built, analysisQueued: true };
     },
-    { isolationLevel: "Serializable" },
+    { isolationLevel: "ReadCommitted", maxWait: 5_000, timeout: 30_000 },
   );
   const status = result.ok
     ? 200
     : "status" in result && typeof result.status === "number"
       ? result.status
       : 500;
+
+  if (result.ok && process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED === "true") {
+    // Retry intent is already durable. Do not reset its allowance again after
+    // the response; another worker might have consumed an attempt meanwhile.
+    dispatchCaptureTranscriptFollowThrough({ prisma, transcriptJobId });
+  }
 
   return NextResponse.json(
     {

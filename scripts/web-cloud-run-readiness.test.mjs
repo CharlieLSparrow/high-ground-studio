@@ -9,6 +9,11 @@ import {
   WEB_HEALTH_RESPONSE,
 } from "../apps/web/src/lib/web-health.mjs";
 
+test("the committed HGO build helper parses without running cloud commands", () => {
+  const result = spawnSync("bash", ["-n", "scripts/release/hgo-web-build-image.sh"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("defines a non-sensitive web health response", async () => {
   assert.deepEqual(createWebHealthResponseBody(), {
     ok: true,
