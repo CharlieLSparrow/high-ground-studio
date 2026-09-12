@@ -866,8 +866,8 @@ private enum AppleCompatibleTranscriptEngine {
             language: recognizer.locale.identifier,
             transcriber: "SFSpeechRecognizer",
             preset: usesOnDeviceRecognition
-                ? "url-final-time-indexed-on-device-windowed-v2"
-                : "url-final-time-indexed-apple-service-windowed-v2"
+                ? "url-final-time-indexed-on-device-windowed-v3"
+                : "url-final-time-indexed-apple-service-windowed-v3"
         )
     }
 

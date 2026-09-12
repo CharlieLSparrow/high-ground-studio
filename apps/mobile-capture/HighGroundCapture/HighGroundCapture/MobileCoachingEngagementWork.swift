@@ -68,7 +68,7 @@ struct MobileCoachingWorkPage: Codable, Hashable {
 /// Only completed reads extend the history. Changing search immediately drops
 /// the old cursor chain, including when the new request subsequently fails.
 struct MobileCoachingWorkHistory {
-    static func normalizedSearch(_ value: String) -> String {
+    nonisolated static func normalizedSearch(_ value: String) -> String {
         value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
     private(set) var query = ""

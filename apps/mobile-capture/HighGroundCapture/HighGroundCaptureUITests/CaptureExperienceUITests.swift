@@ -7129,11 +7129,27 @@ final class CaptureExperienceUITests: XCTestCase {
         // Presented tools cover the recorder dock and main tab bar. Their
         // retained accessibility nodes must not shrink the sheet's usable
         // viewport; controls near its bottom cannot scroll above hidden chrome.
-        let visibleBottom = min(
-            app.frame.maxY - 12,
-            tabBarIsVisible ? tabBar.frame.minY - 4 : app.frame.maxY,
-            dockIsVisible ? recordingDock.frame.minY - 4 : app.frame.maxY
-        )
+        var visibleBottom: CGFloat {
+            var bottom = min(
+                app.frame.maxY - 12,
+                tabBarIsVisible ? tabBar.frame.minY - 4 : app.frame.maxY,
+                dockIsVisible ? recordingDock.frame.minY - 4 : app.frame.maxY
+            )
+            let keyboard = app.keyboards.firstMatch
+            if keyboard.exists, keyboard.frame.width >= app.frame.width * 0.8 {
+                bottom = min(bottom, keyboard.frame.minY - 8)
+                // iOS can call a row hittable even when the transparent
+                // keyboard accessory covers its tap center. Its toolbar is
+                // above the reported key grid, so exclude that region too.
+                for toolbar in app.toolbars.allElementsBoundByIndex where
+                    toolbar.frame.minY > visibleTop
+                    && toolbar.frame.maxY <= keyboard.frame.minY
+                    && toolbar.frame.width >= app.frame.width * 0.8 {
+                    bottom = min(bottom, toolbar.frame.minY - 8)
+                }
+            }
+            return bottom
+        }
         let elementIsReachable = {
             element.exists && (!requireHittable || element.isHittable)
         }
@@ -7176,10 +7192,13 @@ final class CaptureExperienceUITests: XCTestCase {
         // windowed iPad layouts. Bounded drags avoid oscillating above and
         // below a short control when a full-page swipe overshoots it.
         let namedForm = app.descendants(matching: .any)["CaptureQuickEntryForm"].firstMatch
+        let coachingWorkEditorForm = app.collectionViews["CaptureCoachingWorkEditorForm"].firstMatch
         let transcriptReview = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
         let coachingFormResponse = app.scrollViews["CaptureCoachingFormResponse"].firstMatch
         let coachingFormsHome = app.scrollViews["CaptureCoachingFormsHome"].firstMatch
-        let scrollSurface = sourceFilingForm.exists
+        let scrollSurface = coachingWorkEditorForm.exists && coachingWorkEditorForm.isHittable
+            ? coachingWorkEditorForm
+            : sourceFilingForm.exists
             ? sourceFilingForm
             : namedForm.exists
                 ? namedForm
