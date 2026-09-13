@@ -12335,48 +12335,14 @@ private struct CaptureRecorderView: View {
                 if model.providerRoom.isConnected {
                     VStack(spacing: 0) {
                         callWorkspaceActions(session)
-                        CapturePersistentRecorderDock(
-                            session: session,
-                            mode: recordingMode,
-                            audioState: audioCapture.captureState,
-                            videoState: videoCapture.state,
-                            duration: max(
-                                audioCapture.currentDuration,
-                                videoCapture.durationSeconds
-                            ),
-                            userMarkOffsets: audioCapture.userMarkOffsets,
-                            isBusy:
-                                model.isChangingCapture
-                                || model.isCoordinatingPodcastCapture
-                                || recordingCoordinator.isSending,
-                            canStartRecording:
-                                session.canControlRecording == true
-                                || recordingCoordinator.joinConfirmationRequired,
-                            waitingForHost: waitsForRecordingController(
-                                session
-                            ),
-                            onRequestConsent: {
-                                showsConsentConfirmation = true
-                            },
-                            onPauseResume: {
-                                Task { await togglePersistentCapturePause() }
-                            },
-                            onMark: {
-                                model.markMoment(using: audioCapture)
-                            },
-                            onPrimaryAction: {
-                                Task {
-                                    if captureIsActive {
-                                        await requestCoordinatedStop(for: session)
-                                    } else {
-                                        await requestCoordinatedStart(for: session)
-                                    }
-                                }
-                            }
-                        )
+                        if !usesCompactCallRecordingControl(session) {
+                            sessionRecorderDock(session)
+                        }
 
                         ProviderRoomDock(
                             model: model,
+                            recordingControl: usesCompactCallRecordingControl(session)
+                                ? AnyView(sessionRecorderDock(session, compactControl: true)) : nil,
                             localRecordingActive: captureIsActive,
                             isSafelyLeaving: isSafelyLeavingRoom,
                             cameraPosition: cameraPosition,
@@ -12464,6 +12430,60 @@ private struct CaptureRecorderView: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureLiveCallWorkspace")
+    }
+
+    private func usesCompactCallRecordingControl(_ session: MobileCaptureSession) -> Bool {
+        recordingMode == .audio && !captureIsActive
+            && !model.isChangingCapture && !model.isCoordinatingPodcastCapture
+            && !recordingCoordinator.isSending
+            && session.canControlRecording == true
+            && (session.canRecordAudioNow ?? session.canRecordNow)
+    }
+
+    private func sessionRecorderDock(_ session: MobileCaptureSession, compactControl: Bool = false)
+        -> CapturePersistentRecorderDock
+    {
+        var dock = CapturePersistentRecorderDock(
+            session: session,
+            mode: recordingMode,
+            audioState: audioCapture.captureState,
+            videoState: videoCapture.state,
+            duration: max(
+                audioCapture.currentDuration,
+                videoCapture.durationSeconds
+            ),
+            userMarkOffsets: audioCapture.userMarkOffsets,
+            isBusy:
+                model.isChangingCapture
+                || model.isCoordinatingPodcastCapture
+                || recordingCoordinator.isSending,
+            canStartRecording:
+                session.canControlRecording == true
+                || recordingCoordinator.joinConfirmationRequired,
+            waitingForHost: waitsForRecordingController(
+                session
+            ),
+            onRequestConsent: {
+                showsConsentConfirmation = true
+            },
+            onPauseResume: {
+                Task { await togglePersistentCapturePause() }
+            },
+            onMark: {
+                model.markMoment(using: audioCapture)
+            },
+            onPrimaryAction: {
+                Task {
+                    if captureIsActive {
+                        await requestCoordinatedStop(for: session)
+                    } else {
+                        await requestCoordinatedStart(for: session)
+                    }
+                }
+            }
+        )
+        dock.compactControl = compactControl
+        return dock
     }
 
     private var callPanelIsPresented: Binding<Bool> {
@@ -21749,12 +21769,8 @@ private struct ProviderRoomControls: View {
                     .font(.headline)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureProviderRoomState")
-                if !dynamicTypeSize.isAccessibilitySize {
-                    Spacer()
-                    Text("Call")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(model.providerRoom.isConnected ? CapturePalette.success : Color.secondary)
-                }
+                Spacer(minLength: 8)
+                devicesControl
             }
 
             if canRejoinSession {
@@ -21769,85 +21785,6 @@ private struct ProviderRoomControls: View {
                 .accessibilityIdentifier("CaptureCallRejoinRecoveryStatus")
             }
 
-            Button { showsDevices = true } label: {
-                Label("Devices", systemImage: "slider.horizontal.3")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: 44)
-            }
-            .accessibilityIdentifier("CaptureCallOpenDevices")
-            .sheet(isPresented: $showsDevices) {
-                NavigationStack {
-                    Form {
-            if usesCallAudioForPresentation {
-                audioRouteLayout {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            if !dynamicTypeSize.isAccessibilitySize {
-                                Image(systemName: "mic.fill")
-                                    .accessibilityHidden(true)
-                            }
-                            Text("Microphone · \(inputRoute)")
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("Microphone, \(inputRoute)")
-                            .accessibilityIdentifier("CaptureCallInputRoute")
-                        HStack {
-                            Text("Output · \(callAudioSession.currentOutputRouteName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(.vertical, 3)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Output, \(callAudioSession.currentOutputRouteName)")
-                        .accessibilityIdentifier("CaptureCallOutputRoute")
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 12) {
-                        if #available(iOS 26.0, *) {
-                            CaptureSystemAudioInputPicker()
-                                .frame(width: 44, height: 44)
-                        }
-                        CaptureSystemAudioRoutePicker()
-                            .frame(width: 44, height: 44)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("CaptureCallAudioRouteSummary")
-            } else {
-                Label("Using another device for call audio", systemImage: "iphone.and.arrow.forward")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("CaptureCallInputRoute")
-            }
-                        Toggle("Use this device for call audio", isOn: Binding(
-                            get: { !callAudioOnAnotherDevice },
-                            set: { callAudioOnAnotherDevice = !$0 }
-                        ))
-                        .disabled(model.providerRoom.isConnected || providerControlsLocked || model.isChangingRoom)
-                        .accessibilityIdentifier("CaptureUseCallAudioToggle")
-                        if !model.providerRoom.isConnected {
-                            Text("Turn off when you’re listening and talking on another device.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .navigationTitle("Devices")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showsDevices = false }
-                        }
-                    }
-                }
-                .presentationDetents([.medium, .large])
-            }
 
             if model.providerRoom.isConnected {
                 if model.providerRoom.remoteParticipants.count > 1,
@@ -22257,6 +22194,97 @@ private struct ProviderRoomControls: View {
         model.providerRoom.canRejoin(callRoomID: session.callRoomId)
     }
 
+    private var devicesControl: some View {
+        Button {
+            showsDevices = true
+        } label: {
+            Label("Devices", systemImage: "slider.horizontal.3")
+                .font(.subheadline.weight(.semibold))
+                .frame(minHeight: 44)
+        }
+        .accessibilityIdentifier("CaptureCallOpenDevices")
+        .sheet(isPresented: $showsDevices) {
+            NavigationStack {
+                Form {
+                    if usesCallAudioForPresentation {
+                        audioRouteLayout {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    if !dynamicTypeSize.isAccessibilitySize {
+                                        Image(systemName: "mic.fill")
+                                            .accessibilityHidden(true)
+                                    }
+                                    Text("Microphone · \(inputRoute)")
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Microphone, \(inputRoute)")
+                                .accessibilityIdentifier("CaptureCallInputRoute")
+                                HStack {
+                                    Text("Output · \(callAudioSession.currentOutputRouteName)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.vertical, 3)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Output, \(callAudioSession.currentOutputRouteName)")
+                                .accessibilityIdentifier("CaptureCallOutputRoute")
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 12) {
+                                if #available(iOS 26.0, *) {
+                                    CaptureSystemAudioInputPicker()
+                                        .frame(width: 44, height: 44)
+                                }
+                                CaptureSystemAudioRoutePicker()
+                                    .frame(width: 44, height: 44)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(
+                            .secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("CaptureCallAudioRouteSummary")
+                    } else {
+                        Label("Using another device for call audio", systemImage: "iphone.and.arrow.forward")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureCallInputRoute")
+                    }
+                    Toggle(
+                        "Use this device for call audio",
+                        isOn: Binding(
+                            get: { !callAudioOnAnotherDevice },
+                            set: { callAudioOnAnotherDevice = !$0 }
+                        )
+                    )
+                    .disabled(
+                        model.providerRoom.isConnected || providerControlsLocked || model.isChangingRoom
+                    )
+                    .accessibilityIdentifier("CaptureUseCallAudioToggle")
+                    if !model.providerRoom.isConnected {
+                        Text("Turn off when you’re listening and talking on another device.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .navigationTitle("Devices")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showsDevices = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
     private var audioRouteLayout: AnyLayout {
         // Route names need the full line at accessibility sizes. Keep the
         // system device controls together below them instead of forcing
@@ -22528,8 +22556,12 @@ private struct CapturePersistentRecorderDock: View {
     let onPauseResume: () -> Void
     let onMark: () -> Void
     let onPrimaryAction: () -> Void
+    var compactControl = false
 
     var body: some View {
+        if compactControl {
+            primaryActionButton
+        } else {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
                 statusCopy
@@ -22548,6 +22580,7 @@ private struct CapturePersistentRecorderDock: View {
         .overlay(alignment: .top) { Divider() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePersistentRecorderDock")
+        }
     }
 
     private var statusCopy: some View {
@@ -22665,6 +22698,17 @@ private struct CapturePersistentRecorderDock: View {
 
     private var primaryActionButton: some View {
         Button(action: onPrimaryAction) {
+            if compactControl {
+                VStack(spacing: 4) {
+                    Image(systemName: actionSystemImage)
+                        .font(.headline).frame(width: 44, height: 32)
+                        .background(actionTint.opacity(0.12), in: Capsule())
+                    Text(actionTitle).font(.caption.weight(.semibold)).lineLimit(1)
+                }
+                .foregroundStyle(actionTint)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .contentShape(Rectangle())
+            } else {
             Label(actionTitle, systemImage: actionSystemImage)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
@@ -22672,6 +22716,7 @@ private struct CapturePersistentRecorderDock: View {
                 .frame(minHeight: 50)
                 .fixedSize(horizontal: true, vertical: true)
                 .background(actionTint, in: Capsule())
+            }
         }
         .buttonStyle(.plain)
         .disabled(actionDisabled)
@@ -22916,6 +22961,7 @@ private struct CaptureReadyForHostIndicator: View {
 /// recording, notes, and transcript workspace scrolls independently above.
 private struct ProviderRoomDock: View {
     @ObservedObject var model: CaptureExperienceModel
+    var recordingControl: AnyView? = nil
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var videoCapture: VideoCaptureController
@@ -22930,7 +22976,7 @@ private struct ProviderRoomDock: View {
     var body: some View {
         LazyVGrid(columns: Array(
             repeating: GridItem(.flexible(), spacing: 10),
-            count: dynamicTypeSize.isAccessibilitySize ? 2 : (model.providerRoom.usesCallAudio ? 4 : 3)
+            count: dynamicTypeSize.isAccessibilitySize ? 2 : (model.providerRoom.usesCallAudio ? 4 : 3) + (recordingControl == nil ? 0 : 1)
         ), spacing: 10) {
             if model.providerRoom.usesCallAudio {
                 dockButton(
@@ -22996,6 +23042,8 @@ private struct ProviderRoomDock: View {
                     joinCameraOff = !model.providerRoom.isLocalVideoPublished
                 }
             }
+
+            if let recordingControl { recordingControl }
 
             dockButton(
                 title: isSafelyLeaving ? "Saving…" : "Leave",
