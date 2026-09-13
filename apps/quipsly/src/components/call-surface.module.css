@@ -1,3 +1,59 @@
+.surface {
+  container: quipsly-call / inline-size;
+}
+
+.workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stage {
+  container: quipsly-call-stage / inline-size;
+}
+
+.workspace[data-panel-open="true"] .stage {
+  display: none;
+}
+
+/* Two useful working panes fit on a landscape tablet as well as a desktop.
+   Query the room itself so browser zoom and embedded layouts stay honest. */
+@container quipsly-call (min-width: 56rem) {
+  .workspace[data-panel-open="true"] {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 23rem);
+  }
+  .workspace[data-panel-open="true"] .stage {
+    display: block;
+  }
+}
+
+.lobby {
+  display: grid;
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "heading" "preview" "setup";
+  align-content: center;
+  gap: 1rem;
+  padding-block: 0.5rem;
+}
+
+.lobbyHeading { grid-area: heading; min-width: 0; }
+.lobbyPreview { grid-area: preview; min-width: 0; }
+.lobbySetup { grid-area: setup; min-width: 0; }
+
+/* Opening chat must not leave the lobby trapped in a desktop two-column
+   layout inside a narrow stage. No media element is moved or remounted. */
+@container quipsly-call-stage (min-width: 44rem) {
+  .lobby {
+    grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 1fr);
+    grid-template-areas: "preview heading" "preview setup";
+    column-gap: 2rem;
+    padding-block: 1.5rem;
+  }
+  .lobbyPreview { align-self: center; }
+}
+
 /* Short landscape windows need a single control row. Text remains in the
    accessible name; tooltips retain the labels for pointer users. */
 @media (max-height: 500px) and (min-width: 600px) {

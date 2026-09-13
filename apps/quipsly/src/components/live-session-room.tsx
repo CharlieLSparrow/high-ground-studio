@@ -48,6 +48,7 @@ import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
 import { requestBrowserMedia } from "@/lib/browser-media-request";
 import { StudioSoundCheck } from "@/components/studio-sound-check";
+import callSurface from "./call-surface.module.css";
 import { StudioSpeakerTest } from "@/components/studio-speaker-test";
 import {
   decodeEpisodeWatchLiveHint,
@@ -2481,8 +2482,8 @@ export function LiveSessionRoom({
               <p className="mt-2 text-xs font-bold leading-5 text-slate-800">Your retained recording is separate and remains available below to stop, save, upload, or recover.</p>
             </section>
           ) : !connected ? (
-            <section className={stageLayout ? "mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center py-2 sm:py-6 lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)] lg:content-center lg:gap-x-8" : "rounded-2xl border border-violet-200 bg-violet-50/70 p-4 sm:p-5"} aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
-              <div className={`flex flex-wrap items-start justify-between gap-3 ${stageLayout ? "lg:col-start-2 lg:row-start-1" : ""}`}>
+            <section className={stageLayout ? callSurface.lobby : "rounded-2xl border border-violet-200 bg-violet-50/70 p-4 sm:p-5"} aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
+              <div className={`flex flex-wrap items-start justify-between gap-3 ${stageLayout ? callSurface.lobbyHeading : ""}`}>
                 <div>
                   {!stageLayout ? <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">{callRecoveryAvailable ? "Call disconnected" : "Call lobby"}</p> : null}
                   <h3 className="text-2xl font-semibold text-foreground">{callRecoveryAvailable ? "Ready to rejoin?" : "Ready to join?"}</h3>
@@ -2495,8 +2496,9 @@ export function LiveSessionRoom({
                 </div>
                 {previewTested ? <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-950">Preview ready</span> : null}
               </div>
-              <div className={stageLayout ? "mt-4 lg:col-start-1 lg:row-span-4 lg:row-start-1 lg:mt-0" : "mt-4"}>{callVideoStage}</div>
-              <div className={`mt-4 flex flex-wrap gap-2 ${stageLayout ? "justify-center lg:col-start-2" : ""}`}>
+              <div className={stageLayout ? callSurface.lobbyPreview : "mt-4"}>{callVideoStage}</div>
+              <div className={stageLayout ? callSurface.lobbySetup : ""}>
+              <div className={`flex flex-wrap gap-2 ${stageLayout ? "justify-center" : "mt-4"}`}>
                 {callAudioMode === "this-device" ? <button
                   type="button"
                   onClick={() => {
@@ -2537,7 +2539,7 @@ export function LiveSessionRoom({
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
                 </button>
               </div>
-              {status === "checking" || cameraToggleBusy ? <div className={stageLayout ? "mt-3 flex flex-wrap justify-center gap-2 lg:col-start-2" : "mt-3 flex flex-wrap gap-2"}>
+              {status === "checking" || cameraToggleBusy ? <div className={stageLayout ? "mt-3 flex flex-wrap justify-center gap-2" : "mt-3 flex flex-wrap gap-2"}>
                 <button type="button" onClick={cancelDeviceSetup} className="min-h-11 rounded-xl border border-border px-4 text-sm">Cancel setup</button>
                 <button type="button" onClick={() => void join({ withoutDevices: true })} className="min-h-11 rounded-xl px-4 text-sm font-semibold underline underline-offset-4">Join without microphone or camera</button>
               </div> : null}
@@ -2547,7 +2549,7 @@ export function LiveSessionRoom({
                   muted={mutedForNextJoin}
                 />
               ) : null}
-              <p className={`mt-3 text-xs leading-5 text-muted-foreground ${stageLayout ? "text-center lg:col-start-2" : ""}`}>
+              <p className={`mt-3 text-xs leading-5 text-muted-foreground ${stageLayout ? "text-center" : ""}`}>
                 {callAudioMode === "other-device"
                   ? "Quipsly keeps this device’s call microphone and speakers off to prevent echo."
                   : mutedForNextJoin
@@ -2555,7 +2557,7 @@ export function LiveSessionRoom({
                     : stageLayout ? "" : "This device will handle the conversation audio."}
                 {" "}Joining doesn’t start recording.
               </p>
-              {stageLayout && callAudioMode === "this-device" ? <details className="mt-3 min-w-0 rounded-xl border border-border lg:col-start-2" data-testid="lobby-audio-check">
+              {stageLayout && callAudioMode === "this-device" ? <details className="mt-3 min-w-0 rounded-xl border border-border" data-testid="lobby-audio-check">
                 <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-semibold">Test mic and speakers</summary>
                 <div className="space-y-4 border-t border-border p-3">
                   <StudioSpeakerTest outputId={outputId}
@@ -2564,6 +2566,7 @@ export function LiveSessionRoom({
                   {microphoneTest}
                 </div>
               </details> : null}
+              </div>
             </section>
           ) : null}
 

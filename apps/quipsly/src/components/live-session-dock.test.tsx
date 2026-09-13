@@ -114,7 +114,8 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-expanded", "false");
     await user.click(screen.getByRole("button", { name: "Show chat" }));
     expect(screen.getByRole("button", { name: "Hide chat" })).toHaveAttribute("aria-expanded", "true");
-    expect(document.getElementById("live-call-stage-panel")).toHaveClass("hidden", "lg:block");
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-panel-open", "true");
+    expect(document.getElementById("live-call-stage-panel")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Message" }), "A thought to come back to");
     await user.click(screen.getByRole("button", { name: "Back to call" }));
     expect(document.getElementById("live-call-chat-panel")).toHaveClass("hidden");
@@ -199,7 +200,7 @@ describe("LiveSessionDockProvider", () => {
     await user.type(screen.getByRole("textbox", {name: "Message"}), "A thought after our call");
     await user.click(screen.getByRole("button", {name: "Simulate ended call"}));
     expect(screen.getByRole("button", {name: "Show chat"})).toHaveAttribute("aria-expanded", "false");
-    expect(document.getElementById("live-call-stage-panel")).not.toHaveClass("hidden");
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-panel-open", "false");
     await user.click(screen.getByRole("button", {name: "Show chat"}));
     expect(screen.getByRole("textbox", {name: "Message"})).toHaveValue("A thought after our call");
     expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();

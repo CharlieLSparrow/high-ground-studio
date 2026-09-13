@@ -312,8 +312,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </section>
             ) : null}
 
-            <div data-testid="live-call-workspace" className={`relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6 ${workspacePanel ? "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,23rem)]" : "lg:grid-cols-1"}`}>
-              <div id="live-call-stage-panel" className={`min-h-0 min-w-0 overflow-y-auto overscroll-contain ${workspacePanel ? "hidden lg:block" : "block"}`}>
+            <div data-testid="live-call-workspace" data-panel-open={Boolean(workspacePanel)} className={`${callSurface.workspace} relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6`}>
+              <div id="live-call-stage-panel" className={`${callSurface.stage} min-h-0 min-w-0 overflow-y-auto overscroll-contain`}>
               {/* Mount the call only after its persistent portal host exists;
                   moving an already-mounted recorder into a portal restarts it. */}
               {toolPanelContainer ? <LiveSessionRoom

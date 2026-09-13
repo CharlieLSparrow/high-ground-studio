@@ -523,7 +523,8 @@ describe("LiveSessionRoom", () => {
     expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", {name: "Show chat"}));
-    expect(document.getElementById("live-call-stage-panel")).toHaveClass("hidden");
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-panel-open", "true");
+    expect(document.getElementById("live-call-stage-panel")).toBeInTheDocument();
     fireEvent.click(within(slot).getByRole("button", {name: "Unmute"}));
     const mute = await within(slot).findByRole("button", {name: "Mute"});
     expect(mute).toHaveAttribute("aria-pressed", "false");

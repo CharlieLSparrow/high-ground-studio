@@ -379,15 +379,15 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     currentDesk = { ...currentDesk, segments: [{ ...segment, text: "Finish the chapter outline by Friday." }] };
-    fireEvent.click(screen.getByRole("button", { name: "Refresh", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await screen.findByText("Finish the chapter outline by Friday.");
     fireEvent.click(screen.getByText("Create from this moment"));
-    fireEvent.click(screen.getByRole("button", { name: action, exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: action }));
     const title = screen.getByLabelText(titleLabel, { exact: true });
     expect(title).toHaveValue("Finish the chapter outline by Friday.");
     fireEvent.change(title, { target: { value: "My own carefully written follow-up" } });
     currentDesk = { ...currentDesk, segments: [{ ...segment, text: "The transcript was corrected again." }] };
-    fireEvent.click(screen.getByRole("button", { name: "Refresh", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await screen.findByText("The transcript was corrected again.");
     expect(title).toHaveValue("My own carefully written follow-up");
   });
