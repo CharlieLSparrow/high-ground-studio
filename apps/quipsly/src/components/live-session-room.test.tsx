@@ -696,6 +696,37 @@ describe("LiveSessionRoom", () => {
       .toMatchObject({ callAudioMode: "other-device" });
   });
 
+  it.each(["Cancel setup", "Join without microphone or camera"])("lets a person choose %s while browser permission is unanswered", async (action) => {
+    let allow!: (stream: MediaStream) => void;
+    const getUserMedia = jest.fn(() => new Promise<MediaStream>(resolve => { allow = resolve; }));
+    Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: jest.fn().mockResolvedValue({ state: "prompt" }) } });
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([]), getUserMedia,
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    } });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => ({ ok: true, status: 200,
+      json: async () => String(input).includes("/api/mobile/capture/rooms/join")
+        ? { ok: true, canJoin: true, serverUrl: "wss://live.test", participantToken: "test-token", recordingConsentGranted: true }
+        : { ok: true },
+    })) as unknown as typeof fetch;
+    await act(async () => { render(<LiveSessionRoom callRoomId="permission-choice" sessionTitle="Permission test" kind="coaching" />); });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: action }));
+    if (action === "Cancel setup") {
+      await waitFor(() => expect(screen.getByRole("button", { name: "Join call" })).toBeEnabled());
+      expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+    } else {
+      expect(await screen.findByRole("button", { name: "Unmute" })).toBeEnabled();
+      expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1);
+    }
+    const stop = jest.fn();
+    await act(async () => { allow({ getTracks: () => [{ stop }] } as unknown as MediaStream); });
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Device access couldn't be completed/)).not.toBeInTheDocument();
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
+  });
+
   it.each(["Allow microphone", "Unmute", "Leave during Unmute"])("handles %s after joining without device access", async (action) => {
     let granted = false;
     const stop = jest.fn();
@@ -1607,7 +1638,7 @@ describe("LiveSessionRoom", () => {
       ({ unmount } = render(<LiveSessionRoom callRoomId="camera-cancel" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Camera check" kind="coaching" />));
     });
     fireEvent.click(screen.getByRole("button", { name: "Camera off" }));
-    expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: false }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: false })));
     if (cancel === "unmount") unmount();
     else fireEvent.click(screen.getByRole("button", { name: "Camera on" }));
     const stop = jest.fn();

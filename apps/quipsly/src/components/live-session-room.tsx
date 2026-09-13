@@ -40,6 +40,7 @@ import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
+import { requestBrowserMedia } from "@/lib/browser-media-request";
 import { StudioSoundCheck } from "@/components/studio-sound-check";
 import { StudioSpeakerTest } from "@/components/studio-speaker-test";
 import {
@@ -178,29 +179,6 @@ async function retainedMediaPermissionState(name: "microphone" | "camera") {
     // Safari and some embedded browsers expose the Permissions API without
     // accepting camera/microphone descriptors. Never turn that into a prompt.
     return "unsupported" as const;
-  }
-}
-
-async function getUserMediaWithTimeout(
-  constraints: MediaStreamConstraints,
-  timeoutMs = 15_000,
-) {
-  let expired = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const request = navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
-    if (expired) stopStream(stream);
-    return stream;
-  });
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      expired = true;
-      reject(new Error("Permission prompt timed out. Open this site's camera and microphone controls, allow the device you want, then try again."));
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([request, timeout]);
-  } finally {
-    if (timer) clearTimeout(timer);
   }
 }
 
@@ -615,6 +593,7 @@ export function LiveSessionRoom({
   const deviceRefreshGenerationRef = useRef(0);
   const activePermissionRefreshesRef = useRef(0);
   const joinAttemptGenerationRef = useRef(0);
+  const pendingMediaRequestRef = useRef<AbortController | null>(null);
   const suppressPreferenceWriteRef = useRef(false);
   const lastPublishedWatchReceiptRef = useRef("");
   const preflightStreamRef = useRef<MediaStream | null>(null);
@@ -790,6 +769,8 @@ export function LiveSessionRoom({
   }, []);
 
   const clearPreflightPreview = useCallback(() => {
+    pendingMediaRequestRef.current?.abort();
+    pendingMediaRequestRef.current = null;
     previewRequestGenerationRef.current += 1;
     stopAudioMeter();
     stopStream(preflightStreamRef.current);
@@ -799,6 +780,28 @@ export function LiveSessionRoom({
     setPreviewTested(false);
   }, [attachLocalCameraTrack, stopAudioMeter]);
   const currentPreflightStream = useCallback(() => preflightStreamRef.current, []);
+
+  const acquireMedia = useCallback(async (constraints: MediaStreamConstraints) => {
+    pendingMediaRequestRef.current?.abort();
+    const controller = new AbortController();
+    pendingMediaRequestRef.current = controller;
+    try {
+      return await requestBrowserMedia(navigator.mediaDevices, constraints, controller.signal);
+    } finally {
+      if (pendingMediaRequestRef.current === controller) pendingMediaRequestRef.current = null;
+    }
+  }, []);
+
+  const cancelDeviceSetup = useCallback(() => {
+    deviceRefreshGenerationRef.current += 1;
+    joinAttemptGenerationRef.current += 1;
+    cameraOperationGenerationRef.current += 1;
+    cameraToggleInFlightRef.current = false;
+    setCameraToggleBusy(false);
+    clearPreflightPreview();
+    setStatus("preflight");
+    setMessage("");
+  }, [clearPreflightPreview]);
 
   const startAudioMeter = useCallback(async (audioTrack: MediaStreamTrack | null | undefined) => {
     stopAudioMeter();
@@ -1020,7 +1023,7 @@ export function LiveSessionRoom({
     try {
       if (permission !== "none") {
         clearPreflightPreview();
-        const permissionStream = await getUserMediaWithTimeout({
+        const permissionStream = await acquireMedia({
           audio: permission === "microphone" || permission === "media",
           video: permission === "camera" || permission === "media",
         });
@@ -1250,6 +1253,7 @@ export function LiveSessionRoom({
       setTechnicalMessage(null);
       return true;
     } catch (error) {
+      if (generation !== deviceRefreshGenerationRef.current || (error instanceof Error && error.name === "AbortError")) return false;
       if (!preserveLiveConnection) setStatus("error");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
       setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
@@ -1262,7 +1266,7 @@ export function LiveSessionRoom({
         );
       }
     }
-  }, [attachLocalCameraTrack, clearPreflightPreview, startAudioMeter, stopAudioMeter]);
+  }, [acquireMedia, attachLocalCameraTrack, clearPreflightPreview, startAudioMeter, stopAudioMeter]);
 
   useEffect(() => {
     const wasLocked = previousSourceLockedRef.current;
@@ -1280,7 +1284,7 @@ export function LiveSessionRoom({
     clearPreflightPreview();
     const generation = previewRequestGenerationRef.current;
     try {
-      const stream = await getUserMediaWithTimeout({
+      const stream = await acquireMedia({
         audio: useCallAudioHere ? {
           ...(selectedMicrophoneId ? { deviceId: { exact: selectedMicrophoneId } } : {}),
           echoCancellation: true,
@@ -1332,7 +1336,7 @@ export function LiveSessionRoom({
       setMessage("The selected setup couldn't start. Check the device connection and browser permissions, then try again.");
       return null;
     }
-  }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId, startAudioMeter]);
+  }, [acquireMedia, cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId, startAudioMeter]);
 
   const allowAndPreviewDevices = useCallback(async () => {
     const joinAttempt = joinAttemptGenerationRef.current;
@@ -1369,7 +1373,7 @@ export function LiveSessionRoom({
     setStatus("checking");
     setMessage("Opening your camera…");
     try {
-      const stream = await getUserMediaWithTimeout({
+      const stream = await acquireMedia({
         audio: false,
         video: {
           ...(cameraIdRef.current ? { deviceId: { exact: cameraIdRef.current } } : {}),
@@ -1416,7 +1420,7 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "Camera preview failed.");
       setMessage("Camera couldn't start. Check its connection and browser permission, or join with camera off.");
     }
-  }, []);
+  }, [acquireMedia]);
 
   useEffect(() => {
     automaticPreviewAttemptedRef.current = false;
@@ -1518,11 +1522,20 @@ export function LiveSessionRoom({
     void leave();
   }, [leave, leaveRequestVersion]);
 
-  const join = useCallback(async () => {
+  const join = useCallback(async (options?: { withoutDevices?: boolean }) => {
     // A remembered-preview permission check may still be resolving. From
     // this point onward the join attempt owns device setup, not the lobby.
     previewRequestGenerationRef.current += 1;
+    deviceRefreshGenerationRef.current += 1;
+    pendingMediaRequestRef.current?.abort();
     const joinAttempt = ++joinAttemptGenerationRef.current;
+    if (options?.withoutDevices) {
+      setJoinMuted(true);
+      setCameraWanted(false);
+      cameraWantedRef.current = false;
+      cameraToggleInFlightRef.current = false;
+      setCameraToggleBusy(false);
+    }
     const attemptCancelled = () => joinAttempt !== joinAttemptGenerationRef.current;
     let attemptRoom: Room | null = null;
     const abandonAttemptRoom = () => {
@@ -1535,8 +1548,8 @@ export function LiveSessionRoom({
     };
     const recoveringCall = callRecoveryAvailable;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
-    const shouldJoinMuted = recoveringCall ? microphoneMutedRef.current : joinMuted;
-    const shouldJoinWithCamera = cameraWanted && !(recoveringCall && cameraMutedRef.current);
+    const shouldJoinMuted = options?.withoutDevices || (recoveringCall ? microphoneMutedRef.current : joinMuted);
+    const shouldJoinWithCamera = !options?.withoutDevices && cameraWanted && !(recoveringCall && cameraMutedRef.current);
     const microphoneNeededNow = useCallAudioHere && !shouldJoinMuted;
     const cameraNeededNow = shouldJoinWithCamera;
     let selectedMicrophoneId = microphoneIdRef.current;
@@ -1544,8 +1557,8 @@ export function LiveSessionRoom({
 
     // Join is the familiar, person-owned permission boundary. If the browser
     // can expose permission state, reuse an existing grant without another
-    // prompt. Otherwise a bounded getUserMedia request runs from this click so
-    // an abandoned prompt cannot strand the room on "Joining…". A deliberately
+    // prompt. Otherwise a cancellable request runs from this click; the lobby
+    // can cancel it or join without devices. A deliberately
     // muted join never opens the microphone merely to enumerate it.
     const requiredPermissions = [
       microphoneNeededNow ? "microphone" as const : null,
@@ -2215,6 +2228,8 @@ export function LiveSessionRoom({
     };
     navigator.mediaDevices?.addEventListener?.("devicechange", changed);
     return () => {
+      pendingMediaRequestRef.current?.abort();
+      pendingMediaRequestRef.current = null;
       deviceRefreshGenerationRef.current += 1;
       joinAttemptGenerationRef.current += 1;
       previewRequestGenerationRef.current += 1;
@@ -2455,6 +2470,10 @@ export function LiveSessionRoom({
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
                 </button>
               </div>
+              {status === "checking" || cameraToggleBusy ? <div className={stageLayout ? "mt-3 flex flex-wrap justify-center gap-2 lg:col-start-2" : "mt-3 flex flex-wrap gap-2"}>
+                <button type="button" onClick={cancelDeviceSetup} className="min-h-11 rounded-xl border border-border px-4 text-sm">Cancel setup</button>
+                <button type="button" onClick={() => void join({ withoutDevices: true })} className="min-h-11 rounded-xl px-4 text-sm font-semibold underline underline-offset-4">Join without microphone or camera</button>
+              </div> : null}
               {callAudioMode === "this-device" && previewTested && Boolean(preflightStreamRef.current?.getAudioTracks().length) ? (
                 <PreJoinMicrophoneActivity
                   evidence={meterEvidence}
