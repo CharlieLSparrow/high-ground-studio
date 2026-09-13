@@ -8646,6 +8646,14 @@ private enum CaptureCoordinatedRecordingEndpoint {
     ) async {
         guard directive.action == .stop || model.providerRoom.isConnected else { return }
         guard coordinator.claim(directive) else { return }
+        if directive.action == .stop,
+           !isActive(audioCapture: audioCapture, videoCapture: videoCapture) {
+            // A room retains its latest directive across joins and relaunches.
+            // An idle endpoint must not replay an old STOP as a new recording
+            // event with a nil capture ID (or replace its original receipt).
+            coordinator.markIdleStopHandled(directive)
+            return
+        }
         if directive.action == .start {
             await coordinator.acknowledge(
                 roomID: session.callRoomId,
@@ -12964,20 +12972,24 @@ private struct CaptureRecorderView: View {
     }
 
     private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 12)], spacing: 12) {
+        HStack(spacing: 12) {
             Button { showsCallChat = true } label: {
                 Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                    .frame(maxWidth: .infinity, minHeight: 30)
             }
             .accessibilityIdentifier("CaptureCallOpenChat")
             Button { sessionNotesSession = session } label: {
                 Label("Notes", systemImage: "note.text")
+                    .frame(maxWidth: .infinity, minHeight: 30)
             }
             .accessibilityIdentifier("CaptureCallOpenNotes")
             if model.providerRoom.isConnected {
             Button { showsCallTools.toggle() } label: {
-                Label(showsCallTools ? "Hide tools" : "Tools", systemImage: "slider.horizontal.3")
+                Label("Tools", systemImage: "slider.horizontal.3")
+                    .frame(maxWidth: .infinity, minHeight: 30)
             }
             .accessibilityIdentifier("CaptureCallToggleTools")
+            .accessibilityValue(showsCallTools ? "Expanded" : "Collapsed")
             }
         }
         .buttonStyle(.bordered)
@@ -13135,8 +13147,13 @@ private struct CaptureRecorderView: View {
         }
         .sheet(isPresented: $showsCallChat) {
             if let session = model.selectedSession {
-                sessionConversationSurface(session)
-                    .presentationDetents([.large])
+                VStack(spacing: 0) {
+                    CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId) {
+                        showsCallChat = false
+                    }
+                    sessionConversationSurface(session)
+                }
+                .presentationDetents([.large])
             }
         }
         .sheet(item: $focusedTool) { tool in
@@ -15326,30 +15343,125 @@ private struct CaptureSessionNotesCard: View {
     }
 }
 
+/// A workspace sheet never owns the call. Keep the same provider and recording
+/// session alive, and expose their controls without moving out of the work.
+private struct CaptureCallWorkspaceBar: View {
+    @ObservedObject var model: CaptureExperienceModel
+    let roomID: String
+    var onReturn: (() -> Void)? = nil
+    @State private var changingMicrophone = false
+    @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
+
+    var body: some View {
+        if model.providerRoom.isConnected, model.selectedSession?.callRoomId == roomID {
+            HStack(spacing: 12) {
+                if let onReturn {
+                    Button(action: onReturn) {
+                    Label("Return to call", systemImage: "phone.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("CaptureWorkspaceReturnToCall")
+                } else {
+                    Label("In call", systemImage: "phone.fill")
+                        .font(.subheadline.weight(.semibold))
+                }
+                Spacer(minLength: 0)
+                if model.providerRoom.usesCallAudio {
+                    Button {
+                        guard !changingMicrophone else { return }
+                        changingMicrophone = true
+                        Task {
+                            await model.toggleRoomMute()
+                            joinMuted = model.providerRoom.isMuted
+                            changingMicrophone = false
+                        }
+                    } label: {
+                        Label(model.providerRoom.isMuted ? "Unmute" : "Mute",
+                              systemImage: model.providerRoom.isMuted ? "mic.slash.fill" : "mic.fill")
+                            .frame(minHeight: 44)
+                    }
+                    .disabled(changingMicrophone || model.isChangingRoom
+                              || model.providerRoom.isReconnecting
+                              || model.providerMuteControlLockedForLocalCapture)
+                    .accessibilityIdentifier("CaptureWorkspaceToggleMicrophone")
+                } else {
+                    Label("Audio on other device", systemImage: "speaker.slash.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureWorkspaceCompanionAudio")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+            .background(.bar)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureCallWorkspaceBar")
+        }
+    }
+}
+
 private struct CaptureSessionNotesWorkspace: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
     let onDismiss: () -> Void
+    @State private var showsNewNote = false
+    @State private var searchText = ""
+    @State private var audience = "all"
 
     var body: some View {
+        VStack(spacing: 0) {
+            CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId, onReturn: onDismiss)
         NavigationStack {
-            ScrollView {
+            VStack(spacing: 0) {
+                Picker("Show notes", selection: $audience) {
+                    Text("All").tag("all")
+                    Text("Shared").tag("shared")
+                    Text("Only me").tag("private")
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .accessibilityIdentifier("CaptureSessionNotesAudience")
+                ScrollView {
                 CaptureSessionNotesSheetContent(
                     session: session,
                     model: model,
-                    initiallyExpanded: true
+                    initiallyExpanded: true,
+                    fullWorkspace: true,
+                    searchText: searchText,
+                    audience: audience
                 )
                 .padding(18)
+                }
             }
             .captureFormSurface()
-            .navigationTitle("Session Notes")
+            .searchable(text: $searchText, prompt: "Search notes and tags")
+            .navigationTitle("Notes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showsNewNote = true } label: {
+                        Label("New note", systemImage: "square.and.pencil")
+                    }
+                    .accessibilityIdentifier("CaptureSessionNotesCreate")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { onDismiss() }
                 }
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureSessionNotesSheet")
+        }
+        }
+        .sheet(isPresented: $showsNewNote) {
+            VStack(spacing: 0) {
+                // Keep mic control while composing, but don't add a second
+                // dismissal path that would silently throw away this note.
+                CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId)
+            CaptureQuickEntrySheet(kind: .note, session: session, model: model,
+                                  initialNoteVisibility: audience == "private" ? .authorPrivate : .sessionShared)
+            }
         }
     }
 }
@@ -15359,14 +15471,23 @@ private struct CaptureSessionNotesSheetContent: View {
     @ObservedObject var model: CaptureExperienceModel
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var isExpanded = false
+    let fullWorkspace: Bool
+    let searchText: String
+    let audience: String
 
     init(
         session: MobileCaptureSession,
         model: CaptureExperienceModel,
-        initiallyExpanded: Bool = false
+        initiallyExpanded: Bool = false,
+        fullWorkspace: Bool = false,
+        searchText: String = "",
+        audience: String = "all"
     ) {
         self.session = session
         self.model = model
+        self.fullWorkspace = fullWorkspace
+        self.searchText = searchText
+        self.audience = audience
         _isExpanded = State(initialValue: initiallyExpanded)
     }
 
@@ -15394,8 +15515,30 @@ private struct CaptureSessionNotesSheetContent: View {
         model.sessionNoteEditOutbox.entries.filter { $0.roomID == session.callRoomId }
     }
 
-    var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+    private func matches(title: String?, body: String, visibility: String, tags: [String] = []) -> Bool {
+        if audience == "private", visibility != "AUTHOR_PRIVATE" { return false }
+        if audience == "shared", visibility == "AUTHOR_PRIVATE" { return false }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty || ([title ?? "", body] + tags).contains {
+            $0.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var visibleNotes: [MobileCaptureSessionNote] {
+        let notes = canonicalNotes.filter {
+            matches(title: $0.title, body: $0.body, visibility: $0.visibility, tags: $0.tags.map(\.label))
+        }
+        return fullWorkspace ? notes : Array(notes.prefix(8))
+    }
+
+    private var visiblePendingNotes: [PendingMobileQuickEntry] {
+        let notes = pendingNotes.filter {
+            matches(title: $0.displayTitle, body: $0.body, visibility: $0.noteVisibility?.rawValue ?? "AUTHOR_PRIVATE")
+        }
+        return fullWorkspace ? notes : Array(notes.prefix(4))
+    }
+
+    private var notesContent: some View {
             VStack(alignment: .leading, spacing: 10) {
                 if model.sessionNoteEditMessageRoomID == session.callRoomId,
                    let message = model.sessionNoteEditMessage?.nonempty {
@@ -15413,14 +15556,14 @@ private struct CaptureSessionNotesSheetContent: View {
                         .accessibilityIdentifier("CaptureSessionNoteEditMessage")
                 }
 
-                if totalCount == 0 {
-                    Text("No notes yet. Use Quick Note to add one.")
+                if visibleNotes.isEmpty && visiblePendingNotes.isEmpty {
+                    Text(totalCount == 0 ? "No notes yet. Add a note to get started." : "No notes match this view.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                ForEach(pendingNotes.prefix(4)) { entry in
+                ForEach(visiblePendingNotes) { entry in
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 6) {
                             Label(entry.disposition == .held ? "Needs attention" : "Saving", systemImage: "iphone.gen3.radiowaves.left.and.right")
@@ -15447,7 +15590,7 @@ private struct CaptureSessionNotesSheetContent: View {
                     .accessibilityIdentifier("CaptureSessionNotePending_\(entry.clientRequestID)")
                 }
 
-                ForEach(canonicalNotes.prefix(8)) { note in
+                ForEach(visibleNotes) { note in
                     let protectedEdit = model.pendingSessionNoteEdit(for: note.id)
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -15606,6 +15749,14 @@ private struct CaptureSessionNotesSheetContent: View {
                     .accessibilityIdentifier("CaptureSessionNotesDeliveryBoundary")
             }
             .padding(.top, 10)
+    }
+
+    var body: some View {
+        if fullWorkspace {
+            notesContent
+        } else {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            notesContent
         } label: {
             HStack {
                 Label("Session Notes", systemImage: "note.text")
@@ -15620,6 +15771,7 @@ private struct CaptureSessionNotesSheetContent: View {
         }
         .captureCard()
         .accessibilityHint("Shows notes you can see for this Session.")
+        }
     }
 
     private func matchingRecording(_ source: MobileCaptureTodayTranscriptSourceAnchor) -> LocalRecording? {
@@ -16070,12 +16222,14 @@ struct CaptureQuickEntrySheet: View {
         kind: MobileQuickEntryKind,
         session: MobileCaptureSession?,
         model: CaptureExperienceModel,
-        initialProject: MobileCaptureProjectDestination? = nil
+        initialProject: MobileCaptureProjectDestination? = nil,
+        initialNoteVisibility: MobileSessionNoteVisibility = .sessionShared
     ) {
         self.kind = kind
         self.session = session
         self.initialProject = initialProject
         self.model = model
+        _noteVisibility = State(initialValue: initialNoteVisibility)
         _destination = State(initialValue: initialProject.map { "NEST:\($0.id)" } ?? (session == nil ? "HOME_NEST" : "SESSION"))
     }
 
@@ -16403,18 +16557,16 @@ struct CaptureQuickEntrySheet: View {
                     Text(kind == .source
                         ? "Saved privately to Inbox until you file it."
                         : savesSessionNote
-                            ? "Shared with this Session. Choose Only me for a private note."
+                            ? (noteVisibility == .authorPrivate ? "Only you can see this note." : noteVisibility.boundary)
                             : "Saved privately. If you are offline, Quipsly syncs it when you reconnect.")
                 }
 
                 Section(kind == .note ? "Note" : kind.title) {
-                    if kind != .note || savesNoteToHomeNest || selectedProject != nil {
                         TextField(kind == .note ? "Title (optional)" : kind == .task ? "What needs doing?" : kind == .goal ? "What does better look like?" : "Source title (optional)", text: $title)
                             .submitLabel(.next)
                             .onSubmit { focusedField = .body }
                             .focused($focusedField, equals: .title)
                             .accessibilityIdentifier("CaptureQuickEntryTitle")
-                    }
                     TextField(
                         kind == .note ? "Capture the thought…" : kind == .task ? "Useful detail or definition of done (optional)" : kind == .goal ? "Why it matters or how progress will look (optional)" : "Paste a web link or quoted text…",
                         text: $entryBody,
@@ -16556,7 +16708,7 @@ struct CaptureQuickEntrySheet: View {
             .accessibilityIdentifier("CaptureQuickEntryForm")
             .scrollDismissesKeyboard(.interactively)
             .captureFormSurface()
-            .navigationTitle("Quick \(kind.title)")
+            .navigationTitle(kind == .note ? "New note" : "Quick \(kind.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -21965,9 +22117,13 @@ private struct CaptureCallIdentityTile: View {
 
 private struct ProviderRoomAudioStage: View {
     @ObservedObject var providerRoom: ProviderRoomController
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12),
+                                count: dynamicTypeSize.isAccessibilitySize ? 1
+                                    : min(providerRoom.remoteParticipantNames.count + 1, horizontalSizeClass == .regular ? 3 : 2)), spacing: 12) {
             CaptureCallIdentityTile(
                 name: "You",
                 detail: providerRoom.usesCallAudio

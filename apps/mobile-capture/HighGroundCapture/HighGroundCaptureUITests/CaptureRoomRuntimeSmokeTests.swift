@@ -6299,9 +6299,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(app.buttons["ProviderToggleSpeakerButton"].firstMatch.exists, primaryEndpoint)
 
         XCTAssertTrue(app.descendants(matching: .any)["ProviderCallAudioStage"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "different endpoint evidence")).firstMatch.exists,
+                       "Rejoining an idle endpoint must not replay a previous take's STOP receipt.")
         let chat = app.buttons["CaptureCallOpenChat"].firstMatch
         XCTAssertTrue(chat.isHittable, "Chat belongs beside the live call, not below recording diagnostics.")
         chat.tap()
+        XCTAssertTrue(app.buttons["CaptureWorkspaceReturnToCall"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["CaptureWorkspaceToggleMicrophone"].exists, primaryEndpoint)
+        XCTAssertEqual(app.descendants(matching: .any)["CaptureWorkspaceCompanionAudio"].firstMatch.exists, !primaryEndpoint)
         let composer = app.textFields["CaptureSessionChatComposer"].firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 8), "Chat must open the thread itself, not another Open conversation card.")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
@@ -6315,9 +6320,38 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(composer.value as? String, "Call workspace unsent draft")
         app.buttons["Done"].tap()
 
+        let notes = app.buttons["CaptureCallOpenNotes"].firstMatch
+        XCTAssertTrue(notes.isHittable)
+        notes.tap()
+        let createNote = app.buttons["CaptureSessionNotesCreate"].firstMatch
+        XCTAssertTrue(createNote.waitForExistence(timeout: 8), "Notes needs a visible create action without leaving the call.")
+        XCTAssertTrue(app.buttons["CaptureWorkspaceReturnToCall"].isHittable)
+        let privateFilter = app.buttons["Only me"].firstMatch
+        XCTAssertTrue(privateFilter.exists)
+        privateFilter.tap()
+        createNote.tap()
+        let noteTitle = app.textFields["CaptureQuickEntryTitle"].firstMatch
+        XCTAssertTrue(noteTitle.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["CaptureQuickEntryNoteDetails"].value as? String == "Collapsed, Only me",
+                      "Creating from Only me must not quietly share a private thought.")
+        let callNoteTitle = "Native call note \(UUID().uuidString.prefix(8))"
+        noteTitle.tap()
+        noteTitle.typeText(callNoteTitle)
+        let noteBody = app.textFields["CaptureQuickEntryBody"].firstMatch
+        noteBody.tap()
+        noteBody.typeText("Synthetic coaching note written while the call stays connected.")
+        app.buttons["CaptureQuickEntrySave"].tap()
+        XCTAssertTrue(createNote.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[callNoteTitle].firstMatch.waitForExistence(timeout: 20),
+                      "A saved note must appear in the same workspace, including while its outbox syncs.")
+        attachRuntimeScreenshot(app, name: "Native private notes during call")
+        app.buttons["CaptureWorkspaceReturnToCall"].tap()
+        XCTAssertTrue(leave.waitForExistence(timeout: 5), "Writing a note must preserve the original live transport.")
+
         let tools = app.buttons["CaptureCallToggleTools"].firstMatch
         tools.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "different endpoint evidence")).firstMatch.exists)
         if recordSource {
             let audioMode = app.segmentedControls["CaptureRecordingModePicker"].buttons["Audio"]
             XCTAssertTrue(scrollRuntimeElementIntoHittableView(audioMode, in: app))

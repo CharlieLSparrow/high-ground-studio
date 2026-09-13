@@ -272,6 +272,14 @@ final class CaptureRecordingCoordinator: ObservableObject {
         statusMessage = handledStatusMessage(for: state)
     }
 
+    func markIdleStopHandled(_ directive: CaptureRecordingDirective) {
+        guard directive.action == .stop else { return }
+        handledStates[directive.id] = .stopped
+        joinConfirmationRequired = false
+        // No source was operated on, so do not announce a new recording save.
+        statusMessage = nil
+    }
+
     /// Atomically claims a directive before an async local start/stop crosses
     /// actor suspension points. The shell observer and a visible host control
     /// can discover the same command at nearly the same time; only one may
