@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import callSurface from "./call-surface.module.css";
 import {
   ChevronDown,
   ExternalLink,
@@ -239,7 +240,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
             aria-hidden={!isOpen}
             inert={!isOpen ? true : undefined}
             className={isOpen
-              ? "fixed inset-0 z-[70] m-0 flex h-dvh max-h-dvh w-full max-w-none min-h-0 flex-col overflow-hidden border-0 bg-background p-0 text-foreground"
+              ? `${callSurface.surface} fixed inset-0 z-[70] m-0 flex h-dvh max-h-dvh w-full max-w-none min-h-0 flex-col overflow-hidden border-0 bg-background p-0 text-foreground`
               : "pointer-events-none fixed h-px w-px overflow-hidden opacity-0"
             }
           >
@@ -323,7 +324,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 onToolPanelChange={setWorkspacePanel}
                 collaborationControls={status === "connected" || status === "reconnecting" ? <button type="button"
                   onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")}
-                  aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel"
+                  aria-label={chatOpen ? "Hide chat" : "Show chat"} title="Chat" aria-expanded={chatOpen} aria-controls="live-call-chat-panel"
                   className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} />Chat</button> : null}
               /> : null}
               </div>

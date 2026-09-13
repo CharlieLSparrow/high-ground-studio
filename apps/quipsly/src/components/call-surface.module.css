@@ -1,0 +1,40 @@
+/* Short landscape windows need a single control row. Text remains in the
+   accessible name; tooltips retain the labels for pointer users. */
+@media (max-height: 500px) and (min-width: 600px) {
+  .surface > header { padding-block: 4px; }
+  .surface > header > details { margin-top: 0; }
+  .surface [data-testid="live-call-workspace"] { padding-block: 8px; gap: 8px; }
+  .surface [data-testid="call-control-rows"] {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .surface [data-testid="call-primary-controls"],
+  .surface [data-testid="call-secondary-controls"] {
+    display: flex;
+    gap: 4px;
+    border: 0;
+    padding: 0;
+  }
+  .surface [data-testid="call-primary-controls"] > button,
+  .surface [data-testid="call-primary-controls"] > span,
+  .surface [data-testid="call-secondary-controls"] button {
+    font-size: 0;
+    line-height: 0;
+    gap: 0;
+    width: 44px;
+    flex: none;
+    padding-inline: 10px;
+  }
+  .surface [data-testid="call-secondary-controls"] button span { font-size: 0; }
+  .surface [data-testid="live-call-controls-slot"] { padding-block: 6px; }
+  .surface [data-testid="call-microphone-status"][data-routine="true"],
+  .surface [data-testid="call-gallery-waiting"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
