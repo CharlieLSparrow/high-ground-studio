@@ -102,7 +102,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
   const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
-  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "devices" | "recording" | "details" | null>(null);
+  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "devices" | "recording" | "details" | "people" | null>(null);
   const chatOpen = workspacePanel === "chat";
   const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
@@ -250,7 +250,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{liveSessionStatusLabel(status)}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button>
+                  {status !== "connected" && status !== "reconnecting" ? <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button> : null}
                   <button type="button" onClick={minimize} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Minimize live call"><ChevronDown size={18} /></button>
                   <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Close live call"><X size={18} /></button>
                 </div>
@@ -321,6 +321,10 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 toolPanelContainer={toolPanelContainer}
                 activeToolPanel={workspacePanel === "chat" ? null : workspacePanel}
                 onToolPanelChange={setWorkspacePanel}
+                collaborationControls={status === "connected" || status === "reconnecting" ? <button type="button"
+                  onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")}
+                  aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel"
+                  className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} />Chat</button> : null}
               /> : null}
               </div>
               <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>

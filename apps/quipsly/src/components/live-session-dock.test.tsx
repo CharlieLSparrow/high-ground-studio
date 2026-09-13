@@ -26,6 +26,7 @@ jest.mock("./live-session-room", () => ({
     onProtectionChange,
     leaveRequestVersion = 0,
     onExitComplete,
+    collaborationControls,
   }: {
     callRoomId: string;
     captureGroupId: string;
@@ -33,6 +34,7 @@ jest.mock("./live-session-room", () => ({
     onProtectionChange?: (protectedSourceActive: boolean) => void;
     leaveRequestVersion?: number;
     onExitComplete?: () => void;
+    collaborationControls?: React.ReactNode;
   }) => {
     const mountedRoomId = useRef(callRoomId).current;
     const handledLeaveRequest = useRef(0);
@@ -50,7 +52,7 @@ jest.mock("./live-session-room", () => ({
       mockRoomLifecycle.mounted(mountedRoomId);
       return () => mockRoomLifecycle.unmounted(mountedRoomId);
     }, [mountedRoomId]);
-    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}<button onClick={() => onStatusChange?.("connected")}>Simulate connection</button><button onClick={() => onStatusChange?.("reconnecting")}>Simulate reconnect</button><button onClick={() => onStatusChange?.("ended")}>Simulate ended call</button><button onClick={() => onProtectionChange?.(false)}>Simulate saved sources</button></div>;
+    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}{collaborationControls}<button onClick={() => onStatusChange?.("connected")}>Simulate connection</button><button onClick={() => onStatusChange?.("reconnecting")}>Simulate reconnect</button><button onClick={() => onStatusChange?.("ended")}>Simulate ended call</button><button onClick={() => onProtectionChange?.(false)}>Simulate saved sources</button></div>;
   },
 }));
 

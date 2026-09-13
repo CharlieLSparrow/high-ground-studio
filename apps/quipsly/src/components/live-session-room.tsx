@@ -35,10 +35,11 @@ import {
 } from "livekit-client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { CallWorkspacePanel } from "@/components/call-workspace-panel";
+import { CallPeoplePanel } from "@/components/call-people-panel";
 import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
@@ -488,6 +489,7 @@ export function LiveSessionRoom({
   toolPanelContainer = null,
   activeToolPanel,
   onToolPanelChange,
+  collaborationControls,
 }: {
   callRoomId: string;
   captureGroupId?: string | null;
@@ -509,13 +511,14 @@ export function LiveSessionRoom({
   stageLayout?: boolean;
   onOpenSessionWork?: () => void;
   toolPanelContainer?: HTMLElement | null;
-  activeToolPanel?: "devices" | "recording" | "details" | null;
-  onToolPanelChange?: (panel: "devices" | "recording" | "details" | null) => void;
+  activeToolPanel?: "devices" | "recording" | "details" | "people" | null;
+  onToolPanelChange?: (panel: "devices" | "recording" | "details" | "people" | null) => void;
+  collaborationControls?: ReactNode;
 }) {
   const router = useRouter();
-  const [localToolPanel, setLocalToolPanel] = useState<"devices" | "recording" | "details" | null>(null);
+  const [localToolPanel, setLocalToolPanel] = useState<"devices" | "recording" | "details" | "people" | null>(null);
   const toolPanel = activeToolPanel === undefined ? localToolPanel : activeToolPanel;
-  const setToolPanel = useCallback((panel: "devices" | "recording" | "details" | null) => {
+  const setToolPanel = useCallback((panel: "devices" | "recording" | "details" | "people" | null) => {
     if (onToolPanelChange) onToolPanelChange(panel);
     else setLocalToolPanel(panel);
   }, [onToolPanelChange]);
@@ -2366,23 +2369,28 @@ export function LiveSessionRoom({
   );
   const callControls = connected ? (
     <div className="flex flex-col gap-2" role="group" aria-label="Call controls">
-      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-center">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-center lg:gap-4">
+      <div data-testid="call-primary-controls" className="grid min-w-0 grid-cols-2 items-stretch justify-center gap-2 min-[380px]:flex [&>button]:min-w-11 min-[380px]:[&>button]:flex-1 lg:[&>button]:flex-none">
         {callAudioMode === "this-device" ? (
-          <button type="button" onClick={() => void toggleMicrophone()} aria-pressed={microphoneMuted} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:cursor-not-allowed disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
-        ) : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
-        <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{cameraToggleBusy ? <LoaderCircle size={16} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
-      {stageLayout ? <>
+          <button type="button" onClick={() => void toggleMicrophone()} aria-pressed={microphoneMuted} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 sm:flex-row sm:gap-2 ${microphoneMuted ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"}`}>{microphoneMuted ? <MicOff size={18} /> : <Mic size={18} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
+        ) : <span className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-muted px-3 text-xs font-semibold text-foreground"><Smartphone size={18} /> Audio on other device</span>}
+        <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold disabled:opacity-45 sm:flex-row sm:gap-2 ${!cameraWanted || cameraMuted ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"}`}>{cameraToggleBusy ? <LoaderCircle size={18} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={18} /> : <Camera size={18} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
+        {stageLayout && typeof captureGroupId === "string" && captureGroupId.trim() ? <div ref={setRecordingControlContainer} className="min-w-0 self-center" data-testid="call-recording-control-slot" /> : null}
+        <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-rose-800 px-3 py-2 text-xs font-semibold text-white disabled:cursor-wait disabled:opacity-60 sm:flex-row sm:gap-2"><PhoneOff size={18} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
+      </div>
+      {stageLayout ? <div data-testid="call-secondary-controls" className="grid min-w-0 grid-cols-3 items-center justify-center gap-1 border-t border-border pt-1 min-[380px]:flex lg:border-l lg:border-t-0 lg:pl-3 lg:pt-0 [&>button]:min-w-0 min-[380px]:[&>button]:flex-1 lg:[&>button]:flex-none">
         <button type="button" onClick={() => void (screenShare.sharing || screenShare.busy ? screenShare.stop() : screenShare.start())}
           aria-pressed={screenShare.sharing}
           className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${screenShare.sharing ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
           {screenShare.sharing ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
           {screenShare.busy ? "Cancel sharing" : screenShare.sharing ? "Stop sharing" : "Share screen"}
         </button>
-        {typeof captureGroupId === "string" && captureGroupId.trim() ? <div ref={setRecordingControlContainer} className="min-w-0" data-testid="call-recording-control-slot" /> : <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl px-3 text-xs font-semibold hover:bg-muted">Recording</button>}
+        {collaborationControls}
+        <button type="button" onClick={() => setToolPanel(toolPanel === "people" ? null : "people")} aria-expanded={toolPanel === "people"} className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${toolPanel === "people" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><Users size={18} /><span>People <span className="tabular-nums">{participants.length}</span></span></button>
+        {!captureGroupId?.trim() ? <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl px-3 text-xs font-semibold hover:bg-muted">Recording</button> : null}
         <button type="button" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Settings2 size={18} />Devices</button>
         <button type="button" onClick={() => setToolPanel("details")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Ellipsis size={18} />More</button>
-      </> : null}
-        <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-rose-800 px-2 py-2 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
+      </div> : null}
       </div>
       {callAudioMode === "this-device" ? <div><LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} compact={Boolean(controlsContainer)} /></div> : null}
       {cameraControlError ? <p role="alert" className="text-xs leading-5 text-destructive">{cameraControlError}</p> : null}
@@ -2626,6 +2634,9 @@ export function LiveSessionRoom({
 
         </div>
 
+        {stageLayout ? <CallWorkspacePanel title="People" open={toolPanel === "people"} onClose={closeToolPanel} container={toolPanelContainer}>
+          <CallPeoplePanel participants={participants.map(person => person.isLocal ? { ...person, microphoneMuted: microphoneMuted || callAudioMode === "other-device" } : person)} sharingIdentities={[...participantVideos, ...screenShare.videos].filter(video => video.track.source === Track.Source.ScreenShare).map(video => video.identity)} />
+        </CallWorkspacePanel> : null}
         <CallWorkspacePanel title="Call details" open={toolPanel === "details"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
         <aside className="space-y-3">
           <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={["recording", "needs-review"].includes(providerRecordingState)}>

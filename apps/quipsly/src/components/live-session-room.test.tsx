@@ -478,6 +478,15 @@ describe("LiveSessionRoom", () => {
     expect(screen.getAllByRole("group", {name: "Call controls"})).toHaveLength(1);
     expect(document.getElementById("live-call-stage-panel")).not.toContainElement(slot);
     expect(document.getElementById("live-call-chat-panel")).not.toContainElement(slot);
+    expect(within(slot).getByRole("button", {name: "Show chat"})).toBeVisible();
+    fireEvent.click(within(slot).getByRole("button", {name: /People \d/}));
+    const peoplePanel = screen.getByRole("region", {name: "People"});
+    expect(peoplePanel).toBeVisible();
+    expect(within(peoplePanel).getByRole("list", {name: "People in this call"})).toBeVisible();
+    fireEvent.change(within(peoplePanel).getByRole("searchbox"), {target: {value: "A person not here"}});
+    expect(within(peoplePanel).getByRole("status")).toHaveTextContent("No one matches that name.");
+    expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1);
+    expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", {name: "Show chat"}));
     expect(document.getElementById("live-call-stage-panel")).toHaveClass("hidden");
