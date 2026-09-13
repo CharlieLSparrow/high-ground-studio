@@ -71,14 +71,12 @@ struct MobileChatPersistedLiveHint: Codable, Hashable {
 enum MobileCollaborationChatScope: String, Codable {
     case nest
     case episode
-    case session
     case engagement
 
     var title: String {
         switch self {
         case .nest: "Conversation"
         case .episode: "Episode thread"
-        case .session: "Session thread"
         case .engagement: "Coaching conversation"
         }
     }
@@ -87,7 +85,6 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .nest: "Nest conversation"
         case .episode: "Canonical episode conversation"
-        case .session: "Canonical take conversation"
         case .engagement: "Private coaching conversation"
         }
     }
@@ -96,7 +93,6 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .nest: "Open conversation"
         case .episode: "Open episode thread"
-        case .session: "Open Session thread"
         case .engagement: "Open coaching conversation"
         }
     }
@@ -105,7 +101,6 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .nest: "CaptureNestConversation"
         case .episode: "CaptureEpisodeChat"
-        case .session: "CaptureSessionChat"
         case .engagement: "CaptureCoachingConversation"
         }
     }
@@ -114,7 +109,6 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .nest: "CaptureNestConversationOpenButton"
         case .episode: "CaptureEpisodeChatOpenButton"
-        case .session: "CaptureSessionChatOpenButton"
         case .engagement: "CaptureCoachingConversationOpenButton"
         }
     }
@@ -123,7 +117,6 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .nest: "Nest"
         case .episode: "episode"
-        case .session: "Session"
         case .engagement: "coaching"
         }
     }
@@ -132,7 +125,6 @@ enum MobileCollaborationChatScope: String, Codable {
         switch self {
         case .nest: "Message this Nest"
         case .episode: "Message the episode team"
-        case .session: "Message this Session"
         case .engagement: "Message this coaching space"
         }
     }
@@ -142,8 +134,6 @@ enum MobileCollaborationChatScope: String, Codable {
         case .nest: "Talk through ideas and keep the next steps with your shared work."
         case .episode:
             "Keep writing, recording, editing, and publishing decisions with this exact episode."
-        case .session:
-            "Coordinate device checks, consent, this take, and immediate handoff with everyone in this exact Session."
         case .engagement:
             "Keep the conversation with this coaching relationship across every Session, note, task, and goal."
         }
@@ -154,8 +144,6 @@ enum MobileCollaborationChatScope: String, Codable {
         case .nest: "Everyone with access to this Nest can read this conversation. Client conversations stay in their private spaces."
         case .episode:
             "Posts stay with this episode. Recording and playback never start from chat."
-        case .session:
-            "Posts stay with this exact call. They do not become notes, goals, or tasks, and chat never starts recording."
         case .engagement:
             "Only members of this coaching relationship can read these posts. Messages stay separate from shared notes, goals, tasks, and recording controls."
         }
@@ -716,7 +704,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     }
 
     static func clearProtectedCache() {
-        for scope in [MobileCollaborationChatScope.episode, .session, .engagement, .nest] {
+        for scope in [MobileCollaborationChatScope.episode, .engagement, .nest] {
             guard let root = protectedCacheRoot(scope: scope) else { continue }
             try? FileManager.default.removeItem(at: root)
         }
@@ -740,11 +728,6 @@ final class MobileEpisodeChatClient: ObservableObject {
                   let episodeThreadKey = MobileChatPersistedLiveHint.episodeThreadKey(episodeSlug) else { return nil }
             scopeKey = episodeSlug
             threadKey = episodeThreadKey
-        case .session:
-            guard let callRoomID = Self.safeSlug(session.callRoomId),
-                  let sessionThreadKey = MobileChatPersistedLiveHint.sessionThreadKey(callRoomID) else { return nil }
-            scopeKey = callRoomID
-            threadKey = sessionThreadKey
         case .engagement, .nest:
             return nil
         }
@@ -789,8 +772,6 @@ final class MobileEpisodeChatClient: ObservableObject {
                 && payload.session == nil && payload.engagement == nil
         case .episode:
             payload.episode?.slug == context.scopeKey
-        case .session:
-            payload.session?.id.lowercased() == context.scopeKey
         case .engagement:
             payload.engagement?.id.lowercased() == context.scopeKey
         }

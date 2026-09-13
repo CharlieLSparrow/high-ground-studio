@@ -3148,21 +3148,10 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testSessionThreadKeepsTakeCoordinationSeparateFromEpisodeWork() {
-        app.tabBars.buttons["Sessions"].tap()
-        openLocalRecorderIfNeeded()
-
-        let card = app.descendants(matching: .any)["CaptureSessionChatCard"]
-        reveal(card)
-        XCTAssertTrue(
-            card.waitForExistence(timeout: 5),
-            "Every Capture Session should expose its room-bound conversation beside the recorder, even without a Nest project."
-        )
-        XCTAssertTrue(
-            app.staticTexts["CaptureSessionChatLatestMessage"].label
-                .contains("one clear next step")
-        )
-
-        let open = app.buttons["CaptureSessionChatOpenButton"]
+        openSessionsWorkspace()
+        let open = app.buttons["CaptureCallOpenChat"]
+        reveal(open)
+        XCTAssertTrue(open.waitForExistence(timeout: 5), "Session chat must be reachable before joining or opening recording tools.")
         XCTAssertTrue(open.isHittable)
         open.tap()
 

@@ -31,6 +31,34 @@ describe("SessionThread", () => {
   const message = { id: "message-1", body: "Ready", authorName: "Coach", authorEmail: "coach@example.test", gifUrl: null, createdAt: "2026-09-06T12:00:00Z" };
   const response = (payload: unknown) => ({ ok: true, json: async () => payload }) as Response;
 
+  it("uses the native conversation API without requiring a Nest and honors server write access", async () => {
+    jest.mocked(fetch).mockResolvedValue(response({ ok: true, messages: [{ ...message, authorName: undefined, author: { id: "coach", label: "Casey Park", isCurrentActor: false } }], capabilities: { canWrite: false } }));
+    await act(async () => { render(<SessionThread roomId="room-1" sessionTitle="Coaching" />); });
+    expect(fetch).toHaveBeenCalledWith("/api/sessions/room-1/conversation?limit=50", { cache: "no-store" });
+    expect(screen.getByText("Casey Park")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
+  });
+
+  it("sends replies and keeps a newer edit when an older poll arrives", async () => {
+    const own = { ...message, revision: 1, canEdit: true, author: { id: "coach", label: "Casey", isCurrentActor: true } };
+    jest.mocked(fetch).mockResolvedValue(response({ ok: true, messages: [own] }));
+    await mountThread();
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "I agree" } });
+    jest.mocked(fetch).mockResolvedValueOnce(response({ ok: true, message: { ...own, id: "reply-1", body: "I agree", canEdit: false, replyTo: { id: own.id, body: own.body, authorLabel: "Casey" } } }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send collaboration message" })); });
+    const send = jest.mocked(fetch).mock.calls.find(([, init]) => init?.method === "POST")!;
+    expect(JSON.parse(send[1]!.body as string)).toMatchObject({ body: "I agree", replyToId: own.id, clientRequestId: expect.any(String) });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit message" }), { target: { value: "Ready tomorrow" } });
+    jest.mocked(fetch).mockResolvedValueOnce(response({ ok: true, message: { ...own, body: "Ready tomorrow", revision: 2 } }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save" })); });
+    const edit = jest.mocked(fetch).mock.calls.find(([, init]) => init?.method === "PATCH")!;
+    expect(JSON.parse(edit[1]!.body as string)).toEqual({ messageId: own.id, expectedRevision: 1, body: "Ready tomorrow" });
+    await act(async () => { jest.advanceTimersByTime(3_000); });
+    expect(screen.getByText("Ready tomorrow")).toBeVisible();
+  });
+
   it("fits the call panel with an independently scrolling log and a retained composer", async () => {
     await act(async () => { render(<SessionThread projectSlug="coaching" roomId="room-1" sessionTitle="Coaching" heading="Chat" fillHeight />); });
     expect(screen.getByRole("region", { name: "Chat" })).toHaveClass("h-full", "min-h-0");
@@ -99,12 +127,13 @@ describe("SessionThread", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Ready" } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send collaboration message" })); });
     expect(screen.getByRole("textbox")).toHaveValue("Ready");
-    expect(screen.getByRole("alert")).toHaveTextContent("Your text is still here");
+    expect(screen.getByRole("alert")).toHaveTextContent("Your draft is retained");
     await act(async () => { jest.advanceTimersByTime(3_000); });
     expect(screen.getByRole("alert")).toHaveTextContent("Connection lost");
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send collaboration message" })); });
     const posts = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
-    expect(JSON.parse(posts[0][1].body).clientMessageId).toBe(JSON.parse(posts[1][1].body).clientMessageId);
+    expect(JSON.parse(posts[0][1].body).clientRequestId).toEqual(expect.any(String));
+    expect(JSON.parse(posts[0][1].body).clientRequestId).toBe(JSON.parse(posts[1][1].body).clientRequestId);
     expect(screen.getByRole("textbox")).toHaveValue("");
     expect(screen.getAllByText("Ready")).toHaveLength(1);
   });
@@ -194,7 +223,7 @@ describe("SessionThread", () => {
     });
 
     expect(screen.getByPlaceholderText("View-only Session thread")).toBeDisabled();
-    expect(screen.getByText(/editor access is required to post/i)).toBeInTheDocument();
+    expect(screen.getByText("View-only conversation")).toBeInTheDocument();
   });
 
   it("uses purpose-neutral default scope language", async () => {
@@ -245,7 +274,7 @@ describe("SessionThread", () => {
       await Promise.resolve();
     });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/nest-chat", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/sessions/room-1/conversation", expect.objectContaining({ method: "POST" }));
     expect(outgoing).toHaveBeenCalledTimes(1);
     const detail = (outgoing.mock.calls[0]?.[0] as CustomEvent).detail;
     expect(detail).toEqual({

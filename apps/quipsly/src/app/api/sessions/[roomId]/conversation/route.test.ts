@@ -182,7 +182,7 @@ describe("Session conversation route", () => {
     expect(prisma.sessionConversationMessage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: 200,
+        take: 201,
       }),
     );
   });

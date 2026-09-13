@@ -15,12 +15,17 @@ import {
 
 type SessionMessage = {
   id: string;
-  authorName: string | null;
-  authorEmail: string | null;
+  authorName?: string | null;
+  authorEmail?: string | null;
   body: string;
   gifUrl: string | null;
   createdAt: string;
   linkedTasks?: ConversationLinkedTask[];
+  revision?: number;
+  deletedAt?: string | null;
+  canEdit?: boolean;
+  replyTo?: { id: string; body: string; authorLabel: string } | null;
+  author?: { id: string | null; label: string; isCurrentActor: boolean };
 };
 
 type ThreadResponse = {
@@ -29,10 +34,11 @@ type ThreadResponse = {
   messages?: SessionMessage[];
   message?: SessionMessage;
   nextCursor?: string | null;
+  capabilities?: { canWrite: boolean };
 };
 
 function author(message: SessionMessage) {
-  return message.authorName || message.authorEmail?.split("@")[0] || "Collaborator";
+  return message.author?.label || message.authorName || message.authorEmail?.split("@")[0] || "Collaborator";
 }
 
 export function CollaborationThread(props: Parameters<typeof ScopedCollaborationThread>[0]) {
@@ -41,7 +47,9 @@ export function CollaborationThread(props: Parameters<typeof ScopedCollaboration
 
 function mergeMessages(current: SessionMessage[], incoming: SessionMessage[]) {
   const merged = new Map(current.map((message) => [message.id, message]));
-  for (const message of incoming) merged.set(message.id, message);
+  for (const message of incoming) {
+    if ((merged.get(message.id)?.revision ?? 0) <= (message.revision ?? 0)) merged.set(message.id, message);
+  }
   return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
@@ -81,17 +89,25 @@ function ScopedCollaborationThread({
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [serverCanWrite, setServerCanWrite] = useState(true);
+  const [replyTo, setReplyTo] = useState<SessionMessage | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [mutating, setMutating] = useState(false);
   const activeRef = useRef(true);
   const refreshingRef = useRef(false);
   const sendingRef = useRef(false);
   const historyLoadedRef = useRef(false);
   const followLatestRef = useRef(true);
   const previousScrollRef = useRef<{ top: number; height: number } | null>(null);
-  const pendingSendRef = useRef<{ body: string; id: string } | null>(null);
+  const pendingSendRef = useRef<{ body: string; id: string; replyToId: string | null } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const seenLiveHintIdsRef = useRef(new Set<string>());
   const headingId = `collaboration-thread-${threadKey.replace(/[^a-z0-9_-]/gi, "-")}`;
   const engagementId = threadKey.startsWith("engagement:") ? threadKey.slice("engagement:".length) : null;
+  const sessionRoomId = threadKey.startsWith("session:") ? threadKey.slice("session:".length) : null;
+  const endpoint = sessionRoomId ? `/api/sessions/${encodeURIComponent(sessionRoomId)}/conversation` : "/api/nest-chat";
+  const writable = canPost && serverCanWrite;
   const focusedMessageRef = useRef<string | null>(null);
 
   const refresh = useCallback(async (quiet = false) => {
@@ -99,16 +115,17 @@ function ScopedCollaborationThread({
     refreshingRef.current = true;
     if (!quiet) setLoading(true);
     try {
-      const params = new URLSearchParams({ projectSlug, threadKey });
+      const params = new URLSearchParams(sessionRoomId ? { limit: "50" } : { projectSlug, threadKey });
       const requestedMessage = new URL(window.location.href).searchParams.get("message");
       if (requestedMessage) params.set("message", requestedMessage);
-      const response = await fetch(`/api/nest-chat?${params}`, { cache: "no-store" });
+      const response = await fetch(`${endpoint}?${params}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as ThreadResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Session thread could not load.");
       if (!activeRef.current) return;
       // A poll started before a send must not discard its acknowledged message
       // or the older history the reader has already loaded.
       setMessages((current) => mergeMessages(current, payload.messages ?? []));
+      if (payload.capabilities) setServerCanWrite(payload.capabilities.canWrite);
       if (!historyLoadedRef.current) setNextCursor(payload.nextCursor ?? null);
       setLoadError("");
     } catch (nextError) {
@@ -117,7 +134,7 @@ function ScopedCollaborationThread({
       refreshingRef.current = false;
       if (activeRef.current) setLoading(false);
     }
-  }, [projectSlug, threadKey]);
+  }, [projectSlug, threadKey, endpoint, sessionRoomId]);
 
   useEffect(() => {
     activeRef.current = true;
@@ -182,20 +199,21 @@ function ScopedCollaborationThread({
   async function send(event: FormEvent) {
     event.preventDefault();
     const body = draft.trim();
-    if (!canPost || !body || sendingRef.current) return;
+    if (!writable || !body || sendingRef.current) return;
     // Reuse the request identity when the server saved a message but its
     // response was lost. Polling cannot unlock this in-flight send.
-    const pending = pendingSendRef.current?.body === body
-      ? pendingSendRef.current : { body, id: crypto.randomUUID() };
+    const replyToId = replyTo?.id ?? null;
+    const pending = pendingSendRef.current?.body === body && pendingSendRef.current.replyToId === replyToId
+      ? pendingSendRef.current : { body, id: crypto.randomUUID(), replyToId };
     pendingSendRef.current = pending;
     sendingRef.current = true;
     setStatus("sending");
     setError("");
     try {
-      const response = await fetch("/api/nest-chat", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(sessionRoomId ? { body, clientRequestId: pending.id, replyToId } : {
           projectSlug,
           threadKey,
           body,
@@ -212,7 +230,8 @@ function ScopedCollaborationThread({
         const hint = chatPersistedLiveHint(threadKey, payload.message.id, payload.message.createdAt);
         if (hint) dispatchChatPersistedOutgoing(hint);
       }
-      setDraft("");
+      setDraft((current) => current.trim() === body ? "" : current);
+      setReplyTo(null);
       pendingSendRef.current = null;
       setStatus("idle");
     } catch (nextError) {
@@ -228,8 +247,8 @@ function ScopedCollaborationThread({
     if (!nextCursor || loadingOlder) return;
     setLoadingOlder(true);
     try {
-      const params = new URLSearchParams({ projectSlug, threadKey, cursor: nextCursor });
-      const response = await fetch(`/api/nest-chat?${params}`, { cache: "no-store" });
+      const params = new URLSearchParams(sessionRoomId ? { limit: "50", cursor: nextCursor } : { projectSlug, threadKey, cursor: nextCursor });
+      const response = await fetch(`${endpoint}?${params}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as ThreadResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Earlier messages could not load.");
       if (!activeRef.current) return;
@@ -242,6 +261,31 @@ function ScopedCollaborationThread({
       if (activeRef.current) setLoadError(nextError instanceof Error ? nextError.message : "Earlier messages could not load.");
     } finally {
       if (activeRef.current) setLoadingOlder(false);
+    }
+  }
+
+  async function changeMessage(message: SessionMessage, method: "PATCH" | "DELETE") {
+    if (!sessionRoomId || !writable || mutating || !message.canEdit) return;
+    setMutating(true);
+    setError("");
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messageId: message.id, expectedRevision: message.revision, ...(method === "PATCH" ? { body: editDraft } : {}) }),
+      });
+      const payload = await response.json().catch(() => ({})) as ThreadResponse;
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Message could not update.");
+      if (!activeRef.current) return;
+      if (!payload.message) { setEditing(null); await refresh(true); return; }
+      setMessages((current) => mergeMessages(current, [payload.message!]));
+      setEditing(null);
+      const hint = chatPersistedLiveHint(threadKey, payload.message.id, payload.message.createdAt);
+      if (hint) dispatchChatPersistedOutgoing(hint);
+    } catch (nextError) {
+      if (activeRef.current) setError(nextError instanceof Error ? nextError.message : "Message could not update.");
+    } finally {
+      if (activeRef.current) setMutating(false);
     }
   }
 
@@ -259,27 +303,37 @@ function ScopedCollaborationThread({
         {!loading && !loadError && messages.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Start the conversation when you're ready.</p> : null}
         {messages.map((message) => <article key={message.id} id={`conversation-message-${message.id}`} tabIndex={-1} className="rounded-2xl border border-border bg-background p-3 focus:outline focus:outline-2 focus:outline-ring">
           <div className="flex items-center justify-between gap-3"><p className="text-xs font-black text-foreground">{author(message)}</p><LocalDateTime value={message.createdAt} mode="time" className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground" /></div>
-          {message.body ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{message.body}</p> : null}
+          {message.replyTo && <blockquote className="mt-2 border-l-2 border-primary pl-3 text-xs text-muted-foreground"><strong>{message.replyTo.authorLabel}</strong><p className="line-clamp-2">{message.replyTo.body}</p></blockquote>}
+          {editing === message.id ? <form className="mt-2 space-y-2" onSubmit={(event) => { event.preventDefault(); void changeMessage(message, "PATCH"); }}>
+            <textarea aria-label="Edit message" value={editDraft} onChange={(event) => setEditDraft(event.target.value)} maxLength={6000} className="min-h-24 w-full rounded-xl border border-border bg-background p-3" />
+            <button type="submit" disabled={mutating || !editDraft.trim()} className="min-h-11 rounded-xl bg-primary px-4 text-primary-foreground">Save</button>
+            <button type="button" disabled={mutating} onClick={() => setEditing(null)} className="min-h-11 px-4">Cancel</button>
+          </form> : message.deletedAt ? <p className="mt-2 text-sm italic text-muted-foreground">Message removed</p> : message.body ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{message.body}</p> : null}
           {message.gifUrl ? <img src={message.gifUrl} alt="Shared GIF" className="mt-3 max-h-48 w-full rounded-xl object-contain" /> : null}
+          {sessionRoomId && writable && !message.deletedAt && <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
+            <button type="button" className="min-h-11" onClick={() => setReplyTo(message)}>Reply</button>
+            {message.canEdit && <><button type="button" className="min-h-11" onClick={() => { setEditing(message.id); setEditDraft(message.body); }}>Edit</button><button type="button" className="min-h-11" disabled={mutating} onClick={() => void changeMessage(message, "DELETE")}>Remove</button></>}
+          </div>}
           {engagementId && <ConversationTaskAction engagementId={engagementId} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
           {threadKey === "default" && <ConversationTaskAction projectSlug={projectSlug} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
         </article>)}
       </div>
       {loadError ? <div role="alert" className="px-4 py-2 text-sm text-destructive">{loadError} <button type="button" onClick={() => void refresh()} className="min-h-11 underline">Retry loading</button></div> : null}
       <form onSubmit={send} className="shrink-0 border-t border-border p-3">
-        {error ? <p role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{error} Your text is still here; try sending again.</p> : null}
+        {replyTo && <div className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-muted px-3 text-xs"><p className="min-w-0 truncate">Replying to {author(replyTo)}: {replyTo.body}</p><button type="button" className="min-h-11 shrink-0" onClick={() => setReplyTo(null)}>Cancel reply</button></div>}
+        {error ? <p role="alert" className="mb-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">{error} Your draft is retained.</p> : null}
         <div className="flex items-end gap-2">
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="Message" maxLength={4000} disabled={!canPost || status === "sending"} placeholder={canPost ? composerPlaceholder : viewOnlyPlaceholder} className="min-h-20 min-w-0 flex-1 resize-none rounded-2xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-4 focus:ring-ring/20 disabled:bg-muted" />
-          <button type="submit" disabled={!canPost || !draft.trim() || status === "sending"} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-primary px-4 font-black text-primary-foreground disabled:opacity-45" aria-label="Send collaboration message">{status === "sending" ? <LoaderCircle size={17} className="animate-spin" /> : <Send size={17} />}</button>
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="Message" maxLength={sessionRoomId ? 6000 : 4000} disabled={!writable || status === "sending"} placeholder={writable ? composerPlaceholder : viewOnlyPlaceholder} className="min-h-20 min-w-0 flex-1 resize-none rounded-2xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-4 focus:ring-ring/20 disabled:bg-muted" />
+          <button type="submit" disabled={!writable || !draft.trim() || status === "sending"} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-primary px-4 font-black text-primary-foreground disabled:opacity-45" aria-label="Send collaboration message">{status === "sending" ? <LoaderCircle size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
-        {!canPost ? <p className="mt-2 text-xs font-bold text-muted-foreground">You can read this recording thread, but editor access is required to post.</p> : null}
+        {!writable ? <p className="mt-2 text-xs font-bold text-muted-foreground">View-only conversation</p> : null}
       </form>
     </section>
   );
 }
 
 export function SessionThread({
-  projectSlug,
+  projectSlug = "",
   roomId,
   sessionTitle,
   canPost = true,
@@ -288,7 +342,7 @@ export function SessionThread({
   fillHeight = false,
   heading = "Session thread",
 }: {
-  projectSlug: string;
+  projectSlug?: string;
   roomId: string;
   sessionTitle: string;
   canPost?: boolean;

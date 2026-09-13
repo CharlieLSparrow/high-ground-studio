@@ -11609,6 +11609,10 @@ private struct CaptureRecorderView: View {
                     })
                     }
 
+                    if !session.isPersonalVoiceNote && !model.providerRoom.isConnected {
+                        AnyView(callWorkspaceActions(session))
+                    }
+
                     if model.providerRoom.isConnected {
                         if !showsCallTools, let notice = model.captureSafetyNotice {
                             CaptureInlineWarning(text: notice)
@@ -11972,9 +11976,6 @@ private struct CaptureRecorderView: View {
                         AnyView(episodeChatTool(session))
                         AnyView(episodeWatchTool(session))
                         sessionQuickEntrySurface(session)
-                        if !model.providerRoom.isConnected {
-                            sessionConversationSurface(session)
-                        }
                     }
 
                     AnyView(Group {
@@ -12821,25 +12822,14 @@ private struct CaptureRecorderView: View {
     }
 
     private func sessionConversationSurface(
-        _ session: MobileCaptureSession,
-        expanded: Bool = false
+        _ session: MobileCaptureSession
     ) -> AnyView {
         AnyView(
-            Group {
-            if expanded {
                 MobileSessionConversationThread(
                     client: sessionConversation,
                     session: session,
                     previewOnly: model.usesPreviewData
                 )
-            } else {
-            MobileSessionConversationCard(
-                client: sessionConversation,
-                session: session,
-                previewOnly: model.usesPreviewData
-            )
-            }
-            }
             .task(
                 id:
                     "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
@@ -12884,10 +12874,12 @@ private struct CaptureRecorderView: View {
                 Label("Notes", systemImage: "note.text")
             }
             .accessibilityIdentifier("CaptureCallOpenNotes")
+            if model.providerRoom.isConnected {
             Button { showsCallTools.toggle() } label: {
                 Label(showsCallTools ? "Hide tools" : "Tools", systemImage: "slider.horizontal.3")
             }
             .accessibilityIdentifier("CaptureCallToggleTools")
+            }
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
@@ -13009,7 +13001,7 @@ private struct CaptureRecorderView: View {
         }
         .sheet(isPresented: $showsCallChat) {
             if let session = model.selectedSession {
-                sessionConversationSurface(session, expanded: true)
+                sessionConversationSurface(session)
                     .presentationDetents([.large])
             }
         }

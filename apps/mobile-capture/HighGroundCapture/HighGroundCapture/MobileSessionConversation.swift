@@ -4,7 +4,7 @@ import Foundation
 import SwiftUI
 
 struct MobileSessionConversationAuthor: Codable, Hashable {
-    let id: String
+    let id: String?
     let label: String
     let image: String?
     let isCurrentActor: Bool
@@ -27,6 +27,7 @@ struct MobileSessionConversationMessage: Codable, Hashable, Identifiable {
     let author: MobileSessionConversationAuthor
     let replyTo: MobileSessionConversationReply?
     let canEdit: Bool
+    var gifUrl: String? = nil
 }
 
 private struct MobileSessionConversationRoom: Codable {
@@ -640,71 +641,6 @@ final class MobileSessionConversationClient: ObservableObject {
     }
 }
 
-struct MobileSessionConversationCard: View {
-    @ObservedObject var client: MobileSessionConversationClient
-    let session: MobileCaptureSession
-    let previewOnly: Bool
-    @State private var isPresented = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label("Conversation", systemImage: "bubble.left.and.bubble.right.fill")
-                    .font(.headline)
-                Spacer()
-                Text(client.isUsingProtectedCache
-                    ? "Offline copy"
-                    : (client.statusMessage ?? "Session"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(client.isUsingProtectedCache ? CapturePalette.brass : .secondary)
-            }
-
-            if client.isLoading && client.messages.isEmpty {
-                ProgressView("Loading conversation…")
-            } else if let latest = client.latestMessage {
-                Text(latest.author.label)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.tint)
-                Text(latest.deletedAt == nil ? latest.body : "Message removed")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .accessibilityIdentifier("CaptureSessionChatLatestMessage")
-            } else {
-                Text("Share an agenda, a link, or what you want to cover with everyone in this Session.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button {
-                isPresented = true
-            } label: {
-                Label("Open conversation", systemImage: "bubble.left.and.bubble.right.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .captureProminentButton()
-            .disabled(client.isLoading && client.messages.isEmpty)
-            .accessibilityIdentifier("CaptureSessionChatOpenButton")
-
-            if let errorMessage = client.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(CapturePalette.brass)
-                    .accessibilityIdentifier("CaptureSessionChatError")
-            }
-        }
-        .captureCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureSessionChatCard")
-        .sheet(isPresented: $isPresented) {
-            MobileSessionConversationThread(
-                client: client,
-                session: session,
-                previewOnly: previewOnly
-            )
-        }
-    }
-}
 
 struct MobileSessionConversationThread: View {
     @ObservedObject var client: MobileSessionConversationClient
@@ -836,6 +772,11 @@ struct MobileSessionConversationThread: View {
                             .italic(message.deletedAt != nil)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
+                        if message.deletedAt == nil, let gifUrl = message.gifUrl,
+                           let url = URL(string: gifUrl), url.scheme == "https" {
+                            Link("View shared GIF", destination: url)
+                                .font(.caption)
+                        }
                         HStack(spacing: 3) {
                             Text(Self.formattedTime(message.createdAt))
                             if message.editedAt != nil && message.deletedAt == nil {

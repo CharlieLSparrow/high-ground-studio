@@ -378,6 +378,7 @@ function checkMeetingSpineContractSources() {
   const captureExperienceUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
+  const sessionConversationServerText = sourceText("apps/quipsly/src/lib/server/session-conversation.ts");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
   const providerRecordingCommandText = sourceText("apps/quipsly/src/lib/server/provider-recording-command.ts");
   const liveKitWebhookText = sourceText("apps/quipsly/src/app/api/providers/livekit/webhook/route.ts");
@@ -668,10 +669,11 @@ function checkMeetingSpineContractSources() {
       && sessionConversationText.includes('"clientRequestId": send.requestID.uuidString.lowercased()')
       && sessionConversationText.includes("QuipslyCapture/SessionConversation")
       && sessionConversationText.includes("Messages stay with this Session.")
-      && capturePhoneShellText.includes("MobileSessionConversationCard")
+      && capturePhoneShellText.includes("MobileSessionConversationThread")
       && capturePhoneShellText.includes("sessionConversation.receiveLiveHint")
-      && nestChatRouteText.includes("sessionConversationAccessWhere")
-      && nestChatRouteText.includes("sessionMutationAccessWhere"),
+      && sessionConversationServerText.includes("sessionConversationAccessWhere")
+      && sessionConversationServerText.includes("sessionMutationAccessWhere")
+      && nestChatRouteText.includes("SESSION_CONVERSATION_MOVED"),
     "nativeSessionAndEpisodeThreadsRemainDistinct",
     "Capture projects exact-call Session chat and durable Episode chat as separate account-protected scopes over the canonical Nest access boundary.",
   );
@@ -798,21 +800,19 @@ function checkMeetingSpineContractSources() {
   const quickEntrySurfaceIndex = captureRecorderViewText.indexOf(
     "sessionQuickEntrySurface(session)",
   );
-  const conversationSurfaceIndex = captureRecorderViewText.indexOf(
-    "sessionConversationSurface(session)",
-  );
   expect(
     captureRecorderViewText.indexOf("ProviderRoomControls(") >= 0
       && captureRecorderViewText.indexOf("ConsentStrip(") > captureRecorderViewText.indexOf("ProviderRoomControls(")
       && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
       && quickEntrySurfaceIndex > captureRecorderViewText.indexOf("RecorderHero(")
-      && conversationSurfaceIndex > quickEntrySurfaceIndex
       && captureRecorderViewText.includes("CaptureQuickEntryBar(")
-      && captureRecorderViewText.includes("MobileSessionConversationCard(")
-      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > conversationSurfaceIndex
+      && captureRecorderViewText.includes('accessibilityIdentifier("CaptureCallOpenChat")')
+      && captureRecorderViewText.includes("MobileSessionConversationThread(")
+      && !captureRecorderViewText.includes("MobileSessionConversationCard(")
+      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > quickEntrySurfaceIndex
       && captureRecorderViewText.indexOf("CaptureSessionResultsCard(") > captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard("),
     "nativeRecordHierarchyKeepsCapturePrimary",
-    "The shipping Record hierarchy leads with the room, keeps quick work and conversation close to the call, reveals consent and recording only after entry, and continues into transcript plus editable results.",
+    "Recorder wiring includes direct Session chat and contextual work; operated native UI tests verify reachability before and during a call.",
   );
   expect(
     capturePhoneShellText.includes("CaptureSessionTranscriptLifecycle_")

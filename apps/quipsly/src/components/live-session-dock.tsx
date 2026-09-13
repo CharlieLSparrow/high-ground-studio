@@ -305,9 +305,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </div>
               <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>
               <button type="button" onClick={() => setChatOpen(false)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted lg:hidden"><PanelRightClose size={16} />Back to call</button>
-              {active.projectSlug ? (
                 <SessionThread
-                  projectSlug={active.projectSlug}
+                  projectSlug={active.projectSlug ?? undefined}
                   roomId={active.callRoomId}
                   sessionTitle={active.sessionTitle}
                   canPost={active.canPost}
@@ -316,12 +315,6 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   heading="Chat"
                   fillHeight
                 />
-              ) : (
-                <section className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-                  <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><MessageSquareText size={15} /> Session thread unavailable</p>
-                  <p className="mt-2 text-sm font-semibold text-[#765f40]">Connect this Session to a Nest to give the call a durable shared thread.</p>
-                </section>
-              )}
               </div>
             </div>
             <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-foreground empty:hidden" />

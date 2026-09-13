@@ -2588,20 +2588,23 @@ model CallRoom {
 // It remains available when a coaching Session has no Nest/project and never
 // grants access beyond the canonical CallRoom participant boundary.
 model SessionConversationMessage {
-  id              String    @id
-  roomId          String
-  authorUserId    String
-  clientRequestId String
-  replyToId       String?
-  body            String    @db.Text
-  revision        Int       @default(1)
-  editedAt        DateTime?
-  deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                  String    @id
+  roomId              String
+  authorUserId        String?
+  authorNameSnapshot  String?
+  authorEmailSnapshot String?
+  clientRequestId     String
+  replyToId           String?
+  body                String    @db.Text
+  gifUrl              String?
+  revision            Int       @default(1)
+  editedAt            DateTime?
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   room      CallRoom                             @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  author    User                                 @relation("SessionConversationMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  author    User?                                @relation("SessionConversationMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
   replyTo   SessionConversationMessage?          @relation("SessionConversationReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   SessionConversationMessage[]         @relation("SessionConversationReply")
   revisions SessionConversationMessageRevision[]

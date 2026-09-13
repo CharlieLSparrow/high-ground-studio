@@ -5410,12 +5410,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The signed-in iPhone should focus the exact Session before reading its conversation."
         )
 
-        let card = app.descendants(matching: .any)["CaptureSessionChatCard"].firstMatch
-        XCTAssertTrue(
-            scrollRuntimeElementIntoHittableView(card, in: app),
-            "The Session conversation should be an ordinary reachable recorder card."
-        )
-        let open = app.buttons["CaptureSessionChatOpenButton"].firstMatch
+        let open = app.buttons["CaptureCallOpenChat"].firstMatch
         XCTAssertTrue(
             scrollRuntimeElementIntoHittableView(open, in: app),
             "The exact-call conversation should open without joining or starting a recording."

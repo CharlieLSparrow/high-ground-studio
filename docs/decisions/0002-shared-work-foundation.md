@@ -128,6 +128,27 @@ as an experiment.
 
 ## First complete replacement slice
 
+### One Session conversation across browser and Capture
+
+Session chat now uses `SessionConversationMessage` and the scoped
+`/api/sessions/:roomId/conversation` boundary on both platforms. The browser's
+former `session:` Nest-chat path returns `410` instead of continuing a second
+history. Other Nest, episode, and client-space conversations have not yet moved.
+Session chat works without a project; current Session membership controls access.
+
+The migration preserves browser message IDs, timestamps, text, and GIF links.
+It binds an author only when one canonical user matches the historical address;
+otherwise a nullable author ID and display snapshot retain the message without
+inventing an account or granting editing rights. Capture must include the
+nullable-author decoder before these historical messages are exposed to it.
+
+Deployment order: apply the migration, publish the updated clients/server, drain
+old server revisions, then rerun the migration's idempotent `INSERT` backfill to
+cover messages written during the rolling deployment. Verify legacy-to-canonical
+counts by matching room and project. Retain the legacy rows as provenance, but
+never restore their write path as a rollback: that would split conversations
+again. Roll forward the shared endpoint if a release needs repair.
+
 ### Tasks created from Nest conversations
 
 Use `ActionItem` and its existing tag links, not a chat-specific task store.
