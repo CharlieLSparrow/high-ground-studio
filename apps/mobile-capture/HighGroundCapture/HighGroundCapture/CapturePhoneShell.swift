@@ -28,6 +28,7 @@ struct CapturePhoneShell: View {
     @State private var requestedLibrarySection: CaptureLibrarySection?
     @State private var recordNavigationResetID = UUID()
     @State private var showsGlobalNestSwitcher = false
+    @State private var iPadColumnVisibility: NavigationSplitViewVisibility = .all
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -431,7 +432,7 @@ struct CapturePhoneShell: View {
     }
 
     private var captureIPadWorkspace: AnyView {
-        AnyView(NavigationSplitView {
+        AnyView(NavigationSplitView(columnVisibility: $iPadColumnVisibility) {
             List {
                 Section("Quipsly") {
                     ForEach(CaptureRootTab.allCases) { tab in
@@ -541,7 +542,12 @@ struct CapturePhoneShell: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureIPadWorkspace")
         }
-        .navigationSplitViewStyle(.balanced))
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: visibleTab == .record && model.providerRoom.isConnected, initial: true) { _, focusedCall in
+            // Start calls with room for the people. The ordinary sidebar toggle
+            // remains available, and leaving restores workspace navigation.
+            iPadColumnVisibility = focusedCall ? .detailOnly : .all
+        })
     }
 
     private func selectGlobalNest(_ project: MobileCaptureWorkProject) {
@@ -11522,7 +11528,7 @@ private struct CaptureRecorderView: View {
     /// cards. Returning their full nested generic type from `body` overflowed
     /// the smaller main-thread stack on physical iPhones before SwiftUI could
     /// render either Sessions or Speak to write.
-    private var recorderScrollableSurface: AnyView {
+    private var recorderDocumentSurface: AnyView {
         AnyView(ScrollView {
             Group {
                 if let session = model.selectedSession,
@@ -11534,8 +11540,6 @@ private struct CaptureRecorderView: View {
                     // SwiftUI's AttributeGraph at 100% CPU. Personal writing
                     // needs only its source, transcript, and recorder controls.
                     personalVoiceWritingWorkspace(session)
-                } else if let session = model.selectedSession, model.providerRoom.isConnected {
-                    liveCallWorkspace(session)
                 } else if let session = model.selectedSession,
                           let completed = model.completedCall,
                           completed.roomID == session.callRoomId,
@@ -12280,6 +12284,19 @@ private struct CaptureRecorderView: View {
             .padding(.horizontal, 18)
             .padding(.top, 14)
             .padding(.bottom, 96)
+        })
+    }
+
+    private var recorderScrollableSurface: AnyView {
+        AnyView(Group {
+            if let session = model.selectedSession,
+               !session.isPersonalVoiceNote, model.providerRoom.isConnected {
+                CaptureCallViewport { stageHeight in
+                    liveCallWorkspace(session, minimumStageHeight: stageHeight)
+                }
+            } else {
+                recorderDocumentSurface
+            }
         }
         .accessibilityIdentifier("CaptureRecorderView")
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -12423,7 +12440,7 @@ private struct CaptureRecorderView: View {
     }
 
     @ViewBuilder
-    private func liveCallWorkspace(_ session: MobileCaptureSession) -> some View {
+    private func liveCallWorkspace(_ session: MobileCaptureSession, minimumStageHeight: CGFloat) -> some View {
         // A call is a bounded surface, not the full lazy session document.
         // Scrolling the former mixed recorder/results tree while it received
         // live updates could loop SwiftUI's lazy placement on iPad.
@@ -12467,9 +12484,9 @@ private struct CaptureRecorderView: View {
                     cameraPosition: $cameraPosition,
                     videoQualityIntent: videoQualityIntent,
                     localRecordingWorkspaceOpen: true,
-                    onToggleLocalRecordingWorkspace: {}
+                    onToggleLocalRecordingWorkspace: {},
+                    minimumStageHeight: minimumStageHeight
                 )
-                .captureCard()
             }
             if let notice = model.captureSafetyNotice {
                 CaptureInlineWarning(text: notice)
@@ -12477,7 +12494,6 @@ private struct CaptureRecorderView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
-        .frame(maxWidth: 900)
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureLiveCallWorkspace")
@@ -13000,6 +13016,7 @@ private struct CaptureRecorderView: View {
             .accessibilityValue(showsCallTools ? "Expanded" : "Collapsed")
             }
         }
+        .labelStyle(CaptureCallToolLabelStyle())
         .buttonStyle(.bordered)
         .controlSize(.large)
         .padding(.horizontal, 18)
@@ -21626,6 +21643,7 @@ private struct ProviderRoomControls: View {
     let videoQualityIntent: VideoCaptureQualityIntent
     let localRecordingWorkspaceOpen: Bool
     let onToggleLocalRecordingWorkspace: () -> Void
+    var minimumStageHeight: CGFloat = 190
     // Keep the existing storage key so upgrades preserve the person's choice.
     @AppStorage("quipsly.call.join-muted.v1") private var callAudioOnAnotherDevice = false
     @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
@@ -21773,10 +21791,11 @@ private struct ProviderRoomControls: View {
                                     qualityIntent: CaptureCallPreferences.videoQualityIntent
                                 )
                             }
-                        }
+                        },
+                        minimumStageHeight: minimumStageHeight
                     )
                 } else {
-                    ProviderRoomAudioStage(providerRoom: model.providerRoom)
+                    ProviderRoomAudioStage(providerRoom: model.providerRoom, minimumHeight: minimumStageHeight)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -22220,13 +22239,22 @@ private struct CaptureCallIdentityTile: View {
 
 private struct ProviderRoomAudioStage: View {
     @ObservedObject var providerRoom: ProviderRoomController
+    var minimumHeight: CGFloat = 190
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    private var columnCount: Int {
+        dynamicTypeSize.isAccessibilitySize ? 1
+            : min(providerRoom.remoteParticipantNames.count + 1, horizontalSizeClass == .regular ? 3 : 2)
+    }
+
+    private var tileHeight: CGFloat {
+        let rows = (providerRoom.remoteParticipantNames.count + columnCount) / columnCount
+        return max(190, (minimumHeight - CGFloat(rows - 1) * 12) / CGFloat(rows))
+    }
+
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12),
-                                count: dynamicTypeSize.isAccessibilitySize ? 1
-                                    : min(providerRoom.remoteParticipantNames.count + 1, horizontalSizeClass == .regular ? 3 : 2)), spacing: 12) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columnCount), spacing: 12) {
             CaptureCallIdentityTile(
                 name: "You",
                 detail: providerRoom.usesCallAudio
@@ -22235,10 +22263,10 @@ private struct ProviderRoomAudioStage: View {
                 systemImage: providerRoom.usesCallAudio && !providerRoom.isMuted
                     ? "mic.fill" : "mic.slash.fill"
             )
-            .frame(minHeight: 190)
+            .frame(minHeight: tileHeight)
             ForEach(Array(providerRoom.remoteParticipantNames.enumerated()), id: \.offset) { _, name in
                 CaptureCallIdentityTile(name: name, detail: "In call", systemImage: "person.fill")
-                    .frame(minHeight: 190)
+                    .frame(minHeight: tileHeight)
             }
         }
         .accessibilityIdentifier("ProviderCallAudioStage")
@@ -22250,6 +22278,7 @@ private struct ProviderRoomVideoStage: View {
     @ObservedObject var videoCapture: VideoCaptureController
     let canSwitchCamera: Bool
     let onSwitchCamera: () -> Void
+    var minimumStageHeight: CGFloat = 190
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -22277,6 +22306,7 @@ private struct ProviderRoomVideoStage: View {
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(16 / 9, contentMode: .fit)
+        .frame(minHeight: minimumStageHeight)
         .background(.black.opacity(0.88))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(alignment: .topTrailing) {

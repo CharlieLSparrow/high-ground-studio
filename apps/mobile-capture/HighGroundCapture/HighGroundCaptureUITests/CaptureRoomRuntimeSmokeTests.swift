@@ -6299,10 +6299,33 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(app.buttons["ProviderToggleSpeakerButton"].firstMatch.exists, primaryEndpoint)
 
         XCTAssertTrue(app.descendants(matching: .any)["ProviderCallAudioStage"].firstMatch.exists)
+        let stage = app.descendants(matching: .any)["ProviderCallAudioStage"].firstMatch
+        XCTAssertGreaterThan(stage.frame.height, 180)
+        XCTAssertGreaterThanOrEqual(stage.frame.minX, app.frame.minX)
+        XCTAssertLessThanOrEqual(stage.frame.maxX, app.frame.maxX + 1,
+                                 "The call stage must not overflow sideways.")
+        if app.frame.width > 700 {
+            XCTAssertGreaterThan(stage.frame.height, 350, "The iPad call should use its available stage, not a small document card.")
+            XCUIDevice.shared.orientation = .landscapeLeft
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: app
+            )], timeout: 8), .completed, "The app must actually reach landscape before checking its layout.")
+            XCTAssertTrue(leave.waitForExistence(timeout: 5))
+            XCTAssertTrue(leave.isHittable, "Leave must remain reachable after rotating the live call.")
+            XCTAssertTrue(app.buttons["CaptureCallOpenTasks"].isHittable)
+            attachRuntimeScreenshot(app, name: "Native call landscape stage and fixed controls")
+            XCUIDevice.shared.orientation = .portrait
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate { _, _ in app.frame.height > app.frame.width }, object: app
+            )], timeout: 8), .completed)
+            XCTAssertTrue(leave.waitForExistence(timeout: 5))
+        }
+        attachRuntimeScreenshot(app, name: "Native call portrait stage and fixed controls")
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "different endpoint evidence")).firstMatch.exists,
                        "Rejoining an idle endpoint must not replay a previous take's STOP receipt.")
         let chat = app.buttons["CaptureCallOpenChat"].firstMatch
         XCTAssertTrue(chat.isHittable, "Chat belongs beside the live call, not below recording diagnostics.")
+        XCTAssertLessThan(chat.frame.height, 110, "Call tool labels must not wrap into tall columns of letters.")
         chat.tap()
         XCTAssertTrue(app.buttons["CaptureWorkspaceReturnToCall"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["CaptureWorkspaceToggleMicrophone"].exists, primaryEndpoint)
@@ -6467,6 +6490,23 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Returning to the lobby should offer an explicit join without automatically reconnecting."
         )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists)
+        if !primaryEndpoint && !recordSource {
+            // Exercise controller reuse, not just a fresh process that happens
+            // to connect once. No test-side retry hides a failed join.
+            for attempt in 1...3 {
+                let rejoin = app.buttons["ProviderJoinRoomButton"].firstMatch
+                XCTAssertTrue(rejoin.waitForExistence(timeout: 10))
+                rejoin.tap()
+                XCTAssertTrue(leave.waitForExistence(timeout: 30), "Companion rejoin \(attempt) must connect on its first attempt.")
+                XCTAssertTrue(app.buttons["CaptureCallOpenNotes"].isHittable)
+                XCTAssertFalse(app.buttons["CapturePersistentRecorderStopButton"].exists)
+                leave.tap()
+                let returnToLobby = app.buttons["CapturePostCallRejoin"].firstMatch
+                XCTAssertTrue(returnToLobby.waitForExistence(timeout: 10))
+                returnToLobby.tap()
+            }
+            XCTAssertTrue(app.buttons["ProviderJoinRoomButton"].firstMatch.waitForExistence(timeout: 10))
+        }
     }
 
     func testConsentedCapturePlaybackAndCrashRecovery() throws {
