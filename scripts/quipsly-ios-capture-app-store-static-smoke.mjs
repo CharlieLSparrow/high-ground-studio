@@ -148,6 +148,7 @@ const files = {
   coachingCalendarAdapter: path.join(root, "apps/quipsly/src/lib/server/coaching-google-calendar.ts"),
   accountDeletionRoute: path.join(root, "apps/quipsly/src/app/api/account/deletion-request/route.ts"),
   nestChatRoute: path.join(root, "apps/quipsly/src/app/api/nest-chat/route.ts"),
+  sessionConversationService: path.join(root, "apps/quipsly/src/lib/server/session-conversation.ts"),
   privacyPage: path.join(root, "apps/quipsly/src/app/(marketing)/privacy/page.tsx"),
   deletionPage: path.join(root, "apps/quipsly/src/app/(marketing)/privacy/account-deletion/page.tsx"),
   coachingPage: path.join(root, "apps/quipsly/src/app/(app)/coaching/page.tsx"),
@@ -479,6 +480,7 @@ const coachingCalendarReadinessRouteText = read(files.coachingCalendarReadinessR
 const coachingCalendarAdapterText = read(files.coachingCalendarAdapter);
 const deletionRouteText = read(files.accountDeletionRoute);
 const nestChatRouteText = read(files.nestChatRoute);
+const sessionConversationServiceText = read(files.sessionConversationService);
 const privacyPageText = read(files.privacyPage);
 const deletionPageText = read(files.deletionPage);
 const coachingPageText = read(files.coachingPage);
@@ -1333,7 +1335,8 @@ for (const needle of [
   requireIncludes(captureCoachingHomeText, needle, "native coaching work preserves and edits optional task and goal dates");
 }
 requireIncludes(runtimeUISmokeTestsText, "Phone coaching conversation", "the fresh compiled iPhone journey authors relationship conversation through product UI");
-requireIncludes(sessionConversationText, "CaptureSessionChatOpenButton", "exact-call Session conversation is reachable beside the primary recorder");
+requireIncludes(capturePhoneShellText, "CaptureCallOpenChat", "exact-call Session conversation is reachable beside the primary recorder");
+requireIncludes(capturePhoneShellText, ".sheet(isPresented: $showsCallChat)", "the call toolbar opens its native conversation sheet");
 requireIncludes(sessionConversationText, "QuipslyCapture/SessionConversation", "Session conversation uses a distinct protected cache namespace");
 requireIncludes(sessionConversationText, 'hint.threadKey == "session:\\(context.roomID)"', "native Session hints accept only the exact requested durable thread");
 requireIncludes(sessionConversationText, '"clientRequestId": send.requestID.uuidString.lowercased()', "native Session message retries preserve one request identity");
@@ -1370,8 +1373,8 @@ requireIncludes(capturePhoneShellText, "Not LUFS or true peak.", "native audio m
 requireIncludes(capturePhoneShellText, "averagePowerDB: audioCapture.inputLevelDB", "the recorder renders the measured average-power value");
 requireIncludes(capturePhoneShellText, "peakPowerDB: audioCapture.peakInputLevelDB", "the recorder renders the measured sample-peak value");
 requireIncludes(nestChatRouteText, "studioEpisodeProduction.findUnique", "episode chat validates the canonical parent episode");
-requireIncludes(nestChatRouteText, "sessionConversationAccessWhere", "Session chat reads use canonical participant and project access rules");
-requireIncludes(nestChatRouteText, "sessionMutationAccessWhere", "Session chat writes use canonical participant mutation rules");
+requireIncludes(sessionConversationServiceText, "sessionConversationAccessWhere(roomId, session.user)", "Session chat reads use canonical participant and project access rules");
+requireIncludes(sessionConversationServiceText, "sessionMutationAccessWhere(roomId, session.user)", "Session chat writes use canonical participant mutation rules");
 requireIncludes(nestChatRouteText, "idempotentReplay: true", "episode chat server deduplicates exact message retries");
 
 const authCombined = `${authText}\n${loginText}`;
@@ -3198,7 +3201,7 @@ requireIncludes(captureRecordingCoordinatorText, "scheduleRetry()", "retryable e
 requireIncludes(captureRecordingCoordinatorText, "receipt.ownerAccountID == AuthManager.currentStoredOwnerID()", "recording-status delivery stays bound to the active account");
 requireIncludes(captureRecordingCoordinatorText, "v1.\\(ownerAccountID).\\(roomID)", "recording-status idempotency identities stay partitioned by account");
 requireIncludes(captureRecordingCoordinatorText, 'packet.errorCode == "RECEIPT_ID_CONFLICT"', "iPhone recognizes Nest's terminal immutable-receipt conflict contract");
-requireIncludes(captureRecordingCoordinatorText, "occurredAt: ISO8601DateFormatter().string(from: Date())", "iPhone persists original endpoint event time before delayed delivery");
+requireIncludes(captureRecordingCoordinatorText, "occurredAt: CaptureDateCoding.string(from: Date())", "iPhone persists original endpoint event time before delayed delivery");
 requireIncludes(captureExperienceModelText, ".flushPendingReceipts()", "app load resumes recording-status delivery without requiring another call");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(audioText, "var isUsingProviderAudioMaster: Bool", "native recorder exposes whether LiveKit owns the exact local PCM path");

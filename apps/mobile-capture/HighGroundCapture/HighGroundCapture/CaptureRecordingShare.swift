@@ -132,6 +132,15 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
     }
 
     struct Available: Codable, Equatable {
+        struct Take: Codable, Equatable, Identifiable {
+            let id: String
+            let startedAt: String
+            let sourceCount: Int
+            var label: String {
+                let date = CaptureDateCoding.date(from: startedAt)?.formatted(date: .abbreviated, time: .shortened) ?? "Recording"
+                return "\(date) · \(sourceCount) track\(sourceCount == 1 ? "" : "s")"
+            }
+        }
         struct Timeline: Codable, Equatable {
             struct Source: Codable, Equatable {
                 let recordingAssetId: String
@@ -163,6 +172,8 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
         }
 
         let programDurationSeconds: TimeInterval
+        let selectedTakeId: String?
+        let takes: [Take]?
         let timeline: Timeline?
         let sources: [CaptureRecordingShareSource]
         let transcriptSegments: [CaptureRecordingShareTranscriptSegment]
@@ -211,6 +222,9 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     private var protectedPreviewURL: URL?
     private var protectedPreviewOutputID: String?
     private var protectedPreviewSHA256: String?
+    private var selectedTakeID: String?
+    private var selectedRoomID: String?
+    private var loadGeneration = 0
 
     deinit {
         if let videoPlaybackEndObserver {
@@ -221,22 +235,33 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
     }
 
-    func load(roomID: String, quiet: Bool = false) async {
+    func load(roomID: String, quiet: Bool = false, takeID: String? = nil) async {
+        if quiet && busyAction == "LOAD" { return }
         guard AuthManager.shared.networkActionsAllowed else {
             notice = "Reconnect to Nest before opening the recording editor."
             return
         }
-        guard let url = endpoint(roomID: roomID) else {
+        guard var url = endpoint(roomID: roomID) else {
             notice = "The configured Nest URL is invalid."
             return
         }
+        if selectedRoomID != roomID { selectedTakeID = nil; selectedRoomID = roomID }
+        if let requestedTake = takeID ?? selectedTakeID { url.append(queryItems: [URLQueryItem(name: "takeId", value: requestedTake)]) }
+        loadGeneration += 1
+        let generation = loadGeneration
         if !quiet { busyAction = "LOAD" }
-        defer { if !quiet { busyAction = nil } }
+        defer { if !quiet && generation == loadGeneration { busyAction = nil } }
         do {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard generation == loadGeneration else { return }
+            if [401, 403, 404].contains(response.statusCode) {
+                snapshot = nil
+                selectedTakeID = nil
+                stopPreviewPlayback()
+            }
             let decoded = try AuthResponseDecoder.decode(
                 CaptureRecordingShareSnapshot.self,
                 from: data,
@@ -250,11 +275,13 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             guard decoded.ok else {
                 throw CaptureRecordingShareClientError.message(decoded.error ?? "The recording editor could not load.")
             }
+            guard decoded.room?.id == roomID else { throw CaptureRecordingShareClientError.message("The recording workspace changed. Please reopen it.") }
             reconcilePlaybackAuthorization(with: decoded)
+            selectedTakeID = decoded.available?.selectedTakeId
             snapshot = decoded
             if !quiet { notice = nil }
         } catch {
-            notice = error.localizedDescription
+            if generation == loadGeneration { notice = error.localizedDescription }
         }
     }
 
@@ -624,6 +651,7 @@ struct CaptureRecordingShareEditor: View {
     let focus: CaptureRecordingEditorFocus?
 
     @StateObject private var client = CaptureRecordingShareClient()
+    @StateObject private var editSync: CaptureRecordingEditSync
     @StateObject private var sourcePlayback = CaptureSessionProtectedPlaybackController()
     @State private var selectedSourceIDs = Set<String>()
     @State private var excludedSegmentIDs = Set<String>()
@@ -633,6 +661,7 @@ struct CaptureRecordingShareEditor: View {
     @State private var outputMediaKind = "audio"
     @State private var primaryVideoSourceID = ""
     @State private var initializedSnapshot = false
+    @State private var didApplyFocus = false
     @State private var editing = false
     @State private var auditionSegmentID: String?
     @State private var auditionNotice: String?
@@ -645,6 +674,12 @@ struct CaptureRecordingShareEditor: View {
     init(roomID: String, focus: CaptureRecordingEditorFocus? = nil) {
         self.roomID = roomID
         self.focus = focus
+        let base = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+        _editSync = StateObject(wrappedValue: CaptureRecordingEditSync(
+            baseURL: URL(string: base) ?? URL(string: "https://nest.quipsly.com")!,
+            owner: { AuthManager.currentStoredOwnerID() },
+            send: { request, owner in try await AuthManager.shared.authenticatedData(for: request, expectedOwnerAccountID: owner) }
+        ))
     }
 
     var body: some View {
@@ -688,7 +723,23 @@ struct CaptureRecordingShareEditor: View {
             } else if let snapshot = client.snapshot,
                       let room = snapshot.room {
                 if snapshot.role == "COACH" {
-                    coachEditor(snapshot: snapshot, room: room)
+                    if initializedSnapshot { coachEditor(snapshot: snapshot, room: room) }
+                    else if let error = editSync.error {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Your saved edit couldn’t load").font(.headline)
+                            Text(error).font(.caption).foregroundStyle(.secondary)
+                            Button("Try again") {
+                                Task {
+                                    guard let takeID = snapshot.available?.selectedTakeId else { return }
+                                    await editSync.load(roomID: roomID, takeID: takeID)
+                                    initializeFromSnapshotIfNeeded()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CaptureRecordingEditLoadRetry")
+                        }
+                    }
+                    else { ProgressView("Loading saved edit…") }
                 } else {
                     recipientView(snapshot: snapshot)
                 }
@@ -713,6 +764,15 @@ struct CaptureRecordingShareEditor: View {
         .accessibilityIdentifier("CaptureRecordingShareEditor")
         .task {
             await client.load(roomID: roomID)
+        }
+        .task(id: client.snapshot?.available?.selectedTakeId) {
+            guard client.snapshot?.role == "COACH", let takeID = client.snapshot?.available?.selectedTakeId else {
+                initializeFromSnapshotIfNeeded()
+                return
+            }
+            initializedSnapshot = false
+            await editSync.load(roomID: roomID, takeID: takeID)
+            guard !Task.isCancelled else { return }
             initializeFromSnapshotIfNeeded()
         }
         .task(id: pollKey) {
@@ -723,8 +783,9 @@ struct CaptureRecordingShareEditor: View {
                 await client.load(roomID: roomID, quiet: true)
             }
         }
-        .onChange(of: client.snapshot) { _, _ in initializeFromSnapshotIfNeeded() }
+        .onChange(of: workingDraft) { _, draft in if let draft { editSync.update(draft) } }
         .onDisappear {
+            Task { await editSync.flush() }
             client.stopPreviewPlayback()
             sourcePlayback.close()
         }
@@ -752,6 +813,37 @@ struct CaptureRecordingShareEditor: View {
         snapshot: CaptureRecordingShareSnapshot,
         room: CaptureRecordingShareSnapshot.Room
     ) -> some View {
+        if let takes = snapshot.available?.takes, takes.count > 1 {
+            Picker("Recording", selection: Binding(
+                get: { snapshot.available?.selectedTakeId ?? "" },
+                set: { takeID in Task {
+                    await editSync.flush()
+                    client.stopPreviewPlayback()
+                    sourcePlayback.close()
+                    await client.load(roomID: roomID, takeID: takeID)
+                } }
+            )) {
+                ForEach(takes) { take in Text(take.label).tag(take.id) }
+            }
+            .disabled(client.busyAction != nil)
+            .accessibilityIdentifier("CaptureRecordingShareTake")
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(editSync.status).font(.caption)
+                if let error = editSync.error { Text(error).font(.caption).foregroundStyle(.secondary) }
+            }
+            if editSync.needsRetry {
+                Button("Retry") { Task { await editSync.flush() } }.buttonStyle(.bordered)
+            }
+            if editSync.conflictRevision != nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack { editConflictActions(snapshot) }
+                    VStack(alignment: .leading) { editConflictActions(snapshot) }
+                }
+            }
+        }
+        .accessibilityIdentifier("CaptureRecordingEditSync")
         if let focus {
             focusedPassageCard(snapshot: snapshot, focus: focus)
         }
@@ -1065,7 +1157,11 @@ struct CaptureRecordingShareEditor: View {
                             endSeconds: endSeconds,
                             exclusions: transcript.filter { excludedSegmentIDs.contains($0.id) }
                         )
-                        if success { editing = false }
+                        if success {
+                            editing = false
+                            initializedSnapshot = false
+                            initializeFromSnapshotIfNeeded()
+                        }
                     }
                 } label: {
                     if client.busyAction == "PREPARE" {
@@ -1103,6 +1199,17 @@ struct CaptureRecordingShareEditor: View {
         Text("Recipient: \(room.client.label)")
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private func editConflictActions(_ snapshot: CaptureRecordingShareSnapshot) -> some View {
+        Button("Keep this edit") { Task { await editSync.keepThisEdit() } }.buttonStyle(.bordered)
+        Button("Reload saved") { Task {
+            guard let takeID = snapshot.available?.selectedTakeId else { return }
+            await editSync.load(roomID: roomID, takeID: takeID, reload: true)
+            initializedSnapshot = false
+            initializeFromSnapshotIfNeeded()
+        } }.buttonStyle(.bordered)
     }
 
     @ViewBuilder
@@ -1497,6 +1604,8 @@ struct CaptureRecordingShareEditor: View {
         guard !initializedSnapshot,
               let snapshot = client.snapshot,
               let available = snapshot.available else { return }
+        // Never replace a saved draft with defaults because its read failed.
+        if let takeID = available.selectedTakeId, editSync.loadedTakeID != takeID { return }
         selectedSourceIDs = sourceIDsForEditing(snapshot.output, available: available.sources)
         startSeconds = snapshot.output?.body.edit?.startSeconds ?? 0
         endSeconds = snapshot.output?.body.edit?.endSeconds ?? available.programDurationSeconds
@@ -1504,13 +1613,36 @@ struct CaptureRecordingShareEditor: View {
         outputMediaKind = snapshot.output?.render.mediaKind == "video" ? "video" : "audio"
         primaryVideoSourceID = snapshot.output?.render.primaryVideoSourceId ?? ""
         excludedSegmentIDs = Set(snapshot.output?.body.edit?.transcriptExclusions?.map(\.id) ?? [])
-        if focus != nil {
+        editing = false
+        if let saved = editSync.state, editSync.loadedTakeID == available.selectedTakeId,
+           saved.baseOutputId == snapshot.output?.id {
+            selectedSourceIDs = Set(saved.selected)
+            excludedSegmentIDs = Set(saved.excludedTranscriptKeys)
+            startSeconds = saved.startSeconds
+            endSeconds = saved.endSeconds
+            title = saved.title
+            outputMediaKind = saved.outputMediaKind
+            primaryVideoSourceID = saved.primaryVideoSourceId
+            editing = saved.editing
+        }
+        if focus != nil && !didApplyFocus {
             // Entering from an exact transcript passage is an editing intent,
             // but it is not an edit decision. Reveal the existing draft controls
             // without changing the source set, range, exclusions, or output.
             editing = true
+            didApplyFocus = true
         }
         initializedSnapshot = true
+    }
+
+    private var workingDraft: CaptureRecordingEditDraft? {
+        guard initializedSnapshot, client.snapshot?.role == "COACH",
+              client.snapshot?.available?.selectedTakeId == editSync.loadedTakeID,
+              editSync.loadedTakeID != nil else { return nil }
+        return CaptureRecordingEditDraft(selected: selectedSourceIDs.sorted(), startSeconds: startSeconds, endSeconds: endSeconds,
+            title: title, outputMediaKind: outputMediaKind, primaryVideoSourceId: primaryVideoSourceID,
+            excludedTranscriptKeys: excludedSegmentIDs.sorted(), editing: editing,
+            baseOutputId: client.snapshot?.output?.id, baseOutputRevision: client.snapshot?.output?.revision)
     }
 
     private func restoreEditorFromCurrentOutput(_ snapshot: CaptureRecordingShareSnapshot) {

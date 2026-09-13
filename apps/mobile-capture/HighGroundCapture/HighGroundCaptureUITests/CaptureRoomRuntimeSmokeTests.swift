@@ -1347,11 +1347,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // value to XCTest. Re-read and clear in bounded chunks until the live
         // accessibility value is empty instead of assuming one length is exact.
         for _ in 0..<8 {
-            guard let remaining = element.value as? String, !remaining.isEmpty else { break }
+            guard let remaining = element.value as? String, !remaining.isEmpty,
+                  remaining != element.placeholderValue else { break }
             element.typeKey(.rightArrow, modifierFlags: .command)
             element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: remaining.count))
         }
-        XCTAssertEqual(element.value as? String, "", "The operated field must be empty before replacement text is entered.")
+        let clearedValue = element.value as? String
+        XCTAssertTrue(clearedValue == "" || clearedValue == element.placeholderValue,
+                      "The operated field must be empty (or expose its placeholder) before replacement text is entered.")
         // SwiftUI can replace the TextEditor accessibility node after clearing its
         // binding. Route the new text through the application so XCTest targets the
         // currently focused replacement instead of a stale element snapshot.
@@ -5392,6 +5395,44 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             name: "Signed-in separate typed-draft Nest save"
         )
         attachRuntimeScreenshot(app, name: "Signed-in writing saved to Nest")
+    }
+
+    func testRecordingEditDraftSurvivesNativeRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {
+            throw XCTSkip("Recording edit proof requires an accessible Session with a verified take.")
+        }
+        func openEditor(_ app: XCUIApplication) {
+            let link = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureRecordingEditLink_")).firstMatch
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(link, in: app))
+            link.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingEditSync"].firstMatch.waitForExistence(timeout: 30))
+            let editAgain = app.buttons["CaptureRecordingShareEditAgain"]
+            if editAgain.exists {
+                XCTAssertTrue(scrollRuntimeElementIntoHittableView(editAgain, in: app))
+                editAgain.tap()
+            }
+            let sources = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Title and sources")).firstMatch
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(sources, in: app))
+            sources.tap()
+            XCTAssertTrue(app.textFields["CaptureRecordingShareTitle"].waitForExistence(timeout: 5))
+        }
+        var app = try launchSignedInCaptureApp(initialTab: "record", sessionDeepLinkRoomID: sessionID)
+        openEditor(app)
+        let title = app.textFields["CaptureRecordingShareTitle"]
+        let initialValue = try XCTUnwrap(title.value as? String)
+        let originalTitle = initialValue == title.placeholderValue ? "" : initialValue
+        let changedTitle = "Native editing · \(UUID().uuidString.prefix(8))"
+        replaceText(in: title, with: changedTitle, app: app)
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record", sessionDeepLinkRoomID: sessionID)
+        openEditor(app)
+        let restored = app.textFields["CaptureRecordingShareTitle"]
+        XCTAssertEqual(restored.value as? String, changedTitle)
+        attachRuntimeScreenshot(app, name: "Native recording edit restored after relaunch")
+        replaceText(in: restored, with: originalTitle, app: app)
+        XCTAssertFalse(app.buttons["CaptureStopButton"].exists)
+        XCTAssertFalse(app.buttons["ProviderLeaveRoomButton"].exists)
     }
 
     func testAcceptedSessionLinkFocusesCanonicalRoomWithoutJoiningOrRecording() throws {

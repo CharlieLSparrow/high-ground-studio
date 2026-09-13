@@ -130,6 +130,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  recording-edit)
+    TEST_CASE="testRecordingEditDraftSurvivesNativeRelaunch"
+    if [[ -z "$TEST_SESSION_ID" ]]; then
+      echo "Recording edit mode requires an accessible Session with a verified take." >&2
+      exit 2
+    fi
+    ;;
   session-deep-link)
     TEST_CASE="testAcceptedSessionLinkFocusesCanonicalRoomWithoutJoiningOrRecording"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
