@@ -1,40 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  CircleAlert,
-  Download,
-  ExternalLink,
-  MonitorSmartphone,
-  ShieldCheck,
-  Smartphone,
-} from "lucide-react";
-
-import type { SessionEntryChoice } from "@/lib/session-entry-choice";
+import { Download, MonitorSmartphone, Smartphone } from "lucide-react";
 import { captureAppDeepLink } from "@/lib/capture-universal-link";
+import { clearSessionEntry, savedSessionEntry, selectSessionEntry } from "@/lib/session-entry-client";
 
 const CAPTURE_TESTFLIGHT_URL = "https://testflight.apple.com/join/XwRRcYUm";
-const SESSION_ENTRY_PREFERENCE_KEY = "quipsly.session-entry-preference.v1";
 
-type EntryChoiceMetrics = {
-  BROWSER: number;
-  CAPTURE_APP: number;
-  TESTFLIGHT: number;
-};
-
-function captureDeviceOnThisBrowser(): "iPhone" | "iPad" | null {
-  const userAgent = window.navigator.userAgent;
-  if (/iPhone|iPod/i.test(userAgent)) return "iPhone";
-  // iPadOS requests desktop-class sites by default and consequently reports a
-  // Macintosh user agent. Touch capability is the stable discriminator from
-  // an actual Mac, where the browser should remain the conventional default.
-  if (
-    /iPad/i.test(userAgent)
-    || (/Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1)
-  ) {
-    return "iPad";
-  }
-  return null;
+function isAppleMobileBrowser() {
+  return /iPhone|iPod|iPad/i.test(navigator.userAgent)
+    || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 }
 
 export function CaptureAppHandoff({
@@ -42,7 +17,6 @@ export function CaptureAppHandoff({
   sessionTitle,
   joinedFromInvitation = false,
   captureOpenFallback = false,
-  canViewChoiceMetrics = false,
   onContinueInBrowser,
   allowAutomaticBrowserEntry = true,
 }: {
@@ -50,335 +24,83 @@ export function CaptureAppHandoff({
   sessionTitle?: string;
   joinedFromInvitation?: boolean;
   captureOpenFallback?: boolean;
-  canViewChoiceMetrics?: boolean;
   onContinueInBrowser?: () => void;
   allowAutomaticBrowserEntry?: boolean;
 }) {
-  const captureURL = captureAppDeepLink(roomId);
-  const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
-  const [step, setStep] = useState<"choose" | "preferred">("choose");
-  const [preferredEntry, setPreferredEntry] = useState<"BROWSER" | "CAPTURE_APP" | null>(null);
-  const [captureDevice, setCaptureDevice] = useState<"iPhone" | "iPad" | null>(null);
-  const [captureFallbackActive, setCaptureFallbackActive] = useState(captureOpenFallback);
-  const [interactive, setInteractive] = useState(false);
-  const continueInBrowserRef = useRef(onContinueInBrowser);
-  const openedRememberedBrowserRef = useRef(false);
-  continueInBrowserRef.current = onContinueInBrowser;
+  const [ready, setReady] = useState(false);
+  const [preferApp, setPreferApp] = useState(false);
+  const [fallback, setFallback] = useState(captureOpenFallback);
+  const openedRoom = useRef<string | null>(null);
+  const openBrowser = useRef(onContinueInBrowser);
+  openBrowser.current = onContinueInBrowser;
 
-  function clearBrowserEntryIntent() {
-    const current = new URL(window.location.href);
-    if (current.searchParams.get("entry") !== "browser") return;
-    current.searchParams.delete("entry");
-    window.history.replaceState(window.history.state, "", current);
-  }
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const explicitBrowser = url.searchParams.get("entry") === "browser";
+    if (explicitBrowser) {
+      url.searchParams.delete("entry");
+      window.history.replaceState(window.history.state, "", url);
+    }
+    if (captureOpenFallback) clearSessionEntry();
+    const saved = savedSessionEntry();
+    const app = !explicitBrowser && !captureOpenFallback
+      && (saved === "CAPTURE_APP" || (saved === null && isAppleMobileBrowser()));
+    setPreferApp(app);
+    setFallback(captureOpenFallback);
+    setReady(true);
+    // Opening the lobby is not joining the call or starting a recording.
+    // Desktop guests go directly to device preview, without a device-choice form.
+    if (!app && !captureOpenFallback && allowAutomaticBrowserEntry
+      && openBrowser.current && openedRoom.current !== roomId) {
+      openedRoom.current = roomId;
+      selectSessionEntry(roomId, "BROWSER");
+      openBrowser.current();
+    }
+  }, [roomId, captureOpenFallback, allowAutomaticBrowserEntry]);
 
   function continueInBrowser() {
-    const current = new URL(window.location.href);
-    current.searchParams.delete("open");
-    current.searchParams.set("entry", "browser");
-    window.history.replaceState(window.history.state, "", current);
-    setCaptureFallbackActive(false);
-    recordChoice("BROWSER");
-    rememberEntry("BROWSER");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("open");
+    url.searchParams.delete("entry");
+    window.history.replaceState(window.history.state, "", url);
+    setFallback(false);
+    setPreferApp(false);
+    selectSessionEntry(roomId, "BROWSER");
     onContinueInBrowser?.();
-    window.setTimeout(clearBrowserEntryIntent, 15_000);
   }
 
-  function rememberEntry(choice: "BROWSER" | "CAPTURE_APP") {
-    window.localStorage.setItem(SESSION_ENTRY_PREFERENCE_KEY, choice);
-    setPreferredEntry(choice);
-  }
-
-  function chooseAnotherDevice() {
-    window.localStorage.removeItem(SESSION_ENTRY_PREFERENCE_KEY);
-    setPreferredEntry(null);
-    setStep("choose");
-  }
-
-  function recordChoice(choice: SessionEntryChoice) {
-    void fetch(
-      `/api/sessions/${encodeURIComponent(roomId)}/entry-choice`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ choice }),
-        credentials: "same-origin",
-        keepalive: true,
-      },
-    ).catch(() => undefined);
-  }
-
-  useEffect(() => {
-    setCaptureDevice(captureDeviceOnThisBrowser());
-    const saved = window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY);
-    if (captureOpenFallback) {
-      window.localStorage.removeItem(SESSION_ENTRY_PREFERENCE_KEY);
-      setPreferredEntry(null);
-      setStep("choose");
-      setCaptureFallbackActive(true);
-      setInteractive(true);
-      return;
-    }
-    if (saved === "BROWSER" || saved === "CAPTURE_APP") {
-      setPreferredEntry(saved);
-      setStep("preferred");
-    }
-    setInteractive(true);
-  }, [captureOpenFallback]);
-
-  useEffect(() => {
-    if (!canViewChoiceMetrics) return;
-    let cancelled = false;
-    void fetch(`/api/sessions/${encodeURIComponent(roomId)}/entry-choice`, {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then(async (response) => {
-        const packet = await response.json().catch(() => ({}));
-        if (!cancelled && response.ok && packet.ok) setMetrics(packet.counts);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewChoiceMetrics, roomId]);
-
-  useEffect(() => {
-    const current = new URL(window.location.href);
-    if (current.searchParams.get("entry") !== "browser") return;
-    if (!allowAutomaticBrowserEntry) {
-      clearBrowserEntryIntent();
-      return;
-    }
-    if (window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY) === "BROWSER") {
-      clearBrowserEntryIntent();
-      return;
-    }
-    continueInBrowserRef.current?.();
-    clearBrowserEntryIntent();
-  }, [allowAutomaticBrowserEntry]);
-
-  useEffect(() => {
-    if (
-      !interactive
-      || !allowAutomaticBrowserEntry
-      || preferredEntry !== "BROWSER"
-      || step !== "preferred"
-      || openedRememberedBrowserRef.current
-    ) return;
-    openedRememberedBrowserRef.current = true;
-    continueInBrowserRef.current?.();
-  }, [allowAutomaticBrowserEntry, interactive, preferredEntry, step]);
+  const primary = "bg-primary text-primary-foreground hover:opacity-90";
+  const secondary = "border border-border bg-background text-foreground hover:bg-muted";
+  const action = "inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  const browserAction = <button type="button" onClick={continueInBrowser} disabled={!ready}
+    className={`${action} ${preferApp ? secondary : primary} disabled:opacity-50`}>
+    <MonitorSmartphone size={18} aria-hidden="true" />
+    {fallback ? "Join in this browser" : "Open call lobby"}
+  </button>;
+  const appAction = <a href={captureAppDeepLink(roomId)} onClick={() => selectSessionEntry(roomId, "CAPTURE_APP")}
+    className={`${action} ${preferApp ? primary : secondary}`}>
+    <Smartphone size={18} aria-hidden="true" /> {fallback ? "Try Capture again" : "Open Quipsly Capture"}
+  </a>;
 
   return (
-    <section
-      className={`rounded-[1.5rem] border p-4 shadow-sm sm:rounded-[1.75rem] sm:p-5 ${joinedFromInvitation ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50/70"}`}
-      aria-labelledby="capture-handoff-heading"
-      aria-busy={!interactive}
-      data-session-entry-ready={interactive ? "true" : "false"}
-    >
-      <div className="flex max-w-3xl items-start gap-3">
-        <span className="hidden rounded-2xl bg-white p-3 text-violet-800 shadow-sm sm:inline-flex">
-          <Smartphone aria-hidden="true" />
-        </span>
-        <div>
-          <p
-            className={`text-[10px] font-black uppercase tracking-[0.18em] ${joinedFromInvitation ? "text-emerald-800" : "text-sky-800"}`}
-          >
-            {joinedFromInvitation
-              ? "Invitation accepted"
-              : "Join Session"}
-          </p>
-          <h2
-            id="capture-handoff-heading"
-            className="mt-1 font-serif text-xl font-black text-[#3d3122] sm:text-2xl"
-          >
-            {sessionTitle || "Choose where to join"}
-          </h2>
-          <p className="mt-1 text-sm font-semibold leading-5 text-[#765f40] sm:mt-2 sm:leading-6">
-            {captureDevice
-              ? "Open Quipsly Capture or continue in this browser."
-              : "Continue here or use Quipsly Capture on iPhone or iPad."}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 rounded-2xl border border-white/90 bg-white p-3 shadow-sm sm:mt-5 sm:min-h-44 sm:p-4">
-        {captureFallbackActive ? (
-          <div aria-live="polite" aria-label="Capture app recovery">
-            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
-              <CircleAlert className="mt-0.5 shrink-0" size={20} aria-hidden="true" />
-              <div>
-                <p className="font-black">Capture didn’t open</p>
-                <p className="mt-1 text-xs font-semibold leading-5">
-                  You can join here now. If you want the iPhone app, install or
-                  update Quipsly Capture, then try opening it again.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled={!interactive}
-              onClick={continueInBrowser}
-              className="mt-3 flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60"
-            >
-              <MonitorSmartphone size={18} aria-hidden="true" /> Join in this browser
-            </button>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <a
-                href={CAPTURE_TESTFLIGHT_URL}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => recordChoice("TESTFLIGHT")}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 text-xs font-black text-violet-950"
-              >
-                <Download size={15} aria-hidden="true" /> Install or update Capture
-              </a>
-              <a
-                href={captureURL}
-                onClick={() => {
-                  rememberEntry("CAPTURE_APP");
-                  recordChoice("CAPTURE_APP");
-                }}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-xs font-black text-[#5b472f]"
-              >
-                <ExternalLink size={15} aria-hidden="true" /> Try Capture again
-              </a>
-            </div>
-          </div>
-        ) : step === "preferred" && preferredEntry ? (
-          <div aria-label="Your usual Session device">
-            <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
-              Remembered on this device
-            </p>
-            <div className="mt-3 flex min-h-24 items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <span className="rounded-xl bg-white p-2 text-emerald-800 shadow-sm">
-                {preferredEntry === "BROWSER" ? <MonitorSmartphone size={22} aria-hidden="true" /> : <Smartphone size={22} aria-hidden="true" />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-black text-[#3d3122]">
-                  {preferredEntry === "BROWSER" ? "Continue in this browser" : "Open Quipsly Capture"}
-                </span>
-                <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
-                  {preferredEntry === "BROWSER"
-                    ? allowAutomaticBrowserEntry ? "Your call lobby opens automatically." : "Open the lobby whenever you’re ready to join."
-                    : "Open this Session in Quipsly Capture."}
-                </span>
-              </span>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {preferredEntry === "BROWSER" ? (
-                <button
-                  type="button"
-                  onClick={continueInBrowser}
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white"
-                >
-                  <MonitorSmartphone size={16} aria-hidden="true" /> Open call lobby
-                </button>
-              ) : (
-                <a
-                  href={captureURL}
-                  onClick={() => {
-                    rememberEntry("CAPTURE_APP");
-                    recordChoice("CAPTURE_APP");
-                  }}
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white"
-                >
-                  <ExternalLink size={15} aria-hidden="true" /> Open Capture
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={chooseAnotherDevice}
-                className="inline-flex min-h-12 items-center rounded-full px-4 text-xs font-black text-[#5b472f]"
-              >
-                Use another device
-              </button>
-            </div>
-          </div>
-        ) : step === "choose" ? (
-          <div aria-label="Choose a device for this Session">
-            <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#765f40]">
-              {captureDevice ? `Recommended on this ${captureDevice}` : "Recommended on this device"}
-            </p>
-            <div className="mt-2 space-y-2 sm:mt-3">
-              {captureDevice ? (
-                <>
-                  <a
-                    href={captureURL}
-                    onClick={() => {
-                      rememberEntry("CAPTURE_APP");
-                      recordChoice("CAPTURE_APP");
-                    }}
-                    className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800"
-                  >
-                    <ExternalLink size={18} aria-hidden="true" /> Open Quipsly Capture
-                  </a>
-                  <button
-                    type="button"
-                    disabled={!interactive}
-                    onClick={continueInBrowser}
-                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-4 text-xs font-black text-sky-950 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <MonitorSmartphone size={16} aria-hidden="true" /> Join in browser
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    disabled={!interactive}
-                    onClick={continueInBrowser}
-                    className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60 sm:min-h-16"
-                  >
-                    <MonitorSmartphone size={18} aria-hidden="true" /> Continue in this browser
-                  </button>
-                  <a
-                    href={captureURL}
-                    onClick={() => {
-                      rememberEntry("CAPTURE_APP");
-                      recordChoice("CAPTURE_APP");
-                    }}
-                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-violet-200 bg-white px-4 text-xs font-black text-violet-950"
-                  >
-                    <Smartphone size={16} aria-hidden="true" /> Use Quipsly Capture on iPhone or iPad
-                  </a>
-                </>
-              )}
-            </div>
-            <a
-              href={CAPTURE_TESTFLIGHT_URL}
-              target="_blank"
-              rel="noreferrer"
-              onClick={() => recordChoice("TESTFLIGHT")}
-              className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full px-2 text-xs font-black text-violet-900"
-            >
-              <Download size={15} aria-hidden="true" /> Get Quipsly Capture for iPhone or iPad
-            </a>
-          </div>
-        ) : null}
-      </div>
-
-      <p className="mt-4 flex gap-2 rounded-xl border border-white/80 bg-white/75 p-3 text-[11px] font-bold leading-5 text-[#5b472f]">
-        <ShieldCheck
-          size={15}
-          className="mt-0.5 shrink-0 text-emerald-700"
-          aria-hidden="true"
-        />
-        Both choices open the same private Session. You choose whether to
-        record after you join.
+    <section aria-labelledby="capture-handoff-heading" aria-busy={!ready}
+      data-session-entry-ready={ready ? "true" : "false"}
+      className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-8">
+      {joinedFromInvitation ? <p className="mb-2 text-sm text-muted-foreground">Invitation accepted</p> : null}
+      <h2 id="capture-handoff-heading" className="text-2xl font-semibold">{sessionTitle || "Join your session"}</h2>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        {fallback ? "Capture didn’t open. You can join in your browser, or install the app and try again."
+          : preferApp ? "Open in Quipsly Capture or join here."
+          : "Check your microphone and camera, then join when you’re ready."}
       </p>
-
-      {metrics ? (
-        <div className="mt-3 rounded-xl border border-emerald-200 bg-white/85 px-3 py-2 text-[11px] font-bold leading-5 text-emerald-950" role="status">
-          Session entry signals: {metrics.BROWSER} browser choice ·{" "}
-          {metrics.CAPTURE_APP} Capture open {metrics.CAPTURE_APP === 1 ? "attempt" : "attempts"} ·{" "}
-          {metrics.TESTFLIGHT} TestFlight {metrics.TESTFLIGHT === 1 ? "visit" : "visits"}.
-          Each count deduplicates one person’s repeated taps; the same person
-          may try more than one path. These signals are not install proof;
-          Apple’s TestFlight metrics remain the install authority.
-        </div>
-      ) : null}
+      <div className="mt-6 flex flex-col gap-3">
+        {preferApp ? <>{appAction}{browserAction}</> : <>{browserAction}{appAction}</>}
+      </div>
+      <a href={CAPTURE_TESTFLIGHT_URL} target="_blank" rel="noreferrer"
+        onClick={() => selectSessionEntry(roomId, "TESTFLIGHT")}
+        className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground underline underline-offset-4">
+        <Download size={16} aria-hidden="true" /> {fallback ? "Install or update Capture" : "Get Capture for iPhone or iPad"}
+      </a>
     </section>
   );
 }

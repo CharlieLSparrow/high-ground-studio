@@ -195,11 +195,12 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.getByTestId("live-room-episode-session-1")).toBeInTheDocument();
   });
 
-  it("respects leaving the call when the remembered browser entry screen remounts", async () => {
+  it.each([null, "BROWSER"])("respects leaving the call when entry remounts with preference %s", async (preference) => {
     const user = userEvent.setup();
     const previousFetch = global.fetch;
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
-    localStorage.setItem("quipsly.session-entry-preference.v1", "BROWSER");
+    if (preference) localStorage.setItem("quipsly.session-entry-preference.v1", preference);
+    else localStorage.removeItem("quipsly.session-entry-preference.v1");
     function Entrance() {
       const dock = useLiveSessionDock();
       return dock.activeCallRoomId ? null : <CaptureAppHandoff roomId={coachingConfig.callRoomId}
@@ -212,7 +213,7 @@ describe("LiveSessionDockProvider", () => {
       await user.click(screen.getByRole("button", { name: "Close live call" }));
       await user.click(screen.getByRole("button", { name: "Leave & close" }));
       expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
-      expect(screen.getByText("Open the lobby whenever you’re ready to join.")).toBeInTheDocument();
+      expect(screen.getByText("Check your microphone and camera, then join when you’re ready.")).toBeInTheDocument();
       expect(localStorage.getItem("quipsly.session-entry-preference.v1")).toBe("BROWSER");
       await user.click(screen.getByRole("button", { name: "Open call lobby" }));
       expect(await screen.findByTestId("live-room-coaching-session-2")).toBeInTheDocument();

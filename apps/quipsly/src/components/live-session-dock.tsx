@@ -30,6 +30,8 @@ import {
 } from "@/components/live-session-room";
 import { SessionThread } from "@/components/session-thread";
 import type { SessionCaptureProfile } from "@/lib/session-experience";
+import { captureAppDeepLink } from "@/lib/capture-universal-link";
+import { selectSessionEntry } from "@/lib/session-entry-client";
 
 export type LiveSessionDockConfig = {
   callRoomId: string;
@@ -256,6 +258,11 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 {active.parentHref ? <Link href={active.parentHref} onClick={minimize} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 hover:bg-muted">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
               </nav>
               </details>
+              {!callIsActive(status) ? <a href={captureAppDeepLink(active.callRoomId)}
+                onClick={() => selectSessionEntry(active.callRoomId, "CAPTURE_APP")}
+                className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground underline underline-offset-4">
+                <ExternalLink size={14} aria-hidden="true" /> Open in Quipsly Capture
+              </a> : null}
             </header>
 
             {pending ? (

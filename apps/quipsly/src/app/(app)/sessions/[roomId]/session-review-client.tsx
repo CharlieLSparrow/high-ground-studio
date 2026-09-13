@@ -3765,7 +3765,6 @@ export function SessionReviewClient({
   readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY,
   canManageSourcePlan = false,
   recordingWorkspaceAudience = "producer",
-  canViewEntryChoiceMetrics = false,
   canReleaseHeldMedia = false,
   sessionTaxonomy = null,
   studioHandoff = null,
@@ -3816,7 +3815,6 @@ export function SessionReviewClient({
   readinessTopology?: SessionReadinessTopology;
   canManageSourcePlan?: boolean;
   recordingWorkspaceAudience?: "producer" | "participant";
-  canViewEntryChoiceMetrics?: boolean;
   canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
@@ -4222,7 +4220,6 @@ export function SessionReviewClient({
               sessionTitle={sessionTitle}
               joinedFromInvitation={joinedFromInvitation}
               captureOpenFallback={captureOpenFallback}
-              canViewChoiceMetrics={canViewEntryChoiceMetrics}
               onContinueInBrowser={() => liveDock.open(liveDockConfig)}
               allowAutomaticBrowserEntry={liveDock.dismissedCallRoomId !== roomId}
             />
