@@ -6,7 +6,8 @@ import { loadLibrary } from "@/app/(app)/library/library-page";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
+import { PATCH } from "@/app/api/notes/[noteId]/route";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
@@ -207,5 +208,40 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
     await expect(prisma.coachingNote.count({
       where: { roomId, title: "Viewer private note attempt" },
     })).resolves.toBe(0);
+  });
+
+  it("reads canonical live notes with private, shared, read-only and outsider boundaries", async () => {
+    const read = () => GET(new Request(`http://localhost/api/sessions/${roomId}/notes`), { params: Promise.resolve({ roomId }) });
+    signedInAs(actorUserId, actorEmail);
+    const author = await read();
+    expect(author.headers.get("Cache-Control")).toBe("private, no-store");
+    const authorBody = await author.json();
+    expect(authorBody.actorUserId).toBe(actorUserId);
+    expect(authorBody.canCreate).toBe(true);
+    expect(authorBody.notes.map((note: any) => note.title)).toContain("Private coaching observation");
+    expect(authorBody.notes.map((note: any) => note.title)).toContain("Production audience evidence");
+
+    signedInAs(participantUserId, participantEmail);
+    const participant = await (await read()).json();
+    expect(participant.canCreate).toBe(true);
+    expect(participant.notes.map((note: any) => note.title)).toEqual(expect.arrayContaining(["Shared audience evidence", "Client-safe audience evidence"]));
+    expect(participant.notes.every((note: any) => note.canEdit)).toBe(true);
+    expect(participant.notes.some((note: any) => note.visibility === "AUTHOR_PRIVATE" || note.visibility === "PROJECT_TEAM")).toBe(false);
+    expect(participant.notes.every((note: any) => !note.canChangeVisibility)).toBe(true);
+    const shared = participant.notes.find((note: any) => note.title === "Shared audience evidence");
+    const editInput = { clientRequestId: randomUUID(), title: shared.title, body: "The client revised this during our call.", kind: shared.kind, visibility: shared.visibility, tagIds: shared.tags.map((tag: any) => tag.id), expectedUpdatedAt: shared.updatedAt, surface: "nest-session-notes" };
+    const edit = () => PATCH(new Request(`http://localhost/api/notes/${shared.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(editInput) }), { params: Promise.resolve({ noteId: shared.id }) });
+    expect((await edit()).status).toBe(200);
+    const replay = await (await edit()).json();
+    expect(replay).toMatchObject({ ok: true, idempotentReplay: true, note: { body: editInput.body } });
+
+    signedInAs(projectViewerUserId, projectViewerEmail);
+    const viewer = await (await read()).json();
+    expect(viewer.canCreate).toBe(false);
+    expect(viewer.notes.every((note: any) => !note.canEdit)).toBe(true);
+
+    const outsider = await prisma.user.create({ data: { primaryEmail: `live-notes-outsider-${nonce}@example.test` } });
+    try { signedInAs(outsider.id, outsider.primaryEmail!); expect((await read()).status).toBe(404); }
+    finally { await prisma.user.delete({ where: { id: outsider.id } }); }
   });
 });

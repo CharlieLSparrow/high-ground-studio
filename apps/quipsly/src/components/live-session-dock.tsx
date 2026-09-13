@@ -6,7 +6,10 @@ import {
   ChevronDown,
   ExternalLink,
   MessageSquareText,
+  NotebookPen,
   Mic2,
+  Mic,
+  MicOff,
   PanelRightClose,
   PanelRightOpen,
   PhoneOff,
@@ -28,8 +31,11 @@ import {
 import {
   LiveSessionRoom,
   type LiveSessionRoomStatus,
+  type LiveSessionMicrophoneControl,
 } from "@/components/live-session-room";
 import { SessionThread } from "@/components/session-thread";
+import { CallNotesPanel } from "@/components/call-notes-panel";
+import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import type { SessionCaptureProfile } from "@/lib/session-experience";
 import { captureAppDeepLink } from "@/lib/capture-universal-link";
 import { selectSessionEntry } from "@/lib/session-entry-client";
@@ -100,11 +106,15 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
   const [sourceProtected, setSourceProtected] = useState(false);
+  const [microphoneControl, setMicrophoneControl] = useState<LiveSessionMicrophoneControl | null>(null);
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
   const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
-  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "devices" | "recording" | "details" | "people" | null>(null);
+  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "notes" | "devices" | "recording" | "details" | "people" | null>(null);
   const chatOpen = workspacePanel === "chat";
+  const notesOpen = workspacePanel === "notes";
+  const [notesVisitedRoom, setNotesVisitedRoom] = useState<string | null>(null);
+  const [notesNeedAttention, setNotesNeedAttention] = useState(false);
   const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
   const dockDialogRef = useRef<HTMLDialogElement>(null);
@@ -251,7 +261,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{liveSessionStatusLabel(status)}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  {status !== "connected" && status !== "reconnecting" ? <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button> : null}
+                  <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button>
+                  <button type="button" onClick={() => { setNotesVisitedRoom(active.callRoomId); setWorkspacePanel(panel => panel === "notes" ? null : "notes"); }} aria-label={notesOpen ? "Hide notes" : "Show notes"} aria-expanded={notesOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${notesOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><NotebookPen size={18} /><span className="hidden sm:inline">Notes</span>{notesNeedAttention ? <span role="status" title="A note needs your attention" className="size-2 rounded-full bg-amber-500"><span className="sr-only">A note is not saved</span></span> : null}</button>
                   <button type="button" onClick={minimize} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Minimize live call"><ChevronDown size={18} /></button>
                   <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Close live call"><X size={18} /></button>
                 </div>
@@ -266,12 +277,12 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Goals & tasks</Link></> : null}
                 {active.parentHref ? <Link href={active.parentHref} onClick={minimize} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 hover:bg-muted">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
               </nav>
-              </details>
               {!callIsActive(status) ? <a href={captureAppDeepLink(active.callRoomId)}
                 onClick={() => selectSessionEntry(active.callRoomId, "CAPTURE_APP")}
                 className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground underline underline-offset-4">
                 <ExternalLink size={14} aria-hidden="true" /> Open in Quipsly Capture
               </a> : null}
+              </details>
             </header>
 
             {pending ? (
@@ -311,6 +322,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 episodeSlug={active.episodeSlug || null}
                 onStatusChange={setStatus}
                 onProtectionChange={setSourceProtected}
+                onMicrophoneControlChange={setMicrophoneControl}
                 leaveRequestVersion={leaveRequestVersion}
                 onExitComplete={finishRequestedExit}
                 compact
@@ -320,12 +332,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 onOpenSessionWork={minimize}
                 controlsContainer={controlsContainer}
                 toolPanelContainer={toolPanelContainer}
-                activeToolPanel={workspacePanel === "chat" ? null : workspacePanel}
+                activeToolPanel={workspacePanel === "chat" || workspacePanel === "notes" ? null : workspacePanel}
                 onToolPanelChange={setWorkspacePanel}
-                collaborationControls={status === "connected" || status === "reconnecting" ? <button type="button"
-                  onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")}
-                  aria-label={chatOpen ? "Hide chat" : "Show chat"} title="Chat" aria-expanded={chatOpen} aria-controls="live-call-chat-panel"
-                  className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} />Chat</button> : null}
               /> : null}
               </div>
               <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>
@@ -344,6 +352,9 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </div>
               <div ref={setToolPanelContainer} data-testid="live-call-tool-panel"
                 className={`min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border ${workspacePanel && !chatOpen ? "block" : "hidden"}`} />
+              {toolPanelContainer && notesVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Notes" open={notesOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
+                <CallNotesPanel key={active.callRoomId} roomId={active.callRoomId} active={notesOpen && isOpen} onOpenWorkspace={minimize} onAttentionChange={setNotesNeedAttention} />
+              </CallWorkspacePanel> : null}
             </div>
             <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-foreground empty:hidden" />
           </dialog>
@@ -352,13 +363,18 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
       {active && !isOpen && (status !== "ended" || sourceProtected) ? (
         <section className="fixed bottom-20 left-3 right-3 z-[65] flex items-center gap-3 rounded-2xl border border-[#d8c7a7] bg-[#3d3122] p-2.5 text-white shadow-2xl shadow-black/30 md:bottom-5 md:left-auto md:right-5 md:w-[min(32rem,calc(100vw-2.5rem))]" aria-label="Minimized live call">
-          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${callIsActive(status) ? "bg-emerald-400 text-emerald-950" : "bg-amber-200 text-amber-950"}`}><Mic2 size={18} /></span>
+          {microphoneControl ? <button type="button" onClick={() => void microphoneControl.toggle()} disabled={microphoneControl.disabled}
+            aria-label={microphoneControl.muted ? "Unmute microphone" : "Mute microphone"} aria-pressed={microphoneControl.muted}
+            title={microphoneControl.muted ? "Unmute microphone" : "Mute microphone"}
+            className={`grid size-11 shrink-0 place-items-center rounded-xl disabled:opacity-50 ${microphoneControl.muted ? "bg-white/15 text-white" : "bg-[#d6d6b6] text-[#25291f]"}`}>
+            {microphoneControl.muted ? <MicOff size={18} /> : <Mic size={18} />}
+          </button> : <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/15"><Mic2 size={18} /></span>}
           <button type="button" onClick={() => setIsOpen(true)} className="min-w-0 flex-1 text-left">
             <span className="block truncate text-sm font-black">{active.sessionTitle}</span>
             <span className="block truncate text-[11px] font-semibold text-[#dfd0b8]">{liveSessionStatusLabel(status)}</span>
           </button>
           <button type="button" onClick={() => setIsOpen(true)} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Open live call"><PanelRightOpen size={18} /></button>
-          <button type="button" onClick={requestClose} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-rose-500/20" aria-label="Leave or close live call"><PanelRightClose size={18} /></button>
+          <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl bg-rose-900 hover:bg-rose-800" aria-label="Leave or close live call"><PhoneOff size={18} /></button>
         </section>
       ) : null}
     </LiveSessionDockContext.Provider>

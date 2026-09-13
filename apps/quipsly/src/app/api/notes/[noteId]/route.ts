@@ -67,7 +67,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ noteI
   const clientRequestId = input.clientRequestId === undefined
     ? null
     : text(input.clientRequestId, 80).toLowerCase();
-  const surface = clientRequestId
+  const surface = clientRequestId && input.surface !== "nest-session-notes"
     ? "ios-capture-session-notes" as const
     : "nest-session-notes" as const;
 

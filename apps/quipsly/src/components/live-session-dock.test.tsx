@@ -146,6 +146,27 @@ describe("LiveSessionDockProvider", () => {
     expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
   });
 
+  it("keeps a note editor mounted across chat, minimize and return without leaving the call", async () => {
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({ok: true, json: async () => ({ok: true, actorUserId: "coach", canCreate: true, notes: []})})) as unknown as typeof fetch;
+    const user = userEvent.setup();
+    try {
+      render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+      await user.click(screen.getByRole("button", {name: "Show notes"}));
+      await user.click(await screen.findByRole("button", {name: "New note"}));
+      await user.type(screen.getByRole("textbox", {name: "Note title"}), "A question during our call");
+      await user.click(screen.getByRole("button", {name: "Show chat"}));
+      await user.click(screen.getByRole("button", {name: "Show notes"}));
+      expect(screen.getByRole("textbox", {name: "Note title"})).toHaveValue("A question during our call");
+      await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+      await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
+      expect(screen.getByRole("textbox", {name: "Note title"})).toHaveValue("A question during our call");
+      expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+      expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+      expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+    } finally { global.fetch = previousFetch; sessionStorage.clear(); }
+  });
+
   it("reveals the after-call surface without discarding an unfinished chat message", async () => {
     const user = userEvent.setup();
     render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);

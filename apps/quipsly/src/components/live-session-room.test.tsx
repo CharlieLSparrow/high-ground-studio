@@ -487,7 +487,8 @@ describe("LiveSessionRoom", () => {
     expect(screen.getAllByRole("group", {name: "Call controls"})).toHaveLength(1);
     expect(document.getElementById("live-call-stage-panel")).not.toContainElement(slot);
     expect(document.getElementById("live-call-chat-panel")).not.toContainElement(slot);
-    expect(within(slot).getByRole("button", {name: "Show chat"})).toBeVisible();
+    expect(screen.getByRole("button", {name: "Show chat"})).toBeVisible();
+    expect(within(slot).queryByRole("button", {name: "Show chat"})).not.toBeInTheDocument();
     fireEvent.click(within(slot).getByRole("button", {name: /People \d/}));
     const peoplePanel = screen.getByRole("region", {name: "People"});
     expect(peoplePanel).toBeVisible();
@@ -505,6 +506,13 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(mute);
     expect(await within(slot).findByRole("button", {name: "Unmute"})).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", {name: "Minimize live call"}));
+    const minimized = screen.getByLabelText("Minimized live call");
+    fireEvent.click(within(minimized).getByRole("button", {name: "Unmute microphone"}));
+    expect(await within(minimized).findByRole("button", {name: "Mute microphone"})).toHaveAttribute("aria-pressed", "false");
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenLastCalledWith(true, expect.objectContaining({deviceId: "coach-mic"}));
+    fireEvent.click(within(minimized).getByRole("button", {name: "Mute microphone"}));
+    expect(await within(minimized).findByRole("button", {name: "Unmute microphone"})).toHaveAttribute("aria-pressed", "true");
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenLastCalledWith(false, undefined);
     fireEvent.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
     expect(screen.getByTestId("live-call-controls-slot")).toBe(slot);
     expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1);

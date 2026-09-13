@@ -290,7 +290,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
     return {
       ok: false,
       code: "CONFLICT",
-      error: "This note changed elsewhere. Nest kept the newer version; review it beside the protected iPhone draft.",
+      error: "This note changed elsewhere. Your draft has not replaced the newer version.",
       current: serialized(note),
     };
   }

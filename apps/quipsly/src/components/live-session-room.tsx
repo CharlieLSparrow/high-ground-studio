@@ -168,6 +168,7 @@ type ProviderRecordingPacket = {
 };
 
 export type LiveSessionRoomStatus = "preflight" | "checking" | "ready" | "joining" | "connected" | "reconnecting" | "ended" | "error";
+export type LiveSessionMicrophoneControl = { muted: boolean; disabled: boolean; toggle: () => Promise<void> };
 
 function readableDeviceLabel(device: MediaDeviceInfo, index: number) {
   return device.label || `${device.kind === "audioinput" ? "Microphone" : device.kind === "videoinput" ? "Camera" : "Output"} ${index + 1}`;
@@ -492,6 +493,7 @@ export function LiveSessionRoom({
   activeToolPanel,
   onToolPanelChange,
   collaborationControls,
+  onMicrophoneControlChange,
 }: {
   callRoomId: string;
   captureGroupId?: string | null;
@@ -516,6 +518,7 @@ export function LiveSessionRoom({
   activeToolPanel?: "devices" | "recording" | "details" | "people" | null;
   onToolPanelChange?: (panel: "devices" | "recording" | "details" | "people" | null) => void;
   collaborationControls?: ReactNode;
+  onMicrophoneControlChange?: (control: LiveSessionMicrophoneControl | null) => void;
 }) {
   const router = useRouter();
   const [localToolPanel, setLocalToolPanel] = useState<"devices" | "recording" | "details" | "people" | null>(null);
@@ -2393,6 +2396,15 @@ export function LiveSessionRoom({
       <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white">You</div>
     </div>
   );
+  useEffect(() => {
+    onMicrophoneControlChange?.(connected && callAudioMode === "this-device" ? {
+      muted: microphoneMuted,
+      disabled: microphoneMuted && microphoneRecoveryHeld && sourceLocked,
+      toggle: toggleMicrophone,
+    } : null);
+  }, [connected, callAudioMode, microphoneMuted, microphoneRecoveryHeld, sourceLocked, toggleMicrophone, onMicrophoneControlChange]);
+  useEffect(() => () => onMicrophoneControlChange?.(null), [onMicrophoneControlChange]);
+
   const callControls = connected ? (
     <div className="flex flex-col gap-2" role="group" aria-label="Call controls">
       <div data-testid="call-control-rows" className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-center lg:gap-4">
