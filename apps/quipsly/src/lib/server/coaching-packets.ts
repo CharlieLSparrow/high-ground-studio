@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isExternallyImportedRecording } from "@high-ground/quipsly-media-processing";
+import { hasNamedTranscriptCommitment, resolveTranscriptWorkOwnership } from "./transcript-work-ownership";
 import { readSessionRecordingAttempts } from "./session-recording-attempts";
 import type { Prisma } from "@prisma/client";
 import {
@@ -1091,20 +1092,13 @@ function distinctWorkSpans(
   });
 }
 
-function followThroughSpeakerUserId(
-  segment: PacketTranscriptSegment | undefined,
-  participants: Array<{ id: string; userId: string | null; accessStatus: string }>,
-) {
-  if (!segment) return null;
-  const participantId = segment.speakerAuthority === "attribution"
-    ? segment.attributedParticipantId
-    : segment.speakerAuthority === "source-binding"
-      ? segment.sourceBoundParticipantId
-      : null;
-  // A provider label or edited display name is not an authenticated identity.
-  return participants.find((participant) =>
-    participant.id === participantId && participant.accessStatus === "ACTIVE",
-  )?.userId || null;
+function followThroughWorkOwnership(segment: any, participants: any[], kind: "task" | "goal") {
+  return resolveTranscriptWorkOwnership({
+    excerpt: segment ? actionExcerpt(segment, kind) : "", kind, participants,
+    speakerParticipantId: segment?.speakerAuthority === "attribution"
+      ? segment.attributedParticipantId || null
+      : segment?.speakerAuthority === "source-binding" ? segment.sourceBoundParticipantId || null : null,
+  });
 }
 
 /** Resolves and validates an immutable packet item against the current ordered transcript projection. */
@@ -1448,7 +1442,7 @@ function contextExcerpt(segment: any) {
   const explicitNote = clauses.find((part) => /^(?:and\s+)?note that\b/i.test(part));
   if (explicitNote) return explicitNote.replace(/^(?:and\s+)?note that\s*/i, "");
   const insight = clauses.find((part) =>
-    /\b(?:i|we)\s+(?:realized?|learned|noticed?|feel|felt|struggle|struggled|need support|want accountability)\b|\b(?:that|this)\s+(?:gives|helps|means)\b|\b(?:decided|agreed|settled on|my question is|i wonder)\b/i.test(part));
+    /\b(?:i|we)\s+(?:realized?|learned|noticed?|feel|felt|struggle|struggled|need support|want accountability)\b|\b(?:that|this)\s+(?:gives|helps|means)\b|\b(?:decided|agreed|settled on|my question is|i wonder|prefers?|preference|obstacle|barrier)\b/i.test(part));
   if (insight) return insight;
   if (GOAL_PATTERN.test(cleanText(segment.text))) return actionExcerpt(segment, "goal");
   if (ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(cleanText(segment.text))))
@@ -1795,7 +1789,7 @@ export async function loadSessionFollowThroughSource(
         include: {
           followThroughAnalysis: true,
           booking: true,
-          participants: { select: { id: true, userId: true, accessStatus: true } },
+          participants: { select: { id: true, userId: true, displayName: true, accessStatus: true } },
           coachingEngagement: {
             select: {
               id: true,
@@ -1943,7 +1937,7 @@ async function materializeSessionFollowThrough(
         sourceJson: { path: ["source"], equals: source },
       })),
     },
-    include: { actionItems: true },
+    include: { actionItems: true, tagLinks: { select: { tagId: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -2013,9 +2007,10 @@ async function materializeSessionFollowThrough(
 
   const actionSegments = packetSpans
     .filter((segment: any) =>
-      ACTION_PATTERNS.some((pattern) => pattern.test(cleanText(segment.text))),
+      ACTION_PATTERNS.some((pattern) => pattern.test(cleanText(segment.text)))
+      || hasNamedTranscriptCommitment(cleanText(segment.text), job.room?.participants || []),
     )
-    .slice(0, 10);
+    .slice(0, 40);
 
   const packetBuildId = randomUUID();
   const sourceJson = {
@@ -2144,7 +2139,6 @@ async function materializeSessionFollowThrough(
     })),
   };
   const summaryRefreshedInPlace = Boolean(
-    !args.force &&
     existing &&
     generatedPacketNoteCanRefresh(existing) &&
     typeof args.prisma.coachingNote.update === "function",
@@ -2169,18 +2163,35 @@ async function materializeSessionFollowThrough(
         },
       });
 
+  if (summaryRefreshedInPlace && (existing.title !== packetTitle || existing.body !== summaryBody)
+    && args.prisma.coachingNoteRevision) {
+    const latest = await args.prisma.coachingNoteRevision.findFirst({
+      where: { noteId: existing.id }, orderBy: { revision: "desc" }, select: { revision: true },
+    });
+    const tagIds = (existing.tagLinks || []).map((link: { tagId: string }) => link.tagId).sort();
+    await args.prisma.coachingNoteRevision.create({ data: {
+      noteId: existing.id, revision: (latest?.revision ?? 0) + 1,
+      operation: "automatic-session-recap-refresh", actorUserId: null,
+      snapshotJson: {
+        noteId: existing.id, title: summaryNote.title, body: summaryNote.body,
+        kind: summaryNote.kind, visibility: summaryNote.visibility, tagIds,
+        previous: { title: existing.title, body: existing.body, kind: existing.kind, visibility: existing.visibility, tagIds },
+        packetBuildId, surface: "session-follow-through", externalSideEffects: false,
+      },
+    } });
+  }
+
   const participants = job.room?.participants || [];
   const actionItems = [];
-  for (const candidate of actionCandidates) {
+  for (const [candidateIndex, candidate] of actionCandidates.entries()) {
     const programSegment = packetSpans.find(
       (segment) =>
         segment.id === candidate.segmentId &&
         (cleanText(segment.transcriptJobId) || job.id) ===
           candidate.transcriptJobId,
     );
-    const assignedUserId = /\b(?:i\b|i['’]ll\b|my\b|me\b)/i.test(programSegment?.text || "")
-      ? followThroughSpeakerUserId(programSegment, participants)
-      : null;
+    const ownership = followThroughWorkOwnership(taskSegments[candidateIndex], participants, "task");
+    const assignedUserId = ownership.userId;
     const sourceJson = {
       schema: "quipsly-transcript-follow-through-v1",
       origin: "quipsly-session-follow-through",
@@ -2206,6 +2217,7 @@ async function materializeSessionFollowThrough(
         programSegment?.startSeconds ?? candidate.startSeconds,
       programEndSeconds: programSegment?.endSeconds ?? candidate.endSeconds,
       speakerLabel: candidate.speakerLabel,
+      assignment: ownership,
       visibility: "engagement-shared",
       externalSideEffects: false,
       generatedSnapshot: { ...generatedFollowThroughSnapshot({
@@ -2255,7 +2267,8 @@ async function materializeSessionFollowThrough(
   const goals = [];
   {
     for (const output of goalOutputs) {
-      const ownerUserId = followThroughSpeakerUserId(output.segment, participants);
+      const ownership = followThroughWorkOwnership(output.segment, participants, "goal");
+      const ownerUserId = ownership.userId;
       // An unattributed goal remains in the editable shared recap, rather than
       // silently becoming the client's personal goal.
       if (!ownerUserId) continue;
@@ -2290,6 +2303,7 @@ async function materializeSessionFollowThrough(
         programStartSeconds: output.segment.startSeconds,
         programEndSeconds: output.segment.endSeconds,
         speakerLabel: output.segment.speakerLabel,
+        assignment: ownership,
         visibility: "engagement-shared",
         externalSideEffects: false,
         generatedSnapshot: { ...generatedFollowThroughSnapshot({

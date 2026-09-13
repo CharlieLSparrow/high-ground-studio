@@ -24,10 +24,11 @@ import {
 
 test("local transcript completion delegates ordinary follow-through without owning transcript state", async () => {
   const prisma = { transcriptJob: { update: () => assert.fail("follow-through helper must not rewrite transcript state itself") } };
-  const reconcile = async (input) => ({
-    transcriptJobId: input.transcriptJobId,
-    packetStatus: "ready",
-  });
+  const reconcile = async (input) => {
+    assert.equal(input.prisma, prisma);
+    assert.equal(input.runAnalysis, true);
+    return { transcriptJobId: input.transcriptJobId, packetStatus: "ready" };
+  };
 
   await assert.doesNotReject(async () => {
     const result = await reconcileLocalTranscriptFollowThrough(

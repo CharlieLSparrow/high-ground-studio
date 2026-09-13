@@ -189,6 +189,30 @@ describe("transcript coaching follow-through", () => {
     expect(noteCreate).not.toHaveBeenCalled();
   });
 
+  it("assigns each semantic commitment from the same passage using its own excerpt", async () => {
+    const job: any = completedTranscriptJob();
+    job.room.participants = [
+      { id: "participant-charlie", userId: "coach-1", displayName: "Casey Park", accessStatus: "ACTIVE" },
+      { id: "participant-riley", userId: "client-1", displayName: "Riley Wells", accessStatus: "ACTIVE" },
+    ];
+    job.segments = [{ ...job.segments[0], text: "Casey will send the rubric. Riley will write the outline." }];
+    const work = automaticWorkStores();
+    const prisma = { transcriptJob: { findUnique: jest.fn().mockResolvedValue(job) },
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({data}) => ({id: "summary", ...data})) }, ...work };
+    const loaded = await loadSessionFollowThroughSource({ prisma, transcriptJobId: job.id });
+    if (!loaded.ok) throw new Error(loaded.error);
+    const source = sessionFollowThroughAnalysisSource(job, loaded.resolvedTranscript);
+    const analysis = await analyzeSessionTranscript(source, { name: "synthetic", model: "semantic-fixture", generate: async () => JSON.stringify({
+      tasks: [
+        {sourceId: source.segments[0]!.id, title: "Send the rubric", excerpt: "Casey will send the rubric."},
+        {sourceId: source.segments[0]!.id, title: "Write the outline", excerpt: "Riley will write the outline."},
+      ], goals: [], notes: [],
+    }) });
+    job.room.followThroughAnalysis = { status: "completed", resultJson: analysis };
+    await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" });
+    expect((await work.actionItem.findMany()).map(task => task.assignedUserId)).toEqual(["coach-1", "client-1"]);
+  });
+
   it("turns the operated coaching transcript into distinct useful work rather than greeting notes", async () => {
     const job = completedTranscriptJob();
     const original = [
@@ -220,6 +244,50 @@ describe("transcript coaching follow-through", () => {
     expect(summary.body).toContain("i want accountability without daily reminders");
     expect(summary.sourceJson.packetBrief.overview.segmentCount).toBe(5);
     expect(job.segments.map(segment => segment.text)).toEqual(original);
+  });
+
+  it("turns the imported coaching recording into named commitments, a client goal, and useful context", async () => {
+    const job: any = completedTranscriptJob();
+    job.asset.localManifestJson = { reportedSourceProfile: { kind: "quipsly-nest-external-recording-import-v1" } };
+    job.room.participants = [
+      { id: "participant-charlie", userId: "coach-1", displayName: "Casey Park", accessStatus: "ACTIVE" },
+      { id: "participant-riley", userId: "client-1", displayName: "Riley Wells", accessStatus: "ACTIVE" },
+    ];
+    const spoken = [
+      "This is a synthetic coaching practice recording.",
+      "Casey and Riley reviewed the draft chapter.",
+      "Riley's goal is to finish the literature review by September 25th.",
+      "Riley will read three papers on Tuesday and send Casey an outline by Friday.",
+      "Casey will email the writing rubric tomorrow.",
+      "Riley prefers short morning writing sessions.",
+      "We will meet again next Wednesday at 10.",
+      "The main obstacle is trying to polish each paragraph before finishing a draft.",
+      "Riley will first write for 20 minutes without editing, then revise afterward.",
+    ];
+    job.segments = spoken.map((text, index) => ({ id: `spoken-${index}`, text, speakerLabel: null,
+      startSeconds: index * 3, endSeconds: index * 3 + 2.5, confidence: .99 }));
+    const work = automaticWorkStores();
+    const notes: any[] = [];
+    const prisma = { transcriptJob: { findUnique: jest.fn().mockResolvedValue(job) },
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({data}) => {
+        const note = { id: `note-${notes.length}`, ...data }; notes.push(note); return note;
+      }) }, ...work };
+    const result = await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" });
+    expect(result).toMatchObject({ ok: true, actionItemCount: 3, goalCount: 1 });
+    const tasks = await work.actionItem.findMany();
+    expect(tasks.map(item => item.assignedUserId)).toEqual(["client-1", "coach-1", "client-1"]);
+    expect(tasks[1].sourceJson.assignment).toMatchObject({ basis: "named-commitment", participantId: "participant-charlie" });
+    expect((await work.goal.findMany())[0]).toMatchObject({ ownerUserId: "client-1", title: "Finish the literature review by September 25th" });
+    const recap = notes.find(note => note.kind === "SUMMARY").body;
+    expect(recap).toContain("read three papers");
+    expect(recap).toContain("email the writing rubric");
+    expect(notes.some(note => note.body.includes("prefers short morning"))).toBe(true);
+    expect(notes.some(note => note.body.includes("main obstacle"))).toBe(true);
+    expect(job.segments.map((segment: any) => segment.text)).toEqual(spoken);
+
+    await work.actionItem.update({where: {id: tasks[0].id}, data: {assignedUserId: "coach-1"}});
+    await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1", force: true });
+    expect((await work.actionItem.findMany()).find(task => task.id === tasks[0].id).assignedUserId).toBe("coach-1");
   });
 
   it("assigns repeated first-person commitments to their recording speaker, not the primary client", async () => {
@@ -1425,6 +1493,10 @@ describe("transcript coaching follow-through", () => {
     });
     const prisma = {
       transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNoteRevision: {
+        findFirst: jest.fn().mockResolvedValue({ revision: 2 }),
+        create: jest.fn(async ({ data }: any) => data),
+      },
       coachingNote: {
         findFirst: jest.fn(async ({ where }: any) => {
           if (where.kind === "SUMMARY") return latestSummary;
@@ -1475,6 +1547,13 @@ describe("transcript coaching follow-through", () => {
       packetBuildId: first.packetBuildId,
     });
 
+    const forced = await buildCoachingPacketFromTranscriptJob({
+      prisma, transcriptJobId: job.id, authorUserId: "coach-1", force: true,
+    });
+    expect(forced).toMatchObject({ summaryRefreshedInPlace: true, summaryNoteId: first.summaryNoteId });
+    expect(summaries).toHaveLength(1);
+    expect(prisma.coachingNoteRevision.create).not.toHaveBeenCalled();
+
     const provider = job.segments[0];
     (provider as any).corrections = [
       {
@@ -1502,6 +1581,10 @@ describe("transcript coaching follow-through", () => {
     });
     expect(rebuilt.packetBuildId).not.toBe(first.packetBuildId);
     expect(summaries).toHaveLength(1);
+    expect(prisma.coachingNoteRevision.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      noteId: first.summaryNoteId, revision: 3, operation: "automatic-session-recap-refresh",
+      snapshotJson: expect.objectContaining({ previous: expect.objectContaining({ body: expect.stringContaining("send the outline") }) }),
+    }) });
     expect(latestSummary.body).toContain(
       "I will send the finished outline before next time.",
     );
@@ -1596,7 +1679,7 @@ describe("transcript coaching follow-through", () => {
         ([{ data }]: any[]) => data.kind === "HIGHLIGHT",
       ),
     ).toHaveLength(2);
-    expect(work.actionItem.update).toHaveBeenCalledTimes(1);
+    expect(work.actionItem.update).toHaveBeenCalledTimes(2);
     expect(
       (
         await work.actionItem.findUnique({

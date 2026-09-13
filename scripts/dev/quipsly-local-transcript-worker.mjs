@@ -567,7 +567,7 @@ export async function reconcileLocalTranscriptFollowThrough(
   if (typeof reconcileCaptureTranscriptFollowThrough !== "function") {
     throw new Error("Local transcript follow-through implementation is unavailable.");
   }
-  return reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId });
+  return reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId, runAnalysis: true });
 }
 
 async function failClaimedJob(prisma, jobId, error) {
