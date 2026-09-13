@@ -982,6 +982,7 @@ model User {
   coachingNoteRevisionsAuthored         CoachingNoteRevision[]                      @relation("CoachingNoteRevisionActor")
   coachingNoteTagsCreated               CoachingNoteTagLink[]                       @relation("CoachingNoteTagCreatedBy")
   sessionOutputsCreated                 SessionOutput[]                             @relation("SessionOutputCreatedBy")
+  recordingEditDrafts                   SessionRecordingEditDraft[]
   sessionOutputsReceived                SessionOutput[]                             @relation("SessionOutputRecipient")
   sessionOutputRevisions                SessionOutputRevision[]                     @relation("SessionOutputRevisionActor")
   deliveryEventsActed                   DeliveryEvent[]                             @relation("DeliveryEventActor")
@@ -2563,6 +2564,7 @@ model CallRoom {
   transcriptEvaluationRuns       TranscriptEvaluationRun[]
   notes                          CoachingNote[]
   outputs                        SessionOutput[]
+  recordingEditDrafts            SessionRecordingEditDraft[]
   deliveryEvents                 DeliveryEvent[]
   actionItems                    ActionItem[]
   goals                          Goal[]
@@ -4138,6 +4140,26 @@ model CoachingNoteRevision {
 // canonical records. Releasing it changes in-app visibility only; delivery
 // receipts record what Quipsly actually did without implying email or message
 // delivery.
+// Mutable editing intent is independent of immutable sources and rendered outputs.
+// Each person's take draft syncs across devices; revision checks prevent lost edits.
+model SessionRecordingEditDraft {
+  id              String   @id @default(cuid())
+  roomId          String
+  userId          String
+  takeId          String
+  revision        Int      @default(1)
+  clientRequestId String   @db.Uuid
+  stateJson       Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  room CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId, takeId])
+  @@index([userId, updatedAt])
+}
+
 model SessionOutput {
   id                 String              @id
   roomId             String

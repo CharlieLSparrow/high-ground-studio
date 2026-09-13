@@ -1277,6 +1277,21 @@ async function reconcileRender(client: RestoreClient, output: any) {
   });
 }
 
+/** Autosave needs the same authorized take/source boundary, not transcript
+ * words, media reconciliation, or rendering work on every keystroke. */
+export async function readSessionRecordingEditSources(
+  client: RestoreClient, input: {roomId: string; takeId: string; actor: SessionAccessActor},
+) {
+  const room = await loadRoom(client, input.roomId, input.actor, "read");
+  const canEdit = await client.callRoom.findFirst({where: sessionInvitationAccessWhere(input.roomId, input.actor), select: {id: true}});
+  if (!canEdit) throw new SessionRecordingShareError(403, "RECORDING_EDIT_FORBIDDEN", "You cannot edit this recording.");
+  const rows = await loadSources(client, room.id, room.captureGroupId);
+  const attempts = await loadRecordingAttempts(client, room.id, rows);
+  const take = attempts.find(attempt => attempt.id === input.takeId);
+  if (!take) throw new SessionRecordingShareError(404, "RECORDING_ATTEMPT_NOT_FOUND", "This recording is no longer available.");
+  return {role: "COACH" as const, available: {...sourceSummary(take.sources), selectedTakeId: take.id}};
+}
+
 export async function readSessionRecordingShare(
   client: RestoreClient,
   input: { roomId: string; actor: SessionAccessActor; takeId?: string; sourceId?: string },
