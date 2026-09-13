@@ -2651,7 +2651,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         saveQuickEntry(
             kind: "NOTE",
             body: "Coaching insight: sustainable progress needs one protected editing block before the next session.",
-            expectedMessage: "The private Session note is saved. Review or expand it from the Session workspace.",
+            expectedMessage: "Note saved. Only you can see it.",
             sessionID: sessionID,
             in: app
         )
@@ -2767,7 +2767,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         save.tap()
         XCTAssertTrue(sheet.waitForNonExistence(timeout: 6))
         XCTAssertTrue(
-            app.staticTexts["The client-safe Session note is saved and ready for reviewed follow-up. It has not been sent."]
+            app.staticTexts["Note saved for follow-up."]
                 .waitForExistence(timeout: 30),
             "Nest must acknowledge the canonical audience while refusing to imply delivery."
         )
@@ -6359,6 +6359,40 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app.buttons["CaptureWorkspaceReturnToCall"].tap()
         XCTAssertTrue(leave.waitForExistence(timeout: 5), "Writing a note must preserve the original live transport.")
 
+        let sessionTasks = app.buttons["CaptureCallOpenTasks"].firstMatch
+        XCTAssertTrue(sessionTasks.isHittable, "Tasks should be beside chat and notes, not behind a trip to another workspace.")
+        sessionTasks.tap()
+        let addTask = app.buttons["CaptureSessionWorkCreate"].firstMatch
+        XCTAssertTrue(addTask.waitForExistence(timeout: 15))
+        addTask.tap()
+        let taskTitle = app.textFields["CaptureSessionWorkTitle"].firstMatch
+        XCTAssertTrue(taskTitle.waitForExistence(timeout: 8))
+        let newTaskTitle = "Native in-call task \(UUID().uuidString.prefix(8))"
+        taskTitle.tap(); taskTitle.typeText(newTaskTitle)
+        let privateTask = app.switches["CaptureSessionWorkPrivate"].firstMatch
+        turnOn(privateTask, in: app)
+        app.buttons["Close"].tap()
+        app.buttons["CaptureWorkspaceReturnToCall"].tap()
+        XCTAssertTrue(leave.waitForExistence(timeout: 5))
+        sessionTasks.tap(); addTask.tap()
+        XCTAssertTrue(taskTitle.waitForExistence(timeout: 8))
+        XCTAssertEqual(taskTitle.value as? String, newTaskTitle, "The draft should survive returning to the call.")
+        XCTAssertEqual(privateTask.value as? String, "1")
+        app.buttons["CaptureSessionWorkSave"].tap()
+        let savedTask = app.staticTexts[newTaskTitle].firstMatch
+        XCTAssertTrue(savedTask.waitForExistence(timeout: 20), "The canonical saved task should appear in this session.")
+        savedTask.tap()
+        let taskDetails = app.textFields["CaptureTaskEditDetail"].firstMatch
+        XCTAssertTrue(taskDetails.waitForExistence(timeout: 8))
+        taskDetails.tap(); taskDetails.typeText("Write one short reflection before our next session.")
+        app.buttons["CaptureTaskEditSave"].tap()
+        XCTAssertTrue(savedTask.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Write one short reflection before our next session."].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Canonical tasks edited during native call")
+        app.buttons["CaptureWorkspaceReturnToCall"].tap()
+        XCTAssertTrue(leave.waitForExistence(timeout: 5), "Working on a task must keep the same call connected.")
+        attachRuntimeScreenshot(app, name: "Native call with chat notes tasks and tools")
+
         let tools = app.buttons["CaptureCallToggleTools"].firstMatch
         tools.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.waitForExistence(timeout: 5))
@@ -6411,6 +6445,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                           "A call without recording must not claim that an older session take was just saved.")
         }
         attachRuntimeScreenshot(app, name: "Native post-call workspace")
+        let postCallTasks = app.buttons["CapturePostCallTasks"].firstMatch
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(postCallTasks, in: app))
+        postCallTasks.tap()
+        XCTAssertTrue(app.staticTexts[newTaskTitle].firstMatch.waitForExistence(timeout: 15),
+                      "After-call work must show the same task created during the call.")
+        app.buttons["Done"].tap()
         XCTAssertTrue(app.buttons["CapturePostCallNotes"].isHittable)
         app.buttons["CapturePostCallConversation"].tap()
         XCTAssertTrue(composer.waitForExistence(timeout: 8))

@@ -7,6 +7,7 @@ struct CapturePostCallWorkspace: View {
     let completedCall: CaptureCompletedCall
     let onNotes: () -> Void
     let onConversation: () -> Void
+    let onTasks: () -> Void
     let onSession: () -> Void
     let onLibrary: () -> Void
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -55,6 +56,11 @@ struct CapturePostCallWorkspace: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .accessibilityIdentifier("CapturePostCallConversation")
+                Button(action: onTasks) {
+                    Label("Tasks and goals", systemImage: "checklist")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .accessibilityIdentifier("CapturePostCallTasks")
             }
             .buttonStyle(.bordered)
 

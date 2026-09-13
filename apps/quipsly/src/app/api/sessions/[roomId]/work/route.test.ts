@@ -132,6 +132,13 @@ describe("Session work creation", () => {
     });
   });
 
+  it.each([{title: "x".repeat(501)}, {body: "x".repeat(5001)}])("does not silently truncate a native work draft", async draft => {
+    const result = await POST(request(draft), {params: Promise.resolve({roomId})});
+    expect(result.status).toBe(400);
+    expect((await result.json()).error).toContain("Your draft has not been changed");
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
   it("refuses a changed payload that reuses an existing retry identity", async () => {
     const now = new Date("2026-08-19T20:30:00.000Z");
     const prisma: any = {

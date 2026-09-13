@@ -7861,7 +7861,7 @@ struct CaptureTaskEditSheet: View {
     }
 }
 
-private struct CaptureGoalEditSheet: View {
+struct CaptureGoalEditSheet: View {
     @ObservedObject var client: CaptureTodayClient
     let goal: MobileCaptureTodayGoal
     var onSaved: (() -> Void)? = nil
@@ -11494,6 +11494,8 @@ private struct CaptureRecorderView: View {
     @State private var showsConsentConfirmation = false
     @State private var showsCallTools = false
     @State private var showsCallChat = false
+    @State private var sessionWorkSession: MobileCaptureSession?
+    @StateObject private var sessionWork = MobileSessionWorkClient()
     @State private var focusedTool: CaptureRecorderFocusedTool?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
@@ -11543,6 +11545,7 @@ private struct CaptureRecorderView: View {
                         model: model, session: session, completedCall: completed,
                         onNotes: { sessionNotesSession = session },
                         onConversation: { showsCallChat = true },
+                        onTasks: { sessionWorkSession = session },
                         onSession: { showsCompletedSessionWork = true },
                         onLibrary: {
                             requestedLibrarySection = .recordings
@@ -12972,7 +12975,7 @@ private struct CaptureRecorderView: View {
     }
 
     private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 6) {
             Button { showsCallChat = true } label: {
                 Label("Chat", systemImage: "bubble.left.and.bubble.right")
                     .frame(maxWidth: .infinity, minHeight: 30)
@@ -12983,6 +12986,11 @@ private struct CaptureRecorderView: View {
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
             .accessibilityIdentifier("CaptureCallOpenNotes")
+            Button { sessionWorkSession = session } label: {
+                Label("Tasks", systemImage: "checklist")
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .accessibilityIdentifier("CaptureCallOpenTasks")
             if model.providerRoom.isConnected {
             Button { showsCallTools.toggle() } label: {
                 Label("Tools", systemImage: "slider.horizontal.3")
@@ -13108,6 +13116,12 @@ private struct CaptureRecorderView: View {
                 model: model,
                 onDismiss: { sessionNotesSession = nil }
             )
+            .presentationDetents([.large])
+        }
+        .sheet(item: $sessionWorkSession) { session in
+            CaptureSessionWorkWorkspace(session: session, model: model, client: sessionWork) {
+                sessionWorkSession = nil
+            }
             .presentationDetents([.large])
         }
         .navigationDestination(isPresented: $showsCompletedSessionWork) {
@@ -15345,7 +15359,7 @@ private struct CaptureSessionNotesCard: View {
 
 /// A workspace sheet never owns the call. Keep the same provider and recording
 /// session alive, and expose their controls without moving out of the work.
-private struct CaptureCallWorkspaceBar: View {
+struct CaptureCallWorkspaceBar: View {
     @ObservedObject var model: CaptureExperienceModel
     let roomID: String
     var onReturn: (() -> Void)? = nil

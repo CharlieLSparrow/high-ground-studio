@@ -92,6 +92,10 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
 
   const { roomId } = await context.params;
   const body = object(await request.json().catch(() => ({})));
+  if ((typeof body.title === "string" && body.title.length > 500) ||
+      (typeof body.body === "string" && body.body.length > 5_000)) {
+    return NextResponse.json({ok: false, error: "Use a title of 500 characters or fewer and details of 5,000 characters or fewer. Your draft has not been changed."}, {status: 400});
+  }
   const clientRequestId = text(body.clientRequestId, 80).toLowerCase();
   const kind = text(body.kind, 20).toUpperCase() as "TASK" | "GOAL";
   const title = text(body.title, 500);

@@ -55,25 +55,7 @@ private struct SessionConversationWorkResponse: Decodable {
     let ok: Bool
     let error: String?
     let roomId: String?
-    let entry: Entry?
-
-    struct Entry: Decodable {
-        let id: String
-        let kind: String
-        let title: String
-        let body: String?
-        let status: String
-        let dueAt: String?
-        let updatedAt: String
-        let canEdit: Bool
-
-        func task(roomID: String, title sessionTitle: String) -> MobileCaptureTodayTask {
-            MobileCaptureTodayTask(id: id, title: title, detail: body, status: status, isOverdue: nil,
-                dueAt: dueAt, updatedAt: updatedAt, roomId: roomID, sessionTitle: sessionTitle,
-                project: nil, canEdit: canEdit, canEditTags: false, tagIds: nil, tagLabels: nil,
-                sourceAnchor: nil, lastMergedTranscriptEvidence: nil, todayReason: nil, recurrence: nil, reminder: nil)
-        }
-    }
+    let entry: MobileSessionWorkEntry?
 }
 
 private struct MobileSessionConversationCache: Codable {

@@ -793,12 +793,12 @@ export async function POST(request: Request) {
       : input.kind === "NOTE"
       ? input.callRoomId
         ? input.noteVisibility === "CLIENT_SAFE"
-          ? "The client-safe Session note is saved and ready for reviewed follow-up. It has not been sent."
+          ? "Note saved for follow-up."
           : input.noteVisibility === "SESSION_SHARED"
-            ? "The Session note is saved for people with Session access. No message or delivery occurred."
+            ? "Note saved. Shared with this session."
             : input.noteVisibility === "PROJECT_TEAM"
-              ? "The production-team Session note is saved. It has not been published or delivered."
-              : "The author-private Session note is saved. Review or expand it from the Session workspace."
+              ? "Note saved. Shared with your team."
+              : "Note saved. Only you can see it."
         : input.projectId
           ? `The private note is saved in ${result.room.projectName}. Continue it from that Nest, Library, or Search.`
           : "Your note is saved privately in My Nest. Continue it from Library or Search."
