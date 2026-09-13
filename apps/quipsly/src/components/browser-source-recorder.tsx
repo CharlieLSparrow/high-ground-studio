@@ -2933,7 +2933,7 @@ export function BrowserSourceRecorder({
         className={`inline-flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-l-xl px-2 py-2 text-xs font-semibold disabled:opacity-50 sm:flex-row sm:gap-2 sm:px-3 ${recordingControl.recording ? "bg-rose-800 text-white" : "hover:bg-muted"}`}>
         {recordingControl.busy ? <LoaderCircle size={17} className="animate-spin" /> : recordingControl.action === "STOP" || recordingControl.action === "STOP_LOCAL" ? <Square size={15} fill="currentColor" /> : <span className="size-3 rounded-full bg-current" />}
         <span>{recordingControl.busy ? status === "stopping" ? "Saving…" : status === "checking" ? "Preparing…" : recordingControl.action === "STOP" || recordingControl.action === "STOP_LOCAL" ? "Stopping…" : "Starting…"
-          : recordingControl.action === "REOPEN" ? "Recording" : recordingControl.action ? recordingControl.label : canControlRoom ? "Record" : "Recording"}</span>
+          : recordingControl.action === "REOPEN" ? "Record" : recordingControl.action ? recordingControl.label : canControlRoom ? "Record" : recordingDirective?.shouldRecord ? "Recording status" : "Recording off"}</span>
         {recordingControl.recording ? <span className="tabular-nums">{Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}</span> : null}
       </button>
       <button type="button" onClick={onOpenRecordingSettings} aria-label="Recording settings and status" title="Recording settings and status"

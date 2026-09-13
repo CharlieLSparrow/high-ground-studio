@@ -124,6 +124,22 @@ describe("browser recorder before recording", () => {
     } finally {view.unmount();controls.remove();}
   });
 
+  it("does not tell a client they are recording before the host starts", async () => {
+    session = {...session, recordingConsentStatus:"GRANTED", recordingConsentId:"consent",
+      recordingConsentCanRecordAudio:true, allRegisteredParticipantConsentGranted:true};
+    const controls = document.createElement("div"); document.body.appendChild(controls);
+    const openSettings = jest.fn();
+    const view = render(<div hidden><BrowserSourceRecorder {...props} controlsContainer={controls} onOpenRecordingSettings={openSettings} /></div>);
+    try {
+      const control = await within(controls).findByRole("button", {name:"Recording off"});
+      await waitFor(() => expect(control).toBeEnabled());
+      expect(within(controls).queryByRole("button", {name:"Recording"})).not.toBeInTheDocument();
+      fireEvent.click(control);
+      expect(openSettings).toHaveBeenCalledTimes(1);
+      expect(issueBrowserRecordingDirective).not.toHaveBeenCalled();
+    } finally {view.unmount();controls.remove();}
+  });
+
   it("opens setup for an unready host instead of sending a recording command", async () => {
     session = {...session,canControlRoom:true,recordingConsentStatus:"GRANTED",recordingConsentId:"consent",
       recordingConsentCanRecordAudio:true,allRegisteredParticipantConsentGranted:true};
