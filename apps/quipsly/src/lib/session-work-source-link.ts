@@ -10,6 +10,20 @@ export function transcriptSourceHref(source: { roomId: string; recordingAssetId:
   return `/sessions/${encodeURIComponent(source.roomId)}?${query}#transcript-segment-${encodeURIComponent(source.segmentId)}`;
 }
 
+/** Session results already carry their canonical source; don't drop it in recap links. */
+export function sessionResultSourceHref(roomId: string, source: {
+  recordingAssetId?: string | null; sourceStartSeconds?: number | null;
+  startSeconds: number | null; segmentId: string | null;
+}) {
+  const query = new URLSearchParams({mode: "transcript"});
+  const at = source.sourceStartSeconds ?? source.startSeconds;
+  if (source.recordingAssetId?.trim()) {
+    query.set("source", source.recordingAssetId.trim());
+    if (typeof at === "number" && Number.isFinite(at) && at >= 0 && at <= 86_400) query.set("at", String(at));
+  }
+  return `/sessions/${encodeURIComponent(roomId)}?${query}#transcript-segment-${encodeURIComponent(source.segmentId || "")}`;
+}
+
 /** Project an existing source pointer, never a room inferred from free-form text. */
 export function sessionWorkSourceHref(roomId: string | null | undefined, sourceJson: unknown): string | null {
   if (!roomId || !sourceJson || typeof sourceJson !== "object" || Array.isArray(sourceJson)) return null;

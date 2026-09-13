@@ -70,7 +70,8 @@ describe("SessionRecordingShareCard", () => {
       ? {ok: true, actorUserId: "coach_user_0001", edit: options?.method === "PUT" ? {revision: 1} : null}
       : url.includes("start%3Aearlier") ? earlier : latest));
     global.fetch = fetchMock as typeof fetch;
-    render(<SessionRecordingShareCard roomId="session_room_0001" initialSourceId="recording_asset_0001"
+    const takeChanged = jest.fn();
+    render(<SessionRecordingShareCard roomId="session_room_0001" initialSourceId="recording_asset_0001" onTakeSourcesChange={takeChanged}
       renderOriginalRecordings={ids => <div data-testid="selected-take-player">{ids.join(",")}</div>} />);
     const selector = await screen.findByRole("combobox", {name: /Recording attempt/});
     expect(fetchMock).toHaveBeenCalledWith("/api/sessions/session_room_0001/recording-share?sourceId=recording_asset_0001", expect.anything());
@@ -81,6 +82,7 @@ describe("SessionRecordingShareCard", () => {
     await waitFor(() => expect(selector).toHaveValue("start:earlier"));
     expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("20");
     expect(screen.getByTestId("selected-take-player")).toHaveTextContent("earlier-source");
+    expect(takeChanged).toHaveBeenLastCalledWith(["earlier-source"]);
     expect(screen.getByTestId("selected-take-player")).not.toHaveTextContent("recording_asset_0001");
     expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", {name: "Refresh"}));

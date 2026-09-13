@@ -62,6 +62,9 @@ import {
 import { SessionCoachingQuickPath } from "./session-coaching-quick-path";
 import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import { SessionRecordingShareCard } from "./session-recording-share-card";
+import { useSessionMediaNavigation } from "./use-session-media-navigation";
+import { sessionResultSourceHref } from "@/lib/session-work-source-link";
+import type { SessionMediaFocus } from "./session-workspace-model";
 import type { SessionContinuityState } from "./session-continuity-model";
 import { SessionEpisodeBindingRepair } from "./session-episode-binding-repair";
 import { SessionEntryReadinessLive } from "./session-entry-readiness-live";
@@ -2657,10 +2660,12 @@ function SessionWorkspaceNavigation({
   roomId,
   mode,
   purpose,
+  mediaFocus,
 }: {
   roomId: string;
   mode: SessionWorkspaceMode;
   purpose: string;
+  mediaFocus?: SessionMediaFocus;
 }) {
   const modes = sessionWorkspaceModesForPurpose(purpose);
   const router = useRouter();
@@ -2670,7 +2675,7 @@ function SessionWorkspaceNavigation({
           <span>Session section</span>
           <select aria-label="Session section" value={mode} onChange={event => {
             const next = modes.find(item => item.id === event.target.value);
-            if (next) router.push(sessionWorkspaceHref(roomId, next.id));
+            if (next) router.push(sessionWorkspaceHref(roomId, next.id, mediaFocus));
           }} className="min-h-11 min-w-0 flex-1 rounded-lg border border-quipsly-divider bg-quipsly-surface px-3 text-quipsly-ink">
             {modes.map(definition => <option key={definition.id} value={definition.id}>{definition.label}</option>)}
           </select>
@@ -2681,7 +2686,7 @@ function SessionWorkspaceNavigation({
             return (
               <Link
                 key={definition.id}
-                href={sessionWorkspaceHref(roomId, definition.id)}
+                href={sessionWorkspaceHref(roomId, definition.id, mediaFocus)}
                 aria-current={selected ? "page" : undefined}
                 className={`flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-quipsly-peacock-700 ${
                   selected
@@ -3303,6 +3308,7 @@ export function SessionReviewClient({
   const activeRead = useRef<AbortController | null>(null);
   const readGeneration = useRef(0);
   const readScope = `${roomId}:${focusedRecordingAssetId || ""}`;
+  const mediaNavigation = useSessionMediaNavigation(roomId, focusedRecordingAssetId, focusedPlaybackSeconds);
   const currentReadScope = useRef(readScope);
   currentReadScope.current = readScope;
   const liveDock = useLiveSessionDock();
@@ -3743,6 +3749,7 @@ export function SessionReviewClient({
         roomId={roomId}
         mode={mode}
         purpose={purpose}
+        mediaFocus={mediaNavigation.focus}
       />
       </section>
 
@@ -3839,21 +3846,25 @@ export function SessionReviewClient({
             <OriginalRecordings>
               <SessionRecordingHealthListeningNavigator roomId={roomId}
                 health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
-                evidence={sourceEvidence} presentation="workspace" />
+                evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
+                onMediaFocusChange={mediaNavigation.select} presentation="workspace" />
             </OriginalRecordings>
           ) : purpose !== "COACHING" ? (
             <SessionRecordingHealthListeningNavigator roomId={roomId}
               health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
-              evidence={sourceEvidence} presentation="workspace" />
+              evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
+              onMediaFocusChange={mediaNavigation.select} presentation="workspace" />
           ) : null}
           {purpose === "COACHING" && recordingWorkspaceAudience === "producer" ? <SessionRecordingShareCard
             key={`${roomId}|${focusedRecordingAssetId || "latest"}`} roomId={roomId}
             initialSourceId={focusedRecordingAssetId}
+            onTakeSourcesChange={mediaNavigation.selectTake}
             renderOriginalRecordings={sourceIds => {
               const health = buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence });
-              return <SessionRecordingHealthListeningNavigator roomId={roomId}
+              return <SessionRecordingHealthListeningNavigator key={sourceIds.join("|")} roomId={roomId}
                 health={{...health, sources: health.sources.filter(source => sourceIds.includes(source.recordingAssetId || ""))}}
-                evidence={sourceEvidence} preferredSourceId={focusedRecordingAssetId} presentation="workspace" />;
+                evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
+                onMediaFocusChange={mediaNavigation.select} presentation="workspace" />;
             }} /> : null}
           <details className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
             <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Import a recording</summary>
@@ -4049,6 +4060,7 @@ export function SessionReviewClient({
               sessionTitle={sessionTitle}
               recordingAssetId={focusedRecordingAssetId}
               initialPlaybackSeconds={focusedPlaybackSeconds}
+              onMediaFocusChange={mediaNavigation.select}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
               canEditRecording={purpose === "COACHING"}
               recordingEditor={
@@ -4437,7 +4449,7 @@ export function SessionReviewClient({
                                 <Link href={`${sessionWorkspaceHref(roomId, "notes")}#session-note-${encodeURIComponent(note.id)}`} className="font-black text-[#3d3122] hover:underline">{note.title || "Session note"}</Link>
                                 <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{note.body}</p>
                                 {note.source.startSeconds !== null && note.source.endSeconds !== null ? (
-                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(note.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{note.source.speakerLabel ? `${note.source.speakerLabel} · ` : ""}{timestampForSeconds(note.source.startSeconds)}–{timestampForSeconds(note.source.endSeconds)}</Link>
+                                  <Link href={sessionResultSourceHref(roomId, note.source)} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{note.source.speakerLabel ? `${note.source.speakerLabel} · ` : ""}{timestampForSeconds(note.source.startSeconds)}–{timestampForSeconds(note.source.endSeconds)}</Link>
                                 ) : null}
                               </li>
                             ))}
@@ -4455,7 +4467,7 @@ export function SessionReviewClient({
                                 <Link href={`/work?task=${encodeURIComponent(task.id)}`} className="font-black text-[#3d3122] hover:underline">{task.title}</Link>
                                 {task.detail ? <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{task.detail}</p> : null}
                                 {task.source.startSeconds !== null && task.source.endSeconds !== null ? (
-                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(task.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{task.source.speakerLabel ? `${task.source.speakerLabel} · ` : ""}{timestampForSeconds(task.source.startSeconds)}–{timestampForSeconds(task.source.endSeconds)}</Link>
+                                  <Link href={sessionResultSourceHref(roomId, task.source)} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{task.source.speakerLabel ? `${task.source.speakerLabel} · ` : ""}{timestampForSeconds(task.source.startSeconds)}–{timestampForSeconds(task.source.endSeconds)}</Link>
                                 ) : null}
                               </li>
                             ))}
@@ -4473,7 +4485,7 @@ export function SessionReviewClient({
                                 <Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="font-black text-[#3d3122] hover:underline">{goal.title}</Link>
                                 {goal.description ? <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{goal.description}</p> : null}
                                 {goal.source.startSeconds !== null && goal.source.endSeconds !== null ? (
-                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(goal.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{goal.source.speakerLabel ? `${goal.source.speakerLabel} · ` : ""}{timestampForSeconds(goal.source.startSeconds)}–{timestampForSeconds(goal.source.endSeconds)}</Link>
+                                  <Link href={sessionResultSourceHref(roomId, goal.source)} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{goal.source.speakerLabel ? `${goal.source.speakerLabel} · ` : ""}{timestampForSeconds(goal.source.startSeconds)}–{timestampForSeconds(goal.source.endSeconds)}</Link>
                                 ) : null}
                               </li>
                             ))}

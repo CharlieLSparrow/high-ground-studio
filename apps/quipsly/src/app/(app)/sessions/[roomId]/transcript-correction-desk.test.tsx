@@ -404,11 +404,12 @@ describe("TranscriptCorrectionDesk", () => {
   });
 
   it("plays and pauses the exact participant source without leaving an active correction", async () => {
+    const onMediaFocusChange = jest.fn();
     const current: any = desk(true);
     current.segments = [{ ...segment, programStartSeconds: 31.25, sourceStartSeconds: 1.25,
       sourcePlayback: { ...current.playback, sourceId: "client-source", recordingAssetId: "client-asset", url: "/api/ingest/media/client-source" } }];
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => current })) as unknown as typeof fetch;
-    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    render(<TranscriptCorrectionDesk roomId="room-1" onMediaFocusChange={onMediaFocusChange} />);
     await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
     const input = screen.getByLabelText(/correct transcript words/i);
@@ -417,6 +418,7 @@ describe("TranscriptCorrectionDesk", () => {
     const media = await markProtectedPlaybackReady();
     expect(media).toHaveAttribute("src", "/api/ingest/media/client-source");
     expect(media.currentTime).toBe(1.25);
+    expect(onMediaFocusChange).toHaveBeenLastCalledWith("client-asset", 1.25);
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
     fireEvent.play(media);
     fireEvent.click(screen.getByRole("button", { name: "Pause recording" }));

@@ -1,8 +1,16 @@
-import { sessionWorkSourceHref } from "./session-work-source-link";
+import { sessionWorkSourceHref, sessionResultSourceHref } from "./session-work-source-link";
 
 const generated = { origin: "quipsly-session-follow-through", roomId: "room-1", recordingAssetId: "asset-1" };
 
 describe("work-to-recording navigation", () => {
+  it("uses the source-local clock for recap results rather than an assembled program offset", () => {
+    expect(sessionResultSourceHref("room-1", {recordingAssetId: "asset-1", segmentId: "segment-1", sourceStartSeconds: 12.5, startSeconds: 312.5}))
+      .toBe("/sessions/room-1?mode=transcript&source=asset-1&at=12.5#transcript-segment-segment-1");
+    expect(sessionResultSourceHref("room-1", {recordingAssetId: "asset-1", segmentId: "segment-1", startSeconds: 9}))
+      .toBe("/sessions/room-1?mode=transcript&source=asset-1&at=9#transcript-segment-segment-1");
+    expect(sessionResultSourceHref("room-1", {recordingAssetId: null, segmentId: "segment-1", startSeconds: 9}))
+      .toBe("/sessions/room-1?mode=transcript#transcript-segment-segment-1");
+  });
   it("opens the exact conversation message without confusing it with a recording", () => {
     const source = {schema: "quipsly-session-work-entry-v1", roomId: "room-1", sourceMessageId: "message&one"};
     expect(sessionWorkSourceHref("room-1", source)).toBe("/sessions/room-1?mode=conversation&message=message%26one#conversation-message-message%26one");

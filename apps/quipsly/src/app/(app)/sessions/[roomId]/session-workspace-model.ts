@@ -130,8 +130,16 @@ export function parseSessionWorkspaceMode(value: unknown): SessionWorkspaceMode 
     : "overview";
 }
 
-export function sessionWorkspaceHref(roomId: string, mode: SessionWorkspaceMode) {
-  return `/sessions/${encodeURIComponent(roomId)}?mode=${mode}`;
+export type SessionMediaFocus = { sourceId: string | null; seconds: number | null };
+
+export function sessionWorkspaceHref(roomId: string, mode: SessionWorkspaceMode, focus?: SessionMediaFocus | null) {
+  const query = new URLSearchParams({mode});
+  if (focus?.sourceId?.trim()) {
+    query.set("source", focus.sourceId.trim().slice(0, 240));
+    if (typeof focus.seconds === "number" && Number.isFinite(focus.seconds) && focus.seconds >= 0 && focus.seconds <= 86_400)
+      query.set("at", String(Number(focus.seconds.toFixed(3))));
+  }
+  return `/sessions/${encodeURIComponent(roomId)}?${query}`;
 }
 
 export function sessionWorkspaceDefinition(mode: SessionWorkspaceMode) {

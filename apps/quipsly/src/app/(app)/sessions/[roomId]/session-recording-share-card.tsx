@@ -247,11 +247,13 @@ export function SessionRecordingShareCard({
   focusTranscriptKey = null,
   initialSourceId = null,
   renderOriginalRecordings,
+  onTakeSourcesChange,
 }: {
   roomId: string;
   focusTranscriptKey?: string | null;
   initialSourceId?: string | null;
   renderOriginalRecordings?: (sourceIds: string[]) => ReactNode;
+  onTakeSourcesChange?: (sourceIds: string[]) => void;
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -289,6 +291,10 @@ export function SessionRecordingShareCard({
   const activeEditSync = useRef<RecordingEditSync | null>(null);
   const [, setSyncUpdate] = useState(0);
   const [syncReadError, setSyncReadError] = useState<string | null>(null);
+  const selectedSourceIds = snapshot?.role === "COACH" ? (snapshot.available?.sources || []).map(source => source.id).join("|") : "";
+  useEffect(() => {
+    if (selectedSourceIds) onTakeSourcesChange?.(selectedSourceIds.split("|"));
+  }, [onTakeSourcesChange, selectedSourceIds]);
 
   useEffect(() => {
     const syncs = editSyncs.current;

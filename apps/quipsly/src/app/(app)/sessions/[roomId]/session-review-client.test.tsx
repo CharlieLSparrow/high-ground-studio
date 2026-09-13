@@ -331,6 +331,14 @@ describe("Session review goal candidates", () => {
     jest.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
   });
 
+  it("keeps the selected source and time in both desktop and mobile navigation", async () => {
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching" mode="notes" focusedRecordingAssetId="source-two" focusedPlaybackSeconds={12.5} consentSnapshot={{total: 1, granted: 1, transcriptionPermitted: 1}} />);
+    const nav = screen.getByRole("navigation", {name: "Session workspace modes"});
+    expect(within(nav).getByRole("link", {name: "Transcript"})).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=source-two&at=12.5");
+    await userEvent.selectOptions(within(nav).getByRole("combobox", {name: "Session section"}), "recordings");
+    expect(mockRouterPush).toHaveBeenCalledWith("/sessions/room-1?mode=recordings&source=source-two&at=12.5");
+  });
+
   it("keeps every section in a stable order and provides a compact mobile section picker", async () => {
     const consentSnapshot = { total: 1, granted: 1, transcriptionPermitted: 1 };
     const { rerender } = render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="overview" consentSnapshot={consentSnapshot} />);
@@ -618,7 +626,7 @@ describe("Session review goal candidates", () => {
     const coach = audience === "producer";
     global.fetch = jest.fn().mockResolvedValue(jsonResponse({
       ok: true, role: coach ? "COACH" : "CLIENT", output: null,
-      room: { client: { id: "client", label: "Client" } },
+      room: { id: "room-1", client: { id: "client", label: "Client" } },
       available: { sources: [], transcriptSegments: [], programDurationSeconds: 0 },
       readiness: { canPrepare: coach, localRendererAvailable: true },
     })) as typeof fetch;

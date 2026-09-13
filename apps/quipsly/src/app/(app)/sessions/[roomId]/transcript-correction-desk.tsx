@@ -1705,6 +1705,7 @@ type TranscriptCorrectionDeskProps = {
   sessionTitle?: string;
   recordingAssetId?: string | null;
   initialPlaybackSeconds?: number | null;
+  onMediaFocusChange?: (sourceId: string, seconds: number) => void;
   canUseProjectTeamNotes?: boolean;
   canEditRecording?: boolean;
   recordingEditor?: ReactNode | ((focus: RecordingEditorFocus | null) => ReactNode);
@@ -1722,6 +1723,7 @@ function TranscriptCorrectionDeskContent({
   sessionTitle = "Quipsly Session",
   recordingAssetId = null,
   initialPlaybackSeconds = null,
+  onMediaFocusChange,
   canUseProjectTeamNotes = false,
   canEditRecording = false,
   recordingEditor = null,
@@ -2034,6 +2036,7 @@ function TranscriptCorrectionDeskContent({
 
   async function playSourceAt(playback: TranscriptPlayback, seconds: number) {
     const next = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+    onMediaFocusChange?.(playback.recordingAssetId, next);
     if (currentPlayback?.sourceId === playback.sourceId && playbackState === "ready") {
       return playActiveSourceAt(next);
     }
@@ -2044,6 +2047,7 @@ function TranscriptCorrectionDeskContent({
 
   function selectPlaybackSource(playback: TranscriptPlayback) {
     mediaRef.current?.pause();
+    onMediaFocusChange?.(playback.recordingAssetId, 0);
     setPlaybackSegmentID(null);
     pendingSourcePlaybackRef.current = null;
     lastPlaybackTimeRef.current = null;

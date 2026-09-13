@@ -252,6 +252,11 @@ export type SessionReviewPacket = {
 };
 
 export type SessionTranscriptResultSource = {
+  recordingAssetId?: string | null;
+  sourceStartSeconds?: number | null;
+  sourceEndSeconds?: number | null;
+  programStartSeconds?: number | null;
+  programEndSeconds?: number | null;
   segmentId: string | null;
   startSeconds: number | null;
   endSeconds: number | null;

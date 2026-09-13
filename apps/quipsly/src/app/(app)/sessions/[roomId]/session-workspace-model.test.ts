@@ -38,6 +38,14 @@ describe("Session workspace modes", () => {
       eyebrow: "Share and continue",
     });
   });
+  it("preserves an exact recording and bounded playback time without treating the ID as access", () => {
+    expect(sessionWorkspaceHref("room", "transcript", {sourceId: "source&at=999", seconds: 8.125}))
+      .toBe("/sessions/room?mode=transcript&source=source%26at%3D999&at=8.125");
+    expect(sessionWorkspaceHref("room", "recordings", {sourceId: null, seconds: 8}))
+      .toBe("/sessions/room?mode=recordings");
+    expect(sessionWorkspaceHref("room", "transcript", {sourceId: "source", seconds: -1}))
+      .toBe("/sessions/room?mode=transcript&source=source");
+  });
 });
 
 describe("purpose-aware Session workspace language", () => {

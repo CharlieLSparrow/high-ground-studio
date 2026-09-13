@@ -144,6 +144,17 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     fireEvent.change(screen.getByRole("slider", { name: "Selected source time" }), { target: { value: "7.25" } });
     expect(screen.getByRole("link", { name: "Open in Transcript at 00:07" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=master&at=7.25#transcript-audio-review");
   });
+  it("restores a source-local moment and reports explicit seek and participant changes", () => {
+    const selected = jest.fn();
+    render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace"
+      preferredSourceId="master" initialPlaybackSeconds={7.25} onMediaFocusChange={selected} />);
+    expect(screen.getByRole("slider", {name: "Selected source time"})).toHaveValue("7.25");
+    fireEvent.change(screen.getByRole("slider", {name: "Selected source time"}), {target: {value: "12.5"}});
+    expect(selected).toHaveBeenLastCalledWith("master", 12.5);
+    fireEvent.click(screen.getByRole("button", {name: /Historical browser.wav/}));
+    expect(selected).toHaveBeenLastCalledWith("historical", 0);
+    expect(screen.getByRole("slider", {name: "Selected source time"})).toHaveValue("0");
+  });
 
   it("switches source identity and plays exact-time observations without claiming playback review", async () => {
     render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} />);

@@ -60,12 +60,16 @@ export function SessionRecordingHealthListeningNavigator({
   evidence,
   presentation = "technical",
   preferredSourceId = null,
+  initialPlaybackSeconds = null,
+  onMediaFocusChange,
 }: {
   roomId: string;
   health: SessionRecordingHealth;
   evidence: SessionSourceEvidence;
   presentation?: "technical" | "workspace";
   preferredSourceId?: string | null;
+  initialPlaybackSeconds?: number | null;
+  onMediaFocusChange?: (sourceId: string, seconds: number | null) => void;
 }) {
   const workspace = presentation === "workspace";
   const sources = useMemo<AuditionSource[]>(() => {
@@ -100,7 +104,9 @@ export function SessionRecordingHealthListeningNavigator({
   const initialId = sources.find(source => source.recordingAssetId === preferredSourceId)?.recordingAssetId
     ?? sources.find((source) => source.state === "READY")?.recordingAssetId ?? sources[0]?.recordingAssetId ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(initialId);
-  const [selectedSeconds, setSelectedSeconds] = useState(0);
+  const [selectedSeconds, setSelectedSeconds] = useState(initialId === preferredSourceId && initialPlaybackSeconds !== null && Number.isFinite(initialPlaybackSeconds)
+    ? Math.max(0, Math.min(initialPlaybackSeconds, sources.find(source => source.recordingAssetId === initialId)?.durationSeconds || 0)) : 0);
+  const previousSourceId = useRef(initialId);
   const [playbackState, setPlaybackState] = useState<"loading" | "ready" | "playing" | "paused" | "error">("loading");
   const [message, setMessage] = useState<string | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
@@ -117,6 +123,8 @@ export function SessionRecordingHealthListeningNavigator({
   }, [selected, selectedId]);
 
   useEffect(() => {
+    if (previousSourceId.current === selected?.recordingAssetId) return;
+    previousSourceId.current = selected?.recordingAssetId ?? null;
     setSelectedSeconds(0);
     setMessage(null);
     setPlaybackState("loading");
@@ -127,12 +135,14 @@ export function SessionRecordingHealthListeningNavigator({
     mediaRef.current?.pause();
     setPlaybackState("loading");
     setSelectedId(recordingAssetId);
+    onMediaFocusChange?.(recordingAssetId, 0);
   }
 
   function seek(seconds: number) {
     if (!selected) return;
     const bounded = Math.max(0, Math.min(selected.durationSeconds, Number.isFinite(seconds) ? seconds : 0));
     setSelectedSeconds(bounded);
+    onMediaFocusChange?.(selected.recordingAssetId, bounded);
     const media = mediaRef.current;
     if (media && media.readyState >= 1) {
       try { media.currentTime = bounded; } catch { /* metadata remains the authority for seek availability */ }
