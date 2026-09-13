@@ -139,6 +139,12 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #endif
     }
 
+    func setProviderMicrophoneMuted(_ muted: Bool) {
+        #if canImport(LiveKit)
+        providerAudioMaster?.setMicrophoneMuted(muted)
+        #endif
+    }
+
     private struct CaptureIntent {
         let captureID: UUID
         let captureGroupID: UUID

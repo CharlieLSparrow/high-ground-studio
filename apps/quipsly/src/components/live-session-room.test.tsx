@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { BrowserRetainedSourceGuardianEvidence } from "@/lib/session-guardian";
+import type { BrowserRecordingMicrophone } from "@/lib/browser-recording-microphone";
+let mockRecordingMicrophone: BrowserRecordingMicrophone | undefined;
 
 const mockRouterRefresh = jest.fn();
 let mockRetainedRecoveryCount = 0;
@@ -94,6 +96,7 @@ const mockLiveKitRoom = (jest.requireMock("livekit-client") as { __mockRoom: Moc
 jest.mock("@/components/browser-source-recorder", () => ({
   BrowserSourceRecorder: ({
     captureGroupId,
+    recordingMicrophone,
     projectSlug,
     microphoneId,
     conversationConnected,
@@ -108,6 +111,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     onOpenRecordingSettings,
   }: {
     captureGroupId: string;
+    recordingMicrophone?: BrowserRecordingMicrophone;
     projectSlug?: string | null;
     microphoneId?: string;
     conversationConnected?: boolean;
@@ -121,6 +125,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     controlsContainer?: HTMLElement | null;
     onOpenRecordingSettings?: () => void;
   }) => {
+    mockRecordingMicrophone = recordingMicrophone;
     useEffect(() => {
       if (mockRetainedRecoveryCount) onGuardianEvidenceChange?.({
         status: "ready", sourceType: "audio", message: "Saved recording found", vaultAvailable: true,
@@ -1278,9 +1283,11 @@ describe("LiveSessionRoom", () => {
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Checking microphone");
     fireEvent.click(screen.getByRole("button", { name: "Mute" }));
+    expect(mockRecordingMicrophone?.getMuted()).toBe(true);
     await waitFor(() => expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Microphone muted"));
     fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
     await waitFor(() => expect(screen.getByTestId("live-microphone-status")).toHaveTextContent("Checking microphone"));
+    expect(mockRecordingMicrophone?.getMuted()).toBe(false);
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent("55555555-5555-4555-8555-555555555545");
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("connected");
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/Recording is off until everyone chooses/i);
@@ -1514,6 +1521,7 @@ describe("LiveSessionRoom", () => {
     });
     expect(screen.getByRole("button", { name: "Rejoin call" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Muted" })).toHaveAttribute("aria-pressed", "true");
+    expect(mockRecordingMicrophone?.getMuted()).toBe(true);
     expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
     mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mockClear();
     mockLiveKitRoom.localParticipant.setCameraEnabled.mockClear();
@@ -1526,6 +1534,33 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled();
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(/rejoined muted.*camera stayed off/i);
     expect(joinRequests).toBe(2);
+  });
+
+  it("mutes the master immediately and does not reopen it when call unmute fails", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([{kind: "audioinput", deviceId: "mic", label: "Microphone"}]),
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    global.fetch = jest.fn(async () => ({ok: true, status: 200, json: async () => ({
+      ok: true, canJoin: true, serverUrl: "wss://live.test", participantToken: "test-token",
+    })})) as unknown as typeof fetch;
+    await act(async () => { render(<LiveSessionRoom callRoomId="mute-failure-room" captureGroupId="55555555-5555-4555-8555-555555555541" sessionTitle="Mute test" kind="coaching" />); });
+    fireEvent.click(screen.getByRole("button", {name: "Join call"}));
+    await screen.findByRole("button", {name: "Leave"});
+    const track = {enabled: true};
+    mockRecordingMicrophone!.attach({getAudioTracks: () => [track]} as unknown as MediaStream);
+    let completeMute!: () => void;
+    mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mockImplementationOnce(() => new Promise<void>(resolve => {completeMute = resolve;}));
+    fireEvent.click(screen.getByRole("button", {name: "Mute"}));
+    expect(track.enabled).toBe(false); // The provider promise has not resolved.
+    await act(async () => { completeMute(); });
+    mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(new Error("device unavailable"));
+    fireEvent.click(screen.getByRole("button", {name: "Unmute"}));
+    await screen.findByText(/microphone couldn't start/i);
+    expect(track.enabled).toBe(false);
+    const livekit = jest.requireActual("livekit-client") as typeof import("livekit-client");
+    await act(async () => { mockLiveKitRoom.__emit(livekit.RoomEvent.Disconnected); });
+    expect(track.enabled).toBe(false);
   });
 
   it("ends the rejoin loop when Nest confirms the call is closed while preserving source controls", async () => {

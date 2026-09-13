@@ -3220,16 +3220,20 @@ final class CaptureExperienceModel: ObservableObject {
         let retainedRecordingContinues =
             localSourceIsActive
             && activeAudioCapture?.isUsingProviderAudioMaster == true
+        // Mute the retained samples before awaiting the call transport. An
+        // unsuccessful unmute must never expose audio to the saved file.
+        if targetMuted { activeAudioCapture?.setProviderMicrophoneMuted(true) }
         await providerRoom.setMuted(
             targetMuted,
             retainedRecordingContinues: retainedRecordingContinues
         )
         guard providerRoom.isMuted == targetMuted else { return }
+        activeAudioCapture?.setProviderMicrophoneMuted(targetMuted)
         errorMessage = nil
         if retainedRecordingContinues {
             message = targetMuted
-                ? "Call muted. Your protected local recording continues."
-                : "Call microphone live. Your protected local recording continues."
+                ? "Microphone muted in the call and recording. The timeline continues with silence."
+                : "Microphone live in the call and recording."
         }
     }
 

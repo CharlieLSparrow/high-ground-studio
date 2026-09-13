@@ -1,6 +1,19 @@
 import AVFoundation
 import Foundation
 
+/// Silence replaces samples, never the elapsed timeline. Allocate our own
+/// buffer: the provider owns its input and may still need it for call routing.
+enum ProviderAudioPrivacyBuffer {
+    static func silence(matching input: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let output = AVAudioPCMBuffer(pcmFormat: input.format, frameCapacity: input.frameLength) else { return nil }
+        output.frameLength = input.frameLength
+        for buffer in UnsafeMutableAudioBufferListPointer(output.mutableAudioBufferList) {
+            if let data = buffer.mData { memset(data, 0, Int(buffer.mDataByteSize)) }
+        }
+        return output
+    }
+}
+
 struct ProviderAudioPCMLevelSnapshot: Equatable, Sendable {
     let averagePowerDBFS: Float
     let peakPowerDBFS: Float

@@ -15,7 +15,8 @@ import {
   UploadCloud,
   Video,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { BrowserRecordingMicrophone } from "@/lib/browser-recording-microphone";
 import { createPortal } from "react-dom";
 import { browserRecordingControl, type BrowserRecordingAction } from "@/lib/browser-recording-control";
 import {
@@ -290,6 +291,7 @@ export function BrowserSourceRecorder({
   conversationConnected = true,
   conversationEnded = false,
   callTransportInterrupted = false,
+  recordingMicrophone,
   stopRequestVersion = 0,
   onSourceLockChange,
   onGuardianEvidenceChange,
@@ -313,6 +315,7 @@ export function BrowserSourceRecorder({
   conversationConnected?: boolean;
   conversationEnded?: boolean;
   callTransportInterrupted?: boolean;
+  recordingMicrophone?: BrowserRecordingMicrophone;
   stopRequestVersion?: number;
   onSourceLockChange?: (locked: boolean) => void;
   onGuardianEvidenceChange?: (
@@ -328,6 +331,9 @@ export function BrowserSourceRecorder({
   onOpenRecordingSettings?: () => void;
   presentation?: "card" | "panel";
 }) {
+  const ownMicrophone = useMemo(() => new BrowserRecordingMicrophone(), [callRoomId, captureGroupId]);
+  const microphonePrivacy = recordingMicrophone ?? ownMicrophone;
+  const sourceMicrophoneMuted = useSyncExternalStore(microphonePrivacy.subscribe, microphonePrivacy.getMuted, microphonePrivacy.getMuted);
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
   const [message, setMessage] = useState("Getting recording ready…");
   const [sourceType, setSourceType] = useState<BrowserSourceKind>(
@@ -1948,9 +1954,16 @@ export function BrowserSourceRecorder({
       }, 2_000);
       cleanups.push(() => window.clearInterval(healthTimer));
 
+      let signalWindowOpenedAt = Date.now();
+      cleanups.push(microphonePrivacy.subscribe(() => {
+        signalWindowOpenedAt = Date.now();
+        setOperationalIssue(current => current?.kind === "source-no-signal" ? null : current);
+      }));
       const signalTimer = window.setInterval(() => {
         const meter = retainedMeterSummaryRef.current;
         if (
+          microphonePrivacy.getMuted() ||
+          Date.now() - signalWindowOpenedAt < RETAINED_SOURCE_SIGNAL_GRACE_MS ||
           !meter ||
           Date.now() - Date.parse(meter.startedAt) <
             RETAINED_SOURCE_SIGNAL_GRACE_MS ||
@@ -2020,7 +2033,7 @@ export function BrowserSourceRecorder({
         muteTimers.clear();
       };
     },
-    [clearGuardianMonitoring, stop],
+    [clearGuardianMonitoring, microphonePrivacy, stop],
   );
 
   useEffect(() => {
@@ -2160,6 +2173,7 @@ export function BrowserSourceRecorder({
             : false,
       });
       streamRef.current = stream;
+      microphonePrivacy.attach(stream);
       const supportedMime = chooseBrowserSourceMimeType(sourceType, (value) =>
         MediaRecorder.isTypeSupported(value),
       );
@@ -2361,6 +2375,7 @@ export function BrowserSourceRecorder({
           // MediaRecorder has stopped accepting input. Release browser hardware
           // before any durable queue or writer close can wait or fail; the
           // already-delivered blobs and OPFS ledger remain independently owned.
+          if (streamRef.current) microphonePrivacy.detach(streamRef.current);
           streamRef.current?.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
           await callTransportGapWriteRef.current;
@@ -2534,6 +2549,7 @@ export function BrowserSourceRecorder({
       } else {
         clearGuardianMonitoring();
         await stopRetainedSourceMeter(new Date().toISOString());
+        if (stream) microphonePrivacy.detach(stream);
         stream?.getTracks().forEach((track) => track.stop());
         await durableWriterRef.current?.close().catch(() => undefined);
         durableWriterRef.current = null;
@@ -2567,6 +2583,7 @@ export function BrowserSourceRecorder({
     headphonesAttested,
     microphoneId,
     microphoneLabel,
+    microphonePrivacy,
     participantId,
     rememberStopReceiptFailure,
     repairStopReceipt,
@@ -2846,12 +2863,13 @@ export function BrowserSourceRecorder({
         recorderRef.current.stop();
       } else {
         void stopRetainedSourceMeter(new Date().toISOString());
+        if (streamRef.current) microphonePrivacy.detach(streamRef.current);
         streamRef.current?.getTracks().forEach((track) => track.stop());
         void durableWriterRef.current?.close();
         durableWriterRef.current = null;
       }
     },
-    [clearGuardianMonitoring, stopRetainedSourceMeter],
+    [clearGuardianMonitoring, microphonePrivacy, stopRetainedSourceMeter],
   );
 
   const recoverySummary = browserSourceRecoverySummary(recoveryRows);
@@ -3007,6 +3025,7 @@ export function BrowserSourceRecorder({
       {consentContainer ? createPortal(consentChoice, consentContainer) : consentChoice ? <div className="mt-4">{consentChoice}</div> : null}
       {recordingActions}
       {toolbarControl}
+      {sourceMicrophoneMuted && (status === "recording" || status === "starting") ? <p role="status" className="mt-3 text-sm text-muted-foreground">Microphone muted in the call and recording. The timeline continues with silence.</p> : null}
 
       {!conversationEnded ? (
         <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">

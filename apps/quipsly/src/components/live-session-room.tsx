@@ -40,6 +40,7 @@ import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import { CallPeoplePanel } from "@/components/call-people-panel";
+import { BrowserRecordingMicrophone } from "@/lib/browser-recording-microphone";
 import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
@@ -561,6 +562,7 @@ export function LiveSessionRoom({
   const [leaveAfterSourceStops, setLeaveAfterSourceStops] = useState(false);
   const [sourceStopRequestVersion, setSourceStopRequestVersion] = useState(0);
   const recorderIdentity = `${callRoomId}:${captureGroupId?.trim() || ""}`;
+  const recordingMicrophone = useMemo(() => new BrowserRecordingMicrophone(), [recorderIdentity]);
   const [retainedGuardianState, setRetainedGuardianState] = useState<{
     identity: string; evidence: BrowserRetainedSourceGuardianEvidence;
   } | null>(null);
@@ -1556,6 +1558,7 @@ export function LiveSessionRoom({
     const recoveringCall = callRecoveryAvailable;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
     const shouldJoinMuted = options?.withoutDevices || (recoveringCall ? microphoneMutedRef.current : joinMuted);
+    if (useCallAudioHere && shouldJoinMuted) recordingMicrophone.setMuted(true);
     const shouldJoinWithCamera = !options?.withoutDevices && cameraWanted && !(recoveringCall && cameraMutedRef.current);
     const microphoneNeededNow = useCallAudioHere && !shouldJoinMuted;
     const cameraNeededNow = shouldJoinWithCamera;
@@ -1790,12 +1793,14 @@ export function LiveSessionRoom({
           setMicrophoneRecoveryHeld(false);
           setMicrophoneMuted(shouldJoinMuted);
           microphoneMutedRef.current = shouldJoinMuted;
+          recordingMicrophone.setMuted(Boolean(shouldJoinMuted));
         } catch (error) {
           await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
           stopAudioMeter();
           setMicrophoneMuted(true);
           microphoneMutedRef.current = true;
           setMicrophoneRecoveryHeld(true);
+          recordingMicrophone.setMuted(true);
           joinRecoveryMessages.push("You joined muted because the microphone couldn't start. Choose another microphone in settings and try Unmute.");
           joinTechnicalMessages.push(error instanceof Error ? `Microphone: ${error.message}` : "Microphone: device start failed.");
         }
@@ -1804,6 +1809,7 @@ export function LiveSessionRoom({
         setMicrophoneMuted(true);
         microphoneMutedRef.current = true;
         setMicrophoneRecoveryHeld(recoveringCall ? microphoneRecoveryHeld : joinWithoutMicrophone);
+        if (useCallAudioHere) recordingMicrophone.setMuted(true);
       }
       if (attemptCancelled()) {
         abandonAttemptRoom();
@@ -1900,7 +1906,7 @@ export function LiveSessionRoom({
             ? "The live call couldn't connect. Retry Join call, or continue with the protected recorder on this device."
             : "The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, kind, microphoneRecoveryHeld, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
+  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, kind, microphoneRecoveryHeld, onEpisodeWatchHint, projectSlug, recordingMicrophone, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1979,6 +1985,7 @@ export function LiveSessionRoom({
       return;
     }
     const nextMuted = !microphoneMuted;
+    if (nextMuted) recordingMicrophone.setMuted(true);
     microphoneToggleInFlightRef.current = true;
     try {
       if (!nextMuted && (!microphoneIdRef.current || microphoneRecoveryHeld)) {
@@ -1997,6 +2004,10 @@ export function LiveSessionRoom({
             }
           : undefined,
       );
+      if (roomRef.current !== room || room.state === ConnectionState.Disconnected || callAudioModeRef.current !== "this-device") {
+        publication?.track?.stop();
+        return;
+      }
       if (nextMuted) {
         stopAudioMeter();
       } else {
@@ -2004,16 +2015,17 @@ export function LiveSessionRoom({
       }
       setMicrophoneMuted(nextMuted);
       microphoneMutedRef.current = nextMuted;
+      recordingMicrophone.setMuted(nextMuted);
       setTechnicalMessage(null);
     } catch (error) {
       setMessage(nextMuted
-        ? "The microphone couldn't mute. Try again or leave the call."
+        ? "The call microphone couldn't mute. Your local recording is muted. Try again or leave the call."
         : "The microphone couldn't start. Choose another microphone in settings and try again.");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a microphone error.");
     } finally {
       microphoneToggleInFlightRef.current = false;
     }
-  }, [microphoneMuted, microphoneRecoveryHeld, refreshDevices, startAudioMeter, stopAudioMeter]);
+  }, [microphoneMuted, microphoneRecoveryHeld, recordingMicrophone, refreshDevices, startAudioMeter, stopAudioMeter]);
 
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
@@ -2285,6 +2297,13 @@ export function LiveSessionRoom({
   }, [callAudioMode, connected, outputId, routeAudioOutput]);
 
   useEffect(() => {
+    // Device failures and returning from companion audio can also leave the
+    // call muted. Never let its displayed muted state conceal a live master.
+    // A transport disconnect alone does not change the retained-source choice.
+    if (connected && callAudioMode === "this-device" && microphoneMuted) recordingMicrophone.setMuted(true);
+  }, [callAudioMode, connected, microphoneMuted, recordingMicrophone]);
+
+  useEffect(() => {
     void refreshProviderRecording(false);
     const interval = window.setInterval(() => void refreshProviderRecording(false), 12_000);
     return () => window.clearInterval(interval);
@@ -2324,6 +2343,7 @@ export function LiveSessionRoom({
       conversationConnected={connected || callRecoveryAvailable || localRecordingFallback || sourceLocked}
       conversationEnded={callEndedByPerson}
       callTransportInterrupted={status === "reconnecting" || callRecoveryAvailable || localRecordingFallback}
+      recordingMicrophone={recordingMicrophone}
       onSourceLockChange={setSourceLocked}
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={reportRetainedGuardianEvidence}

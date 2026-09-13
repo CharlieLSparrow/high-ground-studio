@@ -478,8 +478,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
             refreshCallAudioMeterLifecycle()
             if retainedRecordingContinues {
                 statusText = muted
-                    ? "Call muted. Protected local recording continues."
-                    : "Call microphone live. Protected local recording continues."
+                    ? "Microphone muted in the call and recording."
+                    : "Microphone live in the call and recording."
             } else {
                 statusText = muted
                     ? "Call muted."
