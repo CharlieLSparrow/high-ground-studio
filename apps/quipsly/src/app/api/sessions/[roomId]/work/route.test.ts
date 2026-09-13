@@ -3,7 +3,7 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
@@ -34,6 +34,19 @@ describe("Session work creation", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: actor } as any);
+  });
+
+  it("requires sign-in before opening a linked task", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null);
+    expect((await GET(new Request(`http://localhost/api/sessions/${roomId}/work?entryId=task-1`),
+      {params: Promise.resolve({roomId})})).status).toBe(401);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("requires an exact linked task rather than returning an unbounded work listing", async () => {
+    expect((await GET(new Request(`http://localhost/api/sessions/${roomId}/work`),
+      {params: Promise.resolve({roomId})})).status).toBe(400);
+    expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
   it("creates one retry-safe shared task without external side effects", async () => {

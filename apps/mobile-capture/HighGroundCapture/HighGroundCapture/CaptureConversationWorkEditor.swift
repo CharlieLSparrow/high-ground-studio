@@ -1,5 +1,101 @@
 import SwiftUI
 
+struct CaptureSessionConversationTaskEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: MobileSessionConversationClient
+    let session: MobileCaptureSession
+    let message: MobileSessionConversationMessage
+    @State private var title: String
+    @State private var pending: SessionConversationTaskCommand?
+    @State private var isSaving = false
+    @State private var error: String?
+
+    init(client: MobileSessionConversationClient, session: MobileCaptureSession, message: MobileSessionConversationMessage) {
+        self.client = client; self.session = session; self.message = message
+        _title = State(initialValue: String(message.body.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(160)))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Task title", text: $title, axis: .vertical)
+                        .accessibilityIdentifier("CaptureSessionConversationTaskTitle")
+                } footer: { Text("Assigned to you and shared with everyone in this session.") }
+                Section("From conversation") { Text(message.body).textSelection(.enabled) }
+                if let error { Section { Text(error).foregroundStyle(CapturePalette.brass) } }
+            }
+            .disabled(isSaving)
+            .captureFormSurface()
+            .navigationTitle("New task")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(isSaving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Adding…" : "Add task") {
+                        let command = SessionConversationTaskCommand(roomID: session.callRoomId, messageID: message.id, title: title, previous: pending)
+                        pending = command; isSaving = true; error = nil
+                        Task {
+                            let saved = await client.createTask(command, session: session)
+                            isSaving = false
+                            if saved { dismiss() }
+                            else { error = client.errorMessage ?? "Couldn't save your task. Your draft is still here; try again." }
+                        }
+                    }
+                    .disabled(isSaving || !client.canWrite || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.utf16.count > 500)
+                    .accessibilityIdentifier("CaptureSessionConversationTaskSave")
+                }
+            }
+        }
+        .interactiveDismissDisabled(isSaving)
+    }
+}
+
+/// Reuses the ordinary native task editor; opening shared work never leaves the call.
+struct CaptureSessionConversationTaskDetail: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: MobileSessionConversationClient
+    @StateObject private var today = CaptureTodayClient()
+    let session: MobileCaptureSession
+    let linkedTask: NestChatLinkedTask
+    @State private var task: MobileCaptureTodayTask?
+    @State private var isLoading = true
+
+    var body: some View {
+        Group {
+            if let task, task.canEdit == true {
+                CaptureTaskEditSheet(client: today, task: task)
+            } else {
+                NavigationStack {
+                    Group {
+                        if isLoading { ProgressView("Opening task…") }
+                        else if let task {
+                            Form {
+                                Section { Text(task.title).font(.headline); Text(task.detail ?? "").textSelection(.enabled) }
+                                Section { Text(task.status == "DONE" ? "Completed" : "Open") }
+                            }.captureFormSurface()
+                        } else {
+                            ContentUnavailableView {
+                                Label("Task unavailable", systemImage: "checkmark.circle")
+                            } description: { Text(client.errorMessage ?? "Couldn't open this task.") }
+                            actions: { Button("Try again") { Task { await load() } } }
+                        }
+                    }
+                    .navigationTitle("Task")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        task = await client.task(linkedTask.id, session: session)
+        isLoading = false
+    }
+}
+
 struct CaptureNestConversationTaskEditor: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var client: MobileEpisodeChatClient

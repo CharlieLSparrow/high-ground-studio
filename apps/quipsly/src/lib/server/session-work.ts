@@ -15,6 +15,7 @@ export async function loadSessionWork(input: {
   prisma: any;
   roomId: string;
   actor: SessionAccessActor;
+  entryId?: string;
 }) {
   const { prisma, roomId, actor } = input;
   const room = await prisma.callRoom.findFirst({
@@ -24,11 +25,11 @@ export async function loadSessionWork(input: {
   if (!room) return [];
   const shared = { sourceJson: { path: ["visibility"], equals: "SESSION_SHARED" } };
   const relationship = { sourceJson: { path: ["visibility"], equals: "engagement-shared" } };
-  const taskWhere = { roomId, OR: [
+  const taskWhere = { roomId, ...(input.entryId ? { id: input.entryId } : {}), OR: [
     { assignedUserId: actor.id }, shared,
     { AND: [relationship, { OR: coachingTaskCollaborationAccessWhere(actor.id) }] },
   ] };
-  const goalWhere = { roomId, OR: [
+  const goalWhere = { roomId, ...(input.entryId ? { id: input.entryId } : {}), OR: [
     { ownerUserId: actor.id }, shared,
     { AND: [relationship, { OR: personalOrSharedCoachingGoalAccessWhere(actor.id) }] },
   ] };

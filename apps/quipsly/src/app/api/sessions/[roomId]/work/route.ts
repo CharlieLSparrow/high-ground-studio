@@ -7,8 +7,22 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { loadSessionWorkAssignmentContext } from "@/lib/server/session-work-assignment";
 import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
+import { loadSessionWork } from "@/lib/server/session-work";
 
 export const runtime = "nodejs";
+
+/** Direct entry readback uses Session membership, not membership in the coach's whole Nest. */
+export async function GET(request: Request, context: { params: Promise<{ roomId: string }> }) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user) return NextResponse.json({ ok: false, error: "Sign in to open this task." }, { status: 401 });
+  const entryId = new URL(request.url).searchParams.get("entryId")?.trim();
+  if (!entryId || entryId.length > 240) return NextResponse.json({ ok: false, error: "Choose a task to open." }, { status: 400 });
+  const { roomId } = await context.params;
+  const entries = await loadSessionWork({ prisma: getPrismaClient(), roomId, actor: session.user, entryId });
+  const entry = entries.find(row => row.id === entryId);
+  if (!entry) return NextResponse.json({ ok: false, error: "This task is no longer available to this account." }, { status: 404 });
+  return NextResponse.json({ ok: true, roomId, entry }, { headers: { "Cache-Control": "private, no-store" } });
+}
 
 const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCHEMA = "quipsly-session-work-entry-v1";

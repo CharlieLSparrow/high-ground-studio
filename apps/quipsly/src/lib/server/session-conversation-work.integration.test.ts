@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "./quipsly-session";
 import { GET as conversation } from "./session-conversation";
-import { POST as createWork } from "@/app/api/sessions/[roomId]/work/route";
+import { GET as readWork, POST as createWork } from "@/app/api/sessions/[roomId]/work/route";
 import { loadSessionWork } from "./session-work";
 
 jest.mock("./quipsly-session", () => ({getQuipslySessionFromRequest: jest.fn()}));
@@ -74,14 +74,20 @@ if (enabled) {
       const work = await loadSessionWork({prisma, roomId, actor: users[index]});
       expect(work.find(entry => entry.id === task.id)).toMatchObject({fromConversation: true, fromTranscript: false,
         sourceHref: `/sessions/${roomId}?mode=conversation&message=${messageId}#conversation-message-${messageId}`});
+      const direct = await readWork(new Request(`http://localhost/api/sessions/${roomId}/work?entryId=${task.id}`), context());
+      expect(direct.status).toBe(200);
+      expect(await direct.json()).toMatchObject({ok: true, roomId, entry: {id: task.id, canEdit: index === 1}});
     }
+    as(2);
+    expect((await readWork(new Request(`http://localhost/api/sessions/${roomId}/work?entryId=${task.id}`), context())).status).toBe(404);
   });
 
   it("never leaks private tasks, accepts foreign message IDs, or widens Session discussion to a client space", async () => {
     as(0);
-    await prisma.actionItem.create({data: {roomId, title: "Private task must not leak", assignedUserId: users[0].id,
+    const privateTask = await prisma.actionItem.create({data: {roomId, title: "Private task must not leak", assignedUserId: users[0].id,
       sourceJson: {schema: "quipsly-session-work-entry-v1", roomId, sourceMessageId: messageId, visibility: "AUTHOR_PRIVATE"}}});
     as(1);
+    expect((await readWork(new Request(`http://localhost/api/sessions/${roomId}/work?entryId=${privateTask.id}`), context())).status).toBe(404);
     expect(JSON.stringify(await (await read()).json())).not.toContain("Private task must not leak");
     expect((await createWork(input({sourceMessageId: foreignMessageId, clientRequestId: randomUUID()}), context())).status).toBe(404);
     expect((await createWork(input({visibility: "ENGAGEMENT_SHARED", clientRequestId: randomUUID()}), context())).status).toBe(400);

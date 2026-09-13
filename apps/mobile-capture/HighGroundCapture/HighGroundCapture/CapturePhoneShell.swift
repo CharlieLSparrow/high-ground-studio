@@ -7710,7 +7710,7 @@ private func captureGoalTargetLabel(_ goal: MobileCaptureTodayGoal) -> String? {
     return "Target \(date.formatted(date: .abbreviated, time: .omitted))"
 }
 
-private struct CaptureTaskEditSheet: View {
+struct CaptureTaskEditSheet: View {
     @ObservedObject var client: CaptureTodayClient
     let task: MobileCaptureTodayTask
     var onSaved: (() -> Void)? = nil
@@ -7763,6 +7763,19 @@ private struct CaptureTaskEditSheet: View {
                     TextField("Optional detail", text: $detail, axis: .vertical)
                         .lineLimit(2...8)
                         .accessibilityIdentifier("CaptureTaskEditDetail")
+                }
+
+                Section {
+                    Button(task.status == "DONE" ? "Reopen task" : "Mark done") {
+                        Task {
+                            if await client.setTaskStatus(task, status: task.status == "DONE" ? "OPEN" : "DONE") {
+                                dismiss()
+                                onSaved?()
+                            }
+                        }
+                    }
+                    .disabled(client.isMutating)
+                    .accessibilityIdentifier("CaptureTaskEditCompletion")
                 }
 
                 Section("Due date") {

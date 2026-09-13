@@ -72,6 +72,25 @@ struct NestConversationTaskResponse: Decodable {
     let entry: NestChatLinkedTask?
 }
 
+struct SessionConversationTaskCommand: Encodable, Equatable {
+    let kind = "TASK"
+    let visibility = "SESSION_SHARED"
+    let sourceMessageId: String
+    let title: String
+    let clientRequestId: String
+    // Room identity participates in retry matching but isn't a second server authority.
+    let roomID: String
+
+    init(roomID: String, messageID: String, title: String, previous: Self? = nil) {
+        self.roomID = roomID
+        sourceMessageId = messageID
+        self.title = title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        if let previous, previous.roomID == roomID, previous.sourceMessageId == messageID, previous.title == self.title {
+            clientRequestId = previous.clientRequestId
+        } else { clientRequestId = UUID().uuidString.lowercased() }
+    }
+}
+
 struct NestChatMessageMetadata: Codable, Hashable {
     let coachingScheduleRequest: NestChatCoachingScheduleRequest?
     let coachingScheduleDecision: NestChatCoachingScheduleDecision?

@@ -3165,8 +3165,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         let boundary = app.descendants(matching: .any)["CaptureSessionChatBoundary"]
         XCTAssertTrue(boundary.label.contains("Session conversation"))
-        XCTAssertTrue(boundary.label.contains("Messages stay with this Session"))
-        XCTAssertTrue(boundary.label.contains("Notes and Work"))
+        XCTAssertTrue(boundary.label.contains("Chat and shared tasks for this session"))
         XCTAssertFalse(
             app.buttons["CaptureSessionChatSendButton"].isEnabled,
             "Deterministic preview must expose the production composer without authoring canonical Session chat."

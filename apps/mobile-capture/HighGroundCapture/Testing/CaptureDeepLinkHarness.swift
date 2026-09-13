@@ -106,6 +106,15 @@ struct CaptureDeepLinkHarness {
         let retryNewTag = NestConversationTaskCommand(projectSlug: "writing", messageID: "idea-1",
             title: "Gather examples", tagIDs: ["chapter", "research"], newTagLabels: ["Chapter ideas"], previous: withNewTag)
         precondition(retryNewTag == withNewTag)
+        let sessionTask = SessionConversationTaskCommand(roomID: "room-1", messageID: "idea-1", title: "  Gather\n examples ")
+        let sessionRetry = SessionConversationTaskCommand(roomID: "room-1", messageID: "idea-1", title: "Gather examples", previous: sessionTask)
+        precondition(sessionRetry == sessionTask)
+        precondition(SessionConversationTaskCommand(roomID: "room-2", messageID: "idea-1", title: "Gather examples", previous: sessionTask).clientRequestId != sessionTask.clientRequestId)
+        precondition(SessionConversationTaskCommand(roomID: "room-1", messageID: "idea-2", title: "Gather examples", previous: sessionTask).clientRequestId != sessionTask.clientRequestId)
+        precondition(SessionConversationTaskCommand(roomID: "room-1", messageID: "idea-1", title: "Gather other examples", previous: sessionTask).clientRequestId != sessionTask.clientRequestId)
+        let sessionBody = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(sessionTask)) as! [String: Any]
+        precondition(sessionBody["kind"] as? String == "TASK" && sessionBody["visibility"] as? String == "SESSION_SHARED")
+        precondition(sessionBody["sourceMessageId"] as? String == "idea-1")
         let newTagBody = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(withNewTag)) as! [String: Any]
         precondition((newTagBody["tags"] as? [String: [String]])?["newTagLabels"] == ["Chapter ideas"])
         let taskBody = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(taskCommand)) as! [String: Any]

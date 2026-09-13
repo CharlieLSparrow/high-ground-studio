@@ -28,6 +28,7 @@ struct MobileSessionConversationMessage: Codable, Hashable, Identifiable {
     let replyTo: MobileSessionConversationReply?
     let canEdit: Bool
     var gifUrl: String? = nil
+    var linkedTasks: [NestChatLinkedTask]? = nil
 }
 
 private struct MobileSessionConversationRoom: Codable {
@@ -48,6 +49,31 @@ private struct MobileSessionConversationResponse: Codable {
     let message: MobileSessionConversationMessage?
     let unreadCount: Int?
     let capabilities: MobileSessionConversationCapabilities?
+}
+
+private struct SessionConversationWorkResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let roomId: String?
+    let entry: Entry?
+
+    struct Entry: Decodable {
+        let id: String
+        let kind: String
+        let title: String
+        let body: String?
+        let status: String
+        let dueAt: String?
+        let updatedAt: String
+        let canEdit: Bool
+
+        func task(roomID: String, title sessionTitle: String) -> MobileCaptureTodayTask {
+            MobileCaptureTodayTask(id: id, title: title, detail: body, status: status, isOverdue: nil,
+                dueAt: dueAt, updatedAt: updatedAt, roomId: roomID, sessionTitle: sessionTitle,
+                project: nil, canEdit: canEdit, canEditTags: false, tagIds: nil, tagLabels: nil,
+                sourceAnchor: nil, lastMergedTranscriptEvidence: nil, todayReason: nil, recurrence: nil, reminder: nil)
+        }
+    }
 }
 
 private struct MobileSessionConversationCache: Codable {
@@ -88,6 +114,8 @@ final class MobileSessionConversationClient: ObservableObject {
     private var accountCancellable: AnyCancellable?
     private var lastReceivedLiveMessageID: String?
     private var loadGeneration = 0
+    private var openingID = UUID()
+    private var creatingTask = false
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -416,6 +444,70 @@ final class MobileSessionConversationClient: ObservableObject {
         try? FileManager.default.removeItem(at: root)
     }
 
+    func createTask(_ command: SessionConversationTaskCommand, session: MobileCaptureSession) async -> Bool {
+        guard canWrite, !creatingTask, let context = context(for: session),
+              command.roomID == context.roomID, currentRoomID == context.roomID,
+              messages.contains(where: { $0.id == command.sourceMessageId && $0.deletedAt == nil }),
+              let owner = AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return false }
+        let opening = openingID
+        creatingTask = true
+        errorMessage = nil
+        defer { if opening == openingID { creatingTask = false } }
+        do {
+            var request = URLRequest(url: context.endpoint.deletingLastPathComponent().appendingPathComponent("work"))
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(command)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return false }
+            try validateOrigin(response.url)
+            let payload = try AuthResponseDecoder.decode(NestConversationTaskResponse.self, from: data, response: response,
+                errorDomain: "QuipslyCapture.SessionConversation", malformedResponseMessage: "Your task couldn't be confirmed. Try again.").payload
+            guard (200...299).contains(response.statusCode), payload.ok, let entry = payload.entry else {
+                throw Self.error(payload.error ?? "Your task couldn't save. Try again.", code: response.statusCode)
+            }
+            invalidateLoads()
+            messages = messages.map { message in
+                guard message.id == command.sourceMessageId else { return message }
+                var updated = message
+                updated.linkedTasks = (message.linkedTasks ?? []).filter { $0.id != entry.id } + [entry]
+                return updated
+            }
+            persist(context: context)
+            return true
+        } catch {
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return false }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func task(_ id: String, session: MobileCaptureSession) async -> MobileCaptureTodayTask? {
+        guard let context = context(for: session), currentRoomID == context.roomID,
+              let owner = AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+        let opening = openingID
+        do {
+            let endpoint = context.endpoint.deletingLastPathComponent().appendingPathComponent("work")
+            var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "entryId", value: id)]
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: URLRequest(url: components.url!))
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+            try validateOrigin(response.url)
+            let payload = try AuthResponseDecoder.decode(SessionConversationWorkResponse.self, from: data, response: response,
+                errorDomain: "QuipslyCapture.SessionConversation", malformedResponseMessage: "Couldn't open this task. Try again.").payload
+            guard (200...299).contains(response.statusCode), payload.ok, payload.roomId == context.roomID,
+                  let entry = payload.entry, entry.id == id, entry.kind == "TASK" else {
+                throw Self.error(payload.error ?? "This task is no longer available.", code: response.statusCode)
+            }
+            return entry.task(roomID: context.roomID, title: session.title)
+        } catch {
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     private struct Context {
         let roomID: String
         let endpoint: URL
@@ -506,6 +598,8 @@ final class MobileSessionConversationClient: ObservableObject {
     }
 
     private func reset() {
+        openingID = UUID()
+        creatingTask = false
         composerDraft = ""
         stopPolling()
         loadGeneration += 1
@@ -651,6 +745,8 @@ struct MobileSessionConversationThread: View {
     @State private var editing: MobileSessionConversationMessage?
     @State private var editDraft = ""
     @State private var removeCandidate: MobileSessionConversationMessage?
+    @State private var taskMessage: MobileSessionConversationMessage?
+    @State private var openTask: NestChatLinkedTask?
 
     var body: some View {
         NavigationStack {
@@ -675,6 +771,13 @@ struct MobileSessionConversationThread: View {
                         }
                         .padding()
                     }
+                    .accessibilityIdentifier("CaptureSessionChatScroll")
+                    .scrollDismissesKeyboard(.interactively)
+                    .defaultScrollAnchor(.bottom)
+                    .onChange(of: taskMessage?.id) { _, id in
+                        guard id == nil, let last = client.messages.last else { return }
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
                     .onChange(of: client.messages.count) {
                         guard let last = client.messages.last else { return }
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -684,6 +787,14 @@ struct MobileSessionConversationThread: View {
             }
             .background(MobileStudioBackground())
             .navigationTitle(client.title)
+            .sheet(item: $taskMessage) { message in
+                CaptureSessionConversationTaskEditor(client: client, session: session, message: message)
+            }
+            .sheet(item: $openTask, onDismiss: {
+                Task { await client.load(session: session, forceRefresh: true, quietly: true) }
+            }) { task in
+                CaptureSessionConversationTaskDetail(client: client, session: session, linkedTask: task)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -731,7 +842,7 @@ struct MobileSessionConversationThread: View {
                 systemImage: client.isUsingProtectedCache ? "lock.fill" : "person.2.fill"
             )
             .font(.subheadline.weight(.bold))
-            Text("Messages stay with this Session. Personal notes and commitments stay in Notes and Work.")
+            Text("Chat and shared tasks for this session.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -772,6 +883,18 @@ struct MobileSessionConversationThread: View {
                             .italic(message.deletedAt != nil)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
+                        if message.deletedAt == nil {
+                            ForEach(message.linkedTasks ?? []) { task in
+                                Button { openTask = task } label: {
+                                    Label(task.title, systemImage: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
+                                        .font(.subheadline.weight(.medium))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("CaptureSessionChatTask_\(task.id)")
+                            }
+                        }
                         if message.deletedAt == nil, let gifUrl = message.gifUrl,
                            let url = URL(string: gifUrl), url.scheme == "https" {
                             Link("View shared GIF", destination: url)
@@ -808,6 +931,7 @@ struct MobileSessionConversationThread: View {
 
     private func messageMenu(_ message: MobileSessionConversationMessage) -> some View {
         Menu {
+            Button("Create task", systemImage: "checkmark.circle") { taskMessage = message }
             Button {
                 editing = nil
                 replyTo = message
@@ -833,6 +957,7 @@ struct MobileSessionConversationThread: View {
                 .frame(width: 36, height: 36)
         }
         .accessibilityLabel("Message actions")
+        .accessibilityIdentifier("CaptureSessionChatActions_\(message.id)")
     }
 
     private var composer: some View {
