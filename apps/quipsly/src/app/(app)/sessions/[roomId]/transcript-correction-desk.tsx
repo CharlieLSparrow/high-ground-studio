@@ -1778,6 +1778,8 @@ function TranscriptCorrectionDeskContent({
   const currentRecordingAssetId = currentSessionSource?.recordingAssetId
     ?? desk?.recording?.id
     ?? null;
+  const canExportMentorReport = Boolean(desk?.segments.length
+    && (desk.gate.allowed || desk.sessionTranscript?.pendingSources?.length));
   const currentEvidence = currentSessionSource?.evidence
     ?? (currentPlayback?.sourceId === desk?.playback?.sourceId ? desk?.evidence : null)
     ?? null;
@@ -2184,12 +2186,13 @@ function TranscriptCorrectionDeskContent({
   }
 
   async function shareMentorTranscript() {
-    if (mentorReportBusy || !desk?.gate.allowed || !desk.segments.length) return;
+    if (mentorReportBusy || !canExportMentorReport) return;
     setMentorReportBusy(true);
     setMessage(null);
     try {
       const query = new URLSearchParams();
-      if (recordingAssetId) query.set("recordingAssetId", recordingAssetId);
+      const reportSource = recordingAssetId ?? desk?.sessionTranscript?.sources[0]?.recordingAssetId;
+      if (reportSource) query.set("recordingAssetId", reportSource);
       const response = await fetch(
         `/api/sessions/${encodeURIComponent(roomId)}/transcript-report${query.size ? `?${query.toString()}` : ""}`,
         { cache: "no-store" },
@@ -2199,6 +2202,7 @@ function TranscriptCorrectionDeskContent({
         throw new Error(payload.error || "The mentor transcript could not be prepared.");
       }
       const blob = await response.blob();
+      const partialReport = response.headers.get("X-Quipsly-Transcript-Completeness") === "partial";
       const disposition = response.headers.get("Content-Disposition") || "";
       const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
       const fallbackName = `${sessionTitle.trim() || "Coaching Session"} Transcript.docx`;
@@ -2211,7 +2215,7 @@ function TranscriptCorrectionDeskContent({
       ) {
         try {
           await navigator.share(shareData);
-          setMessage("The mentor transcript is in the system share sheet. Quipsly does not claim who received it.");
+          setMessage("Report opened for sharing.");
           return;
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") {
@@ -2229,7 +2233,9 @@ function TranscriptCorrectionDeskContent({
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-      setMessage("Mentor transcript downloaded. It keeps coach/client columns, timestamps, and source identity.");
+      setMessage(partialReport
+        ? "Partial transcript downloaded. Some participant audio is not transcribed yet."
+        : "Mentor transcript downloaded.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The mentor transcript could not be prepared.");
     } finally {
@@ -2294,7 +2300,7 @@ function TranscriptCorrectionDeskContent({
           </div>
           <div className="flex flex-wrap gap-2">
             {canEditRecording ? recordingEditor ? <button type="button" aria-expanded={showRecordingEditor} aria-controls="inline-recording-editor" onClick={() => { setRecordingEditorFocus(null); setShowRecordingEditor((current) => !current); }} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />{showRecordingEditor ? "Close recording editor" : "Trim or cut recording"}</button> : <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim or cut recording</Link> : null}
-            {desk.roomPurpose === "COACHING" ? <button type="button" onClick={() => void shareMentorTranscript()} disabled={busy || mentorReportBusy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-orange-300 bg-orange-50 px-4 py-2 text-xs font-black text-orange-950 disabled:opacity-50">{mentorReportBusy ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}Mentor report</button> : null}
+            {desk.roomPurpose === "COACHING" ? <button type="button" onClick={() => void shareMentorTranscript()} disabled={busy || mentorReportBusy || !canExportMentorReport} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-orange-300 bg-orange-50 px-4 py-2 text-xs font-black text-orange-950 disabled:opacity-50">{mentorReportBusy ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}Mentor report</button> : null}
             <TranscriptExportDialog title={sessionTitle} segments={desk.segments} disabled={busy || !desk.gate.allowed} />
             <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh</button>
           </div>

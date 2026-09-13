@@ -3628,6 +3628,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // The old recorder surface disappears during this navigation transition.
         XCTAssertTrue(app.navigationBars["Transcript"].waitForExistence(timeout: 10))
         _ = controls.waitForExistence(timeout: 10)
+        let report = app.buttons["CaptureTranscriptPrepareMentorReport"]
+        XCTAssertTrue(report.waitForExistence(timeout: 10))
+        report.tap()
+        let shareReport = app.buttons["CaptureTranscriptShareMentorReport"]
+        XCTAssertTrue(shareReport.waitForExistence(timeout: 30),
+                      "Usable transcript text must export without assigning every speaker first.")
+        XCTAssertTrue((shareReport.value as? String)?.hasSuffix(".docx") == true)
+        attachRuntimeScreenshot(app, name: "Native mentor report ready without a speaker review barrier")
         XCTAssertTrue(waitForRuntimeElement(controls, in: app, timeout: 30, swipeAttempts: 12))
         controls.buttons["Timeline"].firstMatch.tap()
         let edit = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptCorrectButton_")).firstMatch

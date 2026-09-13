@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 
 export const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+// `next typegen` writes manifests as well as types. Keep it away from the
+// directory served by a running dev server or used for a release build.
+export function typecheckDistDirectory(env = process.env) {
+  return env.QUIPSLY_TYPECHECK_DIST_DIR || ".next-typecheck";
+}
+
 export function typescriptConfigForBuild(distDir) {
   if (!/^\.next(?:-[a-z0-9]+)*$/.test(distDir)) throw new Error("Invalid Next.js output directory");
   return {

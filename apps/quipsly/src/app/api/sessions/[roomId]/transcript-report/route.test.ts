@@ -150,7 +150,7 @@ describe("coaching transcript report route", () => {
     );
   });
 
-  it("preserves unresolved speaker identity as a visible blocker", async () => {
+  it("exports an unassigned speaker without blocking the report or inventing an identity", async () => {
     (readTranscriptCorrectionDesk as jest.Mock).mockResolvedValue(
       desk({
         speakerGroups: [],
@@ -172,10 +172,9 @@ describe("coaching transcript report route", () => {
       { params: Promise.resolve({ roomId: "room-1" }) },
     );
 
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual(
-      expect.objectContaining({ code: "REPORT_SPEAKERS_UNRESOLVED" }),
-    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Quipsly-Transcript-Unassigned-Turns")).toBe("1");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
 
   it("assembles participant-isolated transcripts from the same coherent take", async () => {
@@ -291,5 +290,26 @@ describe("coaching transcript report route", () => {
       "required",
     );
     expect(readTranscriptCorrectionDesk).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([false, true])("exports a labelled partial report while a client source is missing or processing (%s)", async (clientUploaded) => {
+    const startedAt = new Date("2026-08-23T16:00:00Z");
+    const coachDesk = desk({
+      transcriptJobId: "coach-job", recording: {id: "coach-source", participantId: "coach", recordedStartedAt: startedAt},
+      processing: {routing: {sourceTopology: "participant-isolated", speakerAuthority: "source-binding"}},
+      segments: [desk().segments[0]],
+    });
+    (readTranscriptCorrectionDesk as jest.Mock).mockResolvedValue(coachDesk);
+    const source = {id: "coach-source", participantId: "coach", kind: "LOCAL_AUDIO", checksum: "a".repeat(64),
+      recordedStartedAt: startedAt, localManifestJson: {captureGroupId: "take-1"},
+      transcriptJobs: [{id: "coach-job", createdAt: startedAt}]};
+    mockRecordingAssetFindMany.mockResolvedValue([source, ...(clientUploaded ? [{...source,
+      id: "client-source", participantId: "client", checksum: "b".repeat(64), transcriptJobs: []}] : [])]);
+    const response = await GET(new Request("https://nest.quipsly.com/api/sessions/room-1/transcript-report?recordingAssetId=coach-source"),
+      {params: Promise.resolve({roomId: "room-1"})});
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Quipsly-Transcript-Completeness")).toBe("partial");
+    expect(response.headers.get("X-Quipsly-Transcript-Source-Count")).toBe("1");
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledTimes(2);
   });
 });

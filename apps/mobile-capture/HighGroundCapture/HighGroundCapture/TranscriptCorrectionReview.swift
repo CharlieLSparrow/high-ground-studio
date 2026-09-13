@@ -323,6 +323,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     // An assembled desk can have a not-ready gate while individual lanes are
     // still transcribing. The command checks each lane's actual consent/access.
     var canRequestTranscript: Bool { gate.allowed || sessionTranscript?.pendingSources?.isEmpty == false }
+    var canExportMentorReport: Bool { !segments.isEmpty && canRequestTranscript }
 
     static func preview(roomID: String) -> Self {
         let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
@@ -1543,7 +1544,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             errorMessage = "The mentor report URL could not be created."
             return
         }
-        if let assetID = activeRecordingAssetID ?? (activeTranscriptJobID != nil ? desk?.recording?.id : nil) {
+        if let assetID = activeRecordingAssetID ?? (activeTranscriptJobID != nil ? desk?.recording?.id : nil)
+            ?? desk?.sessionTranscript?.sources.first?.recordingAssetId {
             components.queryItems = [URLQueryItem(name: "recordingAssetId", value: assetID)]
         }
         guard let url = components.url else { return }
@@ -1579,7 +1581,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 .appendingPathComponent("quipsly-\(UUID().uuidString.lowercased())-\(safeName)")
             try data.write(to: reportURL, options: [.atomic, .completeFileProtection])
             mentorReportURL = reportURL
-            message = "Mentor report ready to share. Nothing has been sent yet."
+            message = response.value(forHTTPHeaderField: "X-Quipsly-Transcript-Completeness") == "partial"
+                ? "Partial mentor report ready to share. Some participant audio is not transcribed yet."
+                : "Mentor report ready to share."
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -5046,7 +5050,7 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             if client.desk?.roomPurpose == "COACHING", !previewOnly,
-               client.desk?.gate.allowed == true, client.desk?.segments.isEmpty == false {
+               client.desk?.canExportMentorReport == true {
                 if let reportURL = client.mentorReportURL {
                     ShareLink(
                         item: reportURL,
@@ -5059,6 +5063,7 @@ struct CaptureTranscriptReviewView: View {
                     .captureProminentButton(fill: CapturePalette.warningFill)
                     .accessibilityHint("Opens the standard share sheet. Quipsly does not send the report until you choose a destination.")
                     .accessibilityIdentifier("CaptureTranscriptShareMentorReport")
+                    .accessibilityValue(reportURL.lastPathComponent)
                 } else {
                     Button {
                         Task {

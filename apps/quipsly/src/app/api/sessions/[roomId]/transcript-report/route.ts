@@ -74,7 +74,7 @@ function isParticipantIsolatedDesk(desk: any) {
   );
 }
 
-async function readCompleteCoachingTranscript(input: {
+async function readAvailableCoachingTranscript(input: {
   prisma: any;
   roomId: string;
   actor: { id: string; email?: string | null; isStaff: boolean };
@@ -105,6 +105,7 @@ async function readCompleteCoachingTranscript(input: {
       sources: [{ ...anchorSource, ...programClock.sources[0] }],
       segments: anchor.segments,
       programClock,
+      incomplete: false,
     };
   }
 
@@ -162,14 +163,16 @@ async function readCompleteCoachingTranscript(input: {
     participantIds,
     anchorRecordingAssetId: input.recordingAssetId,
   });
-  if (selected.some((source) => !source)) {
+  const completeSources = selected.filter((source): source is TranscriptSourceCandidate =>
+    Boolean(source?.transcriptJobs.length));
+  if (!completeSources.length) {
     throw new CoachingTranscriptReportError(
-      "The complete mentor transcript is still preparing. Wait for both participant recordings to finish transcribing.",
+      "There is no transcript text to export yet.",
       409,
-      "REPORT_SPEAKERS_INCOMPLETE",
+      "REPORT_TRANSCRIPT_NOT_READY",
     );
   }
-  const completeSources = selected as TranscriptSourceCandidate[];
+  const incomplete = completeSources.length < selected.length;
   const desks = await Promise.all(
     completeSources.map((source) =>
       readTranscriptCorrectionDesk({
@@ -240,7 +243,7 @@ async function readCompleteCoachingTranscript(input: {
       speakerAttribution: { participantId: sources[index].participantId },
     })),
   );
-  return { desks, sources, segments, programClock };
+  return { desks, sources, segments, programClock, incomplete };
 }
 
 export async function GET(
@@ -296,7 +299,7 @@ export async function GET(
         "REPORT_TRANSCRIPT_NOT_READY",
       );
     }
-    const complete = await readCompleteCoachingTranscript({
+    const complete = await readAvailableCoachingTranscript({
       prisma,
       roomId,
       actor,
@@ -312,6 +315,7 @@ export async function GET(
       participants: desk.participants,
       speakerGroups: complete.desks.length === 1 ? desk.speakerGroups : [],
       segments: complete.segments,
+      incomplete: complete.incomplete,
     });
     const document = await renderCoachingTranscriptReport(report);
     const filename = coachingTranscriptReportFileName(report);
@@ -325,6 +329,8 @@ export async function GET(
         "Content-Length": String(document.byteLength),
         "X-Quipsly-Transcript-Schema": report.schema,
         "X-Quipsly-Transcript-Source-Count": String(report.sources.length),
+        "X-Quipsly-Transcript-Completeness": report.incomplete ? "partial" : "available",
+        "X-Quipsly-Transcript-Unassigned-Turns": String(report.speakerCoverage.unassignedTurns),
         "X-Quipsly-Transcript-Timing": complete.programClock.authority,
         "X-Quipsly-Transcript-Waveform-Review": complete.programClock
           .waveformReviewRequired

@@ -258,6 +258,26 @@ describe("TranscriptCorrectionDesk", () => {
     expect(await screen.findByText(/mentor transcript downloaded/i)).toBeInTheDocument();
   });
 
+  it("downloads available transcript text while another source is pending", async () => {
+    const partial = {...desk(false), gate: {allowed: false}, sessionTranscript: {
+      status: "incomplete", sources: [{recordingAssetId: "ready-source", transcriptJobId: "ready-job", programOffsetSeconds: 0}],
+      pendingSources: [{recordingAssetId: "pending-source", participantLabel: "Client", status: "RUNNING"}],
+    }};
+    const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: jest.fn(() => "blob:partial-report") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: jest.fn() });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ok: true, json: async () => partial})
+      .mockResolvedValueOnce({ok: true, headers: new Headers({"X-Quipsly-Transcript-Completeness": "partial"}),
+        blob: async () => new Blob(["PK synthetic"], {type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"})});
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    fireEvent.click(await screen.findByRole("button", {name: /mentor report/i}));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/sessions/room-1/transcript-report?recordingAssetId=ready-source");
+    expect(await screen.findByText(/Partial transcript downloaded/)).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     // jsdom has no layout/scrolling implementation; real-browser coverage checks
     // the visible position, while these tests verify focus and the scroll call.
