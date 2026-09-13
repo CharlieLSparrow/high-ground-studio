@@ -6520,7 +6520,42 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(edit.waitForExistence(timeout: 120), "The verified uploaded source should become editable without leaving this screen.")
             edit.tap()
             XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingEditScreen"].firstMatch.waitForExistence(timeout: 10))
+            let listen = app.buttons["CaptureRecordingListenToggle"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(listen, in: app, timeout: 20, swipeAttempts: 6))
+            listen.tap()
+            let position = app.sliders["CaptureRecordingListenPosition"].firstMatch
+            let playbackReady = XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate { _, _ in position.exists && position.isEnabled }, object: position
+            )], timeout: 30)
+            if playbackReady != .completed { attachRuntimeScreenshot(app, name: "Inline source playback failure") }
+            let playbackError = app.staticTexts["CaptureRecordingListenError"].firstMatch
+            XCTAssertEqual(playbackReady, .completed, "The just-uploaded source must load in the inline editor player. \(playbackError.exists ? playbackError.label : "No playback error shown")")
+            if listen.label == "Pause recording" { listen.tap() }
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(position, in: app))
+            position.adjust(toNormalizedSliderPosition: 0.25)
+            let markStart = app.buttons["CaptureRecordingMarkStart"].firstMatch
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(markStart, in: app))
+            markStart.tap()
+            let keptRange = app.staticTexts["CaptureRecordingListenKeptRange"].firstMatch
+            XCTAssertFalse(keptRange.label.hasPrefix("Keep 0:00–"), "A source playhead mark must change the edit, not just playback.")
+            let markedRange = keptRange.label
+            let undo = app.buttons["CaptureRecordingEditUndo"].firstMatch
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(undo, in: app))
+            XCTAssertTrue(undo.isEnabled)
+            undo.tap()
+            XCTAssertTrue(keptRange.label.hasPrefix("Keep 0:00–"), "Undo must restore the full source start.")
+            let redo = app.buttons["CaptureRecordingEditRedo"].firstMatch
+            XCTAssertTrue(redo.isEnabled)
+            redo.tap()
+            XCTAssertEqual(keptRange.label, markedRange)
             attachRuntimeScreenshot(app, name: "Native call source in recording editor")
+            app.navigationBars.buttons.firstMatch.tap()
+            XCTAssertTrue(edit.waitForExistence(timeout: 15))
+            edit.tap()
+            XCTAssertTrue(waitForRuntimeElement(keptRange, in: app, timeout: 20, swipeAttempts: 6))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate { _, _ in keptRange.label == markedRange }, object: keptRange
+            )], timeout: 15), .completed, "The saved trim must survive leaving and reopening the editor.")
             app.navigationBars.buttons.firstMatch.tap()
         } else {
             XCTAssertTrue(app.staticTexts["CapturePostCallNoLocalRecording"].exists,

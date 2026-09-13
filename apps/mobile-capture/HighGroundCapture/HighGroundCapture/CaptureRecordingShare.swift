@@ -732,6 +732,8 @@ struct CaptureRecordingShareEditor: View {
     @State private var exportURL: URL?
     @State private var isPresentingExport = false
     @State private var exportNotice: String?
+    @State private var listeningSourceID = ""
+    @State private var listeningRequestID = UUID()
 
     init(roomID: String, focus: CaptureRecordingEditorFocus? = nil) {
         self.roomID = roomID
@@ -847,6 +849,7 @@ struct CaptureRecordingShareEditor: View {
         }
         .onChange(of: workingDraft) { _, draft in if let draft { editSync.update(draft) } }
         .onDisappear {
+            listeningRequestID = UUID()
             Task { await editSync.flush() }
             client.stopPreviewPlayback()
             sourcePlayback.close()
@@ -881,6 +884,8 @@ struct CaptureRecordingShareEditor: View {
                 set: { takeID in Task {
                     await editSync.flush()
                     client.stopPreviewPlayback()
+                    listeningRequestID = UUID()
+                    listeningSourceID = ""
                     sourcePlayback.close()
                     await client.load(roomID: roomID, takeID: takeID)
                 } }
@@ -943,6 +948,7 @@ struct CaptureRecordingShareEditor: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(CapturePalette.brass)
             } else {
+                recordingListeningControls(snapshot: snapshot)
                 if let output = snapshot.output,
                    editing,
                    missingOutputSourceCount(output, available: sources) > 0 {
@@ -1572,6 +1578,108 @@ struct CaptureRecordingShareEditor: View {
     }
 
     @MainActor
+    private func listenToSource(_ source: CaptureRecordingShareSource) async {
+        client.stopPreviewPlayback()
+        auditionSegmentID = nil
+        auditionNotice = nil
+        let requestID = UUID()
+        listeningRequestID = requestID
+        if sourcePlayback.errorMessage != nil { sourcePlayback.close() }
+        if sourcePlayback.preparedSourceID != source.id {
+            await sourcePlayback.prepareTranscriptAudition(source: source.mobileProtectedSource)
+        }
+        guard listeningRequestID == requestID, sourcePlayback.preparedSourceID == source.id else { return }
+        sourcePlayback.togglePlayback()
+    }
+
+    @ViewBuilder
+    private func recordingListeningControls(snapshot: CaptureRecordingShareSnapshot) -> some View {
+        let sources = snapshot.available?.sources ?? []
+        let selected = sources.first { $0.id == listeningSourceID }
+            ?? sources.first { $0.id == focus?.recordingAssetID }
+            ?? sources.first { selectedSourceIDs.contains($0.id) }
+        if let source = selected {
+            let loaded = sourcePlayback.preparedSourceID == source.id
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Listen and trim").font(.subheadline.bold())
+                if sources.count > 1 {
+                    Picker("Listen to track", selection: Binding(get: { source.id }, set: { id in
+                        listeningRequestID = UUID()
+                        sourcePlayback.close()
+                        listeningSourceID = id
+                    })) {
+                        ForEach(sources) { track in Text("\(track.participantLabel) · \(track.fileName ?? "Recording")").tag(track.id) }
+                    }
+                    .accessibilityIdentifier("CaptureRecordingListenTrack")
+                } else {
+                    Text(source.participantLabel).font(.caption).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    Button { Task { await listenToSource(source) } } label: {
+                        if sourcePlayback.isPreparing { ProgressView().frame(minWidth: 44, minHeight: 44) }
+                        else { Image(systemName: loaded && sourcePlayback.isPlaying ? "pause.fill" : "play.fill").frame(minWidth: 44, minHeight: 44) }
+                    }
+                    .captureProminentButton()
+                    .disabled(sourcePlayback.isPreparing)
+                    .accessibilityLabel(loaded && sourcePlayback.isPlaying ? "Pause recording" : "Play recording")
+                    .accessibilityIdentifier("CaptureRecordingListenToggle")
+                    Slider(value: Binding(get: { loaded ? sourcePlayback.position : 0 }, set: { sourcePlayback.seek(to: $0) }),
+                           in: 0...max(loaded ? sourcePlayback.duration : 0, 0.1))
+                        .disabled(!loaded || sourcePlayback.duration <= 0)
+                        .accessibilityLabel("Recording position")
+                        .accessibilityIdentifier("CaptureRecordingListenPosition")
+                }
+                HStack {
+                    Text(captureRecordingShareTime(loaded ? sourcePlayback.position : 0))
+                    Spacer()
+                    Text(loaded ? captureRecordingShareTime(sourcePlayback.duration) : "–:––")
+                }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack { recordingMarkButtons(source, snapshot: snapshot) }
+                    VStack(alignment: .leading) { recordingMarkButtons(source, snapshot: snapshot) }
+                }
+                .disabled(!loaded || sourcePlayback.isPreparing || !selectedSourceIDs.contains(source.id) || client.busyAction != nil)
+                Text("Keep \(captureRecordingShareTime(startSeconds))–\(captureRecordingShareTime(endSeconds)) of the session")
+                    .font(.caption.monospacedDigit())
+                    .accessibilityIdentifier("CaptureRecordingListenKeptRange")
+                if let error = sourcePlayback.errorMessage {
+                    Text(error).font(.caption).foregroundStyle(CapturePalette.brass)
+                        .accessibilityIdentifier("CaptureRecordingListenError")
+                }
+                if let auditionNotice { Text(auditionNotice).font(.caption).foregroundStyle(.secondary) }
+            }
+            .padding(12)
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureRecordingListenAndTrim")
+        }
+    }
+
+    @ViewBuilder
+    private func recordingMarkButtons(_ source: CaptureRecordingShareSource, snapshot: CaptureRecordingShareSnapshot) -> some View {
+        Button("Set start here") { markListeningBoundary(start: true, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkStart")
+            .frame(minHeight: 44)
+        Button("Set end here") { markListeningBoundary(start: false, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkEnd")
+            .frame(minHeight: 44)
+    }
+
+    private func markListeningBoundary(start: Bool, source: CaptureRecordingShareSource, snapshot: CaptureRecordingShareSnapshot) {
+        guard sourcePlayback.preparedSourceID == source.id, selectedSourceIDs.contains(source.id),
+              let position = CaptureRecordingTrimPosition.programTime(sourceSeconds: sourcePlayback.position,
+                sourceDuration: sourcePlayback.duration, offset: source.programOffsetSeconds,
+                programDuration: snapshot.available?.programDurationSeconds ?? 0),
+              start ? position <= endSeconds - 0.1 : position >= startSeconds + 0.1 else {
+            auditionNotice = start ? "Choose a start before the current end, or extend the end first." : "Choose an end after the current start, or move the start first."
+            return
+        }
+        auditionNotice = nil
+        editing = true
+        if start { startSeconds = position } else { endSeconds = position }
+    }
+
+    @MainActor
     private func auditionPassage(
         _ segment: CaptureRecordingShareTranscriptSegment,
         snapshot: CaptureRecordingShareSnapshot
@@ -1585,6 +1693,7 @@ struct CaptureRecordingShareEditor: View {
         }
         client.stopPreviewPlayback()
         auditionSegmentID = segment.id
+        listeningSourceID = source.id
         auditionNotice = "Preparing \(source.participantLabel)'s exact retained source…"
         await sourcePlayback.prepareTranscriptAudition(source: source.mobileProtectedSource)
         guard sourcePlayback.preparedSourceID == source.id else {
