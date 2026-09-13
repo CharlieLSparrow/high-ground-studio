@@ -266,6 +266,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  recording-transcript-export)
+    TEST_CASE="testEditedRecordingExportsMatchingSubtitles"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Edited transcript export requires an exact Session with a verified edited recording." >&2
+      exit 2
+    fi
+    ;;
   transcript-export)
     TEST_CASE="testTranscriptExportsStandardFilesFromTheSession"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then

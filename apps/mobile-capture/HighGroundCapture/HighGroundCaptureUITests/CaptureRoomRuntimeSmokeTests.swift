@@ -3528,6 +3528,31 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRecordingIdentity(titles[2], name: "Recovered transcript task for independent API readback")
     }
 
+    func testEditedRecordingExportsMatchingSubtitles() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {
+            throw XCTSkip("Edited transcript export requires a Session with a verified edited recording.")
+        }
+        let app = try launchSignedInCaptureApp(initialTab: "record", sessionDeepLinkRoomID: sessionID)
+        let editor = app.buttons["CaptureRecordingEditLink_\(sessionID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(editor, in: app, timeout: 30, swipeAttempts: 12))
+        editor.tap()
+        let menu = app.buttons["CaptureRecordingShareTranscriptExport"].firstMatch
+        guard waitForRuntimeElement(menu, in: app, timeout: 30, swipeAttempts: 15) else {
+            attachRuntimeScreenshot(app, name: "Edited recording export unavailable")
+            XCTFail("The shared edited recording must load its export controls: \(app.debugDescription)")
+            return
+        }
+        menu.tap()
+        let subtitles = app.buttons["Subtitles (.srt)"].firstMatch
+        XCTAssertTrue(subtitles.waitForExistence(timeout: 10))
+        subtitles.tap()
+        expectation(for: NSPredicate(format: "value ENDSWITH %@", ".srt"), evaluatedWith: menu)
+        waitForExpectations(timeout: 30)
+        XCTAssertEqual(app.state, .runningForeground)
+        attachRuntimeScreenshot(app, name: "Edited recording subtitle export in the system share sheet")
+    }
+
     func testTranscriptExportsStandardFilesFromTheSession() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {

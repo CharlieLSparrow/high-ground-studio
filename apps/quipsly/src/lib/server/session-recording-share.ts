@@ -31,6 +31,7 @@ import {
   type SessionTranscriptReadiness,
 } from "@/lib/session-transcript-readiness";
 import { assembleSessionTranscriptProgramClock } from "./session-transcript-assembly";
+import { projectEditedTranscript, type TimedTranscriptWord } from "@/lib/edited-transcript-export";
 
 export const SESSION_RECORDING_SHARE_SCHEMA =
   "quipsly-session-recording-share-v3";
@@ -474,10 +475,12 @@ async function loadSources(
   client: RestoreClient,
   roomId: string,
   preferredCaptureGroupId?: string | null,
-) {
+  exactSourceIds?: string[],
+): Promise<any[]> {
   const rows = await client.recordingAsset.findMany({
     where: {
       roomId,
+      ...(exactSourceIds ? {id: {in: exactSourceIds}} : {}),
       kind: { in: ["LOCAL_AUDIO", "LOCAL_VIDEO"] },
       status: "VERIFIED",
       participantId: { not: null },
@@ -530,7 +533,7 @@ async function loadSources(
   // A capture group is the durable call boundary. Unlike a start-time
   // cluster it deliberately survives long calls and crash/reconnect segments.
   // The bounded clock fallback exists only for legacy sources without groups.
-  return recordingShareSourcesForTake<any>(verified, preferredCaptureGroupId);
+  return exactSourceIds ? verified : recordingShareSourcesForTake<any>(verified, preferredCaptureGroupId);
 }
 
 async function exactCloudBindings(
@@ -690,6 +693,8 @@ export type RecordingShareTranscriptSegment = {
   cutEndSeconds: number;
   timingFingerprint: string;
   timingBasis: "provider-words" | "provider-segment";
+  words?: TimedTranscriptWord[];
+  providerText?: string;
   cutSafety:
     | "safe"
     | "timing-unavailable"
@@ -754,6 +759,7 @@ async function loadTranscriptEditSegments(
   roomId: string,
   sources: any[],
   programClock = sessionRecordingShareProgramClock(sources),
+  includeWords = false,
 ): Promise<RecordingShareTranscriptSegment[]> {
   if (!sources.length) return [];
   const sourceById = new Map(
@@ -941,6 +947,11 @@ async function loadTranscriptEditSegments(
             cutEndSeconds,
             timingFingerprint,
             timingBasis,
+            ...(includeWords && hasExactWordTiming ? {providerText: segment.text, words: providerWords.map((word: any) => ({
+              text: word.punctuatedWord || word.word,
+              startSeconds: offsetSeconds + Number(word.startSeconds),
+              endSeconds: offsetSeconds + Number(word.endSeconds),
+            }))} : {}),
             cutSafety: hasExactWordTiming ? "safe" : "timing-unavailable",
             cutSafetyReason: hasExactWordTiming
               ? "Word timing is bound to this exact source recording."
@@ -2076,7 +2087,7 @@ export async function transitionSessionRecordingShare(
   return { output: serializeOutput(updated), idempotentReplay: false };
 }
 
-export async function authorizeSessionRecordingShareMedia(
+async function authorizedSessionRecordingShareOutput(
   client: RestoreClient,
   input: { roomId: string; outputId: string; actor: SessionAccessActor },
 ) {
@@ -2111,6 +2122,50 @@ export async function authorizeSessionRecordingShareMedia(
       "RECORDING_SHARE_NOT_READY",
       "This recording preview is not ready.",
     );
+  return {room, output, render};
+}
+
+export async function readSessionRecordingShareTranscript(
+  client: RestoreClient,
+  input: { roomId: string; outputId: string; actor: SessionAccessActor },
+) {
+  const {room, output, render} = await authorizedSessionRecordingShareOutput(client, input);
+  const manifest = object(output.sourceManifestJson);
+  const allSources = Array.isArray(manifest.sources) ? manifest.sources.map(object) : [];
+  const mixedSources = allSources.filter(source => source.includeInAudioMix !== false);
+  if (!mixedSources.length || mixedSources.length > 128 || new Set(mixedSources.map(source => source.recordingAssetId)).size !== mixedSources.length) {
+    throw new SessionRecordingShareError(409, "RECORDING_TRANSCRIPT_SOURCES_UNAVAILABLE", "The saved recording sources could not be resolved.");
+  }
+  const sources = await loadSources(client, room.id, null, mixedSources.map(source => source.recordingAssetId));
+  if (sources.length !== mixedSources.length || mixedSources.some(saved => {
+    const source = sources.find((candidate: any) => candidate.id === saved.recordingAssetId);
+    return !source || source.checksum !== saved.sha256 || object(source.localManifestJson).storageGeneration !== saved.generation ||
+      source.storageBucket !== saved.bucketName || source.storageObjectPath !== saved.objectName ||
+      !Number.isFinite(saved.programOffsetSeconds);
+  })) throw new SessionRecordingShareError(409, "RECORDING_TRANSCRIPT_SOURCE_CHANGED", "A transcript source no longer matches this saved recording.");
+  const clock = {...sessionRecordingShareProgramClock([]), sources: mixedSources.map(source => ({
+    recordingAssetId: source.recordingAssetId, programOffsetSeconds: source.programOffsetSeconds, timingUncertaintyMilliseconds: null,
+  }))};
+  const passages = await loadTranscriptEditSegments(client, room.id, sources, clock, true);
+  const edit = object(object(output.bodyJson).edit);
+  let projection;
+  try {
+    projection = projectEditedTranscript(passages, {
+      keptRanges: edit.keptRanges,
+      joinCrossfadeSeconds: edit.joinCrossfadeSeconds,
+    }, Number(render.durationSeconds));
+  } catch (error) {
+    throw new SessionRecordingShareError(409, "RECORDING_TRANSCRIPT_TIMING_UNAVAILABLE", error instanceof Error ? error.message : "The saved edit timing is unavailable.");
+  }
+  const untranscribedSources = mixedSources.filter(source => !passages.some(passage => passage.sourceRecordingAssetId === source.recordingAssetId)).length;
+  return {title: output.title, outputId: output.id, outputSha256: render.sha256, ...projection, untranscribedSources};
+}
+
+export async function authorizeSessionRecordingShareMedia(
+  client: RestoreClient,
+  input: { roomId: string; outputId: string; actor: SessionAccessActor },
+) {
+  const {room, render} = await authorizedSessionRecordingShareOutput(client, input);
   const asset = await client.recordingAsset.findFirst({
     where: {
       id: render.recordingAssetId,

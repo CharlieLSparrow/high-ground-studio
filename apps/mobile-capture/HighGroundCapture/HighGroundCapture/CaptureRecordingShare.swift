@@ -80,9 +80,17 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
 
     struct Body: Codable, Equatable {
         struct Edit: Codable, Equatable {
+            // A saved cut is an identity/timing reference, not a transcript passage.
+            // The server deliberately does not copy the removed words into it.
+            struct Exclusion: Codable, Equatable, Identifiable {
+                let transcriptJobId: String
+                let segmentId: String
+                var id: String { "\(transcriptJobId):\(segmentId)" }
+            }
+
             let startSeconds: TimeInterval?
             let endSeconds: TimeInterval?
-            let transcriptExclusions: [CaptureRecordingShareTranscriptSegment]?
+            let transcriptExclusions: [Exclusion]?
         }
 
         let edit: Edit?
@@ -225,8 +233,10 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     private var selectedTakeID: String?
     private var selectedRoomID: String?
     private var loadGeneration = 0
+    private var transcriptExportFiles: [URL] = []
 
     deinit {
+        for file in transcriptExportFiles { try? FileManager.default.removeItem(at: file) }
         if let videoPlaybackEndObserver {
             NotificationCenter.default.removeObserver(videoPlaybackEndObserver)
         }
@@ -554,6 +564,48 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     private func endpoint(roomID: String) -> URL? {
         guard let room = Self.encodedPathComponent(roomID) else { return nil }
         return URL(string: "\(baseURL)/api/sessions/\(room)/recording-share")
+    }
+
+    func prepareMatchingTranscriptExport(roomID: String, format: CaptureTranscriptExportFormat) async -> URL? {
+        guard busyAction == nil, AuthManager.shared.networkActionsAllowed,
+              let output = snapshot?.output, output.render.status == "VERIFIED",
+              snapshot?.role == "COACH" || output.status == "RELEASED",
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let room = Self.encodedPathComponent(roomID),
+              let outputID = Self.encodedPathComponent(output.id),
+              let url = URL(string: "\(baseURL)/api/sessions/\(room)/recording-share/transcript/\(outputID)?format=\(format.rawValue)") else { return nil }
+        busyAction = "TRANSCRIPT_EXPORT"
+        notice = nil
+        let generation = loadGeneration
+        defer { busyAction = nil }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard AuthManager.currentStoredOwnerID() == owner.ownerAccountID,
+                  generation == loadGeneration, snapshot?.output?.id == output.id,
+                  snapshot?.output?.render.sha256 == output.render.sha256 else { return nil }
+            guard response.statusCode == 200 else {
+                throw responseError(data, fallback: "This recording’s transcript could not be exported.")
+            }
+            guard let text = String(data: data, encoding: .utf8), !text.isEmpty,
+                  response.mimeType != "text/html", response.mimeType != "application/json" else {
+                throw CaptureRecordingShareClientError.message("Quipsly did not return a transcript file. Try again.")
+            }
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("Edited-transcript-\(UUID().uuidString).\(format.rawValue)")
+            try data.write(to: file, options: [.atomic, .completeFileProtection])
+            transcriptExportFiles.append(file)
+            if (Int(response.value(forHTTPHeaderField: "X-Quipsly-Omitted-Boundary-Passages") ?? "0") ?? 0) > 0 {
+                notice = "Some words cut at a boundary were omitted because their remaining timing is uncertain."
+            } else if (Int(response.value(forHTTPHeaderField: "X-Quipsly-Untranscribed-Sources") ?? "0") ?? 0) > 0 {
+                notice = "Some recording tracks do not have a transcript yet."
+            }
+            return file
+        } catch {
+            guard AuthManager.currentStoredOwnerID() == owner.ownerAccountID, generation == loadGeneration else { return nil }
+            notice = error.localizedDescription
+            return nil
+        }
     }
 
     private func mediaEndpoint(roomID: String, outputID: String) -> URL? {
@@ -1404,6 +1456,28 @@ struct CaptureRecordingShareEditor: View {
                 .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingShareExport")
                 .accessibilityHint("Verifies the exact edited bytes, then opens the standard system share sheet. Quipsly does not choose or claim a recipient.")
+
+                Menu {
+                    ForEach(CaptureTranscriptExportFormat.allCases) { format in
+                        Button(format.label) {
+                            Task {
+                                exportNotice = nil
+                                exportURL = nil
+                                guard let url = await client.prepareMatchingTranscriptExport(roomID: roomID, format: format) else { return }
+                                exportURL = url
+                                isPresentingExport = true
+                            }
+                        }
+                    }
+                } label: {
+                    Label(client.busyAction == "TRANSCRIPT_EXPORT" ? "Preparing transcript…" : "Export matching transcript", systemImage: "text.bubble")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(client.busyAction != nil)
+                .accessibilityIdentifier("CaptureRecordingShareTranscriptExport")
+                .accessibilityValue(exportURL?.lastPathComponent ?? "No transcript prepared")
+                .accessibilityHint("Exports corrected text with only the speech kept in this edited recording. Subtitle times follow the edited file.")
 
                 if let exportNotice {
                     Text(exportNotice)

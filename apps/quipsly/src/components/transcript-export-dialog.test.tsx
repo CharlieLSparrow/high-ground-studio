@@ -59,3 +59,30 @@ it("does not claim delivery when the user cancels the system share sheet", async
   expect(screen.getByRole("link", {name: "Download TXT"})).toBeVisible();
   Object.defineProperty(navigator, "share", {configurable: true, value: undefined});
 });
+
+it("loads only the selected edited recording and refreshes authorization on every open", async () => {
+  global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, segments, notice: "Some words cut at a boundary were omitted."})});
+  render(<TranscriptExportDialog title="Edited coaching" sourceUrl="/api/sessions/one/recording-share/transcript/output-one" description="Times match this edited file." />);
+  openExport();
+  expect(await screen.findByRole("link", {name: "Download TXT"})).toBeVisible();
+  expect(global.fetch).toHaveBeenCalledWith("/api/sessions/one/recording-share/transcript/output-one?format=json", expect.objectContaining({cache: "no-store"}));
+  expect(screen.getByRole("status")).toHaveTextContent("Some words cut at a boundary");
+  fireEvent.click(screen.getByRole("button", {name: "Close transcript export"}));
+  jest.mocked(global.fetch).mockResolvedValue({ok: false, json: async () => ({ok: false, error: "This recording is no longer shared."})} as Response);
+  openExport();
+  expect(await screen.findByRole("alert")).toHaveTextContent("no longer shared");
+  expect(screen.queryByRole("link", {name: "Download TXT"})).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Transcript export preview")).not.toBeInTheDocument();
+});
+
+it("discards a response for a previous output when the selected recording changes", async () => {
+  let resolveOld!: (response: Response) => void;
+  global.fetch = jest.fn().mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
+    .mockResolvedValue({ok: true, json: async () => ({ok: true, segments: [{...segments[0], text: "Current edit only"}]})});
+  const view = render(<TranscriptExportDialog title="Edit" sourceUrl="/old-output" />);
+  openExport();
+  view.rerender(<TranscriptExportDialog title="Edit" sourceUrl="/new-output" />);
+  expect(await screen.findByLabelText("Transcript export preview")).toHaveTextContent("Current edit only");
+  resolveOld({ok: true, json: async () => ({ok: true, segments})} as Response);
+  await waitFor(() => expect(screen.getByLabelText("Transcript export preview")).not.toHaveTextContent("The corrected chapter title."));
+});
