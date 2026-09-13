@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   Download,
   ExternalLink,
   HardDrive,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { browserRecordingControl, type BrowserRecordingAction } from "@/lib/browser-recording-control";
 import {
   QUIPSLY_BROWSER_SOURCE_CAPTURE_KIND,
   browserSourceCanBegin,
@@ -294,6 +296,7 @@ export function BrowserSourceRecorder({
   onRecordingConsentChange,
   onOpenDeviceSettings,
   consentContainer = null,
+  controlsContainer = null,
   onOpenRecordingSettings,
   presentation = "card",
 }: {
@@ -321,6 +324,7 @@ export function BrowserSourceRecorder({
   }) => void;
   onOpenDeviceSettings?: () => void;
   consentContainer?: HTMLElement | null;
+  controlsContainer?: HTMLElement | null;
   onOpenRecordingSettings?: () => void;
   presentation?: "card" | "panel";
 }) {
@@ -400,6 +404,7 @@ export function BrowserSourceRecorder({
   const [recordingDirective, setRecordingDirective] =
     useState<BrowserRecordingDirective | null>(null);
   const [directiveBusy, setDirectiveBusy] = useState(false);
+  const directiveCommandInFlightRef = useRef(false);
   const [directiveError, setDirectiveError] = useState<string | null>(null);
   useEffect(() => {
     setDirectiveError(null);
@@ -2581,7 +2586,8 @@ export function BrowserSourceRecorder({
 
   const issueDirective = useCallback(
     async (action: "START" | "STOP") => {
-      if (directiveBusy) return;
+      if (directiveBusy || directiveCommandInFlightRef.current) return;
+      directiveCommandInFlightRef.current = true;
       directiveBaselineEstablishedRef.current = true;
       setDirectiveBusy(true);
       setDirectiveError(null);
@@ -2600,6 +2606,7 @@ export function BrowserSourceRecorder({
             : "Recording coordination is temporarily unavailable.",
         );
       } finally {
+        directiveCommandInFlightRef.current = false;
         setDirectiveBusy(false);
       }
     },
@@ -2879,151 +2886,60 @@ export function BrowserSourceRecorder({
       ? "Needs attention"
       : recorderStatusLabel;
 
-  const recordingActions = (
-        <div hidden={!conversationConnected}>
-        <div className={presentation === "panel" ? "mt-3 flex flex-col gap-2" : "mt-3 flex flex-wrap items-center gap-2"}>
-          {["ENDED", "CANCELED", "FAILED"].includes(
-            roomStatus?.toUpperCase() ?? "",
-          ) ? (
-            canControlRoom ? (
-              <button
-                type="button"
-                onClick={() => void reopenRoom()}
-                disabled={status === "checking"}
-                className="inline-flex min-h-12 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
-              >
-                <RefreshCw size={16} /> Reopen Session to record
-              </button>
-            ) : (
-              <span className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-950">
-                This Session is closed. Ask the coach or host to reopen it
-                before recording another take.
-              </span>
-            )
-          ) : null}
-          {status === "recording" ||
-          (canControlRoom && recordingDirective?.shouldRecord === true) ? (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  canControlRoom ? void issueDirective("STOP") : stop()
-                }
-                disabled={directiveBusy}
-                className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white"
-              >
-                <Square size={16} fill="currentColor" />{" "}
-                {canControlRoom ? "Stop recording" : "Stop my recording"}
-              </button>
-              {canControlRoom &&
-              recordingDirective &&
-              ((status === "ready" &&
-                retainedReadiness.ok &&
-                directiveHandlingRef.current.get(recordingDirective.id) ===
-                  "JOIN_REQUIRED") ||
-                browserRecordingDirectiveCanRetry({
-                  action: recordingDirective.action,
-                  status,
-                  retainedReady: retainedReadiness.ok,
-                  terminalState: directiveHandlingRef.current.get(
-                    recordingDirective.id,
-                  ),
-                })) ? (
-                <button
-                  type="button"
-                  onClick={() => void joinActiveRecording()}
-                  disabled={directiveBusy || !retainedReadiness.ok}
-                  className="inline-flex min-h-12 items-center gap-2 rounded-full border border-rose-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-rose-950 disabled:opacity-40"
-                >
-                  <span className="h-3 w-3 rounded-full bg-rose-700" />{" "}
-                  {status === "error"
-                    ? "Try recording again"
-                    : "Start my recording"}
-                </button>
-              ) : null}
-            </>
-          ) : !myConsentCoversSource ? null : waitingForParticipantConsent ? (
-            <span
-              className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-950"
-              aria-label="Waiting for recording consent"
-              aria-live="polite"
-            >
-              Your choice is saved. Waiting for everyone to allow recording.
-            </span>
-          ) : canControlRoom ? (
-            <button
-              type="button"
-              onClick={() => void issueDirective("START")}
-              disabled={
-                !retainedReadiness.ok ||
-                directiveBusy ||
-                ["starting", "stopping", "uploading"].includes(status) ||
-                recordingDirective?.shouldRecord === true
-              }
-              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
-            >
-              {status === "starting" ? (
-                <LoaderCircle size={16} className="animate-spin" />
-              ) : (
-                <span className="h-3 w-3 rounded-full bg-white" />
-              )}{" "}
-              {sessionKind === "coaching" ? "Record" : "Record source"}
-            </button>
-          ) : recordingDirective?.shouldRecord &&
-            recordingDirective &&
-            ((status === "ready" &&
-              retainedReadiness.ok &&
-              directiveHandlingRef.current.get(recordingDirective.id) ===
-                "JOIN_REQUIRED") ||
-              browserRecordingDirectiveCanRetry({
-                action: recordingDirective.action,
-                status,
-                retainedReady: retainedReadiness.ok,
-                terminalState: directiveHandlingRef.current.get(
-                  recordingDirective.id,
-                ),
-              })) ? (
-            <button
-              type="button"
-              onClick={() => void joinActiveRecording()}
-              disabled={directiveBusy || !retainedReadiness.ok}
-              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
-            >
-              <span className="h-3 w-3 rounded-full bg-white" />{" "}
-              {status === "error"
-                ? "Try recording again"
-                : "Start my recording"}
-            </button>
-          ) : (
-            <span className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold text-violet-950">
-              {recordingDirective?.shouldRecord
-                ? "Starting your recording…"
-                : "Recording starts when the coach or host presses Record."}
-            </span>
-          )}
-        </div>
-        {directiveError ? (
-          <p role="alert" className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950">
-            {directiveError}
-          </p>
-        ) : null}
-        {vaultChecked && status !== "checking" && status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? (
-          <p
-            data-testid="recording-readiness-message"
-            role="status"
-            className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950"
-          >
-            {retainedReadiness.reason}
-            {onOpenDeviceSettings && ["microphone", "camera"].includes(retainedReadiness.blocker ?? "") ? (
-              <button type="button" onClick={onOpenDeviceSettings} className="ml-2 min-h-11 rounded-full border border-amber-300 px-3 font-bold underline underline-offset-2">
-                Choose devices
-              </button>
-            ) : null}
-          </p>
-        ) : null}
-        </div>
-  );
-
+  const roomClosed = ["ENDED", "CANCELED", "FAILED"].includes(roomStatus?.toUpperCase() ?? "");
+  const canJoinActive = Boolean(recordingDirective && (
+    (status === "ready" && retainedReadiness.ok && directiveHandlingRef.current.get(recordingDirective.id) === "JOIN_REQUIRED") ||
+    browserRecordingDirectiveCanRetry({action: recordingDirective.action, status, retainedReady: retainedReadiness.ok,
+      terminalState: directiveHandlingRef.current.get(recordingDirective.id)})
+  ));
+  const recordingControl = browserRecordingControl({status, canControlRoom, closed: roomClosed,
+    directiveActive: recordingDirective?.shouldRecord === true, directiveBusy, myConsent: myConsentCoversSource,
+    waitingForConsent: waitingForParticipantConsent, ready: retainedReadiness.ok, canJoinActive});
+  const runRecordingAction = (action: BrowserRecordingAction) => {
+    if (action === "START" || action === "STOP") void issueDirective(action);
+    else if (action === "STOP_LOCAL") stop();
+    else if (action === "JOIN") void joinActiveRecording();
+    else void reopenRoom();
+  };
+  const recordingButton = recordingControl.action ? <button type="button"
+    onClick={() => runRecordingAction(recordingControl.action!)} disabled={recordingControl.disabled}
+    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-rose-800 px-5 text-sm font-semibold text-white disabled:opacity-40">
+    {recordingControl.busy ? <LoaderCircle size={16} className="animate-spin" /> : recordingControl.action === "STOP" || recordingControl.action === "STOP_LOCAL" ? <Square size={16} fill="currentColor" /> : recordingControl.action === "REOPEN" ? <RefreshCw size={16} /> : <span className="size-3 rounded-full bg-current" />}
+    {recordingControl.action === "START" && sessionKind !== "coaching" ? "Record source" : recordingControl.label}
+  </button> : null;
+  const recordingActions = <div hidden={!conversationConnected}>
+    <div className={presentation === "panel" ? "mt-3 flex flex-col gap-2" : "mt-3 flex flex-wrap items-center gap-2"}>
+      {recordingButton}
+      {canControlRoom && recordingDirective?.shouldRecord && canJoinActive && status !== "recording" ? <button type="button"
+        onClick={() => void joinActiveRecording()} disabled={directiveBusy || !retainedReadiness.ok}
+        className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold disabled:opacity-50">{status === "error" ? "Try recording again" : "Start my recording"}</button> : null}
+      {roomClosed && !canControlRoom ? <p className="text-sm text-muted-foreground">This session is closed. Ask the host to reopen it before recording another take.</p>
+        : !recordingControl.action && myConsentCoversSource ? <p aria-live="polite" aria-label={waitingForParticipantConsent ? "Waiting for recording consent" : undefined} className="text-sm text-muted-foreground">
+          {waitingForParticipantConsent ? "Your choice is saved. Waiting for everyone to allow recording." : recordingDirective?.shouldRecord ? "Starting your recording…" : "Recording starts when the coach or host presses Record."}
+        </p> : null}
+    </div>
+    {directiveError ? <p role="alert" className="mt-2 rounded-xl border border-destructive/30 bg-card p-3 text-sm text-destructive">{directiveError}</p> : null}
+    {vaultChecked && status !== "checking" && status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? <p data-testid="recording-readiness-message" role="status" className="mt-2 rounded-xl border border-border bg-card p-3 text-sm">
+      {retainedReadiness.reason}
+      {onOpenDeviceSettings && ["microphone", "camera"].includes(retainedReadiness.blocker ?? "") ? <button type="button" onClick={onOpenDeviceSettings} className="ml-2 min-h-11 rounded-xl border border-border px-3 font-semibold">Choose devices</button> : null}
+    </p> : null}
+  </div>;
+  const toolbarControl = controlsContainer && conversationConnected && !conversationEnded ? createPortal(
+    <div className="flex min-w-0 items-stretch" role="group" aria-label="Session recording control">
+      <button type="button" disabled={recordingControl.busy}
+        onClick={() => recordingControl.action && !recordingControl.disabled && recordingControl.action !== "REOPEN"
+          ? runRecordingAction(recordingControl.action) : onOpenRecordingSettings?.()}
+        title={directiveError || (!retainedReadiness.ok && !recordingControl.recording ? retainedReadiness.reason : "") || "Session recording"}
+        className={`inline-flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-l-xl px-2 py-2 text-xs font-semibold disabled:opacity-50 sm:flex-row sm:gap-2 sm:px-3 ${recordingControl.recording ? "bg-rose-800 text-white" : "hover:bg-muted"}`}>
+        {recordingControl.busy ? <LoaderCircle size={17} className="animate-spin" /> : recordingControl.action === "STOP" || recordingControl.action === "STOP_LOCAL" ? <Square size={15} fill="currentColor" /> : <span className="size-3 rounded-full bg-current" />}
+        <span>{recordingControl.busy ? status === "stopping" ? "Saving…" : status === "checking" ? "Preparing…" : recordingControl.action === "STOP" || recordingControl.action === "STOP_LOCAL" ? "Stopping…" : "Starting…"
+          : recordingControl.action === "REOPEN" ? "Recording" : recordingControl.action ? recordingControl.label : canControlRoom ? "Record" : "Recording"}</span>
+        {recordingControl.recording ? <span className="tabular-nums">{Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}</span> : null}
+      </button>
+      <button type="button" onClick={onOpenRecordingSettings} aria-label="Recording settings and status" title="Recording settings and status"
+        className="grid min-h-11 min-w-11 place-items-center rounded-r-xl border-l border-border px-1 hover:bg-muted"><ChevronDown size={15} /></button>
+      {directiveError ? <span className="sr-only" role="alert">{directiveError}</span> : null}
+    </div>, controlsContainer) : null;
   const consentChoice = !conversationEnded && vaultAvailable && !myConsentCoversSource ? (
     <section className="rounded-xl border border-border bg-card p-3 text-card-foreground" aria-label="Recording consent needed">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3090,6 +3006,7 @@ export function BrowserSourceRecorder({
 
       {consentContainer ? createPortal(consentChoice, consentContainer) : consentChoice ? <div className="mt-4">{consentChoice}</div> : null}
       {recordingActions}
+      {toolbarControl}
 
       {!conversationEnded ? (
         <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">

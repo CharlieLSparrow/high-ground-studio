@@ -568,6 +568,7 @@ export function LiveSessionRoom({
   const cameraToggleInFlightRef = useRef(false);
   const cameraOperationGenerationRef = useRef(0);
   const [participants, setParticipants] = useState<CallParticipant[]>([]);
+  const [recordingControlContainer, setRecordingControlContainer] = useState<HTMLDivElement | null>(null);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
   const [previewTested, setPreviewTested] = useState(false);
@@ -2360,6 +2361,7 @@ export function LiveSessionRoom({
       onGuardianEvidenceChange={reportRetainedGuardianEvidence}
       onRecordingConsentChange={handleRecordingConsentChange}
       consentContainer={stageLayout && connected && toolPanel !== "recording" ? consentContainer : null}
+      controlsContainer={stageLayout ? recordingControlContainer : null}
       presentation={stageLayout ? "panel" : "card"}
       onOpenRecordingSettings={() => setToolPanel("recording")}
       onOpenDeviceSettings={() => {
@@ -2405,7 +2407,7 @@ export function LiveSessionRoom({
         ) : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
         <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{cameraToggleBusy ? <LoaderCircle size={16} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
       {stageLayout ? <>
-        <button type="button" onClick={() => setToolPanel("recording")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><span className={`size-3 rounded-full ${retainedGuardianEvidence?.status === "recording" ? "animate-pulse bg-red-500" : "bg-current"}`} />{retainedGuardianEvidence?.status === "recording" ? "Recording" : "Record"}</button>
+        {typeof captureGroupId === "string" && captureGroupId.trim() ? <div ref={setRecordingControlContainer} className="min-w-0" data-testid="call-recording-control-slot" /> : <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl px-3 text-xs font-semibold hover:bg-muted">Recording</button>}
         <button type="button" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Settings2 size={18} />Devices</button>
         <button type="button" onClick={() => setToolPanel("details")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Ellipsis size={18} />More</button>
       </> : null}

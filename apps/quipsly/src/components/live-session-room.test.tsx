@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { BrowserRetainedSourceGuardianEvidence } from "@/lib/session-guardian";
 
 const mockRouterRefresh = jest.fn();
@@ -103,6 +104,8 @@ jest.mock("@/components/browser-source-recorder", () => ({
     onRecordingConsentChange,
     onOpenDeviceSettings,
     onGuardianEvidenceChange,
+    controlsContainer,
+    onOpenRecordingSettings,
   }: {
     captureGroupId: string;
     projectSlug?: string | null;
@@ -115,6 +118,8 @@ jest.mock("@/components/browser-source-recorder", () => ({
     onRecordingConsentChange?: (state: { participantConsentGranted: boolean; everyoneConsentGranted: boolean }) => void;
     onOpenDeviceSettings?: () => void;
     onGuardianEvidenceChange?: (evidence: BrowserRetainedSourceGuardianEvidence) => void;
+    controlsContainer?: HTMLElement | null;
+    onOpenRecordingSettings?: () => void;
   }) => {
     useEffect(() => {
       if (mockRetainedRecoveryCount) onGuardianEvidenceChange?.({
@@ -127,6 +132,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
       if (stopRequestVersion) onSourceLockChange?.(false);
     }, [onSourceLockChange, stopRequestVersion]);
     return <div>
+      {controlsContainer ? createPortal(<button onClick={onOpenRecordingSettings}>Recording settings and status</button>, controlsContainer) : null}
       <span data-testid="browser-source-capture-group">{captureGroupId}</span>
       <span data-testid="browser-source-project">{projectSlug || "unbound"}</span>
       <span data-testid="browser-source-microphone">{microphoneId || "unselected"}</span>
@@ -487,7 +493,7 @@ describe("LiveSessionRoom", () => {
     expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", {name: "Back to call"}));
-    fireEvent.click(within(slot).getByRole("button", {name: "Record"}));
+    fireEvent.click(within(slot).getByRole("button", {name: "Recording settings and status"}));
     const toolSlot = screen.getByTestId("live-call-tool-panel");
     const recorder = screen.getByTestId("browser-source-capture-group");
     expect(within(toolSlot).getByRole("region", {name: "Recording"})).toBeVisible();
@@ -504,7 +510,7 @@ describe("LiveSessionRoom", () => {
     fireEvent.keyDown(screen.getByRole("button", {name: "Close call details"}), {key: "Escape"});
     expect(toolSlot).toHaveClass("hidden");
     expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
-    fireEvent.click(within(slot).getByRole("button", {name: "Record"}));
+    fireEvent.click(within(slot).getByRole("button", {name: "Recording settings and status"}));
     expect(screen.getByTestId("browser-source-capture-group")).toBe(recorder);
     expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1);
     expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
