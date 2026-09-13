@@ -4,21 +4,34 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { sessionMutationAccessWhere } from "@/lib/server/session-access";
+import { sessionAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { loadSessionWorkAssignmentContext } from "@/lib/server/session-work-assignment";
 import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
 import { loadSessionWork } from "@/lib/server/session-work";
 
 export const runtime = "nodejs";
 
-/** Direct entry readback uses Session membership, not membership in the coach's whole Nest. */
+/** Both the call panel and direct links use the same Session-scoped projection. */
 export async function GET(request: Request, context: { params: Promise<{ roomId: string }> }) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user) return NextResponse.json({ ok: false, error: "Sign in to open this task." }, { status: 401 });
-  const entryId = new URL(request.url).searchParams.get("entryId")?.trim();
-  if (!entryId || entryId.length > 240) return NextResponse.json({ ok: false, error: "Choose a task to open." }, { status: 400 });
+  const requestedEntry = new URL(request.url).searchParams.get("entryId");
+  const entryId = requestedEntry?.trim();
+  if (requestedEntry !== null && (!entryId || entryId.length > 240)) return NextResponse.json({ ok: false, error: "Choose a task to open." }, { status: 400 });
   const { roomId } = await context.params;
-  const entries = await loadSessionWork({ prisma: getPrismaClient(), roomId, actor: session.user, entryId });
+  const prisma = getPrismaClient();
+  if (requestedEntry === null) {
+    const room = await prisma.callRoom.findFirst({where: sessionAccessWhere(roomId, session.user), select: {id: true}});
+    if (!room) return NextResponse.json({ok: false, error: "This session isn't available to this account."}, {status: 404});
+    const [entries, writable, assignmentContext] = await Promise.all([
+      loadSessionWork({prisma, roomId, actor: session.user}),
+      prisma.callRoom.findFirst({where: sessionMutationAccessWhere(roomId, session.user), select: {id: true}}),
+      loadSessionWorkAssignmentContext({prisma, roomId, actor: session.user}),
+    ]);
+    return NextResponse.json({ok: true, roomId, actorUserId: session.user.id, entries,
+      canCreate: Boolean(writable), assignmentContext}, {headers: {"Cache-Control": "private, no-store"}});
+  }
+  const entries = await loadSessionWork({ prisma, roomId, actor: session.user, entryId });
   const entry = entries.find(row => row.id === entryId);
   if (!entry) return NextResponse.json({ ok: false, error: "This task is no longer available to this account." }, { status: 404 });
   return NextResponse.json({ ok: true, roomId, entry }, { headers: { "Cache-Control": "private, no-store" } });

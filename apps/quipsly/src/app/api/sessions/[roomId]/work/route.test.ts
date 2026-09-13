@@ -43,10 +43,37 @@ describe("Session work creation", () => {
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
-  it("requires an exact linked task rather than returning an unbounded work listing", async () => {
-    expect((await GET(new Request(`http://localhost/api/sessions/${roomId}/work`),
+  it("rejects an explicitly empty linked task", async () => {
+    expect((await GET(new Request(`http://localhost/api/sessions/${roomId}/work?entryId=`),
       {params: Promise.resolve({roomId})})).status).toBe(400);
     expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("does not disclose a work collection outside the actor's session", async () => {
+    const prisma: any = {callRoom: {findFirst: jest.fn().mockResolvedValue(null)}, actionItem: {findMany: jest.fn()}};
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+    const result = await GET(new Request(`http://localhost/api/sessions/${roomId}/work`), {params: Promise.resolve({roomId})});
+    expect(result.status).toBe(404);
+    expect(prisma.actionItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("returns bounded canonical work with current create permission %s", async canCreate => {
+    const prisma: any = {
+      callRoom: {findFirst: jest.fn()
+        .mockResolvedValueOnce({id: roomId})
+        .mockResolvedValueOnce({id: roomId, projectId: "project-1"})
+        .mockResolvedValueOnce(canCreate ? {id: roomId} : null)
+        .mockResolvedValueOnce(null)},
+      actionItem: {findMany: jest.fn().mockResolvedValue([])},
+      goal: {findMany: jest.fn().mockResolvedValue([])},
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+    const result = await GET(new Request(`http://localhost/api/sessions/${roomId}/work`), {params: Promise.resolve({roomId})});
+    expect(result.status).toBe(200);
+    expect(result.headers.get("cache-control")).toBe("private, no-store");
+    expect(await result.json()).toEqual({ok: true, roomId, actorUserId: actor.id, entries: [], canCreate, assignmentContext: null});
+    expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({take: 100, where: expect.objectContaining({roomId})}));
+    expect(prisma.goal.findMany).toHaveBeenCalledWith(expect.objectContaining({take: 100, where: expect.objectContaining({roomId})}));
   });
 
   it("creates one retry-safe shared task without external side effects", async () => {

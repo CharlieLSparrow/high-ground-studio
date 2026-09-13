@@ -18,6 +18,9 @@ const mockRoomLifecycle = {
   leaveRequested: jest.fn(),
 };
 
+jest.mock("@/app/(app)/work/actions", () => ({editWorkTask: jest.fn(), editWorkGoal: jest.fn(), updateWorkTaskStatus: jest.fn(), updateWorkGoalStatus: jest.fn()}));
+jest.mock("next/navigation", () => ({useRouter: () => ({refresh: jest.fn()})}));
+
 jest.mock("./live-session-room", () => ({
   LiveSessionRoom: ({
     callRoomId,
@@ -165,6 +168,27 @@ describe("LiveSessionDockProvider", () => {
       expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
       expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
     } finally { global.fetch = previousFetch; sessionStorage.clear(); }
+  });
+
+  it("keeps task drafts and the same call mounted while switching tools and minimizing", async () => {
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({ok: true, json: async () => ({ok: true, actorUserId: "coach", canCreate: true, entries: [], assignmentContext: null})})) as unknown as typeof fetch;
+    const user = userEvent.setup();
+    try {
+      render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+      await user.click(screen.getByRole("button", {name: "Show tasks"}));
+      await user.click(await screen.findByRole("button", {name: "Add task or goal"}));
+      await user.type(await screen.findByRole("textbox", {name: "Task title"}), "A next step during our call");
+      await user.click(screen.getByRole("button", {name: "Show chat"}));
+      await user.click(screen.getByRole("button", {name: "Show tasks"}));
+      expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("A next step during our call");
+      await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+      await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
+      expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("A next step during our call");
+      expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+      expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+      expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+    } finally { global.fetch = previousFetch; }
   });
 
   it("reveals the after-call surface without discarding an unfinished chat message", async () => {

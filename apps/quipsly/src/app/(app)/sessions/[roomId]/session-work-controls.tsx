@@ -96,14 +96,14 @@ export function SessionWorkControls({ entry, onUpdate, assignmentContext = null 
     } finally { setBusy(false); }
   }
 
-  const inputClass = "mt-1 block w-full rounded-lg border border-[#cdbda5] bg-[#fffaf0] px-3 py-2 text-sm font-medium text-[#3d3122]";
+  const inputClass = "mt-1 block min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium text-foreground";
   return <div className="mt-3 space-y-3">
     <button type="button" onClick={() => void toggleStatus()} disabled={busy}
-      className="min-h-11 rounded-full bg-[#435847] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+      className="min-h-11 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
       {busy ? "Saving…" : open ? (task ? "Mark done" : "Mark achieved") : "Reopen"}
     </button>
-    {open && <details className="rounded-xl border border-[#d8cbb7] p-3">
-      <summary className="cursor-pointer text-sm font-semibold text-[#3d3122]">Edit {task ? "task" : "goal"}</summary>
+    {open && <details className="rounded-xl border border-border p-3">
+      <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-foreground">Edit {task ? "task" : "goal"}</summary>
       <form onFocusCapture={() => { editingVersion.current ??= entry.updatedAt; }}
         onSubmit={(event) => { event.preventDefault(); void save(new FormData(event.currentTarget)); }} className="mt-3 grid gap-3">
         <fieldset disabled={busy} className="contents">
@@ -117,11 +117,11 @@ export function SessionWorkControls({ entry, onUpdate, assignmentContext = null 
         <label className="text-sm font-semibold">{task ? "Due date" : "Target date"} (optional)
           <input name="targetAt" type={task ? "datetime-local" : "date"} defaultValue={task ? initialDate : initialDate.slice(0, 10)} className={inputClass} />
         </label>
-        <button disabled={busy} type="submit" className="min-h-11 justify-self-start rounded-full bg-[#435847] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save changes</button>
+        <button disabled={busy} type="submit" className="min-h-11 justify-self-start rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">Save changes</button>
         </fieldset>
       </form>
     </details>}
-    {error && <p role="alert" className="text-sm text-red-800">{error}</p>}
-    {notice && <p role="status" className="text-sm text-[#435847]">{notice}</p>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
   </div>;
 }

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   MessageSquareText,
   NotebookPen,
+  ListTodo,
   Mic2,
   Mic,
   MicOff,
@@ -35,6 +36,7 @@ import {
 } from "@/components/live-session-room";
 import { SessionThread } from "@/components/session-thread";
 import { CallNotesPanel } from "@/components/call-notes-panel";
+import { CallWorkPanel } from "@/components/call-work-panel";
 import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import type { SessionCaptureProfile } from "@/lib/session-experience";
 import { captureAppDeepLink } from "@/lib/capture-universal-link";
@@ -110,10 +112,12 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
   const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
-  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "notes" | "devices" | "recording" | "details" | "people" | null>(null);
+  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "notes" | "work" | "devices" | "recording" | "details" | "people" | null>(null);
   const chatOpen = workspacePanel === "chat";
   const notesOpen = workspacePanel === "notes";
+  const workOpen = workspacePanel === "work";
   const [notesVisitedRoom, setNotesVisitedRoom] = useState<string | null>(null);
+  const [workVisitedRoom, setWorkVisitedRoom] = useState<string | null>(null);
   const [notesNeedAttention, setNotesNeedAttention] = useState(false);
   const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
@@ -263,6 +267,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 <div className="flex shrink-0 gap-1">
                   <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button>
                   <button type="button" onClick={() => { setNotesVisitedRoom(active.callRoomId); setWorkspacePanel(panel => panel === "notes" ? null : "notes"); }} aria-label={notesOpen ? "Hide notes" : "Show notes"} aria-expanded={notesOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${notesOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><NotebookPen size={18} /><span className="hidden sm:inline">Notes</span>{notesNeedAttention ? <span role="status" title="A note needs your attention" className="size-2 rounded-full bg-amber-500"><span className="sr-only">A note is not saved</span></span> : null}</button>
+                  <button type="button" onClick={() => { setWorkVisitedRoom(active.callRoomId); setWorkspacePanel(panel => panel === "work" ? null : "work"); }} aria-label={workOpen ? "Hide tasks" : "Show tasks"} aria-expanded={workOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${workOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><ListTodo size={18} /><span className="hidden sm:inline">Tasks</span></button>
                   <button type="button" onClick={minimize} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Minimize live call"><ChevronDown size={18} /></button>
                   <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Close live call"><X size={18} /></button>
                 </div>
@@ -332,7 +337,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 onOpenSessionWork={minimize}
                 controlsContainer={controlsContainer}
                 toolPanelContainer={toolPanelContainer}
-                activeToolPanel={workspacePanel === "chat" || workspacePanel === "notes" ? null : workspacePanel}
+                activeToolPanel={workspacePanel === "chat" || workspacePanel === "notes" || workspacePanel === "work" ? null : workspacePanel}
                 onToolPanelChange={setWorkspacePanel}
               /> : null}
               </div>
@@ -354,6 +359,9 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 className={`min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border ${workspacePanel && !chatOpen ? "block" : "hidden"}`} />
               {toolPanelContainer && notesVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Notes" open={notesOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
                 <CallNotesPanel key={active.callRoomId} roomId={active.callRoomId} active={notesOpen && isOpen} onOpenWorkspace={minimize} onAttentionChange={setNotesNeedAttention} />
+              </CallWorkspacePanel> : null}
+              {toolPanelContainer && workVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Tasks" open={workOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
+                <CallWorkPanel key={active.callRoomId} roomId={active.callRoomId} active={workOpen && isOpen} onOpenWorkspace={minimize} />
               </CallWorkspacePanel> : null}
             </div>
             <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-foreground empty:hidden" />

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { TagSearchChips } from "@/components/tag-search-chips";
 import type { SessionQuickEntry } from "./session-review-client";
 import { SessionWorkControls } from "./session-work-controls";
@@ -14,10 +14,12 @@ const isFinished = (entry: SessionQuickEntry) => ["DONE", "ACHIEVED", "CANCELED"
 const workEntries = (entries: SessionQuickEntry[]) => entries.filter(entry => entry.kind === "TASK" || entry.kind === "GOAL");
 const inputClass = "mt-1 block min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground";
 
-export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null, canCreate = true }: {
+export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null, canCreate = true, compact = false, onOpenWorkspace, onChanged }: {
   roomId: string; entries: SessionQuickEntry[]; assignmentContext?: SessionWorkAssignmentContext | null; canCreate?: boolean;
+  compact?: boolean; onOpenWorkspace?: () => void; onChanged?: () => void;
 }) {
   const router = useRouter();
+  const headingId = useId();
   const [current, setCurrent] = useState(() => workEntries(entries));
   const [filter, setFilter] = useState<WorkFilter>("ALL");
   const [kind, setKind] = useState<WorkKind>("TASK");
@@ -29,6 +31,9 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(!compact);
+  const composerToggle = useRef<HTMLButtonElement>(null);
+  const composerId = useId();
   const inFlight = useRef(false);
   const attempt = useRef<{fingerprint: string; id: string} | null>(null);
   const titleInput = useRef<HTMLInputElement>(null);
@@ -46,6 +51,7 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     setTitle(submitted.title); setBody(submitted.body); setTargetAt(submitted.targetAt); setVisibility(submitted.visibility);
     inFlight.current = true;
     setBusy(true); setNotice(null); setFailed(false);
+    let saved = false;
     try {
       const content = {kind, ...submitted, targetAt: submitted.targetAt ? new Date(`${submitted.targetAt}T12:00:00`).toISOString() : null};
       const fingerprint = JSON.stringify({roomId, ...content});
@@ -56,12 +62,16 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
       });
       const payload = await response.json() as {ok?: boolean; error?: string; entry?: SessionQuickEntry};
       if (!response.ok || !payload.ok || !payload.entry) throw new Error(payload.error || "Could not save. Your draft is here; try again.");
+      saved = true;
       setCurrent(previous => [payload.entry!, ...previous.filter(entry => entry.id !== payload.entry!.id)]);
       setTitle(""); setBody(""); setTargetAt("");
+      if (compact) setComposerOpen(false);
       attempt.current = null;
       setFilter("ALL");
       if (options.current) options.current.open = false;
       setNotice(`${kind === "TASK" ? "Task" : "Goal"} saved. ${submitted.visibility === "AUTHOR_PRIVATE" ? "Only you can see it." : submitted.visibility === "ENGAGEMENT_SHARED" ? "Shared with your client space." : "Shared with this session."}`);
+      onChanged?.();
+      window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", {detail: {roomId}}));
       router.refresh();
     } catch (error) {
       setFailed(true);
@@ -69,7 +79,10 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     } finally {
       inFlight.current = false; setBusy(false);
       // Keep quick entry ready for the next thought without scrolling away.
-      requestAnimationFrame(() => titleInput.current?.focus({preventScroll: true}));
+      requestAnimationFrame(() => {
+        const target = compact && saved ? composerToggle.current : titleInput.current;
+        target?.focus({preventScroll: true});
+      });
     }
   }
 
@@ -85,7 +98,7 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     const mine = entry.ownedByCurrentActor !== false;
     const due = entry.dueAt ? new Date(entry.dueAt) : null;
     const dateLabel = due && Number.isFinite(due.getTime()) ? due.toLocaleDateString(undefined, {month: "short", day: "numeric", year: "numeric"}) : null;
-    return <article id={`quick-entry-${entry.id}`} key={entry.id} tabIndex={-1}
+    return <article id={`${compact ? "call-work" : "quick-entry"}-${entry.id}`} key={entry.id} tabIndex={-1}
       className="scroll-mt-24 rounded-xl border border-border bg-card p-4 text-card-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className={`min-w-0 break-words font-semibold ${finished ? "text-muted-foreground" : ""}`}>{entry.title || `Untitled ${entry.kind.toLowerCase()}`}</h3>
@@ -97,21 +110,32 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
         {dateLabel && <> · {entry.kind === "GOAL" ? "Target" : "Due"} <time dateTime={entry.dueAt!}>{dateLabel}</time></>}
       </p>
       <TagSearchChips tags={entry.tags} label={`${entry.title || entry.kind} tags`} />
-      <SessionWorkControls entry={entry} assignmentContext={assignmentContext} onUpdate={update => setCurrent(previous => previous.map(item => item.id === entry.id ? {...item, ...update} : item))} />
+      <SessionWorkControls entry={entry} assignmentContext={assignmentContext} onUpdate={update => {
+        setCurrent(previous => previous.map(item => item.id === entry.id ? {...item, ...update} : item));
+        onChanged?.();
+        window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", {detail: {roomId}}));
+      }} />
       <div className="mt-2 flex flex-wrap gap-x-4">
-        {entry.sourceHref && <Link href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{entry.fromConversation ? "From conversation" : "From recording"}</Link>}
-        {mine && <Link href={`/work?${entry.kind === "TASK" ? "task" : "goal"}=${encodeURIComponent(entry.id)}`} className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline underline-offset-4">Open in Work</Link>}
+        {entry.sourceHref && <Link onClick={onOpenWorkspace} href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{entry.fromConversation ? "From conversation" : "From recording"}</Link>}
+        {mine && <Link onClick={onOpenWorkspace} href={`/work?${entry.kind === "TASK" ? "task" : "goal"}=${encodeURIComponent(entry.id)}`} className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline underline-offset-4">Open in Work</Link>}
       </div>
     </article>;
   }
 
-  return <section aria-labelledby="session-work-heading" className="space-y-4">
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 id="session-work-heading" className="font-serif text-2xl font-semibold">Tasks and goals</h2>
+  return <section aria-labelledby={headingId} className="space-y-4">
+    <header className={compact ? "sr-only" : "flex flex-wrap items-center justify-between gap-3"}>
+      <div><h2 id={headingId} className={`${compact ? "text-lg" : "font-serif text-2xl"} font-semibold`}>Tasks and goals</h2>
         <p className="mt-1 text-sm text-muted-foreground">{tasks} task{tasks === 1 ? "" : "s"} · {goals} goal{goals === 1 ? "" : "s"}</p></div>
-      <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-semibold">All my work</Link>
+      {!compact && <Link onClick={onOpenWorkspace} href="/work" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-semibold">All my work</Link>}
     </header>
-    {canCreate && <form aria-label="New session work" onSubmit={event => {event.preventDefault(); void createWork(new FormData(event.currentTarget));}}
+    {canCreate && <>
+    {compact && <button ref={composerToggle} type="button" aria-expanded={composerOpen} aria-controls={composerId}
+      onClick={() => {setComposerOpen(value => !value); if (!composerOpen) requestAnimationFrame(() => titleInput.current?.focus({preventScroll: true}));}}
+      className="min-h-11 w-full rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-card-foreground">
+      {composerOpen ? "Close draft" : title || body ? "Continue draft" : "Add task or goal"}
+    </button>}
+    <div id={composerId} hidden={compact && !composerOpen}>
+    <form aria-label="New session work" onSubmit={event => {event.preventDefault(); void createWork(new FormData(event.currentTarget));}}
       className="rounded-xl border border-border bg-card p-4 text-card-foreground">
       <fieldset disabled={busy} className="min-w-0 space-y-3">
         <div className="flex gap-1" role="group" aria-label="Create work type">
@@ -132,8 +156,8 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
         </label>}
         <details ref={options}>
           <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground">Details, date and sharing · {visibility === "AUTHOR_PRIVATE" ? "Only me" : visibility === "ENGAGEMENT_SHARED" ? "Shared client space" : "Shared"}</summary>
-          <div className="grid gap-3 pt-2 sm:grid-cols-2">
-            <label className="text-sm font-medium sm:col-span-2">Context (optional)<textarea name="body" maxLength={5000} rows={3} value={body} onChange={event => setBody(event.target.value)} className={inputClass} /></label>
+          <div className={`grid gap-3 pt-2 ${compact ? "" : "sm:grid-cols-2"}`}>
+            <label className={`text-sm font-medium ${compact ? "" : "sm:col-span-2"}`}>Context (optional)<textarea name="body" maxLength={5000} rows={3} value={body} onChange={event => setBody(event.target.value)} className={inputClass} /></label>
             <label className="text-sm font-medium">{kind === "TASK" ? "Due date" : "Target date"} (optional)<input name="targetAt" type="date" value={targetAt} onChange={event => setTargetAt(event.target.value)} className={inputClass} /></label>
             <label className="text-sm font-medium">Who can see it<select name="visibility" value={visibility} onChange={event => setVisibility(event.target.value)} className={inputClass}>
               {assignmentContext ? <option value="ENGAGEMENT_SHARED">Shared client space</option> : <option value="SESSION_SHARED">Everyone in this Session</option>}<option value="AUTHOR_PRIVATE">Only me</option>
@@ -141,8 +165,10 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
           </div>
         </details>
       </fieldset>
-      {notice && <p role={failed ? "alert" : "status"} className={`mt-2 text-sm ${failed ? "text-destructive" : "text-muted-foreground"}`}>{notice}</p>}
-    </form>}
+    </form>
+    </div>
+    {notice && <p role={failed ? "alert" : "status"} className={`mt-2 text-sm ${failed ? "text-destructive" : "text-muted-foreground"}`}>{notice}</p>}
+    </>}
     {current.length > 0 && <div role="group" aria-label="Filter session work" className="flex flex-wrap gap-2">
       {(["ALL", "TASK", "GOAL"] as const).map(value => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}
         className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${filter === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}>{value === "ALL" ? "All" : value === "TASK" ? "Tasks" : "Goals"}</button>)}
