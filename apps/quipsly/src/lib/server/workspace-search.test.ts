@@ -52,7 +52,7 @@ describe("permission-filtered workspace search", () => {
     expect(noteFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         AND: expect.arrayContaining([
-          { kind: { in: ["SESSION_NOTE", "FOLLOW_UP", "DECISION", "PRODUCTION"] } },
+          { kind: { in: ["SUMMARY", "HIGHLIGHT", "SESSION_NOTE", "FOLLOW_UP", "DECISION", "PRODUCTION"] } },
           { OR: [
             { authorUserId: "user-1" },
             { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },

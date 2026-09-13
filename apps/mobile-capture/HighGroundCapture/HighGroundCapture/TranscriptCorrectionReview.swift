@@ -287,6 +287,7 @@ struct CaptureSessionTranscriptAssembly: Codable, Equatable {
     let sourceCount: Int
     let programClock: CaptureSessionTranscriptProgramClock?
     let sources: [CaptureSessionTranscriptSource]
+    var pendingSources: [CaptureTranscriptProgressSource]? = nil
 }
 
 struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
@@ -304,6 +305,24 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let evidence: CaptureTranscriptEvidence?
     var sessionTranscript: CaptureSessionTranscriptAssembly? = nil
     let boundaries: [String: Bool]
+    var transcriptStatus: String? = nil
+    var recording: CaptureTranscriptRecordingSummary? = nil
+    var processing: CaptureTranscriptProcessingSummary? = nil
+
+    var progressSources: [CaptureTranscriptProgressSource] {
+        if let pending = sessionTranscript?.pendingSources, !pending.isEmpty { return pending }
+        guard let recording, transcriptStatus != "COMPLETED" else { return [] }
+        return [.init(recordingAssetId: recording.id, participantLabel: CaptureTranscriptRecordingLabel.title(fileName: recording.fileName),
+                      transcriptJobId: transcriptJobId, status: transcriptStatus,
+                      error: processing?.message, failureCode: processing?.failureCode,
+                      retryable: processing?.retryable)]
+    }
+
+    var hasProcessingTranscript: Bool { progressSources.contains(where: \.isProcessing) }
+
+    // An assembled desk can have a not-ready gate while individual lanes are
+    // still transcribing. The command checks each lane's actual consent/access.
+    var canRequestTranscript: Bool { gate.allowed || sessionTranscript?.pendingSources?.isEmpty == false }
 
     static func preview(roomID: String) -> Self {
         let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
@@ -1018,6 +1037,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var desk: CaptureTranscriptCorrectionDesk?
     @Published private(set) var isLoading = false
     @Published private(set) var isMutating = false
+    @Published private(set) var startingTranscriptAssetID: String?
+    @Published private(set) var transcriptProgressRefreshFailed = false
+    @Published private(set) var transcriptWorkRefreshRevision = 0
+    private var isRefreshingTranscriptProgress = false
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var isPreparingMentorReport = false
     @Published private(set) var mentorReportURL: URL?
@@ -1199,6 +1222,84 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             previewOnly: false,
             includeFollowUpWorkspace: includesFollowUpWorkspace
         )
+    }
+
+    func startTranscript(recordingAssetID: String) async {
+        guard !isMutating, startingTranscriptAssetID == nil, !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed,
+              let scope = activeReadScope, desk?.canRequestTranscript == true,
+              desk?.progressSources.contains(where: { $0.id == recordingAssetID && $0.actionTitle != nil }) == true,
+              let url = URL(string: "\(baseURL)/api/mobile/capture/transcripts/run") else { return }
+        startingTranscriptAssetID = recordingAssetID
+        isMutating = true
+        errorMessage = nil
+        defer { startingTranscriptAssetID = nil; isMutating = false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(["recordingAssetId": recordingAssetID])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+            guard response.statusCode < 400 else {
+                throw captureTranscriptError(data: data, fallback: "Transcription could not start. Your recording is unchanged.")
+            }
+            let result = try JSONDecoder().decode(MobileCaptureTranscriptRunResponse.self, from: data)
+            guard result.ok else {
+                throw captureTranscriptError(data: data, fallback: "Transcription could not start. Your recording is unchanged.")
+            }
+            isMutating = false
+            await refreshTranscriptProgress()
+        } catch {
+            guard scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Refresh job/segment projections without clearing exports, open writing,
+    /// or the follow-up workspace on each poll. A vanished view cancels the read.
+    func refreshTranscriptProgress() async {
+        guard !isLoading, !isMutating, !isRefreshingTranscriptProgress, !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed, let scope = activeReadScope,
+              let roomID = activeRoomID,
+              var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/corrections") else { return }
+        components.queryItems = [URLQueryItem(name: "callRoomId", value: roomID)]
+        if let activeRecordingAssetID { components.queryItems?.append(.init(name: "recordingAssetId", value: activeRecordingAssetID)) }
+        if let activeTranscriptJobID { components.queryItems?.append(.init(name: "transcriptJobId", value: activeTranscriptJobID)) }
+        guard let url = components.url else { return }
+        isRefreshingTranscriptProgress = true
+        defer { isRefreshingTranscriptProgress = false }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard !Task.isCancelled, !isMutating,
+                  scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+            guard response.statusCode < 400 else {
+                throw captureTranscriptError(data: data, fallback: "Could not refresh the transcript. Your recording is saved.")
+            }
+            let updated = try JSONDecoder().decode(CaptureTranscriptCorrectionDesk.self, from: data)
+            transcriptProgressRefreshFailed = false
+            let gainedText = updated.segments.count > (desk?.segments.count ?? 0)
+            desk = updated
+            persist(updated, roomID: roomID, recordingAssetID: activeRecordingAssetID, transcriptJobID: activeTranscriptJobID)
+            if gainedText && includesFollowUpWorkspace { transcriptWorkRefreshRevision += 1 }
+        } catch {
+            // A temporary connection loss must not remove readable text or
+            // interrupt writing. The normal Refresh control remains available.
+            guard !Task.isCancelled,
+                  scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+            transcriptProgressRefreshFailed = true
+        }
+    }
+
+    func refreshWorkAfterTranscription() async {
+        guard let roomID = activeRoomID, let scope = activeReadScope,
+              includesFollowUpWorkspace, !isUsingProtectedCache else { return }
+        await loadPacketCandidates(roomID: roomID, preserveOnFailure: true)
+        guard !Task.isCancelled,
+              scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+        await prepareFollowUpIfNeeded(roomID: roomID)
     }
 
     private func loadDesk(
@@ -1429,6 +1530,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     func prepareMentorReport(roomID: String, sessionTitle: String) async {
         guard !isPreparingMentorReport else { return }
+        guard let scope = activeReadScope,
+              scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
         guard AuthManager.shared.networkActionsAllowed else {
             errorMessage = "Reconnect to Quipsly before preparing the private mentor report."
             return
@@ -1436,10 +1539,14 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         let normalizedRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedRoomID.isEmpty,
               let encodedRoomID = normalizedRoomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(baseURL)/api/sessions/\(encodedRoomID)/transcript-report") else {
+              var components = URLComponents(string: "\(baseURL)/api/sessions/\(encodedRoomID)/transcript-report") else {
             errorMessage = "The mentor report URL could not be created."
             return
         }
+        if let assetID = activeRecordingAssetID ?? (activeTranscriptJobID != nil ? desk?.recording?.id : nil) {
+            components.queryItems = [URLQueryItem(name: "recordingAssetId", value: assetID)]
+        }
+        guard let url = components.url else { return }
         isPreparingMentorReport = true
         errorMessage = nil
         defer { isPreparingMentorReport = false }
@@ -1448,6 +1555,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             guard response.statusCode < 400 else {
                 throw captureTranscriptError(data: data, fallback: "The mentor report could not be prepared.")
             }
@@ -2238,6 +2346,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             return
         }
         components.queryItems = [URLQueryItem(name: "callRoomId", value: roomID)]
+        if let assetID = activeRecordingAssetID ?? (activeTranscriptJobID != nil ? desk?.recording?.id : nil) {
+            components.queryItems?.append(URLQueryItem(name: "recordingAssetId", value: assetID))
+        }
         guard let url = components.url else { return }
         var responseStatus: Int?
         do {
@@ -3429,6 +3540,7 @@ private enum CaptureTranscriptPresentationMode: String, CaseIterable, Identifiab
 
 struct CaptureTranscriptReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
 
     let roomID: String
@@ -3848,6 +3960,22 @@ struct CaptureTranscriptReviewView: View {
                 guard client.packetResults != nil, !previewOnly else { return }
                 _ = await followUpSessions.load(authoritativeSessionID: roomID)
             }
+            .task(id: client.transcriptWorkRefreshRevision) {
+                guard !previewOnly, client.transcriptWorkRefreshRevision > 0 else { return }
+                // Finishing transcription cancels its polling task. Follow-up
+                // creation has a separate view-owned lifetime so it can finish.
+                await client.refreshWorkAfterTranscription()
+            }
+            .task(id: "\(scenePhase == .active)-\(client.desk?.hasProcessingTranscript == true)") {
+                guard !previewOnly, scenePhase == .active else { return }
+                var delay = 3
+                while client.desk?.hasProcessingTranscript == true && !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                    guard !Task.isCancelled else { return }
+                    await client.refreshTranscriptProgress()
+                    delay = min(delay + 2, 15)
+                }
+            }
             .task(id: client.followThroughGeneration?.isPending == true) {
                 guard !previewOnly, !client.isUsingProtectedCache else { return }
                 while client.followThroughGeneration?.isPending == true && !Task.isCancelled {
@@ -4177,20 +4305,34 @@ struct CaptureTranscriptReviewView: View {
         _ desk: CaptureTranscriptCorrectionDesk,
         scrollProxy: ScrollViewProxy
     ) -> some View {
-        if !desk.gate.allowed {
+        if !desk.progressSources.isEmpty {
+            CaptureTranscriptProgressList(
+                sources: desk.progressSources,
+                canRequest: desk.canRequestTranscript && !previewOnly && !client.isUsingProtectedCache,
+                isBusy: client.isMutating || client.isLoading,
+                startingAssetID: client.startingTranscriptAssetID
+            ) { assetID in
+                Task { await client.startTranscript(recordingAssetID: assetID) }
+            }
+            if client.transcriptProgressRefreshFailed {
+                Text("Connection interrupted. Reconnecting to check the transcript; your saved recording and text are unchanged.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        if !desk.gate.allowed && desk.sessionTranscript?.pendingSources?.isEmpty != false {
             reviewNotice(
                 title: "Transcript unavailable",
-                detail: desk.gate.error ?? "The recording release gate has not cleared.",
+                detail: desk.gate.error ?? "This recording’s transcript is not available yet.",
                 tint: CapturePalette.brass,
                 icon: "lock.fill"
             )
-        } else if desk.segments.isEmpty {
+        } else if desk.segments.isEmpty && desk.progressSources.isEmpty {
             ContentUnavailableView(
-                "No transcript segments",
-                systemImage: "text.badge.xmark",
-                description: Text("Create the recording-backed transcript to read, play, and edit it here.")
+                "Your transcript",
+                systemImage: "text.bubble",
+                description: Text("Record a session or add an audio recording to read, play, and edit its transcript here.")
             )
-        } else {
+        } else if !desk.segments.isEmpty {
             transcriptPresentationPicker(desk, scrollProxy: scrollProxy)
                 .id("transcript-presentation")
             LazyVStack(alignment: .leading, spacing: 16) {
@@ -4868,9 +5010,11 @@ struct CaptureTranscriptReviewView: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(sessionTitle)
                 .font(.title3.weight(.bold))
-            Label("Transcript ready", systemImage: "checkmark.circle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CapturePalette.success)
+            if client.desk?.segments.isEmpty == false {
+                Label(client.desk?.progressSources.isEmpty == false ? "Transcript available" : "Transcript ready", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CapturePalette.success)
+            }
             if !previewOnly, client.desk?.gate.allowed == true, client.desk?.segments.isEmpty == false {
                 Menu {
                     ForEach(CaptureTranscriptExportFormat.allCases) { format in
@@ -4901,7 +5045,8 @@ struct CaptureTranscriptReviewView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if client.desk?.roomPurpose == "COACHING", !previewOnly {
+            if client.desk?.roomPurpose == "COACHING", !previewOnly,
+               client.desk?.gate.allowed == true, client.desk?.segments.isEmpty == false {
                 if let reportURL = client.mentorReportURL {
                     ShareLink(
                         item: reportURL,
@@ -4996,7 +5141,7 @@ struct CaptureTranscriptReviewView: View {
             .contains { $0.kind == "audio" && $0.mobileProtectedSource != nil }
         return VStack(alignment: .leading, spacing: 10) {
             Label(
-                exactMatch ? "Recording ready to play" : (downloadableAudio ? "Recording available to download" : "Transcript ready"),
+                exactMatch ? "Recording ready to play" : (downloadableAudio ? "Recording available to download" : "Recording details"),
                 systemImage: exactMatch ? "checkmark.circle.fill" : (downloadableAudio ? "arrow.down.circle" : "text.bubble")
             )
                 .font(.headline)
@@ -5006,26 +5151,32 @@ struct CaptureTranscriptReviewView: View {
                     ? "The matching recording is saved on \(CaptureDeviceVocabulary.thisDevice)."
                     : (downloadableAudio
                         ? "Tap Play beside a passage to download and listen to its matching audio here."
-                        : "You can read and edit the transcript. Matching audio is not available for playback on this device yet.")
+                        : (desk.segments.isEmpty
+                            ? "Matching audio is not available for playback on this device yet."
+                            : "You can read and edit the transcript. Matching audio is not available for playback on this device yet."))
             )
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Label(
-                    "\(desk.segments.count) \(desk.segments.count == 1 ? "segment" : "segments")",
-                    systemImage: "text.alignleft"
-                )
-                if playback.currentTime > 0 {
-                    Spacer()
-                    Text(playback.currentTime.captureTranscriptTimestamp)
-                        .font(.caption.monospacedDigit().weight(.semibold))
+            if !desk.segments.isEmpty {
+                HStack {
+                    Label(
+                        "\(desk.segments.count) \(desk.segments.count == 1 ? "segment" : "segments")",
+                        systemImage: "text.alignleft"
+                    )
+                    if playback.currentTime > 0 {
+                        Spacer()
+                        Text(playback.currentTime.captureTranscriptTimestamp)
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                    }
                 }
+                .font(.caption.weight(.semibold))
             }
-            .font(.caption.weight(.semibold))
             if let exactRecording,
                exactRecording.sourceProfile?.includesAudio == true {
-                CaptureTranscriptAudioQualityCard(recording: exactRecording)
+                DisclosureGroup("Recording quality") {
+                    CaptureTranscriptAudioQualityCard(recording: exactRecording)
+                }
             }
         }
         .reviewCard()
@@ -5583,7 +5734,7 @@ struct CaptureTranscriptSpeakerEvidenceBadge: View {
         case "provider":
             ("Automatic speaker label", "This speaker name still comes from transcription processing.", "sparkles")
         case "unresolved":
-            ("Speaker needs review", "Quipsly has not identified this speaker yet.", "questionmark.circle")
+            ("Speaker not named", "You can add a speaker name whenever it is useful.", "questionmark.circle")
         default:
             nil
         }

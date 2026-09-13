@@ -5,6 +5,15 @@ import type { EpisodeRoomDeskPayload } from "@/lib/server/episode-room-store";
 
 import EpisodeRoomClient from "./EpisodeRoomClient";
 
+// Next transforms server actions into RPCs in the browser. JSDOM must not
+// execute their server-only imports while rendering the live session dock.
+jest.mock("@/app/(app)/work/actions", () => ({
+  editWorkTask: jest.fn(),
+  editWorkGoal: jest.fn(),
+  updateWorkTaskStatus: jest.fn(),
+  updateWorkGoalStatus: jest.fn(),
+}));
+
 jest.mock("./EpisodeRoomChat", () => function EpisodeRoomChatStub() {
   return <section>Episode chat</section>;
 });

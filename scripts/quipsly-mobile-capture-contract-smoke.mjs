@@ -2143,12 +2143,12 @@ function checkTranscriptCorrectionContractSources() {
       && sessionReviewText.includes("TranscriptSpeakerEvidenceBadge")
       && transcriptSpeakerEvidenceBadgeText.includes("Participant recording")
       && transcriptSpeakerEvidenceBadgeText.includes("Automatic speaker label")
-      && transcriptSpeakerEvidenceBadgeText.includes("Speaker needs review")
+      && transcriptSpeakerEvidenceBadgeText.includes("Speaker not named")
       && nativeText.includes("speakerAuthority")
       && nativeText.includes("CaptureTranscriptSpeakerEvidenceBadge")
       && nativeText.includes("Participant recording")
       && nativeText.includes("Automatic speaker label")
-      && nativeText.includes("Speaker needs review"),
+      && nativeText.includes("Speaker not named"),
     "packetSpeakerIdentityEvidenceVisible",
     "Nest and iPhone Session follow-through explain whether a speaker name was reviewed, bound to an isolated participant recording, supplied automatically, or remains unresolved without conflating that identity with word review.",
   );

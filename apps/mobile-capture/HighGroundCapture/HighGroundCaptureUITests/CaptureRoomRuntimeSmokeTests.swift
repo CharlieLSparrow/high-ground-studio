@@ -3583,6 +3583,64 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRuntimeScreenshot(app, name: "Native transcript exports ready for the standard share sheet")
     }
 
+    func testTranscriptProgressKeepsAvailableWordsUsableAndExplainsSilentSources() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID else {
+            throw XCTSkip("Requires a Session with a timed passage and a silent source.")
+        }
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+        let recordings = app.buttons["CaptureSessionTranscriptRecordings_\(sessionID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(recordings, in: app, timeout: 30, swipeAttempts: 12))
+        recordings.tap()
+        let failed = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND value == %@", "CaptureSessionSourceTranscript_", "FAILED"
+        )).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(failed, in: app, timeout: 20, swipeAttempts: 12))
+        failed.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+        let details = app.descendants(matching: .any)["CaptureTranscriptProgressDetails"].firstMatch
+        if details.waitForExistence(timeout: 3) { details.tap() }
+        let silent = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@", "CaptureTranscriptProgress_"
+        )).containing(.staticText, identifier: "No audio was captured").firstMatch
+        XCTAssertTrue(waitForRuntimeElement(silent, in: app, timeout: 20, swipeAttempts: 12))
+        XCTAssertFalse(app.staticTexts["Transcript ready"].exists,
+                       "Recording availability must not masquerade as a completed transcript.")
+        XCTAssertFalse(app.buttons["CaptureTranscriptPrepareMentorReport"].exists,
+                       "Do not offer an empty transcript report for a failed source.")
+        XCTAssertEqual(silent.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptStart_")).count, 0,
+                       "A verified silent source must not offer a futile transcription retry.")
+        attachRuntimeScreenshot(app, name: "Native source-specific transcript progress and silent recording explanation")
+        app.navigationBars["Transcript"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(waitForRuntimeElement(recordings, in: app, timeout: 30, swipeAttempts: 12))
+        recordings.tap()
+        let withTranscript = app.buttons["With transcript"].firstMatch
+        XCTAssertTrue(withTranscript.waitForExistence(timeout: 10))
+        withTranscript.tap()
+        let completed = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND value == %@", "CaptureSessionSourceTranscript_", "COMPLETED"
+        )).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(completed, in: app, timeout: 30, swipeAttempts: 20))
+        completed.tap()
+        let controls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+        // Let the picker dismiss and the selected source load before scrolling.
+        // The old recorder surface disappears during this navigation transition.
+        XCTAssertTrue(app.navigationBars["Transcript"].waitForExistence(timeout: 10))
+        _ = controls.waitForExistence(timeout: 10)
+        XCTAssertTrue(waitForRuntimeElement(controls, in: app, timeout: 30, swipeAttempts: 12))
+        controls.buttons["Timeline"].firstMatch.tap()
+        let edit = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptCorrectButton_")).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 14))
+        edit.tap()
+        XCTAssertTrue(app.textFields["CaptureTranscriptCorrectWordsField"].waitForExistence(timeout: 15),
+                      "A failed recording must not block editing the available participant transcript.")
+        XCTAssertFalse(app.staticTexts["Speaker needs review"].exists,
+                       "An unnamed speaker is editable information, not a mandatory review task.")
+        XCTAssertEqual(app.state, .runningForeground)
+        attachRuntimeScreenshot(app, name: "Available native transcript remains editable beside source failures")
+    }
+
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,

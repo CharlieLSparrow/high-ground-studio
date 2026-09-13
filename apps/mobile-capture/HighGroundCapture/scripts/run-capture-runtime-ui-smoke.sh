@@ -280,6 +280,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-progress)
+    TEST_CASE="testTranscriptProgressKeepsAvailableWordsUsableAndExplainsSilentSources"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Transcript progress requires a Session with available words and a retained silent-source failure." >&2
+      exit 2
+    fi
+    ;;
   transcript-text-edit)
     TEST_CASE="testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* || -z "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" ]]; then

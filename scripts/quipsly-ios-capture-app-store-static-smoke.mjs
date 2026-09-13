@@ -963,12 +963,11 @@ for (const placeholder of [
   );
 }
 for (const needle of [
-  "mobileSourceTranscriptStatusMessage",
+  "...transcriptFailurePresentation(transcriptJob)",
   "mobileSourceTranscriptRouting",
   'recognitionExecution === "quipsly-cloud"',
   "quipslyCloudASRRequested",
   "fallbackReasonCode",
-  "The exact recording remains safe and can be tried again.",
   "wordCount: transcriptJob._count?.words ?? 0",
 ]) {
   requireIncludes(

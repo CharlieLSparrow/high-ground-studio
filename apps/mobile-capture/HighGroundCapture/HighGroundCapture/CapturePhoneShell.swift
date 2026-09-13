@@ -11495,6 +11495,7 @@ private struct CaptureRecorderView: View {
     @State private var isRunningRehearsalCheck = false
     @State private var isSafelyLeavingRoom = false
     @State private var showsCompletedSessionWork = false
+    @State private var selectedRecordingTranscript: CaptureSessionRecordingTranscriptDestination?
     #if DEBUG && !targetEnvironment(simulator)
     @State private var didRunPhysicalVoiceWritingAcceptance = false
     #endif
@@ -12038,7 +12039,8 @@ private struct CaptureRecorderView: View {
                     CaptureSessionTranscriptReviewCard(
                         session: session,
                         sessionClient: model.sessionClient,
-                        previewOnly: model.usesPreviewData
+                        previewOnly: model.usesPreviewData,
+                        onSelectSource: { selectedRecordingTranscript = $0 }
                     )
 
                     // Generated notes, tasks, and goals are the primary outcome
@@ -13220,7 +13222,8 @@ private struct CaptureRecorderView: View {
                         CaptureSessionTranscriptReviewCard(
                             session: session,
                             sessionClient: model.sessionClient,
-                            previewOnly: model.usesPreviewData
+                            previewOnly: model.usesPreviewData,
+                            onSelectSource: { selectedRecordingTranscript = $0 }
                         )
                         CaptureSessionResultsCard(
                             session: session,
@@ -13278,6 +13281,16 @@ private struct CaptureRecorderView: View {
                 transcriptJobID: destination.source.transcriptJobId,
                 previewOnly: model.usesPreviewData,
                 focusSegmentID: destination.source.segmentId
+            )
+        }
+        .navigationDestination(item: $selectedRecordingTranscript) { destination in
+            CaptureTranscriptReviewView(
+                roomID: destination.roomID,
+                sessionTitle: destination.title,
+                recording: matchingRecording(roomID: destination.roomID, recordingAssetID: destination.recordingAssetID),
+                recordingAssetID: destination.recordingAssetID,
+                previewOnly: model.usesPreviewData,
+                canUseProjectTeamNotes: destination.canUseProjectTeamNotes
             )
         }
         .navigationDestination(isPresented: $showsSessionContext) {
@@ -14865,6 +14878,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
+    let onSelectSource: (CaptureSessionRecordingTranscriptDestination) -> Void
     @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var isRunningTranscript = false
@@ -14989,6 +15003,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
                 }
             }
         }
+        CaptureSessionTranscriptSourcePicker(session: session, previewOnly: previewOnly, onSelect: onSelectSource)
     }
 
     private var matchingTranscriptPhase: OnDeviceTranscriptPhase? {
@@ -15030,6 +15045,12 @@ private struct CaptureSessionTranscriptReviewCard: View {
         session.canRunTranscript
             && !transcriptIsAutomaticWorkInProgress
             && normalizedTranscriptStatus != "COMPLETED"
+            && latestSourceTranscript?.failureCode != "NO_AUDIO_SIGNAL"
+            && latestSourceTranscript?.retryable != false
+    }
+
+    private var latestSourceTranscript: MobileCaptureSourceTranscriptSummary? {
+        session.captureSources?.first(where: { $0.id == session.latestRecordingAssetId })?.transcript
     }
 
     private var transcriptRecoveryLabel: String {
@@ -15039,7 +15060,8 @@ private struct CaptureSessionTranscriptReviewCard: View {
     }
 
     private var transcriptLifecycleTitle: String {
-        switch normalizedTranscriptStatus {
+        if latestSourceTranscript?.failureCode == "NO_AUDIO_SIGNAL" { return "No audio was captured" }
+        return switch normalizedTranscriptStatus {
         case "QUEUED":
             "Transcript queued"
         case "RUNNING":
@@ -15052,7 +15074,10 @@ private struct CaptureSessionTranscriptReviewCard: View {
     }
 
     private var transcriptLifecycleDetail: String {
-        switch normalizedTranscriptStatus {
+        if latestSourceTranscript?.failureCode == "NO_AUDIO_SIGNAL" {
+            return "The recording is saved, but it contains no audio signal. Check the microphone before recording again. Earlier recordings are still available below."
+        }
+        return switch normalizedTranscriptStatus {
         case "QUEUED", "RUNNING":
             "Quipsly is processing the verified recording automatically. You can leave this screen and return later."
         case "HELD":
@@ -25362,7 +25387,7 @@ private extension MobileCaptureSession {
     }
 }
 
-private extension TimeInterval {
+extension TimeInterval {
     var captureDurationLabel: String {
         let total = max(0, Int(rounded(.down)))
         let hours = total / 3600

@@ -499,7 +499,7 @@ private func mobileClientFollowUpSpeakerEvidence(
     case "attribution": "Speaker reviewed"
     case "source-binding": "Participant recording"
     case "provider": "Automatic speaker label"
-    case "unresolved": "Speaker needs review"
+    case "unresolved": "Speaker not named"
     default: nil
     }
     return label.map { " · Speaker evidence: \($0)" } ?? ""
