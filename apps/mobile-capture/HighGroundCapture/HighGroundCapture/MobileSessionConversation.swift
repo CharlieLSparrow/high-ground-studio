@@ -892,6 +892,7 @@ struct MobileSessionConversationThread: View {
                                         .padding(.vertical, 8)
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityValue(task.status == "DONE" ? "Completed" : task.status == "CANCELED" ? "Removed" : "Open")
                                 .accessibilityIdentifier("CaptureSessionChatTask_\(task.id)")
                             }
                         }

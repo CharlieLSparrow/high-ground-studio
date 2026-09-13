@@ -5553,20 +5553,25 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.scrollViews["CaptureSessionChatScroll"].swipeUp()
         }
         XCTAssertTrue(linkedTask.isHittable)
+        let taskIdentifier = linkedTask.identifier
         linkedTask.tap()
         let editTitle = app.textFields["CaptureTaskEditTitle"].firstMatch
         XCTAssertTrue(editTitle.waitForExistence(timeout: 15), "A client must edit their task without joining the coach's whole Nest.")
-        editTitle.tap()
-        editTitle.typeText(" — ready for our next session")
+        let revisedTitle = "Ready: \(replyBody)"
+        replaceText(in: editTitle, with: revisedTitle, app: app, dismissKeyboardAfterEditing: false)
         app.buttons["CaptureTaskEditSave"].tap()
         XCTAssertTrue(editTitle.waitForNonExistence(timeout: 15))
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "ready for our next session")).firstMatch.waitForExistence(timeout: 20))
-        let editedTask = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "CaptureSessionChatTask_", "ready for our next session")).firstMatch
+        let editedTask = app.buttons[taskIdentifier]
+        XCTAssertTrue(editedTask.waitForExistence(timeout: 20))
+        XCTAssertTrue(NSPredicate(format: "label == %@", revisedTitle).evaluate(with: editedTask))
         editedTask.tap()
         let complete = app.buttons["CaptureTaskEditCompletion"]
         XCTAssertTrue(complete.waitForExistence(timeout: 15))
+        XCTAssertEqual(complete.label, "Mark done")
         complete.tap()
         XCTAssertTrue(complete.waitForNonExistence(timeout: 15))
+        expectation(for: NSPredicate(format: "value == %@", "Completed"), evaluatedWith: app.buttons[taskIdentifier])
+        waitForExpectations(timeout: 20)
         XCTAssertFalse(
             app.otherElements["GlobalCaptureBanner"].exists,
             "Using Session conversation must not start or imply local recording."

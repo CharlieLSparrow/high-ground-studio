@@ -59,3 +59,28 @@ it("clears a departed person's pin, and does not expose stale tracks after depar
   rerender(<CallParticipantGallery {...base} videos={[source]} />);
   expect(screen.getByRole("button", {name: "Pin Riley for me"})).toHaveAttribute("aria-pressed", "false");
 });
+
+it("focuses shared content automatically while letting this viewer choose the gallery", () => {
+  const share = video(Track.Source.ScreenShare);
+  const {rerender} = render(<CallParticipantGallery {...base} videos={[share]} />);
+  expect(screen.getByRole("article", {name: "Riley · screen"})).toHaveClass("col-span-full");
+  expect(screen.getByRole("article", {name: "Casey (you)"})).toHaveClass("max-h-44");
+  fireEvent.click(screen.getByRole("button", {name: "Show everyone equally"}));
+  rerender(<CallParticipantGallery {...base} videos={[share]} />);
+  expect(screen.getByRole("article", {name: "Riley · screen"})).not.toHaveClass("col-span-full");
+  expect(share.track.attach).toHaveBeenCalledTimes(1);
+});
+
+it("never focuses a stale share belonging to someone who has left", () => {
+  render(<CallParticipantGallery {...base} participants={[people[0]]} videos={[video(Track.Source.ScreenShare)]} />);
+  expect(screen.queryByRole("button", {name: "Show everyone equally"})).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Riley screen")).not.toBeInTheDocument();
+});
+
+it("renders the local presentation independently from the local camera", () => {
+  const share = {...video(Track.Source.ScreenShare), identity: "me"};
+  render(<CallParticipantGallery {...base} localCameraOn={false} videos={[share]} />);
+  expect(screen.getByLabelText("Your camera")).toHaveClass("invisible");
+  expect(screen.getByLabelText("Casey screen")).toHaveClass("object-contain");
+  expect(share.track.attach).toHaveBeenCalledWith(screen.getByLabelText("Casey screen"));
+});

@@ -17,6 +17,8 @@ import {
   Settings2,
   Ellipsis,
   Smartphone,
+  ScreenShare,
+  ScreenShareOff,
   Users,
   Video,
 } from "lucide-react";
@@ -85,6 +87,7 @@ import {
   type BrowserRetainedSourceGuardianEvidence,
 } from "@/lib/session-guardian";
 import { useActiveMediaLifecycle } from "@/hooks/use-active-media-lifecycle";
+import { useCallScreenShare } from "@/hooks/use-call-screen-share";
 
 type DeviceOption = { deviceId: string; label: string };
 type CallAudioMode = "this-device" | "other-device";
@@ -632,6 +635,7 @@ export function LiveSessionRoom({
   }, []);
 
   const connected = status === "connected" || status === "reconnecting";
+  const screenShare = useCallScreenShare(connected ? roomRef.current : null);
   useEffect(() => {
     if (connected) return;
     cameraOperationGenerationRef.current += 1;
@@ -2343,7 +2347,7 @@ export function LiveSessionRoom({
   const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops ||
     (retainedGuardianEvidence?.protectedRecoveryCount ?? 0) > 0;
   const callVideoStage = connected ? (
-    <CallParticipantGallery participants={participants} videos={participantVideos}
+    <CallParticipantGallery participants={participants} videos={[...participantVideos, ...screenShare.videos]}
       bindLocalVideo={bindLocalVideoElement} localCameraOn={cameraWanted && !cameraMuted}
       localMicrophoneMuted={microphoneMuted || callAudioMode === "other-device"} />
   ) : (
@@ -2368,6 +2372,12 @@ export function LiveSessionRoom({
         ) : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
         <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{cameraToggleBusy ? <LoaderCircle size={16} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
       {stageLayout ? <>
+        <button type="button" onClick={() => void (screenShare.sharing || screenShare.busy ? screenShare.stop() : screenShare.start())}
+          aria-pressed={screenShare.sharing}
+          className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${screenShare.sharing ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+          {screenShare.sharing ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
+          {screenShare.busy ? "Cancel sharing" : screenShare.sharing ? "Stop sharing" : "Share screen"}
+        </button>
         {typeof captureGroupId === "string" && captureGroupId.trim() ? <div ref={setRecordingControlContainer} className="min-w-0" data-testid="call-recording-control-slot" /> : <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl px-3 text-xs font-semibold hover:bg-muted">Recording</button>}
         <button type="button" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Settings2 size={18} />Devices</button>
         <button type="button" onClick={() => setToolPanel("details")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Ellipsis size={18} />More</button>
@@ -2376,6 +2386,8 @@ export function LiveSessionRoom({
       </div>
       {callAudioMode === "this-device" ? <div><LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} compact={Boolean(controlsContainer)} /></div> : null}
       {cameraControlError ? <p role="alert" className="text-xs leading-5 text-destructive">{cameraControlError}</p> : null}
+      {screenShare.error ? <p role="alert" className="text-xs leading-5 text-destructive">{screenShare.error}</p> : null}
+      {screenShare.sharing ? <p role="status" className="text-center text-xs text-muted-foreground">You’re sharing your screen live. Local recordings still capture your microphone and camera, not the shared screen.</p> : null}
     </div>
   ) : null;
 

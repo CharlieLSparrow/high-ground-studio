@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CameraOff, MicOff, Pin, PinOff, ScreenShare } from "lucide-react";
-import { Track, type RemoteTrack } from "livekit-client";
+import { Track, type RemoteTrack, type LocalTrack } from "livekit-client";
 
 export type CallParticipant = {
   identity: string;
@@ -12,9 +12,9 @@ export type CallParticipant = {
   microphoneMuted: boolean;
 };
 
-export type CallParticipantVideo = { identity: string; key: string; track: RemoteTrack };
+export type CallParticipantVideo = { identity: string; key: string; track: RemoteTrack | LocalTrack };
 
-function ParticipantVideo({ track, name, screen }: {track: RemoteTrack; name: string; screen: boolean}) {
+function ParticipantVideo({ track, name, screen }: {track: RemoteTrack | LocalTrack; name: string; screen: boolean}) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const element = ref.current;
@@ -48,28 +48,29 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
     }),
   ];
   const focused = tiles.some(tile => tile.id === pinned) ? pinned : null;
+  const presentation = focused || (pinned === null ? tiles.find(tile => tile.screen)?.id ?? null : null);
   useEffect(() => { if (pinned && !focused) setPinned(null); }, [pinned, focused]);
 
   return <section data-testid="call-video-stage" aria-label="Call participants"
     className="flex min-h-48 w-full min-w-0 max-w-full flex-1 flex-col gap-3">
     <div className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
       <span>{people.length} {people.length === 1 ? "person" : "people"} in call</span>
-      {focused ? <button type="button" onClick={() => setPinned(null)} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-semibold hover:bg-muted"><PinOff size={15} />Show everyone equally</button> : <span>Gallery</span>}
+      {presentation ? <button type="button" onClick={() => setPinned("")} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-semibold hover:bg-muted"><PinOff size={15} />Show everyone equally</button> : <span>Gallery</span>}
     </div>
-    <div className={`grid min-h-0 flex-1 gap-3 ${tiles.length === 2 && !focused ? "grid-cols-1 grid-rows-2 sm:grid-cols-2 sm:grid-rows-1" : tiles.length > 1 ? "grid-cols-2" : "grid-cols-1"} ${tiles.length > 4 && !focused ? "lg:grid-cols-3" : ""}`}>
+    <div className={`grid min-h-0 flex-1 gap-3 ${tiles.length === 2 && !presentation ? "grid-cols-1 grid-rows-2 sm:grid-cols-2 sm:grid-rows-1" : tiles.length > 1 ? "grid-cols-2" : "grid-cols-1"} ${tiles.length > 4 && !presentation ? "lg:grid-cols-3" : ""}`}>
       {tiles.map(({id, person, video, screen}) => {
-        const isPinned = focused === id;
+        const isPinned = presentation === id;
         const cameraOn = screen || (person.isLocal ? localCameraOn : Boolean(video));
         const muted = person.isLocal ? localMicrophoneMuted : person.microphoneMuted;
         const label = `${person.name}${person.isLocal ? " (you)" : ""}${screen ? " · screen" : ""}`;
         return <article key={id} aria-label={label} data-participant-identity={person.identity}
-          className={`relative isolate min-h-36 w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#211a14] text-[#f5e8cf] ${isPinned ? "order-first col-span-full min-h-64 aspect-video" : focused ? "aspect-video max-h-44" : tiles.length === 2 ? "aspect-auto sm:aspect-video sm:self-center" : "aspect-video"} ${person.speaking && !screen ? "ring-2 ring-inset ring-[#b5c991]" : ""}`}>
+          className={`relative isolate min-h-36 w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#211a14] text-[#f5e8cf] ${isPinned ? "order-first col-span-full min-h-64 aspect-video" : presentation ? "aspect-video max-h-44" : tiles.length === 2 ? "aspect-auto sm:aspect-video sm:self-center" : "aspect-video"} ${person.speaking && !screen ? "ring-2 ring-inset ring-[#b5c991]" : ""}`}>
           {!screen && person.isLocal ? <video ref={bindLocalVideo} muted playsInline aria-label="Your camera" className={`absolute inset-0 h-full w-full object-cover ${cameraOn ? "" : "invisible"}`} /> : video ? <ParticipantVideo track={video.track} name={person.name} screen={screen} /> : null}
           {!cameraOn && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pb-8">
             <div className="grid size-16 place-items-center rounded-full bg-[#514b36] text-2xl font-medium sm:size-20 sm:text-3xl" aria-hidden="true">{person.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("") || "?"}</div>
             <span className="inline-flex items-center gap-1 text-xs text-[#dfd0b8]"><CameraOff size={13} />Camera off</span>
           </div>}
-          <button type="button" onClick={() => setPinned(isPinned ? null : id)} aria-label={`${isPinned ? "Unpin" : "Pin"} ${label}${isPinned ? "" : " for me"}`} aria-pressed={isPinned}
+          <button type="button" onClick={() => setPinned(isPinned ? "" : id)} aria-label={`${isPinned ? "Unpin" : "Pin"} ${label}${isPinned ? "" : " for me"}`} aria-pressed={isPinned}
             className="absolute right-2 top-2 z-10 grid size-11 place-items-center rounded-xl bg-black/55 text-white hover:bg-black/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
             {isPinned ? <PinOff size={17} /> : <Pin size={17} />}
           </button>
