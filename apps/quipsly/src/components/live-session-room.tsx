@@ -29,6 +29,7 @@ import {
   RoomEvent,
   Track,
   TrackPublication,
+  type Participant,
 } from "livekit-client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -36,6 +37,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { CallWorkspacePanel } from "@/components/call-workspace-panel";
+import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
 import {
@@ -565,7 +567,7 @@ export function LiveSessionRoom({
   const [cameraControlError, setCameraControlError] = useState<string | null>(null);
   const cameraToggleInFlightRef = useRef(false);
   const cameraOperationGenerationRef = useRef(0);
-  const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
+  const [participants, setParticipants] = useState<CallParticipant[]>([]);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
   const [previewTested, setPreviewTested] = useState(false);
@@ -590,7 +592,7 @@ export function LiveSessionRoom({
     "Cloud recording backup is off. Local recording remains available.",
   );
   const [providerStartArmed, setProviderStartArmed] = useState(false);
-  const [remoteVideoTrackCount, setRemoteVideoTrackCount] = useState(0);
+  const [participantVideos, setParticipantVideos] = useState<CallParticipantVideo[]>([]);
   const [callRecoveryAvailable, setCallRecoveryAvailable] = useState(false);
   const [callEndedByPerson, setCallEndedByPerson] = useState(false);
   const [callPermanentlyClosed, setCallPermanentlyClosed] = useState(false);
@@ -620,7 +622,7 @@ export function LiveSessionRoom({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
   const remoteTracksRef = useRef(new Map<string, RemoteTrack>());
-  const remoteVideoTrackSidsRef = useRef(new Set<string>());
+  const remoteAudioElementsRef = useRef(new Map<string, {track: RemoteTrack; element: HTMLMediaElement}>());
   const meterCleanupRef = useRef<(() => void) | null>(null);
   const audioMeterGenerationRef = useRef(0);
   const automaticPreviewAttemptedRef = useRef(false);
@@ -759,20 +761,25 @@ export function LiveSessionRoom({
         identity: room.localParticipant.identity,
         name: room.localParticipant.name || "You",
         speaking: active.has(room.localParticipant.identity),
+        isLocal: true,
+        microphoneMuted: !room.localParticipant.isMicrophoneEnabled,
       },
       ...Array.from(room.remoteParticipants.values()).map((participant) => ({
         identity: participant.identity,
         name: participant.name || "Participant",
         speaking: active.has(participant.identity),
+        isLocal: false,
+        microphoneMuted: !participant.isMicrophoneEnabled,
       })),
     ]);
   }, []);
 
   const clearRemoteMedia = useCallback(() => {
+    remoteTracksRef.current.forEach(track => { if (track.kind === Track.Kind.Audio) track.detach().forEach(element => element.remove()); });
     remoteMediaRef.current?.replaceChildren();
     remoteTracksRef.current.clear();
-    remoteVideoTrackSidsRef.current.clear();
-    setRemoteVideoTrackCount(0);
+    remoteAudioElementsRef.current.clear();
+    setParticipantVideos([]);
   }, []);
 
   const stopAudioMeter = useCallback(() => {
@@ -994,11 +1001,17 @@ export function LiveSessionRoom({
   }, [outputId]);
 
   const mountRemoteTrack = useCallback((track: RemoteTrack, container: HTMLDivElement) => {
+    if (track.kind !== Track.Kind.Audio) return;
     const trackKey = track.sid || track.mediaStreamTrack.id;
-    container.querySelectorAll<HTMLElement>("[data-livekit-track-sid]").forEach((element) => {
-      if (element.dataset.livekitTrackSid === trackKey) element.remove();
-    });
-    const element = track.attach();
+    const previous = remoteAudioElementsRef.current.get(trackKey);
+    if (previous && previous.track !== track) {
+      previous.track.detach(previous.element);
+      previous.element.remove();
+    }
+    // Subscription events and the post-connect snapshot can report the same
+    // track. Reuse its element instead of creating a second playing stream.
+    const element = previous?.track === track ? previous.element : track.attach();
+    remoteAudioElementsRef.current.set(trackKey, {track, element});
     element.dataset.livekitTrackSid = trackKey;
     element.autoplay = true;
     if (track.kind === Track.Kind.Audio) {
@@ -1007,10 +1020,6 @@ export function LiveSessionRoom({
       element.muted = !useAudioHere;
       element.volume = useAudioHere ? 1 : 0;
       if (useAudioHere) void routeAudioOutput(element);
-    } else {
-      element.className = "h-full min-h-0 w-full bg-black object-cover";
-      remoteVideoTrackSidsRef.current.add(trackKey);
-      setRemoteVideoTrackCount(remoteVideoTrackSidsRef.current.size);
     }
     container.appendChild(element);
   }, [routeAudioOutput]);
@@ -1022,19 +1031,24 @@ export function LiveSessionRoom({
     remoteTracksRef.current.forEach((track) => mountRemoteTrack(track, element));
   }, [mountRemoteTrack]);
 
-  const attachRemoteTrack = useCallback((track: RemoteTrack) => {
+  const attachRemoteTrack = useCallback((track: RemoteTrack, participant?: Participant) => {
     const trackKey = track.sid || track.mediaStreamTrack.id;
     remoteTracksRef.current.set(trackKey, track);
+    if (track.kind === Track.Kind.Video) {
+      if (participant) setParticipantVideos(current => [...current.filter(video => video.key !== trackKey), {identity: participant.identity, key: trackKey, track}]);
+      return;
+    }
     const container = remoteMediaRef.current;
     if (container) mountRemoteTrack(track, container);
   }, [mountRemoteTrack]);
 
   const detachRemoteTrack = useCallback((track: RemoteTrack) => {
-    track.detach().forEach((element) => element.remove());
+    // React owns video nodes; detaching all tracks must not remove its nodes.
+    if (track.kind === Track.Kind.Audio) track.detach().forEach((element) => element.remove());
+    remoteAudioElementsRef.current.delete(track.sid || track.mediaStreamTrack.id);
     remoteTracksRef.current.delete(track.sid || track.mediaStreamTrack.id);
     if (track.kind !== Track.Kind.Video) return;
-    remoteVideoTrackSidsRef.current.delete(track.sid || track.mediaStreamTrack.id);
-    setRemoteVideoTrackCount(remoteVideoTrackSidsRef.current.size);
+    setParticipantVideos(current => current.filter(video => video.key !== (track.sid || track.mediaStreamTrack.id)));
   }, []);
 
   const refreshDevices = useCallback(async (
@@ -1711,20 +1725,27 @@ export function LiveSessionRoom({
       }
       roomRef.current = room;
       room
-        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => attachRemoteTrack(track))
+        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication: RemoteTrackPublication, participant: RemoteParticipant) => { attachRemoteTrack(track, participant); updateRoster(room); })
         .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => detachRemoteTrack(track))
-        .on(RoomEvent.TrackMuted, (publication: TrackPublication) => {
-          if (publication.track?.kind === Track.Kind.Video) {
+        .on(RoomEvent.TrackMuted, (publication: TrackPublication, participant: Participant) => {
+          if (participant !== room.localParticipant && publication.track?.kind === Track.Kind.Video) {
             detachRemoteTrack(publication.track as RemoteTrack);
           }
+          updateRoster(room);
         })
-        .on(RoomEvent.TrackUnmuted, (publication: TrackPublication) => {
-          if (publication.track?.kind === Track.Kind.Video) {
-            attachRemoteTrack(publication.track as RemoteTrack);
+        .on(RoomEvent.TrackUnmuted, (publication: TrackPublication, participant: Participant) => {
+          if (participant !== room.localParticipant && publication.track?.kind === Track.Kind.Video) {
+            attachRemoteTrack(publication.track as RemoteTrack, participant);
           }
+          updateRoster(room);
         })
         .on(RoomEvent.ParticipantConnected, () => updateRoster(room))
-        .on(RoomEvent.ParticipantDisconnected, () => updateRoster(room))
+        .on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+          participant.trackPublications.forEach(publication => { if (publication.track) detachRemoteTrack(publication.track); });
+          setParticipantVideos(current => current.filter(video => video.identity !== participant.identity));
+          updateRoster(room);
+        })
+        .on(RoomEvent.ParticipantNameChanged, () => updateRoster(room))
         .on(RoomEvent.ActiveSpeakersChanged, () => updateRoster(room))
         .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
           const chatThreadKeys = [
@@ -1852,7 +1873,7 @@ export function LiveSessionRoom({
       suppressPreferenceWriteRef.current = false;
       room.remoteParticipants.forEach((participant: RemoteParticipant) => {
         participant.trackPublications.forEach((publication: RemoteTrackPublication) => {
-          if (publication.track) attachRemoteTrack(publication.track);
+          if (publication.track && !publication.isMuted) attachRemoteTrack(publication.track, participant);
         });
       });
       updateRoster(room);
@@ -2358,51 +2379,24 @@ export function LiveSessionRoom({
   );
   const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops ||
     (retainedGuardianEvidence?.protectedRecoveryCount ?? 0) > 0;
-  const callVideoStage = (
-    <div
-      data-testid="call-video-stage"
-      className={`relative overflow-hidden rounded-2xl bg-[#211a14] ${stageLayout ? connected ? "min-h-48 flex-1 max-h-[calc(100dvh-18rem)]" : "min-h-40 aspect-video max-h-[45dvh]" : !connected && !cameraWanted ? "h-28" : "aspect-video"}`}
-      aria-label={remoteVideoTrackCount > 0 ? "Call video stage with your preview" : "Your camera preview"}
-    >
-      <div
-        ref={bindRemoteMediaElement}
-        className={`absolute inset-0 grid overflow-hidden bg-black ${remoteVideoTrackCount > 1 ? "grid-cols-2" : "grid-cols-1"}`}
-        aria-label="Remote participant media"
-      />
-      <video
-        ref={bindLocalVideoElement}
-        muted
-        playsInline
-        aria-label="Your camera"
-        className={remoteVideoTrackCount > 0
-          ? `absolute bottom-3 right-3 z-10 aspect-video w-[32%] max-w-56 rounded-xl border-2 border-white/90 bg-black object-cover shadow-2xl ${cameraWanted && !cameraMuted ? "" : "invisible"}`
-          : `absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`}
-      />
-      {remoteVideoTrackCount === 0 && (!cameraWanted || cameraMuted) ? <div className="absolute inset-0 flex flex-wrap content-center items-center justify-center gap-6 overflow-y-auto p-5 text-center text-[#f5dfb9]">
-        {connected && participants.length > 0 ? participants.map((participant) => (
-          <div key={participant.identity} className="min-w-0 max-w-40">
-            <div className={`mx-auto grid size-16 place-items-center rounded-full bg-[#514b36] text-2xl font-medium sm:size-24 sm:text-3xl ${participant.speaking ? "ring-4 ring-[#b5c991] ring-offset-4 ring-offset-[#211a14]" : ""}`}>
-              {participant.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
-            </div>
-            <p className="mt-4 truncate text-sm font-medium">{participant.name}</p>
-            {participant.speaking ? <span className="sr-only">Speaking</span> : null}
-          </div>
-        )) : <div><CameraOff className="mx-auto size-8 opacity-70" aria-hidden="true" /><p className="mt-3 text-sm font-medium">Camera off</p></div>}
+  const callVideoStage = connected ? (
+    <CallParticipantGallery participants={participants} videos={participantVideos}
+      bindLocalVideo={bindLocalVideoElement} localCameraOn={cameraWanted && !cameraMuted}
+      localMicrophoneMuted={microphoneMuted || callAudioMode === "other-device"} />
+  ) : (
+    <div data-testid="call-video-stage" aria-label="Your camera preview"
+      className={`relative overflow-hidden rounded-2xl bg-[#211a14] ${stageLayout ? "min-h-40 aspect-video max-h-[45dvh]" : !cameraWanted ? "h-28" : "aspect-video"}`}>
+      <video ref={bindLocalVideoElement} muted playsInline aria-label="Your camera"
+        className={`absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "invisible"}`} />
+      {(!cameraWanted || cameraMuted) ? <div className="absolute inset-0 grid place-items-center text-[#f5dfb9]">
+        <div className="text-center"><CameraOff className="mx-auto size-8 opacity-70" aria-hidden="true" /><p className="mt-3 text-sm font-medium">Camera off</p></div>
+      </div> : !previewTested ? <div className="absolute inset-0 grid place-items-center bg-black/35 px-6 text-center text-white">
+        <div><Camera className="mx-auto" aria-hidden="true" /><p className="mt-2 text-sm font-semibold">Camera starts when you join</p>
+        <p className="mt-1 text-xs text-white/80">Preview is available in audio and video settings.</p></div>
       </div> : null}
-      {!connected && remoteVideoTrackCount === 0 && cameraWanted && !cameraMuted && !previewTested ? (
-        <div className="absolute inset-0 grid place-items-center bg-black/35 px-6 text-center text-white">
-          <div>
-            <Camera className="mx-auto" aria-hidden="true" />
-            <p className="mt-2 text-xs font-black uppercase tracking-wide">Camera starts when you join</p>
-            <p className="mt-1 text-[10px] font-bold text-white/80">Preview is available in audio and video settings.</p>
-          </div>
-        </div>
-      ) : null}
-      {remoteVideoTrackCount > 0 && (!cameraWanted || cameraMuted) ? <div className="absolute bottom-3 right-3 z-10 inline-flex min-h-10 items-center gap-2 rounded-full bg-black/75 px-3 text-[10px] font-black uppercase tracking-wide text-white"><CameraOff size={14} aria-hidden="true" /> You · Camera off</div> : null}
-      {remoteVideoTrackCount === 0 && (!connected || cameraWanted && !cameraMuted) ? <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white">You</div> : cameraWanted && !cameraMuted ? <div className="absolute bottom-5 right-5 z-20 rounded-full bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">You</div> : null}
+      <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white">You</div>
     </div>
   );
-
   const callControls = connected ? (
     <div className="flex flex-col gap-2" role="group" aria-label="Call controls">
       <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-center">
@@ -2424,6 +2418,7 @@ export function LiveSessionRoom({
 
   return (
     <section className={stageLayout ? "flex min-h-full min-w-0 flex-col text-foreground" : `overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
+      <div ref={bindRemoteMediaElement} aria-label="Remote participant audio" className="hidden" />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className={showSessionHeading ? "max-w-3xl" : "sr-only"}>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Call · {experience.label}</p>

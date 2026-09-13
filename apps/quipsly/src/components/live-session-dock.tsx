@@ -119,6 +119,12 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
     setWorkspacePanel(null);
   }, [active?.callRoomId]);
 
+  useEffect(() => {
+    // Reveal the after-call destination even when someone leaves from chat or
+    // settings. Panels stay mounted, so an unfinished message is not lost.
+    if (status === "ended" && !sourceProtected) setWorkspacePanel(null);
+  }, [status, sourceProtected]);
+
   const requestSession = useCallback((config: LiveSessionDockConfig, requestOpen: boolean) => {
     setActive((current) => {
       if (!current && !requestOpen) return current;

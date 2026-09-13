@@ -133,6 +133,20 @@ describe("LiveSessionDockProvider", () => {
     expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
   });
 
+  it("reveals the after-call surface without discarding an unfinished chat message", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("button", {name: "Simulate saved sources"}));
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    await user.type(screen.getByRole("textbox", {name: "Message"}), "A thought after our call");
+    await user.click(screen.getByRole("button", {name: "Simulate ended call"}));
+    expect(screen.getByRole("button", {name: "Show chat"})).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById("live-call-stage-panel")).not.toHaveClass("hidden");
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    expect(screen.getByRole("textbox", {name: "Message"})).toHaveValue("A thought after our call");
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+  });
+
   it.each(["preflight", "checking", "ready", "joining", "reconnecting", "ended", "error"] as const)("does not label %s as an in-progress connection", (status) => {
     expect(liveSessionStatusLabel(status)).not.toBe("In call");
   });

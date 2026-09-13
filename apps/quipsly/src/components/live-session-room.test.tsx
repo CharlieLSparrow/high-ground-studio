@@ -60,6 +60,8 @@ jest.mock("livekit-client", () => {
       localParticipant.publishData.mockClear();
       localParticipant.setMicrophoneEnabled.mockClear();
       localParticipant.setCameraEnabled.mockReset().mockResolvedValue(undefined);
+      room.remoteParticipants.clear();
+      room.activeSpeakers = [];
       handlers.clear();
     },
   };
@@ -74,6 +76,7 @@ import { LiveSessionRoom, liveMicrophoneStatusPresentation } from "./live-sessio
 import { LiveSessionDockLauncher, LiveSessionDockProvider } from "./live-session-dock";
 
 type MockLiveKitRoom = {
+  remoteParticipants: Map<string, unknown>;
   __reset: () => void;
   connect: jest.Mock;
   disconnect: jest.Mock;
@@ -786,7 +789,7 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     const remoteAudio = document.createElement("audio");
-    screen.getByLabelText("Remote participant media").appendChild(remoteAudio);
+    screen.getByLabelText("Remote participant audio").appendChild(remoteAudio);
     fireEvent.click(screen.getByText("Audio and video settings"));
 
     fireEvent.click(screen.getByRole("button", { name: /Audio on another device/i }));
@@ -1051,7 +1054,7 @@ describe("LiveSessionRoom", () => {
     expect(preview?.parentElement).toHaveClass("h-28");
   });
 
-  it("promotes remote video to the main stage and keeps the local camera in picture-in-picture", async () => {
+  it("keeps people visible through camera changes and never remounts call audio when pinning", async () => {
     window.localStorage.setItem("quipsly-live-preferred-devices-v3", JSON.stringify({ cameraWanted: true }));
     const livekit = jest.requireActual("livekit-client") as typeof import("livekit-client");
     Object.defineProperty(navigator, "mediaDevices", {
@@ -1085,39 +1088,61 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
 
-    const remoteVideo = document.createElement("video");
     const remoteTrack = {
       sid: "remote-video-1",
       kind: livekit.Track.Kind.Video,
-      attach: jest.fn(() => remoteVideo),
-      detach: jest.fn(() => [remoteVideo]),
+      source: livekit.Track.Source.Camera,
+      attach: jest.fn((element: HTMLVideoElement) => element),
+      detach: jest.fn(),
     };
+    const remoteAudio = document.createElement("audio");
+    const audioTrack = {sid: "remote-audio-1", kind: livekit.Track.Kind.Audio,
+      attach: jest.fn(() => remoteAudio), detach: jest.fn(() => [remoteAudio])};
+    const person = {identity: "client-one", name: "Riley", isMicrophoneEnabled: true,
+      trackPublications: new Map([["video", {track: remoteTrack}]])};
+    const audioPerson = {identity: "client-two", name: "Casey", isMicrophoneEnabled: false, trackPublications: new Map()};
+    mockLiveKitRoom.remoteParticipants.set(person.identity, person);
+    mockLiveKitRoom.remoteParticipants.set(audioPerson.identity, audioPerson);
     await act(async () => {
-      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackSubscribed, remoteTrack);
+      mockLiveKitRoom.__emit(livekit.RoomEvent.ParticipantConnected, person);
+      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackSubscribed, remoteTrack, {}, person);
+      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackSubscribed, audioTrack, {}, person);
+      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackSubscribed, audioTrack, {}, person);
     });
 
     const stage = screen.getByTestId("call-video-stage");
-    expect(stage).toHaveAttribute("aria-label", "Call video stage with your preview");
-    expect(screen.getByLabelText("Remote participant media")).toContainElement(remoteVideo);
-    expect(screen.getByLabelText("Your camera")).toHaveClass("w-[32%]");
-    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(stage).toHaveAttribute("aria-label", "Call participants");
+    expect(within(stage).getByRole("article", {name: "Riley"})).toContainElement(screen.getByLabelText("Riley camera"));
+    expect(within(stage).getByRole("article", {name: "Casey"})).toHaveTextContent("Camera off");
+    expect(screen.getByLabelText("Remote participant audio")).toContainElement(remoteAudio);
+    const mountedVideo = screen.getByLabelText("Riley camera");
+    fireEvent.click(screen.getByRole("button", {name: "Pin Riley for me"}));
+    expect(screen.getByLabelText("Riley camera")).toBe(mountedVideo);
+    expect(remoteTrack.attach).toHaveBeenCalledTimes(1);
+    expect(audioTrack.attach).toHaveBeenCalledTimes(1);
+    expect(audioTrack.detach).not.toHaveBeenCalled();
 
     await act(async () => {
-      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackMuted, { track: remoteTrack });
+      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackMuted, { track: remoteTrack }, person);
     });
-    expect(stage).toHaveAttribute("aria-label", "Your camera preview");
-    expect(screen.getByLabelText("Remote participant media")).not.toContainElement(remoteVideo);
+    expect(within(stage).getByRole("article", {name: "Riley"})).toHaveTextContent("Camera off");
+    expect(screen.queryByLabelText("Riley camera")).not.toBeInTheDocument();
 
     await act(async () => {
-      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackUnmuted, { track: remoteTrack });
+      mockLiveKitRoom.__emit(livekit.RoomEvent.TrackUnmuted, { track: remoteTrack }, person);
     });
-    expect(stage).toHaveAttribute("aria-label", "Call video stage with your preview");
-    expect(screen.getByLabelText("Remote participant media")).toContainElement(remoteVideo);
+    expect(screen.getByLabelText("Riley camera")).toBeInTheDocument();
 
     await act(async () => {
       mockLiveKitRoom.__emit(livekit.RoomEvent.TrackUnsubscribed, remoteTrack);
     });
-    expect(stage).toHaveAttribute("aria-label", "Your camera preview");
+    expect(within(stage).getByRole("article", {name: "Riley"})).toHaveTextContent("Camera off");
+    await act(async () => {
+      mockLiveKitRoom.remoteParticipants.delete(person.identity);
+      mockLiveKitRoom.__emit(livekit.RoomEvent.ParticipantDisconnected, person);
+    });
+    expect(within(stage).queryByRole("article", {name: "Riley"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Show everyone equally"})).not.toBeInTheDocument();
   });
 
   it("keeps the call connected when a requested camera cannot start", async () => {
