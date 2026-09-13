@@ -7117,7 +7117,8 @@ private struct CaptureTranscriptSegmentCard: View {
                         sessionTitle: sessionTitle,
                         focus: CaptureRecordingEditorFocus(
                             transcriptJobID: transcriptJobID,
-                            segmentID: segment.id
+                            segmentID: segment.id,
+                            recordingAssetID: segment.recordingAssetId ?? expectedRecordingAssetID
                         )
                     )
                 } label: {

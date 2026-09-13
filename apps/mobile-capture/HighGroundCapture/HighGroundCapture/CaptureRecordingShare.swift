@@ -235,7 +235,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
     }
 
-    func load(roomID: String, quiet: Bool = false, takeID: String? = nil) async {
+    func load(roomID: String, quiet: Bool = false, takeID: String? = nil, focus: CaptureRecordingEditorFocus? = nil) async {
         if quiet && busyAction == "LOAD" { return }
         guard AuthManager.shared.networkActionsAllowed else {
             notice = "Reconnect to Nest before opening the recording editor."
@@ -246,7 +246,12 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             return
         }
         if selectedRoomID != roomID { selectedTakeID = nil; selectedRoomID = roomID }
-        if let requestedTake = takeID ?? selectedTakeID { url.append(queryItems: [URLQueryItem(name: "takeId", value: requestedTake)]) }
+        if let focus {
+            url.append(queryItems: [URLQueryItem(name: "transcriptJobId", value: focus.transcriptJobID)])
+            if let sourceID = focus.recordingAssetID { url.append(queryItems: [URLQueryItem(name: "sourceId", value: sourceID)]) }
+        } else if let requestedTake = takeID ?? selectedTakeID {
+            url.append(queryItems: [URLQueryItem(name: "takeId", value: requestedTake)])
+        }
         loadGeneration += 1
         let generation = loadGeneration
         if !quiet { busyAction = "LOAD" }
@@ -644,6 +649,7 @@ private struct CaptureRecordingShareSheet: UIViewControllerRepresentable {
 struct CaptureRecordingEditorFocus: Equatable, Hashable {
     let transcriptJobID: String
     let segmentID: String
+    var recordingAssetID: String? = nil
 }
 
 struct CaptureRecordingShareEditor: View {
@@ -699,7 +705,7 @@ struct CaptureRecordingShareEditor: View {
                 }
                 Spacer()
                 Button {
-                    Task { await client.load(roomID: roomID) }
+                    Task { await client.load(roomID: roomID, focus: client.snapshot == nil ? focus : nil) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -763,7 +769,7 @@ struct CaptureRecordingShareEditor: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureRecordingShareEditor")
         .task {
-            await client.load(roomID: roomID)
+            await client.load(roomID: roomID, focus: focus)
         }
         .task(id: client.snapshot?.available?.selectedTakeId) {
             guard client.snapshot?.role == "COACH", let takeID = client.snapshot?.available?.selectedTakeId else {
@@ -844,6 +850,21 @@ struct CaptureRecordingShareEditor: View {
             }
         }
         .accessibilityIdentifier("CaptureRecordingEditSync")
+        HStack {
+            Button { if let draft = editSync.undo() { applyWorkingDraft(draft) } } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!editSync.canUndo || client.busyAction != nil)
+            .keyboardShortcut("z", modifiers: .command)
+            .accessibilityIdentifier("CaptureRecordingEditUndo")
+            Button { if let draft = editSync.redo() { applyWorkingDraft(draft) } } label: {
+                Label("Redo", systemImage: "arrow.uturn.forward")
+            }
+            .disabled(!editSync.canRedo || client.busyAction != nil)
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .accessibilityIdentifier("CaptureRecordingEditRedo")
+        }
+        .buttonStyle(.bordered)
         if let focus {
             focusedPassageCard(snapshot: snapshot, focus: focus)
         }
@@ -1616,14 +1637,7 @@ struct CaptureRecordingShareEditor: View {
         editing = false
         if let saved = editSync.state, editSync.loadedTakeID == available.selectedTakeId,
            saved.baseOutputId == snapshot.output?.id {
-            selectedSourceIDs = Set(saved.selected)
-            excludedSegmentIDs = Set(saved.excludedTranscriptKeys)
-            startSeconds = saved.startSeconds
-            endSeconds = saved.endSeconds
-            title = saved.title
-            outputMediaKind = saved.outputMediaKind
-            primaryVideoSourceID = saved.primaryVideoSourceId
-            editing = saved.editing
+            applyWorkingDraft(saved)
         }
         if focus != nil && !didApplyFocus {
             // Entering from an exact transcript passage is an editing intent,
@@ -1643,6 +1657,17 @@ struct CaptureRecordingShareEditor: View {
             title: title, outputMediaKind: outputMediaKind, primaryVideoSourceId: primaryVideoSourceID,
             excludedTranscriptKeys: excludedSegmentIDs.sorted(), editing: editing,
             baseOutputId: client.snapshot?.output?.id, baseOutputRevision: client.snapshot?.output?.revision)
+    }
+
+    private func applyWorkingDraft(_ draft: CaptureRecordingEditDraft) {
+        selectedSourceIDs = Set(draft.selected)
+        excludedSegmentIDs = Set(draft.excludedTranscriptKeys)
+        startSeconds = draft.startSeconds
+        endSeconds = draft.endSeconds
+        title = draft.title
+        outputMediaKind = draft.outputMediaKind
+        primaryVideoSourceID = draft.primaryVideoSourceId
+        editing = draft.editing
     }
 
     private func restoreEditorFromCurrentOutput(_ snapshot: CaptureRecordingShareSnapshot) {

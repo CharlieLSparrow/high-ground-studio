@@ -74,6 +74,9 @@ final class CaptureRecordingEditSync: ObservableObject {
     @Published private(set) var error: String?
     @Published private(set) var conflictRevision: Int?
     @Published private(set) var needsRetry = false
+    @Published private(set) var history = CaptureRecordingEditHistory()
+    var canUndo: Bool { loadedTakeID != nil && owner() == local?.ownerScope && history.canUndo }
+    var canRedo: Bool { loadedTakeID != nil && owner() == local?.ownerScope && history.canRedo }
     private let baseURL: URL
     private let directory: URL
     private let send: Sender
@@ -99,6 +102,7 @@ final class CaptureRecordingEditSync: ObservableObject {
         let requestGeneration = generation
         loadedTakeID = nil
         state = nil
+        history = CaptureRecordingEditHistory()
         error = nil
         conflictRevision = nil
         needsRetry = false
@@ -122,6 +126,7 @@ final class CaptureRecordingEditSync: ObservableObject {
                     revision: result.edit?.revision ?? 0, state: result.edit?.state, pending: nil, request: nil)
             }
             state = local?.state
+            history = CaptureRecordingEditHistory(state)
             loadedTakeID = takeID
             status = "Edits saved"
             persist()
@@ -134,6 +139,24 @@ final class CaptureRecordingEditSync: ObservableObject {
     }
 
     func update(_ draft: CaptureRecordingEditDraft) {
+        guard loadedTakeID != nil, owner() == local?.ownerScope else { return }
+        history.record(draft)
+        queue(draft)
+    }
+
+    func undo() -> CaptureRecordingEditDraft? {
+        guard canUndo, let draft = history.undo() else { return nil }
+        queue(draft)
+        return draft
+    }
+
+    func redo() -> CaptureRecordingEditDraft? {
+        guard canRedo, let draft = history.redo() else { return nil }
+        queue(draft)
+        return draft
+    }
+
+    private func queue(_ draft: CaptureRecordingEditDraft) {
         guard var current = local, loadedTakeID == current.takeID, owner() == current.ownerScope, current.state != draft else { return }
         current.state = draft
         current.pending = draft

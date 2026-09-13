@@ -5424,6 +5424,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let originalTitle = initialValue == title.placeholderValue ? "" : initialValue
         let changedTitle = "Native editing · \(UUID().uuidString.prefix(8))"
         replaceText(in: title, with: changedTitle, app: app)
+        let undo = app.buttons["CaptureRecordingEditUndo"]
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(undo, in: app) && undo.isEnabled)
+        undo.tap()
+        XCTAssertTrue((title.value as? String) == originalTitle ||
+                      (originalTitle.isEmpty && (title.value as? String) == title.placeholderValue))
+        let redo = app.buttons["CaptureRecordingEditRedo"]
+        XCTAssertTrue(redo.isHittable && redo.isEnabled)
+        redo.tap()
+        XCTAssertEqual(title.value as? String, changedTitle)
         app.terminate()
         app = try launchSignedInCaptureApp(initialTab: "record", sessionDeepLinkRoomID: sessionID)
         openEditor(app)

@@ -48,7 +48,8 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   try {
     const takeId = text(new URL(request.url).searchParams.get("takeId"));
     const sourceId = text(new URL(request.url).searchParams.get("sourceId"));
-    return privateJson({ ok: true, ...await readSessionRecordingShare(getPrismaClient() as any, { roomId, actor: signedIn, ...(takeId ? {takeId} : {}), ...(sourceId ? {sourceId} : {}) }) });
+    const transcriptJobId = text(new URL(request.url).searchParams.get("transcriptJobId"));
+    return privateJson({ ok: true, ...await readSessionRecordingShare(getPrismaClient() as any, { roomId, actor: signedIn, ...(takeId ? {takeId} : {}), ...(sourceId ? {sourceId} : {}), ...(transcriptJobId ? {transcriptJobId} : {}) }) });
   } catch (error) {
     return handled(error);
   }

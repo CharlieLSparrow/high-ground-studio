@@ -54,10 +54,22 @@ struct CaptureRecordingEditSyncHarness {
             CaptureRecordingEditSync(baseURL: URL(string: "http://localhost:3012")!, directory: directory,
                 owner: { server.currentOwner }, send: { request, owner in try await server.send(request, owner: owner) })
         }
-        func draft(_ title: String) -> CaptureRecordingEditDraft {
-            CaptureRecordingEditDraft(selected: ["source"], startSeconds: 4, endSeconds: 13, title: title,
-                outputMediaKind: "audio", primaryVideoSourceId: "", excludedTranscriptKeys: ["job:segment"], editing: true, baseOutputId: nil, baseOutputRevision: nil)
+        func draft(_ title: String, start: Double = 4, cuts: [String] = ["job:segment"], outputID: String? = nil) -> CaptureRecordingEditDraft {
+            CaptureRecordingEditDraft(selected: ["source"], startSeconds: start, endSeconds: 13, title: title,
+                outputMediaKind: "audio", primaryVideoSourceId: "", excludedTranscriptKeys: cuts, editing: true, baseOutputId: outputID, baseOutputRevision: nil)
         }
+        var history = CaptureRecordingEditHistory(draft("A"))
+        history.record(draft("B"), at: 1)
+        history.record(draft("C"), at: 1.2)
+        precondition(history.undo() == draft("A") && !history.canUndo)
+        precondition(history.redo() == draft("C"))
+        history.record(draft("C", start: 5), at: 1.3)
+        precondition(history.undo() == draft("C"))
+        history.record(draft("C", cuts: []), at: 1.4)
+        precondition(!history.canRedo && history.undo() == draft("C"))
+        history.record(draft("New preview", outputID: "preview-2"), at: 2)
+        precondition(!history.canUndo && !history.canRedo)
+        print("PASS native undo groups typing, separates trims/cuts, branches after undo, and resets for a new preview")
         let first = sync()
         await first.load(roomID: "room", takeID: "start:take")
         precondition(first.state == server.state && first.state?.startSeconds == 3)
@@ -106,6 +118,14 @@ struct CaptureRecordingEditSyncHarness {
         await interruptedLoad.load(roomID: "room", takeID: "start:take")
         precondition(interruptedLoad.state == server.state && interruptedLoad.error == nil)
         print("PASS interrupted initial load is recoverable without overwriting saved work")
+
+        let beforeUndo = interruptedLoad.state
+        interruptedLoad.update(draft("Undo this title"))
+        precondition(interruptedLoad.canUndo && interruptedLoad.undo() == beforeUndo)
+        precondition(interruptedLoad.canRedo && interruptedLoad.redo() == draft("Undo this title"))
+        await interruptedLoad.flush()
+        precondition(server.state.title == "Undo this title" && !interruptedLoad.needsRetry)
+        print("PASS undo and redo update the same durable server draft")
 
         let callsBeforeSwitch = server.calls.count
         server.currentOwner = "different-owner"

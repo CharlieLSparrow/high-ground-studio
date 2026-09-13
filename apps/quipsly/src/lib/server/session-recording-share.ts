@@ -1294,7 +1294,7 @@ export async function readSessionRecordingEditSources(
 
 export async function readSessionRecordingShare(
   client: RestoreClient,
-  input: { roomId: string; actor: SessionAccessActor; takeId?: string; sourceId?: string },
+  input: { roomId: string; actor: SessionAccessActor; takeId?: string; sourceId?: string; transcriptJobId?: string },
 ) {
   const room = await loadRoom(client, input.roomId, input.actor, "read");
   const canPrepare = Boolean(
@@ -1332,19 +1332,29 @@ export async function readSessionRecordingShare(
     ? await loadSources(client, room.id, room.captureGroupId)
     : [];
   const attempts = canPrepare ? await loadRecordingAttempts(client, room.id, allSourceRows) : [];
+  let requestedSourceId = input.sourceId;
+  if (canPrepare && input.transcriptJobId) {
+    const transcript = await client.transcriptJob.findFirst({
+      where: {id: input.transcriptJobId, roomId: room.id, assetId: {in: allSourceRows.map(source => source.id)}},
+      select: {assetId: true},
+    });
+    if (!transcript?.assetId || (requestedSourceId && requestedSourceId !== transcript.assetId))
+      throw new SessionRecordingShareError(404, "RECORDING_ATTEMPT_NOT_FOUND", "The recording for this transcript is not available in this Session.");
+    requestedSourceId = transcript.assetId;
+  }
   const outputSources = object(output?.sourceManifestJson).sources;
   const outputSourceIds = new Set((Array.isArray(outputSources) ? outputSources : [])
     .map((source: any) => clean(source.recordingAssetId, 240)).filter(Boolean));
   const outputAttempt = outputSourceIds.size ? attempts.find(attempt =>
     [...outputSourceIds].every(id => attempt.sources.some(source => source.id === id))) : null;
   const selectedAttempt = input.takeId ? attempts.find(attempt => attempt.id === input.takeId)
-    : input.sourceId ? attempts.find(attempt => attempt.sources.some(source => source.id === input.sourceId))
+    : requestedSourceId ? attempts.find(attempt => attempt.sources.some(source => source.id === requestedSourceId))
     : outputAttempt || attempts[0];
-  if (canPrepare && (input.takeId || input.sourceId) && (!selectedAttempt ||
-    (input.sourceId && !selectedAttempt.sources.some(source => source.id === input.sourceId)))) throw new SessionRecordingShareError(
+  if (canPrepare && (input.takeId || requestedSourceId) && (!selectedAttempt ||
+    (requestedSourceId && !selectedAttempt.sources.some(source => source.id === requestedSourceId)))) throw new SessionRecordingShareError(
     404, "RECORDING_ATTEMPT_NOT_FOUND", "This recording attempt is not available in this Session.",
   );
-  if (canPrepare && (input.takeId || input.sourceId) && outputAttempt?.id !== selectedAttempt?.id) output = null;
+  if (canPrepare && (input.takeId || requestedSourceId) && outputAttempt?.id !== selectedAttempt?.id) output = null;
   const sourceRows = selectedAttempt?.sources || [];
   const available = sourceSummary(sourceRows);
   const transcriptSegments = canPrepare

@@ -62,7 +62,7 @@ describe("recording attempts within one Session", () => {
     ]);
   });
 
-  async function read(takeId?: string, role = "coach", sourceId?: string, sourceRows: Array<(typeof sources)[number] & {durationSeconds?: number}> = sources) {
+  async function read(takeId?: string, role = "coach", sourceId?: string, sourceRows: Array<(typeof sources)[number] & {durationSeconds?: number}> = sources, transcriptJobId?: string) {
     const room = {id: "room", title: "Coaching", captureGroupId: "same-session",
       booking: {coachUserId: "coach", clientUserId: "client", coachUser: {id: "coach"}, clientUser: {id: "client"}}};
     const client: any = {
@@ -70,9 +70,12 @@ describe("recording attempts within one Session", () => {
       sessionOutput: {findFirst: jest.fn().mockResolvedValue(null)},
       recordingAsset: {findMany: jest.fn().mockResolvedValue(sourceRows)},
       callRecordingEndpointReceipt: {findMany: jest.fn().mockResolvedValue(receipts)},
-      transcriptJob: {findMany: jest.fn().mockResolvedValue([])},
+      transcriptJob: {findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockImplementation(async ({where}) => {
+        const source = sourceRows.find(source => `job:${source.id}` === where.id && where.assetId.in.includes(source.id));
+        return source ? {assetId: source.id} : null;
+      })},
     };
-    const result = await readSessionRecordingShare(client, {roomId: "room", actor: {id: role, primaryEmail: `${role}@example.test`, isStaff: false}, takeId, sourceId});
+    const result = await readSessionRecordingShare(client, {roomId: "room", actor: {id: role, primaryEmail: `${role}@example.test`, isStaff: false}, takeId, sourceId, transcriptJobId});
     return {result, client};
   }
 
@@ -118,6 +121,23 @@ describe("recording attempts within one Session", () => {
     expect(result.available.sources).toEqual([]);
     expect(result.available.takes).toEqual([]);
     expect(client.recordingAsset.findMany).not.toHaveBeenCalled();
+  });
+
+  it("resolves a transcript deep link to its older recording, not the latest take", async () => {
+    const {result, client} = await read(undefined, "coach", undefined, sources, "job:source-2");
+    expect(result.available.selectedTakeId).toBe("start:first");
+    expect(client.transcriptJob.findFirst).toHaveBeenCalledWith({
+      where: {id: "job:source-2", roomId: "room", assetId: {in: sources.map(source => source.id)}}, select: {assetId: true},
+    });
+    await expect(read(undefined, "coach", undefined, sources, "foreign-job")).rejects.toMatchObject({status: 404});
+    await expect(read(undefined, "coach", "source-3", sources, "job:source-2")).rejects.toMatchObject({status: 404});
+    await expect(read("start:second", "coach", undefined, sources, "job:source-2")).rejects.toMatchObject({status: 404});
+  });
+
+  it("does not look up private transcript sources for a client", async () => {
+    const {result, client} = await read(undefined, "client", undefined, sources, "job:source-2");
+    expect(result.available.sources).toEqual([]);
+    expect(client.transcriptJob.findFirst).not.toHaveBeenCalled();
   });
 });
 
