@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum CaptureCallPanel: String {
-    case chat, notes, tasks, tools
+    case chat, notes, tasks, people, tools
 }
 
 /// Calls occupy the available stage, unlike the session's scrolling document.
@@ -22,7 +22,7 @@ struct CaptureCallViewport<Content: View>: View {
     }
 }
 
-/// Four familiar tools must remain legible at phone width. A horizontal Label
+/// Familiar tools must remain legible at phone width. A horizontal Label
 /// inside each bordered button can leave only one character of text per line.
 struct CaptureCallToolLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -34,6 +34,77 @@ struct CaptureCallToolLabelStyle: LabelStyle {
                 .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity, minHeight: 40)
+    }
+}
+
+struct CaptureCallWorkspaceButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .foregroundStyle(CapturePalette.ink)
+            .background(CapturePalette.accent.opacity(configuration.isPressed ? 0.24 : 0.12),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+struct CaptureCallPeopleWorkspace: View {
+    @ObservedObject var providerRoom: ProviderRoomController
+    let onDismiss: () -> Void
+    @State private var query = ""
+
+    private var people: [ProviderCallPerson] {
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return providerRoom.peopleInCall.filter { search.isEmpty || $0.name.localizedStandardContains(search) }
+    }
+
+    var body: some View {
+        CaptureWorkspaceNavigation(title: "People", embedded: true, onDismiss: onDismiss, actions: { EmptyView() }) {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Find a person", text: $query)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .accessibilityIdentifier("CaptureCallPeopleSearch")
+                }.padding(12).background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(16)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        Text("\(providerRoom.peopleInCall.count) \(providerRoom.peopleInCall.count == 1 ? "person" : "people") in this call")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureCallPeopleCount")
+                        ForEach(people) { person in
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(person.name).font(.headline)
+                                ForEach(person.devices) { device in
+                                    HStack(alignment: .top, spacing: 10) {
+                                        Image(systemName: device.microphoneEnabled ? "mic.fill" : "mic.slash.fill")
+                                            .foregroundStyle(device.isSpeaking ? CapturePalette.success : .secondary)
+                                            .accessibilityHidden(true)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            if person.devices.count > 1 {
+                                                Text("\(device.endpoint?.deviceLabel ?? "Device")\(device.isLocal ? " · this device" : "")")
+                                                    .font(.subheadline.weight(.medium))
+                                            }
+                                            Text(device.endpoint?.isCompanion == true ? "Audio on another device"
+                                                 : device.microphoneEnabled ? (device.isSpeaking ? "Speaking" : "Microphone on") : "Microphone off")
+                                                .font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }.accessibilityElement(children: .combine)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 16))
+                            .accessibilityIdentifier("CaptureCallPerson-\(person.id)")
+                        }
+                        if people.isEmpty { Text("No one matches that name.").foregroundStyle(.secondary) }
+                    }.padding(.horizontal, 16).padding(.bottom, 24)
+                }.scrollBounceBehavior(.basedOnSize)
+            }.background(CapturePalette.canvas)
+                .accessibilityElement(children: .contain).accessibilityIdentifier("CaptureCallPeopleWorkspace")
+        }
+        .foregroundStyle(CapturePalette.ink)
+        .tint(CapturePalette.accent)
     }
 }
 

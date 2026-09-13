@@ -138,20 +138,37 @@ struct ProviderRoomCallAudioEvidenceHarness {
             "ordinary call copy must avoid unexplained technical units"
         )
         require(
-            ProviderRoomParticipantPresence.label(remoteParticipantCount: 0)
+            ProviderRoomParticipantPresence.label(personKeys: ["local"])
                 == "Waiting for others",
             "a solo joined participant must get a familiar waiting state"
         )
         require(
-            ProviderRoomParticipantPresence.label(remoteParticipantCount: 1)
+            ProviderRoomParticipantPresence.label(personKeys: ["local", "remote"])
                 == "2 people here",
             "one remote participant must produce the ordinary total-person count"
         )
         require(
-            ProviderRoomParticipantPresence.label(remoteParticipantCount: 4)
+            ProviderRoomParticipantPresence.label(personKeys: ["local", "a", "b", "c", "d"])
                 == "5 people here",
             "larger calls must include the local participant in the total"
         )
+
+        let identityJSON = #"{"callRoomId":"room","participantId":"riley","deviceLabel":"iPhone","endpointRole":"companion"}"#
+        let phone = ProviderRoomEndpointIdentity(endpointID: "phone", metadata: identityJSON)
+        let browser = ProviderRoomEndpointIdentity(endpointID: "browser", metadata: identityJSON)
+        require(phone.personKey == browser.personKey, "same person on two endpoints remains one person")
+        require(phone.isCompanion && phone.deviceLabel == "iPhone", "device presentation keeps its label and audio role")
+        require(ProviderRoomParticipantPresence.label(personKeys: ["coach", phone.personKey, browser.personKey])
+            == "2 people here · 3 devices", "presence counts logical people and separately labels devices")
+        require(ProviderRoomParticipantPresence.label(personKeys: [phone.personKey, browser.personKey])
+            == "Waiting for others", "joining one's own second device is still a solo call")
+        for metadata in [nil, "null", "[]", "{", #"{"participantId":"riley"}"#, #"{"callRoomId":1,"participantId":2}"#] as [String?] {
+            let a = ProviderRoomEndpointIdentity(endpointID: "a", metadata: metadata)
+            let b = ProviderRoomEndpointIdentity(endpointID: "b", metadata: metadata)
+            require(a.personKey != b.personKey, "missing or malformed identity never merges strangers")
+        }
+        let otherRoom = ProviderRoomEndpointIdentity(endpointID: "other", metadata: #"{"callRoomId":"other","participantId":"riley"}"#)
+        require(otherRoom.personKey != phone.personKey, "canonical participant keys are scoped to their room")
 
         print("PASS Provider room call audio evidence keeps live mic confidence plain, transient, and distinct from recording.")
     }

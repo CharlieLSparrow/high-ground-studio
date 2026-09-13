@@ -11,6 +11,9 @@ let mockRetainedRecoveryCount = 0;
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: mockRouterRefresh }),
 }));
+jest.mock("@/app/(app)/work/actions", () => ({
+  editWorkTask: jest.fn(), editWorkGoal: jest.fn(), updateWorkTaskStatus: jest.fn(), updateWorkGoalStatus: jest.fn(),
+}));
 
 jest.mock("livekit-client", () => {
   const actual = jest.requireActual("livekit-client") as typeof import("livekit-client");
@@ -1215,6 +1218,21 @@ describe("LiveSessionRoom", () => {
     });
     expect(within(stage).queryByRole("article", {name: "Riley"})).not.toBeInTheDocument();
     expect(screen.queryByRole("button", {name: "Show everyone equally"})).not.toBeInTheDocument();
+
+    const samePersonMetadata = JSON.stringify({callRoomId: "room-video-stage", participantId: "casey"});
+    const secondDevice = {...audioPerson, identity: "casey-phone", metadata: samePersonMetadata};
+    Object.assign(audioPerson, {metadata: samePersonMetadata});
+    mockLiveKitRoom.remoteParticipants.set(secondDevice.identity, secondDevice);
+    await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.ParticipantConnected, secondDevice);
+      mockLiveKitRoom.__emit(livekit.RoomEvent.ParticipantMetadataChanged, samePersonMetadata, audioPerson);
+    });
+    expect(within(stage).getByText("2 people in call · 3 devices")).toBeVisible();
+    Object.assign(audioPerson, {metadata: undefined});
+    await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.ParticipantMetadataChanged, undefined, audioPerson);
+    });
+    expect(within(stage).getByText("3 people in call")).toBeVisible();
   });
 
   it("keeps the call connected when a requested camera cannot start", async () => {

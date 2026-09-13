@@ -4,14 +4,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CameraOff, ChevronLeft, ChevronRight, Eye, EyeOff, MicOff, Pin, PinOff, ScreenShare } from "lucide-react";
 import { Track, type RemoteTrack, type LocalTrack } from "livekit-client";
 import { callGalleryGrid, callGalleryPage, nextCallSpeaker, type CallView } from "./call-gallery-layout";
-
-export type CallParticipant = {
-  identity: string;
-  name: string;
-  speaking: boolean;
-  isLocal: boolean;
-  microphoneMuted: boolean;
-};
+import { callEndpointLabel, groupCallPeople, type CallParticipant } from "./call-roster";
+export type { CallParticipant } from "./call-roster";
 
 export type CallParticipantVideo = { identity: string; key: string; track: RemoteTrack | LocalTrack };
 
@@ -47,6 +41,7 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
   const [size, setSize] = useState({width: 960, height: 540});
   const stage = useRef<HTMLDivElement>(null);
   const people = [...participants.filter(person => !person.isLocal), ...participants.filter(person => person.isLocal)];
+  const personCount = groupCallPeople(people).length;
   const shares = videos.filter(video => video.track.source === Track.Source.ScreenShare);
   const tiles = [
     ...people.map(person => ({id: person.identity, person, video: videos.find(video => video.identity === person.identity && video.track.source !== Track.Source.ScreenShare), screen: false})),
@@ -105,7 +100,7 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
   return <section data-testid="call-video-stage" aria-label="Call participants"
     className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-3">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-      <span>{people.length} {people.length === 1 ? "person" : "people"} in call</span>
+      <span>{personCount} {personCount === 1 ? "person" : "people"} in call{people.length > personCount ? ` · ${people.length} devices` : ""}</span>
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {focused || (share && presentation === share) ? <button type="button" onClick={() => chooseView("gallery")} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-semibold hover:bg-muted"><PinOff size={15} />Back to gallery</button> : null}
         <label className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2">View
@@ -130,7 +125,7 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
           : {};
         const cameraOn = screen || (person.isLocal ? localCameraOn : Boolean(video));
         const muted = person.isLocal ? localMicrophoneMuted : person.microphoneMuted;
-        const label = `${person.name}${person.isLocal ? " (you)" : ""}${screen ? " · screen" : ""}`;
+        const label = `${callEndpointLabel(person, people)}${screen ? " · screen" : ""}`;
         return <article key={id} aria-label={label} data-participant-identity={person.identity} data-focused={isPinned} hidden={!shown.has(id)} style={tileStyle}
           className={`relative isolate min-h-0 w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#211a14] text-[#f5e8cf] ${isPinned ? "h-full" : presentation ? "aspect-video max-h-full self-start" : "aspect-video max-h-full self-center"} ${person.speaking && !screen ? "ring-2 ring-inset ring-[#b5c991]" : ""}`}>
           {!screen && person.isLocal ? <video ref={bindLocalVideo} muted playsInline aria-label="Your camera" className={`absolute inset-0 h-full w-full object-cover ${cameraOn ? "" : "invisible"}`} /> : video ? <ParticipantVideo track={video.track} name={person.name} screen={screen} /> : null}
@@ -153,7 +148,7 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
     </div>
     <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground">
       {hideSelf && <span className="sr-only" role="status">Self-view hidden. Your camera setting has not changed.</span>}
-      {people.length === 1 && !hideSelf && <p data-testid="call-gallery-waiting">You’re the first here. Others will appear when they join.</p>}
+      {personCount === 1 && !hideSelf && <p data-testid="call-gallery-waiting">You’re the first here. Others will appear when they join.</p>}
       {paged.pageCount > 1 && <nav aria-label="Participant pages" className="flex items-center gap-3">
         <button type="button" aria-label="Previous participants" disabled={!paged.page} onClick={() => setPage(paged.page - 1)} className="grid size-11 place-items-center rounded-lg hover:bg-muted disabled:opacity-40"><ChevronLeft size={18} /></button>
         <span className="tabular-nums" aria-live="polite">{paged.page + 1} / {paged.pageCount}</span>

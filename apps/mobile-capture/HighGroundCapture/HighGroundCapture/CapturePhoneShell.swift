@@ -12520,6 +12520,8 @@ private struct CaptureRecorderView: View {
                 CaptureSessionNotesWorkspace(session: session, model: model, embedded: true) { activeCallPanel = nil }
             case .tasks:
                 CaptureSessionWorkWorkspace(session: session, model: model, client: sessionWork, embedded: true) { activeCallPanel = nil }
+            case .people:
+                CaptureCallPeopleWorkspace(providerRoom: model.providerRoom) { activeCallPanel = nil }
             case .tools:
                 liveCallSettings(session)
             case nil:
@@ -13099,6 +13101,11 @@ private struct CaptureRecorderView: View {
             }
             .accessibilityIdentifier("CaptureCallOpenTasks")
             if model.providerRoom.isConnected {
+            Button { activeCallPanel = activeCallPanel == .people ? nil : .people } label: {
+                Label("People", systemImage: "person.2")
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .accessibilityIdentifier("CaptureCallOpenPeople")
             Button { activeCallPanel = showsCallTools ? nil : .tools } label: {
                 Label("Tools", systemImage: "slider.horizontal.3")
                     .frame(maxWidth: .infinity, minHeight: 30)
@@ -13108,8 +13115,7 @@ private struct CaptureRecorderView: View {
             }
         }
         .labelStyle(CaptureCallToolLabelStyle())
-        .buttonStyle(.bordered)
-        .controlSize(.large)
+        .buttonStyle(CaptureCallWorkspaceButtonStyle())
         .padding(.horizontal, 18)
         .padding(.vertical, 8)
     }
@@ -22310,9 +22316,7 @@ private struct ProviderRoomControls: View {
     }
 
     private var participantPresenceLabel: String {
-        ProviderRoomParticipantPresence.label(
-            remoteParticipantCount: model.providerRoom.remoteParticipantCount
-        )
+        model.providerRoom.participantPresenceLabel
     }
 
     private var providerControlHint: String {
@@ -22377,7 +22381,7 @@ private struct ProviderRoomAudioStage: View {
     var body: some View {
         CaptureParticipantGrid(minimumHeight: minimumHeight, accessibility: dynamicTypeSize.isAccessibilitySize) {
             ForEach(providerRoom.remoteParticipants) { participant in
-                CaptureRemoteIdentityTile(participant: participant)
+                CaptureRemoteIdentityTile(participant: participant, displayName: providerRoom.participantDisplayName(participant))
             }
             CaptureCallIdentityTile(
                 name: "You",
@@ -22396,10 +22400,11 @@ private struct ProviderRoomAudioStage: View {
 
 private struct CaptureRemoteIdentityTile: View {
     let participant: ProviderCallParticipant
+    var displayName: String? = nil
 
     var body: some View {
-        CaptureCallIdentityTile(name: participant.name,
-            detail: participant.microphoneEnabled ? (participant.isSpeaking ? "Speaking" : "Microphone on") : "Microphone off",
+        CaptureCallIdentityTile(name: displayName ?? participant.name,
+            detail: participant.endpoint?.isCompanion == true ? "Audio on another device" : participant.microphoneEnabled ? (participant.isSpeaking ? "Speaking" : "Microphone on") : "Microphone off",
             systemImage: participant.microphoneEnabled ? "mic.fill" : "mic.slash.fill",
             isSpeaking: participant.microphoneEnabled && participant.isSpeaking)
             .accessibilityIdentifier("ProviderParticipantTile-\(participant.id)")
@@ -22427,7 +22432,7 @@ private struct ProviderRoomParticipantGallery: View {
                         }
                         .accessibilityIdentifier("ProviderParticipantTile-\(participant.id)")
                 } else {
-                    CaptureRemoteIdentityTile(participant: participant)
+                    CaptureRemoteIdentityTile(participant: participant, displayName: providerRoom.participantDisplayName(participant))
                 }
             }
             if providerRoom.isLocalVideoPublished {

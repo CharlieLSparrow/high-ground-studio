@@ -7,6 +7,21 @@ const people: CallParticipant[] = [
   {identity: "client", name: "Riley", isLocal: false, microphoneMuted: true, speaking: false},
 ];
 const base = {participants: people, videos: [] as CallParticipantVideo[], bindLocalVideo: jest.fn(), localCameraOn: true, localMicrophoneMuted: false};
+
+it("counts people independently of camera endpoints and preserves both cameras", () => {
+  const roster = [people[0], {...people[1], personKey: "riley", deviceLabel: "iPhone"}, {...people[1], identity: "client-browser", personKey: "riley", deviceLabel: "Browser"}];
+  const camera = video(), second = {...video(), identity: "client-browser", key: "second"};
+  const view = render(<CallParticipantGallery {...base} participants={roster} videos={[camera, second]} />);
+  expect(screen.getByText("2 people in call · 3 devices")).toBeVisible();
+  expect(screen.getByRole("article", {name: "Riley · iPhone"})).toBeVisible();
+  expect(screen.getByRole("article", {name: "Riley · Browser"})).toBeVisible();
+  expect(camera.track.attach).toHaveBeenCalledTimes(1);
+  expect(second.track.attach).toHaveBeenCalledTimes(1);
+  view.rerender(<CallParticipantGallery {...base} participants={roster.slice(0, 2)} videos={[camera]} />);
+  expect(screen.getByText("2 people in call")).toBeVisible();
+  expect(second.track.detach).toHaveBeenCalledTimes(1);
+  expect(camera.track.detach).not.toHaveBeenCalled();
+});
 function video(source: Track.Source = Track.Source.Camera) {
   return {identity: "client", key: source, track: {source, attach: jest.fn(), detach: jest.fn()} as unknown as RemoteTrack};
 }

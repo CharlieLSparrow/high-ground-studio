@@ -48,6 +48,16 @@ struct ProviderCallParticipant: Identifiable, Equatable {
     let microphoneEnabled: Bool
     let isSpeaking: Bool
     let hasVideo: Bool
+    var endpoint: ProviderRoomEndpointIdentity? = nil
+    var isLocal = false
+
+    var personKey: String { endpoint?.personKey ?? "endpoint:\(id)" }
+}
+
+struct ProviderCallPerson: Identifiable {
+    let id: String
+    let name: String
+    let devices: [ProviderCallParticipant]
 }
 
 @MainActor
@@ -75,6 +85,30 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
     }
     @Published private(set) var remoteParticipants: [ProviderCallParticipant] = []
+    @Published private(set) var localEndpoint: ProviderRoomEndpointIdentity?
+
+    var peopleInCall: [ProviderCallPerson] {
+        let local = ProviderCallParticipant(id: "local", name: "You",
+            microphoneEnabled: usesCallAudio && !isMuted, isSpeaking: false,
+            hasVideo: isLocalVideoPublished, endpoint: localEndpoint, isLocal: true)
+        return Dictionary(grouping: remoteParticipants + [local], by: \.personKey)
+            .map { key, devices in
+                ProviderCallPerson(id: key, name: devices.contains(where: \.isLocal) ? "You" : devices[0].name,
+                    devices: devices.sorted { $0.id < $1.id })
+            }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    var participantPresenceLabel: String {
+        ProviderRoomParticipantPresence.label(personKeys:
+            [localEndpoint?.personKey ?? "local"] + remoteParticipants.map(\.personKey))
+    }
+
+    func participantDisplayName(_ participant: ProviderCallParticipant) -> String {
+        let ownDevice = participant.personKey == localEndpoint?.personKey
+        let count = remoteParticipants.filter { $0.personKey == participant.personKey }.count + (ownDevice ? 1 : 0)
+        let name = ownDevice ? "You" : participant.name
+        return count > 1 ? "\(name) · \(participant.endpoint?.deviceLabel ?? "Device")" : name
+    }
     @Published private(set) var hasRemoteVideo = false
     @Published private(set) var remoteVideoReceiveError: String?
     @Published private(set) var remoteVideoParticipantLabel: String?
@@ -883,6 +917,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     private func refreshRemoteVideoTrack() {
+        let local = ProviderRoomEndpointIdentity(endpointID: room.localParticipant.identity?.stringValue ?? "local",
+            metadata: room.localParticipant.metadata)
+        if localEndpoint != local { localEndpoint = local }
         // Names come from the authenticated room participants, never from the
         // list of invitees: an invitation is not proof someone has joined.
         var tracks: [String: VideoTrack] = [:]
@@ -896,7 +933,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             tracks[id] = track
             return ProviderCallParticipant(id: id, name: name.flatMap { $0.isEmpty ? nil : $0 } ?? "Participant",
                 microphoneEnabled: participant.isMicrophoneEnabled(), isSpeaking: participant.isSpeaking,
-                hasVideo: track != nil)
+                hasVideo: track != nil, endpoint: ProviderRoomEndpointIdentity(endpointID: id, metadata: participant.metadata))
         }.sorted { lhs, rhs in
             let order = lhs.name.localizedStandardCompare(rhs.name)
             return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
@@ -912,6 +949,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     private func clearRemoteVideoTrack() {
+        localEndpoint = nil
         remoteVideoReceiveError = nil
         remoteVideoTracks = [:]
         remoteVideoTrack = nil
@@ -1335,6 +1373,10 @@ extension ProviderRoomController: RoomDelegate {
         Task { @MainActor in self.refreshRemoteVideoTrack() }
     }
 
+    nonisolated func room(_ room: Room, participant: Participant, didUpdateMetadata metadata: String?) {
+        Task { @MainActor in self.refreshRemoteVideoTrack() }
+    }
+
     nonisolated func room(_ room: Room, participant: Participant,
                           trackPublication: TrackPublication, didUpdateIsMuted isMuted: Bool) {
         Task { @MainActor in self.refreshRemoteVideoTrack() }
@@ -1413,7 +1455,7 @@ struct ProviderRemoteVideoSurface: View {
     }
 
     private var name: String {
-        participant?.name ?? controller.remoteVideoParticipantLabel ?? "Participant"
+        participant.map { controller.participantDisplayName($0) } ?? controller.remoteVideoParticipantLabel ?? "Participant"
     }
 
     var body: some View {

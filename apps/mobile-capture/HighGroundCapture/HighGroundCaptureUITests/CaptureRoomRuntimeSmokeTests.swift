@@ -6177,7 +6177,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     }
 
     func testCompanionVideoGalleryKeepsAudioOnOtherDevice() throws {
-        try exerciseLiveCallWorkspace(primaryEndpoint: false, expectVideoGallery: true)
+        // Validate the useful multi-device journey, not just painted tiles:
+        // receive video, collaborate, save a local source, play it, and edit it.
+        try exerciseLiveCallWorkspace(primaryEndpoint: false, recordSource: true, expectVideoGallery: true)
     }
 
     private func exerciseLiveCallWorkspace(primaryEndpoint: Bool, recordSource: Bool = false,
@@ -6343,6 +6345,26 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             assertCallLayoutSettled(in: app)
         }
         attachRuntimeScreenshot(app, name: "Native call portrait stage and fixed controls")
+        let peopleButton = app.buttons["CaptureCallOpenPeople"].firstMatch
+        XCTAssertTrue(peopleButton.isHittable, "People belongs alongside the other call tools.")
+        XCTAssertLessThan(peopleButton.frame.height, 110)
+        peopleButton.tap()
+        let peopleCount = app.staticTexts["CaptureCallPeopleCount"].firstMatch
+        XCTAssertTrue(peopleCount.waitForExistence(timeout: 5))
+        if expectVideoGallery {
+            XCTAssertEqual(peopleCount.label, "2 people in this call",
+                "Two camera endpoints from Riley must remain one person alongside Casey.")
+        }
+        let peopleSearch = app.textFields["CaptureCallPeopleSearch"].firstMatch
+        peopleSearch.tap()
+        peopleSearch.typeText("No matching participant")
+        XCTAssertTrue(app.staticTexts["No one matches that name."].waitForExistence(timeout: 3))
+        app.buttons["Done"].tap()
+        peopleButton.tap()
+        XCTAssertTrue(peopleCount.waitForExistence(timeout: 5))
+        attachRuntimeScreenshot(app, name: "People with grouped call devices")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(leave.isHittable, "Opening People must not interrupt the call.")
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "different endpoint evidence")).firstMatch.exists,
                        "Rejoining an idle endpoint must not replay a previous take's STOP receipt.")
         let chat = app.buttons["CaptureCallOpenChat"].firstMatch
@@ -6437,6 +6459,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(taskDetails.waitForExistence(timeout: 8))
         taskDetails.tap(); taskDetails.typeText("Write one short reflection before our next session.")
         app.buttons["CaptureTaskEditSave"].tap()
+        XCTAssertTrue(taskDetails.waitForNonExistence(timeout: 30),
+            "Saving must finish and close the editor before using the call controls behind it.")
         XCTAssertTrue(savedTask.waitForExistence(timeout: 20))
         XCTAssertTrue(app.staticTexts["Write one short reflection before our next session."].firstMatch.exists)
         attachRuntimeScreenshot(app, name: "Canonical tasks edited during native call")

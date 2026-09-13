@@ -43,6 +43,7 @@ import { CallFollowThrough } from "@/components/call-follow-through";
 import type { BrowserRecordingHandoff } from "@/lib/browser-source-upload-recovery";
 import { BrowserRecordingMicrophone } from "@/lib/browser-recording-microphone";
 import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
+import { callEndpointDetails, groupCallPeople } from "@/components/call-roster";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
 import { requestBrowserMedia } from "@/lib/browser-media-request";
@@ -556,6 +557,7 @@ export function LiveSessionRoom({
   const cameraToggleInFlightRef = useRef(false);
   const cameraOperationGenerationRef = useRef(0);
   const [participants, setParticipants] = useState<CallParticipant[]>([]);
+  const peopleInCall = groupCallPeople(participants);
   const [recordingControlContainer, setRecordingControlContainer] = useState<HTMLDivElement | null>(null);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
@@ -751,10 +753,12 @@ export function LiveSessionRoom({
   }, [leaveAfterSourceStops, onProtectionChange, sourceLocked]);
 
   const updateRoster = useCallback((room: Room) => {
+    if (roomRef.current !== room) return;
     const active = new Set(room.activeSpeakers.map((participant) => participant.identity));
     setParticipants([
       {
         identity: room.localParticipant.identity,
+        ...callEndpointDetails(room.localParticipant.identity, room.localParticipant.metadata),
         name: room.localParticipant.name || "You",
         speaking: active.has(room.localParticipant.identity),
         isLocal: true,
@@ -762,6 +766,7 @@ export function LiveSessionRoom({
       },
       ...Array.from(room.remoteParticipants.values()).map((participant) => ({
         identity: participant.identity,
+        ...callEndpointDetails(participant.identity, participant.metadata),
         name: participant.name || "Participant",
         speaking: active.has(participant.identity),
         isLocal: false,
@@ -1724,6 +1729,7 @@ export function LiveSessionRoom({
           updateRoster(room);
         })
         .on(RoomEvent.ParticipantNameChanged, () => updateRoster(room))
+        .on(RoomEvent.ParticipantMetadataChanged, () => updateRoster(room))
         .on(RoomEvent.ActiveSpeakersChanged, () => updateRoster(room))
         .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
           const chatThreadKeys = [
@@ -2424,7 +2430,7 @@ export function LiveSessionRoom({
           {screenShare.busy ? "Cancel sharing" : screenShare.sharing ? "Stop sharing" : "Share screen"}
         </button>
         {collaborationControls}
-        <button type="button" title="People" onClick={() => setToolPanel(toolPanel === "people" ? null : "people")} aria-expanded={toolPanel === "people"} className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${toolPanel === "people" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><Users size={18} /><span>People <span className="tabular-nums">{participants.length}</span></span></button>
+        <button type="button" title="People" onClick={() => setToolPanel(toolPanel === "people" ? null : "people")} aria-expanded={toolPanel === "people"} className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${toolPanel === "people" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><Users size={18} /><span>People <span className="tabular-nums">{peopleInCall.length}</span></span></button>
         {!captureGroupId?.trim() ? <button type="button" title="Recording" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl px-3 text-xs font-semibold hover:bg-muted"><Radio size={18} />Recording</button> : null}
         <button type="button" title="Devices" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Settings2 size={18} />Devices</button>
         <button type="button" title="More" onClick={() => setToolPanel("details")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Ellipsis size={18} />More</button>
@@ -2446,7 +2452,7 @@ export function LiveSessionRoom({
           <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{sessionTitle}</h2>
         </div>
         <div className={showSessionHeading || connected && !stageLayout ? "flex flex-wrap items-center gap-2" : "sr-only"}>
-          {connected ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">{participants.length} in call</span> : null}
+          {connected ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">{peopleInCall.length} in call</span> : null}
           <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
         </div>
       </div>
@@ -2713,8 +2719,8 @@ export function LiveSessionRoom({
           </div>
           </details>
           <div className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><Users size={15} /> In this room · {participants.length}</div>
-            <div className="mt-3 space-y-2">{participants.length ? participants.map((participant) => <div key={participant.identity} className="flex items-center justify-between rounded-xl bg-[#fffaf0] px-3 py-2 text-sm font-bold text-[#5b472f]"><span>{participant.name}</span><span className={`h-2.5 w-2.5 rounded-full ${participant.speaking ? "bg-emerald-500 ring-4 ring-emerald-100" : "bg-[#cdbb9a]"}`} aria-label={participant.speaking ? "Speaking" : "Quiet"} /></div>) : <p className="text-xs font-semibold leading-5 text-[#8a7354]">The roster appears after you join. iPhone and browser devices can represent the same person without replacing each other.</p>}</div>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><Users size={15} /> In this room · {peopleInCall.length}</div>
+            <div className="mt-3"><CallPeoplePanel participants={participants} /></div>
           </div>
           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs font-bold leading-5 text-sky-950">
             <Smartphone aria-hidden="true" />
