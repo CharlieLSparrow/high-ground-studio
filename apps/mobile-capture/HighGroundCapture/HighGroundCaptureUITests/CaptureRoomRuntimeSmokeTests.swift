@@ -5633,6 +5633,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             scrollRuntimeElementIntoHittableView(open, in: app),
             "The exact-call conversation should open without joining or starting a recording."
         )
+        expectation(for: NSPredicate(format: "value MATCHES %@", "[1-9][0-9]* unread messages"), evaluatedWith: open)
+        waitForExpectations(timeout: 20)
+        attachRuntimeScreenshot(app, name: "Session chat has unread activity before opening")
         open.tap()
 
         XCTAssertTrue(

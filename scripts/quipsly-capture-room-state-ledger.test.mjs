@@ -345,11 +345,14 @@ assert.match(
   /const reopenRoom = useCallback[\s\S]*postRoomReceipt\(\{\s*callRoomId,\s*action:\s*"OPEN"/,
   "the explicit room-control OPEN receipt must remain inside the named reopen flow",
 );
-assert.match(
-  browserRecorder,
-  /canControlRoom \? \([\s\S]*onClick=\{\(\) => void reopenRoom\(\)\}/,
-  "only a room controller may see the reopen control",
-);
+const { browserRecordingControl } = await import("../apps/quipsly/src/lib/browser-recording-control.ts");
+const closedRoom = { status: "ready", closed: true, directiveActive: false,
+  directiveBusy: false, myConsent: true, waitingForConsent: false, ready: true, canJoinActive: false };
+assert.equal(browserRecordingControl({ ...closedRoom, canControlRoom: true }).action, "REOPEN");
+assert.equal(browserRecordingControl({ ...closedRoom, canControlRoom: false }).action, null,
+  "only a room controller may see the reopen control");
+assert.match(browserRecorder, /browserRecordingControl\(\{status, canControlRoom, closed: roomClosed/,
+  "the rendered recording action uses the shared room-control decision");
 assert.match(
   browserRecorder,
   /postRoomReceipt\(\{\s*callRoomId,\s*action:\s*"START_RECORDING"/,

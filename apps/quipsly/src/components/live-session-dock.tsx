@@ -41,6 +41,8 @@ import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import type { SessionCaptureProfile } from "@/lib/session-experience";
 import { captureAppDeepLink } from "@/lib/capture-universal-link";
 import { selectSessionEntry } from "@/lib/session-entry-client";
+import { WorkspacePanelActivity } from "./workspace-panel-activity";
+import { useSessionChatActivity } from "@/hooks/use-session-chat-activity";
 
 export type LiveSessionDockConfig = {
   callRoomId: string;
@@ -122,6 +124,9 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
   const dockDialogRef = useRef<HTMLDialogElement>(null);
+  const unreadChatCount = useSessionChatActivity(active?.callRoomId ?? null);
+  const unreadChatBadge = unreadChatCount > 0 ? <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
+    aria-label={`${unreadChatCount} unread chat ${unreadChatCount === 1 ? "message" : "messages"}`}>{unreadChatCount > 99 ? "99+" : unreadChatCount}</span> : null;
 
   useEffect(() => {
     const dialog = dockDialogRef.current;
@@ -265,7 +270,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{liveSessionStatusLabel(status)}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button>
+                  <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-description={unreadChatCount > 0 ? `${unreadChatCount} unread messages` : undefined} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span>{unreadChatBadge}</button>
                   <button type="button" onClick={() => { setNotesVisitedRoom(active.callRoomId); setWorkspacePanel(panel => panel === "notes" ? null : "notes"); }} aria-label={notesOpen ? "Hide notes" : "Show notes"} aria-expanded={notesOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${notesOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><NotebookPen size={18} /><span className="hidden sm:inline">Notes</span>{notesNeedAttention ? <span role="status" title="A note needs your attention" className="size-2 rounded-full bg-amber-500"><span className="sr-only">A note is not saved</span></span> : null}</button>
                   <button type="button" onClick={() => { setWorkVisitedRoom(active.callRoomId); setWorkspacePanel(panel => panel === "work" ? null : "work"); }} aria-label={workOpen ? "Hide tasks" : "Show tasks"} aria-expanded={workOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${workOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><ListTodo size={18} /><span className="hidden sm:inline">Tasks</span></button>
                   <button type="button" onClick={minimize} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Minimize live call"><ChevronDown size={18} /></button>
@@ -343,7 +348,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </div>
               <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>
               <button type="button" onClick={() => setWorkspacePanel(null)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted"><PanelRightClose size={16} />Back to call</button>
-                <SessionThread
+                <WorkspacePanelActivity.Provider value={chatOpen && isOpen}><SessionThread
                   projectSlug={active.projectSlug ?? undefined}
                   roomId={active.callRoomId}
                   sessionTitle={active.sessionTitle}
@@ -353,7 +358,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   onOpenWork={minimize}
                   heading="Chat"
                   fillHeight
-                />
+                /></WorkspacePanelActivity.Provider>
               </div>
               <div ref={setToolPanelContainer} data-testid="live-call-tool-panel"
                 className={`min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border ${workspacePanel && !chatOpen ? "block" : "hidden"}`} />
@@ -382,6 +387,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
             <span className="block truncate text-[11px] font-semibold text-[#dfd0b8]">{liveSessionStatusLabel(status)}</span>
           </button>
           <button type="button" onClick={() => setIsOpen(true)} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Open live call"><PanelRightOpen size={18} /></button>
+          {unreadChatCount > 0 ? <button type="button" onClick={() => { setIsOpen(true); setWorkspacePanel("chat"); }} aria-label="Open unread call chat" aria-description={`${unreadChatCount} unread messages`} className="flex min-h-11 items-center gap-1 rounded-xl px-2"><MessageSquareText size={18} />{unreadChatBadge}</button> : null}
           <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl bg-rose-900 hover:bg-rose-800" aria-label="Leave or close live call"><PhoneOff size={18} /></button>
         </section>
       ) : null}

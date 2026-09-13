@@ -25,6 +25,7 @@ describe("SessionThread", () => {
   });
 
   it("marks visible unread conversation history once and keeps linked tasks available in view-only mode", async () => {
+    const height = jest.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(500);
     const task = {id: "task", title: "Read the chapter", status: "OPEN"};
     jest.mocked(fetch).mockResolvedValue({ok: true, json: async () => ({ok: true, unreadCount: 1,
       capabilities: {canWrite: false}, messages: [{id: "message", body: "Read this chapter", createdAt: "2026-09-13T12:00:00Z", linkedTasks: [task]}]})} as Response);
@@ -35,6 +36,36 @@ describe("SessionThread", () => {
     const writes = jest.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST");
     expect(writes).toHaveLength(1);
     expect(JSON.parse(writes[0][1]!.body as string)).toEqual({action: "MARK_READ", lastReadMessageId: "message"});
+    height.mockRestore();
+  });
+
+  it("does not mark a late fetch read after chat has been closed", async () => {
+    let finish!: (result: Response) => void;
+    jest.mocked(fetch).mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    const thread = (active: boolean) => <WorkspacePanelActivity.Provider value={active}><SessionThread roomId="room" sessionTitle="Session" /></WorkspacePanelActivity.Provider>;
+    const view = render(thread(true));
+    view.rerender(thread(false));
+    await act(async () => {finish(response({ok: true, unreadCount: 1, messages: [message]}));});
+    expect(jest.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+  });
+
+  it("keeps incoming messages unread while reading history, then acknowledges after jumping down", async () => {
+    jest.mocked(fetch).mockResolvedValue(response({ok: true, unreadCount: 0, messages: [message]}));
+    await mountThread();
+    const log = screen.getByRole("log");
+    Object.defineProperties(log, {clientHeight: {value: 300, configurable: true}, scrollHeight: {value: 1800, configurable: true}});
+    log.scrollTop = 200;
+    fireEvent.scroll(log);
+    jest.mocked(fetch).mockImplementation(async (_url, init) => response(init?.method === "POST"
+      ? {ok: true, unreadCount: 0}
+      : {ok: true, unreadCount: 1, messages: [message, {...message, id: "new", body: "A new thought", createdAt: "2026-09-13T12:00:00Z"}]}));
+    await act(async () => {jest.advanceTimersByTime(3_000);});
+    expect(log.scrollTop).toBe(200);
+    expect(jest.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "New messages"}));});
+    const writes = jest.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][1]!.body as string)).toEqual({action: "MARK_READ", lastReadMessageId: "new"});
   });
 
   async function mountThread() {

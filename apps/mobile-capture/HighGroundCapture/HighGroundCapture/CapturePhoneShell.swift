@@ -11467,6 +11467,7 @@ private enum CaptureRecorderFocusedTool: String, Identifiable {
 }
 
 private struct CaptureRecorderView: View {
+    @Environment(\.scenePhase) private var conversationScenePhase
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @Binding var localOnlyRecordingSessionID: String?
@@ -13070,9 +13071,17 @@ private struct CaptureRecorderView: View {
     private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {
         HStack(spacing: 6) {
             Button { activeCallPanel = activeCallPanel == .chat ? nil : .chat } label: {
-                Label("Chat", systemImage: "bubble.left.and.bubble.right")
-                    .frame(maxWidth: .infinity, minHeight: 30)
+                HStack(spacing: 4) {
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                    if sessionConversation.unreadCount > 0 {
+                        Text(sessionConversation.unreadCount > 99 ? "99+" : "\(sessionConversation.unreadCount)")
+                            .font(.caption2.bold()).padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(CapturePalette.ink.opacity(0.12), in: Capsule())
+                    }
+                }.frame(maxWidth: .infinity, minHeight: 30)
             }
+            .accessibilityLabel("Chat")
+            .accessibilityValue(sessionConversation.unreadCount > 0 ? "\(sessionConversation.unreadCount) unread messages" : "No unread messages")
             .accessibilityIdentifier("CaptureCallOpenChat")
             Button { activeCallPanel = activeCallPanel == .notes ? nil : .notes } label: {
                 Label("Notes", systemImage: "note.text")
@@ -13312,6 +13321,20 @@ private struct CaptureRecorderView: View {
 
     var body: some View {
         recorderWorkspaceDestinations
+        .task(id: "chat-activity|\(model.selectedSession?.callRoomId ?? "")|\(visibleTab)|\(conversationScenePhase)") {
+            guard visibleTab == .record, conversationScenePhase == .active,
+                  let session = model.selectedSession, !session.isPersonalVoiceNote,
+                  !model.usesPreviewData else { return }
+            while !Task.isCancelled {
+                await sessionConversation.refreshActivity(session: session)
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+            }
+        }
+        .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+            guard hint != nil, conversationScenePhase == .active,
+                  let session = model.selectedSession, !model.usesPreviewData else { return }
+            Task { await sessionConversation.refreshActivity(session: session) }
+        }
         .onAppear {
             guard !captureIsActive else { return }
             recordingMode = CaptureCallPreferences.recordingMode(

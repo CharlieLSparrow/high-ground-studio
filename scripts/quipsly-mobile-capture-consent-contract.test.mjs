@@ -32,7 +32,8 @@ for (const needle of [
 ]) {
   assert.ok(web.includes(needle), `web consent UI/request missing ${needle}`);
 }
-assert.match(web, /does not start recording/);
+assert.match(web, /Your choice is saved for this session\. The host starts recording\./,
+  "the concise consent prompt distinguishes saved permission from the host's recording action");
 assert.match(api, /Date\.now\(\) - 30 \* 60 \* 1_000/,
   "stale presentation evidence must not be replayable indefinitely");
 assert.match(api, /serverConfirmedAt: now\.toISOString\(\)/);

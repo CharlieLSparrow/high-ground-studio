@@ -82,6 +82,8 @@ final class MobileSessionConversationClient: ObservableObject {
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
     @Published private(set) var outboundLiveHint: MobileChatPersistedLiveHint?
+    @Published private(set) var unreadCount = 0
+    @Published private(set) var readCheckVersion = 0
 
     private struct PendingSend {
         let body: String
@@ -98,6 +100,8 @@ final class MobileSessionConversationClient: ObservableObject {
     private var loadGeneration = 0
     private var openingID = UUID()
     private var creatingTask = false
+    private var lastMarkedReadID: String?
+    private var activityInFlight = false
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -241,9 +245,8 @@ final class MobileSessionConversationClient: ObservableObject {
                 ? "Start the conversation"
                 : "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
             persist(context: context)
-            if (payload.unreadCount ?? 0) > 0, let latest = messages.last {
-                await markRead(context: context, messageID: latest.id)
-            }
+            unreadCount = max(0, payload.unreadCount ?? 0)
+            readCheckVersion &+= 1
         } catch {
             guard generation == loadGeneration,
                   currentRoomID == context.roomID else { return }
@@ -543,12 +546,46 @@ final class MobileSessionConversationClient: ObservableObject {
         return payload
     }
 
-    private func markRead(context: Context, messageID: String) async {
-        _ = try? await mutate(
-            context: context,
-            method: "POST",
-            body: ["action": "MARK_READ", "lastReadMessageId": messageID]
-        )
+    func refreshActivity(session: MobileCaptureSession) async {
+        guard AuthManager.shared.networkActionsAllowed, !activityInFlight,
+              let context = context(for: session) else { return }
+        if currentRoomID != context.roomID {
+            reset()
+            currentRoomID = context.roomID
+        }
+        let opening = openingID
+        activityInFlight = true
+        defer { activityInFlight = false }
+        do {
+            var components = URLComponents(url: context.endpoint, resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "view", value: "activity")]
+            var request = URLRequest(url: components.url!)
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            try validateOrigin(response.url)
+            guard opening == openingID, currentRoomID == context.roomID else { return }
+            if [401, 403, 404].contains(response.statusCode) { unreadCount = 0; return }
+            let payload = try JSONDecoder().decode(MobileSessionConversationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok, payload.room?.id == context.roomID else { return }
+            unreadCount = max(0, payload.unreadCount ?? 0)
+        } catch { /* A brief disconnect should not erase the last verified badge. */ }
+    }
+
+    /// Called only when the end of the conversation is visible, never by polling.
+    func markLatestVisible(session: MobileCaptureSession) async {
+        guard unreadCount > 0, !isUsingProtectedCache,
+              let latest = messages.last, latest.id != lastMarkedReadID,
+              let context = context(for: session), context.roomID == currentRoomID else { return }
+        let opening = openingID
+        lastMarkedReadID = latest.id
+        do {
+            _ = try await mutate(context: context, method: "POST",
+                body: ["action": "MARK_READ", "lastReadMessageId": latest.id])
+            guard opening == openingID else { return }
+            await refreshActivity(session: session)
+        } catch {
+            if opening == openingID { lastMarkedReadID = nil }
+        }
     }
 
     private func upsert(_ message: MobileSessionConversationMessage) {
@@ -587,6 +624,8 @@ final class MobileSessionConversationClient: ObservableObject {
         loadGeneration += 1
         currentRoomID = nil
         messages = []
+        unreadCount = 0
+        lastMarkedReadID = nil
         title = "Session conversation"
         canWrite = false
         isLoading = false
@@ -718,6 +757,11 @@ final class MobileSessionConversationClient: ObservableObject {
 }
 
 
+private struct SessionConversationBottomPreference: PreferenceKey {
+    static var defaultValue: CGFloat { .infinity }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct MobileSessionConversationThread: View {
     @ObservedObject var client: MobileSessionConversationClient
     let session: MobileCaptureSession
@@ -725,12 +769,22 @@ struct MobileSessionConversationThread: View {
     var onDismiss: (() -> Void)? = nil
     var embedded = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var replyTo: MobileSessionConversationMessage?
     @State private var editing: MobileSessionConversationMessage?
     @State private var editDraft = ""
     @State private var removeCandidate: MobileSessionConversationMessage?
     @State private var taskMessage: MobileSessionConversationMessage?
     @State private var openTask: NestChatLinkedTask?
+    @State private var followsLatest = true
+    @State private var latestVisible = false
+    @State private var taskReturnMessageID: String?
+    @State private var scrollRequest: ConversationScrollRequest?
+
+    private struct ConversationScrollRequest: Equatable {
+        let id = UUID()
+        let messageID: String
+    }
 
     var body: some View {
         CaptureWorkspaceNavigation(title: "Chat", embedded: embedded, onDismiss: {
@@ -748,6 +802,7 @@ struct MobileSessionConversationThread: View {
         }) {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
+                    GeometryReader { viewport in
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             boundary
@@ -764,29 +819,56 @@ struct MobileSessionConversationThread: View {
                                 messageRow(message)
                                     .id(message.id)
                             }
+                            Color.clear.frame(height: 1)
+                                .id("conversation-bottom")
+                                .background(GeometryReader { end in
+                                    Color.clear.preference(key: SessionConversationBottomPreference.self,
+                                        value: end.frame(in: .named("session-conversation-scroll")).maxY)
+                                })
                         }
                         .padding()
+                    }
+                    .coordinateSpace(name: "session-conversation-scroll")
+                    .onPreferenceChange(SessionConversationBottomPreference.self) { bottom in
+                        let visible = bottom >= 0 && bottom <= viewport.size.height + 8
+                        latestVisible = visible
+                        if bottom.isFinite { followsLatest = visible }
                     }
                     .accessibilityIdentifier("CaptureSessionChatScroll")
                     .scrollDismissesKeyboard(.interactively)
                     .defaultScrollAnchor(.bottom)
-                    .onChange(of: taskMessage?.id) { _, id in
-                        guard id == nil, let last = client.messages.last else { return }
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                    .onChange(of: scrollRequest) { _, request in
+                        guard let request else { return }
+                        proxy.scrollTo(request.messageID, anchor: .bottom)
                     }
-                    .onChange(of: client.messages.count) {
-                        guard let last = client.messages.last else { return }
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    .onChange(of: client.messages.last?.id) {
+                        guard followsLatest else { return }
+                        proxy.scrollTo("conversation-bottom", anchor: .bottom)
+                    }
+                    .overlay(alignment: .bottom) {
+                        if !latestVisible && client.unreadCount > 0 {
+                            Button {
+                                followsLatest = true
+                                withAnimation { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+                            } label: { Label("New messages", systemImage: "arrow.down") }
+                            .captureProminentButton()
+                            .padding(8)
+                            .accessibilityIdentifier("CaptureSessionChatNewMessages")
+                        }
+                    }
                     }
                 }
                 composer
             }
             .background(MobileStudioBackground())
-            .sheet(item: $taskMessage) { message in
+            .sheet(item: $taskMessage, onDismiss: restoreTaskMessage) { message in
                 CaptureSessionConversationTaskEditor(client: client, session: session, message: message)
             }
             .sheet(item: $openTask, onDismiss: {
-                Task { await client.load(session: session, forceRefresh: true, quietly: true) }
+                Task {
+                    await client.load(session: session, forceRefresh: true, quietly: true)
+                    restoreTaskMessage()
+                }
             }) { task in
                 CaptureSessionConversationTaskDetail(client: client, session: session, linkedTask: task)
             }
@@ -812,6 +894,15 @@ struct MobileSessionConversationThread: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureSessionChatThread")
+        .task(id: "\(latestVisible)|\(client.messages.last?.id ?? "")|\(client.unreadCount)|\(client.readCheckVersion)|\(scenePhase)|\(taskMessage?.id ?? "")|\(openTask?.id ?? "")") {
+            guard latestVisible, scenePhase == .active, taskMessage == nil, openTask == nil, !previewOnly else { return }
+            await client.markLatestVisible(session: session)
+        }
+    }
+
+    private func restoreTaskMessage() {
+        guard let messageID = taskReturnMessageID else { return }
+        scrollRequest = ConversationScrollRequest(messageID: messageID)
     }
 
     private var boundary: some View {
@@ -864,7 +955,10 @@ struct MobileSessionConversationThread: View {
                             .fixedSize(horizontal: false, vertical: true)
                         if message.deletedAt == nil {
                             ForEach(message.linkedTasks ?? []) { task in
-                                Button { openTask = task } label: {
+                                Button {
+                                    taskReturnMessageID = message.id
+                                    openTask = task
+                                } label: {
                                     Label(task.title, systemImage: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
                                         .font(.subheadline.weight(.medium))
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -911,7 +1005,10 @@ struct MobileSessionConversationThread: View {
 
     private func messageMenu(_ message: MobileSessionConversationMessage) -> some View {
         Menu {
-            Button("Create task", systemImage: "checkmark.circle") { taskMessage = message }
+            Button("Create task", systemImage: "checkmark.circle") {
+                taskReturnMessageID = message.id
+                taskMessage = message
+            }
             Button {
                 editing = nil
                 replyTo = message
@@ -1015,6 +1112,8 @@ struct MobileSessionConversationThread: View {
                             ) {
                                 if client.composerDraft == body { client.composerDraft = "" }
                                 replyTo = nil
+                                followsLatest = true
+                                scrollRequest = ConversationScrollRequest(messageID: "conversation-bottom")
                             }
                         }
                     } label: {

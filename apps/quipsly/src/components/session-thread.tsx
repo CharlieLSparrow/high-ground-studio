@@ -1,11 +1,12 @@
 "use client";
 
-import { LoaderCircle, MessageCircle, Send } from "lucide-react";
+import { ArrowDown, LoaderCircle, MessageCircle, Send } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import LocalDateTime from "@/components/LocalDateTime";
 import { ConversationTaskAction, type ConversationLinkedTask } from "./conversation-task-action";
 import { useWorkspacePanelActive } from "./workspace-panel-activity";
+import { SESSION_CHAT_READ_EVENT } from "@/hooks/use-session-chat-activity";
 import {
   CHAT_PERSISTED_INCOMING_EVENT,
   chatPersistedLiveHint,
@@ -97,6 +98,9 @@ function ScopedCollaborationThread({
   const [editing, setEditing] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [mutating, setMutating] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [atLatest, setAtLatest] = useState(true);
+  const [pageVisible, setPageVisible] = useState(true);
   const activeRef = useRef(true);
   const refreshingRef = useRef(false);
   const sendingRef = useRef(false);
@@ -124,7 +128,12 @@ function ScopedCollaborationThread({
       if (requestedMessage) params.set("message", requestedMessage);
       const response = await fetch(`${endpoint}?${params}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as ThreadResponse;
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Session thread could not load.");
+      if (!response.ok || !payload.ok) {
+        if (activeRef.current && [401, 403, 404].includes(response.status)) {
+          setMessages([]); setUnreadCount(0); setServerCanWrite(false);
+        }
+        throw new Error(payload.error || "Session thread could not load.");
+      }
       if (!activeRef.current) return;
       // A poll started before a send must not discard its acknowledged message
       // or the older history the reader has already loaded.
@@ -132,13 +141,7 @@ function ScopedCollaborationThread({
       if (payload.capabilities) setServerCanWrite(payload.capabilities.canWrite);
       if (!historyLoadedRef.current) setNextCursor(payload.nextCursor ?? null);
       setLoadError("");
-      const latest = payload.messages?.at(-1);
-      if (sessionRoomId && payload.unreadCount && latest && markedReadRef.current !== latest.id) {
-        markedReadRef.current = latest.id;
-        void fetch(endpoint, {method: "POST", headers: {"content-type": "application/json"},
-          body: JSON.stringify({action: "MARK_READ", lastReadMessageId: latest.id}),
-        }).then(response => {if (!response.ok) markedReadRef.current = null;}, () => {markedReadRef.current = null;});
-      }
+      setUnreadCount(Math.max(0, payload.unreadCount ?? 0));
     } catch (nextError) {
       if (activeRef.current) setLoadError(nextError instanceof Error ? nextError.message : "Conversation could not load.");
     } finally {
@@ -167,6 +170,13 @@ function ScopedCollaborationThread({
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [refresh, panelActive]);
+
+  useEffect(() => {
+    const visible = () => setPageVisible(document.visibilityState !== "hidden");
+    visible();
+    document.addEventListener("visibilitychange", visible);
+    return () => document.removeEventListener("visibilitychange", visible);
+  }, []);
 
   useEffect(() => {
     if (!panelActive || !liveHintThreadKey || liveHintThreadKey !== threadKey) return;
@@ -205,7 +215,35 @@ function ScopedCollaborationThread({
     } else if (thread && followLatestRef.current) {
       thread.scrollTop = thread.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, panelActive]);
+
+  useEffect(() => {
+    const latest = messages.at(-1);
+    const scroll = scrollRef.current;
+    if (!sessionRoomId || !panelActive || !pageVisible || !atLatest || !unreadCount || !latest
+      || !scroll || scroll.clientHeight <= 0 || markedReadRef.current === latest.id
+      || !followLatestRef.current) return;
+    // A fetch is not a read. Only acknowledge the bottom of a visible thread.
+    markedReadRef.current = latest.id;
+    void fetch(endpoint, {method: "POST", headers: {"content-type": "application/json"},
+      body: JSON.stringify({action: "MARK_READ", lastReadMessageId: latest.id}),
+    }).then(async response => {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) { markedReadRef.current = null; return; }
+      if (activeRef.current) {
+        // Refresh both projections: a newer message may have arrived meanwhile.
+        void refresh(true);
+        window.dispatchEvent(new CustomEvent(SESSION_CHAT_READ_EVENT, {detail: {roomId: sessionRoomId}}));
+      }
+    }, () => { markedReadRef.current = null; });
+  }, [messages, unreadCount, panelActive, pageVisible, atLatest, endpoint, sessionRoomId, refresh]);
+
+  function jumpToLatest() {
+    followLatestRef.current = true;
+    setAtLatest(true);
+    const scroll = scrollRef.current;
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  }
 
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -308,7 +346,7 @@ function ScopedCollaborationThread({
         <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">{scopeDescription || `Discuss ${collaborationTitle} and keep the conversation beside your work.`}</p>
       </header>
       <div ref={scrollRef} className={`min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 ${fillHeight ? "" : "max-h-[32rem]"}`} role="log" aria-label={heading}
-        onScroll={() => { const el = scrollRef.current; if (el) followLatestRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64; }}>
+        onScroll={() => { const el = scrollRef.current; if (el) { followLatestRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32; setAtLatest(followLatestRef.current); } }}>
         {nextCursor ? <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="min-h-11 w-full rounded-xl border border-border px-3 text-sm">{loadingOlder ? "Loading…" : "Earlier messages"}</button> : null}
         {loading ? <p className="flex items-center gap-2 text-sm font-semibold text-muted-foreground"><LoaderCircle size={16} className="animate-spin" /> Loading conversation…</p> : null}
         {!loading && !loadError && messages.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Start the conversation when you're ready.</p> : null}
@@ -330,6 +368,7 @@ function ScopedCollaborationThread({
           {threadKey === "default" && <ConversationTaskAction projectSlug={projectSlug} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
         </article>)}
       </div>
+      {!atLatest && unreadCount > 0 ? <button type="button" onClick={jumpToLatest} className="mx-auto my-2 inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground"><ArrowDown size={16} aria-hidden="true" />New messages</button> : null}
       {loadError ? <div role="alert" className="px-4 py-2 text-sm text-destructive">{loadError} <button type="button" onClick={() => void refresh()} className="min-h-11 underline">Retry loading</button></div> : null}
       <form onSubmit={send} className="shrink-0 border-t border-border p-3">
         {replyTo && <div className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-muted px-3 text-xs"><p className="min-w-0 truncate">Replying to {author(replyTo)}: {replyTo.body}</p><button type="button" className="min-h-11 shrink-0" onClick={() => setReplyTo(null)}>Cancel reply</button></div>}

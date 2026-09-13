@@ -43,6 +43,14 @@ function isUniqueConflict(error: unknown) {
       error.code === "P2002",
   );
 }
+async function retryReadCursorTransaction<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await operation(); }
+    catch (error) {
+      if (attempt >= 2 || !(error && typeof error === "object" && "code" in error && error.code === "P2034")) throw error;
+    }
+  }
+}
 const SELECT = {
   id: true,
   roomId: true,
@@ -148,6 +156,14 @@ export async function GET(
   const access = await authority(request, roomId, false);
   if (!access.ok) return access.response;
   const params = new URL(request.url).searchParams;
+  // The call toolbar needs unread activity, not another copy of the chat.
+  // Reading this projection never advances the person's read cursor.
+  if (params.get("view") === "activity") {
+    const unreadCount = await unreadMessages(access.prisma, roomId, access.session.user.id);
+    return NextResponse.json({ ok: true, room: access.room, unreadCount }, {
+      headers: { "Cache-Control": "private, no-store", Vary: "Cookie, Authorization" },
+    });
+  }
   const rawLimit = Number(params.get("limit") || 200);
   const limit = Number.isInteger(rawLimit) ? Math.max(1, Math.min(rawLimit, 200)) : 200;
   const cursorId = params.get("cursor");
@@ -185,28 +201,7 @@ export async function GET(
       messages.sort((a: any, b: any) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
     }
   }
-  const unreadCount = await access.prisma.sessionConversationMessage.count({
-    where: {
-      roomId,
-      deletedAt: null,
-      authorUserId: { not: access.session.user.id },
-      ...(cursor?.lastReadAt
-        ? {
-            OR: [
-              { createdAt: { gt: cursor.lastReadAt } },
-              ...(cursor.lastReadMessageId
-                ? [
-                    {
-                      createdAt: cursor.lastReadAt,
-                      id: { gt: cursor.lastReadMessageId },
-                    },
-                  ]
-                : []),
-            ],
-          }
-        : {}),
-    },
-  });
+  const unreadCount = await unreadMessages(access.prisma, roomId, access.session.user.id, cursor);
   const linkedTasks = await sessionConversationTasks(access.prisma, roomId,
     messages.filter((message: any) => !message.deletedAt).map((message: any) => message.id));
   return NextResponse.json({
@@ -225,6 +220,35 @@ export async function GET(
       sessionAccessOnly: true,
       privateNotesExcluded: true,
       noExternalDelivery: true,
+    },
+  }, { headers: { "Cache-Control": "private, no-store", Vary: "Cookie, Authorization" } });
+}
+
+async function unreadMessages(prisma: any, roomId: string, userId: string, knownCursor?: any) {
+  const cursor = knownCursor === undefined ? await prisma.sessionConversationReadCursor.findUnique({
+    where: { roomId_userId: { roomId, userId } },
+    select: { lastReadAt: true, lastReadMessageId: true },
+  }) : knownCursor;
+  return prisma.sessionConversationMessage.count({
+    where: {
+      roomId,
+      deletedAt: null,
+      OR: [{ authorUserId: null }, { authorUserId: { not: userId } }],
+      ...(cursor?.lastReadAt
+        ? {
+            AND: [{ OR: [
+              { createdAt: { gt: cursor.lastReadAt } },
+              ...(cursor.lastReadMessageId
+                ? [
+                    {
+                      createdAt: cursor.lastReadAt,
+                      id: { gt: cursor.lastReadMessageId },
+                    },
+                  ]
+                : []),
+            ] }],
+          }
+        : {}),
     },
   });
 }
@@ -249,7 +273,9 @@ export async function POST(
         },
         { status: 409 },
       );
-    const marked = await access.prisma.$transaction(async (tx: any) => {
+    // Phone and browser can acknowledge concurrently. Serializable retry keeps
+    // the older device from moving a newer read position backwards.
+    const marked = await retryReadCursorTransaction<any>(() => access.prisma.$transaction(async (tx: any) => {
       const currentRoom = await tx.callRoom.findFirst({
         where: sessionConversationAccessWhere(roomId, access.session.user),
         select: { id: true },
@@ -284,7 +310,7 @@ export async function POST(
         },
       });
       return { kind: "advanced" as const };
-    });
+    }, { isolationLevel: "Serializable" }));
     if (marked.kind === "access-changed")
       return NextResponse.json(
         {
@@ -305,7 +331,7 @@ export async function POST(
       );
     return NextResponse.json({
       ok: true,
-      unreadCount: 0,
+      unreadCount: await unreadMessages(access.prisma, roomId, access.session.user.id),
       boundaries: {
         monotonic: true,
         noMessageCreated: true,

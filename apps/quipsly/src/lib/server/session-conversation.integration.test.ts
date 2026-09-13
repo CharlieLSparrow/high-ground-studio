@@ -71,6 +71,26 @@ if (enabled) {
     expect((await POST(request("POST", { body: "Intrusion", clientRequestId: randomUUID() }), context())).status).toBe(404);
   });
 
+  it("shares unread state across devices without treating activity checks as reading", async () => {
+    as(0);
+    const first = (await (await POST(request("POST", {body: "First unread thought", clientRequestId: randomUUID()}), context())).json()).message;
+    const second = (await (await POST(request("POST", {body: "Second unread thought", clientRequestId: randomUUID()}), context())).json()).message;
+    as(1);
+    const activity = await GET(request("GET", undefined, "?view=activity"), context());
+    const before = await activity.json();
+    expect(before.unreadCount).toBeGreaterThanOrEqual(2);
+    expect(before.messages).toBeUndefined();
+    const seenFirst = await POST(request("POST", {action: "MARK_READ", lastReadMessageId: first.id}), context());
+    expect((await seenFirst.json()).unreadCount).toBe(1);
+    expect((await (await GET(request("GET", undefined, "?view=activity"), context())).json()).unreadCount).toBe(1);
+    await POST(request("POST", {action: "MARK_READ", lastReadMessageId: second.id}), context());
+    expect((await (await GET(request("GET", undefined, "?view=activity"), context())).json()).unreadCount).toBe(0);
+    await Promise.all([first, second, first].map(message => POST(request("POST", {action: "MARK_READ", lastReadMessageId: message.id}), context())));
+    expect(await prisma.sessionConversationReadCursor.findUnique({where: {roomId_userId: {roomId, userId: users[1].id}}})).toMatchObject({lastReadMessageId: second.id});
+    as(2);
+    expect((await GET(request("GET", undefined, "?view=activity"), context())).status).toBe(404);
+  });
+
   it("paginates stable same-time IDs and never leaks another room through anchors or cursors", async () => {
     const stamp = new Date("2026-01-01T00:00:00Z");
     await prisma.sessionConversationMessage.createMany({ data: ["a", "b", "c"].map(suffix => ({ id: `${nonce}-${suffix}`, roomId, clientRequestId: `${nonce}-${suffix}`, body: suffix, createdAt: stamp, authorNameSnapshot: "Former participant", gifUrl: "https://example.test/retained.gif" })) });

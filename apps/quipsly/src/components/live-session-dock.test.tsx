@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CaptureAppHandoff } from "./capture-app-handoff";
+import { useSessionChatActivity } from "@/hooks/use-session-chat-activity";
 
 import {
   LiveSessionDockLauncher,
@@ -20,6 +21,7 @@ const mockRoomLifecycle = {
 
 jest.mock("@/app/(app)/work/actions", () => ({editWorkTask: jest.fn(), editWorkGoal: jest.fn(), updateWorkTaskStatus: jest.fn(), updateWorkGoalStatus: jest.fn()}));
 jest.mock("next/navigation", () => ({useRouter: () => ({refresh: jest.fn()})}));
+jest.mock("@/hooks/use-session-chat-activity", () => ({useSessionChatActivity: jest.fn(() => 0)}));
 
 jest.mock("./live-session-room", () => ({
   LiveSessionRoom: ({
@@ -95,6 +97,24 @@ describe("LiveSessionDockProvider", () => {
     mockRoomLifecycle.mounted.mockClear();
     mockRoomLifecycle.unmounted.mockClear();
     mockRoomLifecycle.leaveRequested.mockClear();
+    jest.mocked(useSessionChatActivity).mockReturnValue(0);
+  });
+
+  it("opens unread chat from the minimized call without reconnecting or losing the room", async () => {
+    jest.mocked(useSessionChatActivity).mockReturnValue(3);
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    expect(within(screen.getByRole("button", {name: "Show chat"})).getByLabelText("3 unread chat messages")).toBeVisible();
+    expect(screen.getByRole("button", {name: "Show chat"})).toHaveAttribute("aria-description", "3 unread messages");
+    await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+    const minimized = screen.getByLabelText("Minimized live call");
+    expect(within(minimized).getByLabelText("3 unread chat messages")).toBeVisible();
+    await user.click(within(minimized).getByRole("button", {name: "Open unread call chat"}));
+    expect(screen.getByRole("button", {name: "Hide chat"})).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("textbox", {name: "Message"})).toBeVisible();
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
   });
 
   it("keeps the connected room alive while opening work linked from chat", async () => {
