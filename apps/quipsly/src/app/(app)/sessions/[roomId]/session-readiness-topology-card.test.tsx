@@ -217,8 +217,8 @@ describe("Session readiness topology card", () => {
     expect(screen.getByText("Ready now")).toBeInTheDocument();
     expect(screen.getByText(/sample bytes stayed on that browser tab/i)).toBeInTheDocument();
     expect(screen.getByText("Governed action receipt · 12345678")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Cloud copies are safe" })).toBeInTheDocument();
-    expect(screen.getByText("Confirm device")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recordings saved" })).toBeInTheDocument();
+    expect(screen.queryByText("Confirm device")).not.toBeInTheDocument();
     expect(screen.getByText("0/1 recording people safe")).toBeInTheDocument();
     expect(screen.getByText(/Safe to leave every endpoint: no/i)).toBeInTheDocument();
     expect(screen.getByText("Server copy safe")).toBeInTheDocument();
@@ -343,9 +343,9 @@ describe("Session readiness topology card", () => {
       screen.queryByRole("heading", { name: "Recording status" }),
     ).not.toBeInTheDocument();
     expect(
-      await screen.findByRole("heading", { name: "Recording is finishing" }),
+      await screen.findByRole("heading", { name: "Recordings waiting to finish" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Keep device open")).toBeInTheDocument();
+    expect(screen.getByText("Upload pending")).toBeInTheDocument();
   });
 
   it("keeps technical receipts collapsed when every recording is safe", async () => {
@@ -398,9 +398,9 @@ describe("Session readiness topology card", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     expect(screen.getByRole("heading", { name: "Recording status" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Every recording is safe" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Uploads complete" })).toBeInTheDocument();
     expect(screen.getByText("1/1 recording people safe")).toBeInTheDocument();
-    expect(screen.getByText("Safe")).toBeInTheDocument();
+    expect(screen.getByText("Saved")).toBeInTheDocument();
     expect(screen.getByTestId("recording-status-details")).not.toHaveAttribute("open");
     expect(screen.getByText("Recording details")).toBeInTheDocument();
   });

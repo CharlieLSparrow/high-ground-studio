@@ -3841,7 +3841,7 @@ export function SessionReviewClient({
       {mode === "recordings" ? (
         <>
           {purpose === "COACHING" && recordingWorkspaceAudience === "participant" ? <SessionRecordingShareCard roomId={roomId} /> : null}
-          <RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} />
+          {purpose !== "COACHING" || recordingWorkspaceAudience !== "producer" ? <RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} /> : null}
           {purpose === "COACHING" && recordingWorkspaceAudience === "participant" ? (
             <OriginalRecordings>
               <SessionRecordingHealthListeningNavigator roomId={roomId}
@@ -3861,10 +3861,11 @@ export function SessionReviewClient({
             onTakeSourcesChange={mediaNavigation.selectTake}
             renderOriginalRecordings={sourceIds => {
               const health = buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence });
-              return <SessionRecordingHealthListeningNavigator key={sourceIds.join("|")} roomId={roomId}
+              return <><RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} sourceIds={sourceIds} />
+              <SessionRecordingHealthListeningNavigator key={sourceIds.join("|")} roomId={roomId}
                 health={{...health, sources: health.sources.filter(source => sourceIds.includes(source.recordingAssetId || ""))}}
                 evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
-                onMediaFocusChange={mediaNavigation.select} presentation="workspace" />;
+                onMediaFocusChange={mediaNavigation.select} presentation="workspace" /></>;
             }} /> : null}
           <details className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
             <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Import a recording</summary>

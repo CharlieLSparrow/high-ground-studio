@@ -29,7 +29,7 @@ function topology(): SessionReadinessTopology {
 describe("session recording status", () => {
   it("gives every participant a simple safe result only when sources and queues agree", () => {
     const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "ENDED", topology: topology() });
-    expect(result).toMatchObject({ state: "SAFE", safeToLeave: true, label: "Every recording is safe" });
+    expect(result).toMatchObject({ state: "SAFE", safeToLeave: true, label: "Uploads complete" });
     expect(result.people.map((person) => person.state)).toEqual(["SAFE", "SAFE"]);
   });
 
@@ -82,7 +82,7 @@ describe("session recording status", () => {
     const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "RECORDING", topology: input });
     expect(result).toMatchObject({
       state: "KEEP_OPEN",
-      label: "Recording is finishing",
+      label: "Recordings waiting to finish",
     });
     expect(result.people[0]).toMatchObject({ label: "Coach", state: "SAFE" });
     expect(result.people[1]).toMatchObject({
@@ -100,7 +100,7 @@ describe("session recording status", () => {
     const result = buildSessionRecordingStatus({ roomId: "room-1", roomStatus: "RECORDING", topology: input });
     expect(result.people[0]).toMatchObject({
       state: "KEEP_OPEN",
-      detail: "Keep Quipsly open on this device while your recording finishes uploading.",
+      detail: "Keep Quipsly open on the device you recorded with so unfinished uploads can resume.",
     });
   });
 

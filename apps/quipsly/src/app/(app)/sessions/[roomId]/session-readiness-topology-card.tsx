@@ -315,7 +315,7 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
       <div className="max-w-3xl">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-800">Recording</p>
         <h2 id="session-readiness-topology-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Recording status</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Stay on this Session until Quipsly says every required recording is safe. Technical details stay out of the way unless something needs attention.</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Saved recordings are ready to work with. Keep Quipsly open on a recording device with unfinished uploads; you can work elsewhere in the app while it uploads.</p>
       </div>
       <button type="button" onClick={() => void refreshAll()} disabled={refreshing || !liveReadbackEnabled} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50">
         <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
