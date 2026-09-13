@@ -1201,7 +1201,7 @@ async function reconcileRender(client: RestoreClient, output: any) {
     render: {
       ...render,
       status: "VERIFIED",
-      recordingAssetId: existingAsset?.id || null,
+      recordingAssetId: derivedAssetId,
       provider: result.output.provider,
       bucketName: result.output.bucketName,
       objectName: result.output.objectName,
@@ -1217,6 +1217,22 @@ async function reconcileRender(client: RestoreClient, output: any) {
     },
   });
   return client.$transaction(async (tx: any) => {
+    // Claim this output revision before inserting the derived asset. Concurrent
+    // readers can otherwise race Prisma's emulated upsert and get P2002. The
+    // revision update and asset creation commit together, or both roll back.
+    const changed = await tx.sessionOutput.updateMany({
+      where: { id: output.id, revision: output.revision, status: "DRAFT" },
+      data: {
+        bodyJson: nextBody,
+        contentSha256: sha256(nextBody),
+        revision: output.revision + 1,
+      },
+    });
+    if (changed.count !== 1)
+      return tx.sessionOutput.findUnique({
+        where: { id: output.id },
+        select: OUTPUT_SELECT,
+      });
     let assetId = existingAsset?.id;
     if (!assetId) {
       const asset = await tx.recordingAsset.upsert({
@@ -1257,20 +1273,6 @@ async function reconcileRender(client: RestoreClient, output: any) {
       });
       assetId = asset.id;
     }
-    nextBody.render.recordingAssetId = assetId;
-    const changed = await tx.sessionOutput.updateMany({
-      where: { id: output.id, revision: output.revision, status: "DRAFT" },
-      data: {
-        bodyJson: nextBody,
-        contentSha256: sha256(nextBody),
-        revision: output.revision + 1,
-      },
-    });
-    if (changed.count !== 1)
-      return tx.sessionOutput.findUnique({
-        where: { id: output.id },
-        select: OUTPUT_SELECT,
-      });
     await tx.sessionOutputRevision.create({
       data: {
         id: randomUUID(),

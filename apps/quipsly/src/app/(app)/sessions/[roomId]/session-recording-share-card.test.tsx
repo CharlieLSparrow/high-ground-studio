@@ -95,6 +95,29 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
   });
 
+  it("keeps an in-progress trim when reconnecting an initial autosave timeout", async () => {
+    let offline = true;
+    const writes: any[] = [];
+    global.fetch = jest.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes("/recording-edit")) {
+        if (offline) throw new DOMException("signal is aborted without reason", "AbortError");
+        if (options?.method === "PUT") { writes.push(JSON.parse(String(options.body))); return response({ok: true, edit: {revision: 1}}); }
+        return response({ok: true, actorUserId: "coach_user_0001", edit: null});
+      }
+      return response({...snapshot, available: {...snapshot.available, selectedTakeId: "take-new"}});
+    }) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", {name: "Reconnect saving"});
+    expect(screen.queryByText("signal is aborted without reason")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("slider", {name: "Recording start"}), {target: {value: "3"}});
+    offline = false;
+    await userEvent.click(screen.getByRole("button", {name: "Reconnect saving"}));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].state.startSeconds).toBe(3);
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
+    expect(screen.queryByRole("button", {name: "Reconnect saving"})).not.toBeInTheDocument();
+  });
+
   it("undoes transcript cuts and trims independently, including keyboard shortcuts", async () => {
     global.fetch = jest.fn().mockResolvedValue(response(snapshot));
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
@@ -167,6 +190,22 @@ describe("SessionRecordingShareCard", () => {
     await act(async () => {resolveOld(response({...snapshot, room: {...snapshot.room, title: "Stale session"}}));});
     expect(screen.queryByDisplayValue("Stale session recording")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("New session recording")).toBeInTheDocument();
+  });
+
+  it("clears a transient refresh failure once recording status recovers", async () => {
+    let fail = false;
+    global.fetch = jest.fn(async () => {
+      if (fail) throw new Error("Recording status couldn’t refresh.");
+      return response(snapshot);
+    }) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", {name: "Refresh"});
+    fail = true;
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    expect(await screen.findByText("Recording status couldn’t refresh.")).toBeVisible();
+    fail = false;
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    await waitFor(() => expect(screen.queryByText("Recording status couldn’t refresh.")).not.toBeInTheDocument());
   });
 
   it("shows loading rather than a permission failure while the workspace is being read", () => {

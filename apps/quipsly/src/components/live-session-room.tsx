@@ -34,12 +34,13 @@ import {
   type Participant,
 } from "livekit-client";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import { CallPeoplePanel } from "@/components/call-people-panel";
+import { CallFollowThrough } from "@/components/call-follow-through";
+import type { BrowserRecordingHandoff } from "@/lib/browser-source-upload-recovery";
 import { BrowserRecordingMicrophone } from "@/lib/browser-recording-microphone";
 import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
@@ -562,6 +563,10 @@ export function LiveSessionRoom({
   const [leaveAfterSourceStops, setLeaveAfterSourceStops] = useState(false);
   const [sourceStopRequestVersion, setSourceStopRequestVersion] = useState(0);
   const recorderIdentity = `${callRoomId}:${captureGroupId?.trim() || ""}`;
+  const [recordingHandoff, setRecordingHandoff] = useState<{identity: string; value: BrowserRecordingHandoff | null} | null>(null);
+  const handleRecordingHandoff = useCallback((value: BrowserRecordingHandoff | null) => {
+    setRecordingHandoff({identity: recorderIdentity, value});
+  }, [recorderIdentity]);
   const recordingMicrophone = useMemo(() => new BrowserRecordingMicrophone(), [recorderIdentity]);
   const [retainedGuardianState, setRetainedGuardianState] = useState<{
     identity: string; evidence: BrowserRetainedSourceGuardianEvidence;
@@ -2345,6 +2350,7 @@ export function LiveSessionRoom({
       callTransportInterrupted={status === "reconnecting" || callRecoveryAvailable || localRecordingFallback}
       recordingMicrophone={recordingMicrophone}
       onSourceLockChange={setSourceLocked}
+      onRecordingHandoffChange={handleRecordingHandoff}
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={reportRetainedGuardianEvidence}
       onRecordingConsentChange={handleRecordingConsentChange}
@@ -2436,17 +2442,10 @@ export function LiveSessionRoom({
       <div className={stageLayout ? "flex min-h-0 flex-1 flex-col" : `${showSessionHeading ? "mt-5 " : ""}grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className={stageLayout ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
           {stageLayout && status === "ended" && callEndedByPerson ? (
-            <section aria-label="After the call" className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center py-8">
-              <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-muted"><PhoneOff size={26} /></div>
-              <h3 className="text-3xl font-semibold">You’ve left the call</h3>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">Continue with your session’s recordings, notes and next steps.</p>
-              <nav aria-label="Continue session work" className="mt-6 grid gap-3">
-                <Link onClick={onOpenSessionWork} href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`} className="rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-primary-foreground">Open recordings</Link>
-                <Link onClick={onOpenSessionWork} href={`/sessions/${encodeURIComponent(callRoomId)}?mode=notes`} className="rounded-xl border border-border px-4 py-3 text-center text-sm font-semibold">Notes and recap</Link>
-                <Link onClick={onOpenSessionWork} href={`/sessions/${encodeURIComponent(callRoomId)}?mode=work`} className="rounded-xl border border-border px-4 py-3 text-center text-sm font-semibold">Tasks and goals</Link>
-              </nav>
-              {!callPermanentlyClosed ? <button type="button" onClick={() => void join()} className="mt-4 min-h-11 self-center px-4 text-sm underline underline-offset-4">Rejoin call</button> : null}
-            </section>
+            <CallFollowThrough roomId={callRoomId}
+              recording={recordingHandoff?.identity === recorderIdentity ? recordingHandoff.value : null}
+              onOpenWork={onOpenSessionWork} onOpenRecording={() => setToolPanel("recording")}
+              onRejoin={callPermanentlyClosed ? undefined : () => void join()} />
           ) : !connected && callPermanentlyClosed ? (
             <section className="rounded-2xl border border-slate-300 bg-slate-50 p-4" aria-label="Call closed">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Call ended</p>
@@ -2648,7 +2647,7 @@ export function LiveSessionRoom({
           </details>
           </CallWorkspacePanel>
 
-          {showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status) ? (
+          {!(stageLayout && status === "ended" && callEndedByPerson) && (showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status)) ? (
             <p data-testid="call-status-message" role="status" aria-live="polite" className={stageLayout && connected && message.startsWith("You’re connected.") ? "sr-only" : "rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6 text-card-foreground"}>{message}</p>
           ) : null}
 

@@ -91,6 +91,8 @@ import {
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
   browserSourcePostStopReceipt,
+  browserRecordingHandoff,
+  type BrowserRecordingHandoff,
   browserSourceNextReviewAction,
   browserSourceReceiptExitStatus,
   browserSourceRecoverySummary,
@@ -294,6 +296,7 @@ export function BrowserSourceRecorder({
   recordingMicrophone,
   stopRequestVersion = 0,
   onSourceLockChange,
+  onRecordingHandoffChange,
   onGuardianEvidenceChange,
   onRecordingConsentChange,
   onOpenDeviceSettings,
@@ -318,6 +321,7 @@ export function BrowserSourceRecorder({
   recordingMicrophone?: BrowserRecordingMicrophone;
   stopRequestVersion?: number;
   onSourceLockChange?: (locked: boolean) => void;
+  onRecordingHandoffChange?: (handoff: BrowserRecordingHandoff | null) => void;
   onGuardianEvidenceChange?: (
     evidence: BrowserRetainedSourceGuardianEvidence,
   ) => void;
@@ -2880,6 +2884,15 @@ export function BrowserSourceRecorder({
   const latestRecordingReviewAction = activeLedger
     ? browserSourceNextReviewAction(callRoomId, activeLedger)
     : null;
+  const recordingHandoff = browserRecordingHandoff(callRoomId, status, activeLedger);
+  const handoffPhase = recordingHandoff?.phase;
+  const handoffRecordingHref = recordingHandoff?.recordingHref ?? null;
+  const handoffTranscriptHref = recordingHandoff?.transcriptHref ?? null;
+  useEffect(() => {
+    onRecordingHandoffChange?.(handoffPhase ? {
+      phase: handoffPhase, recordingHref: handoffRecordingHref, transcriptHref: handoffTranscriptHref,
+    } : null);
+  }, [onRecordingHandoffChange, handoffPhase, handoffRecordingHref, handoffTranscriptHref]);
   const latestRecordingExit = latestRecordingReceipt
     ? browserSourceReceiptExitStatus(latestRecordingReceipt, exitSafety)
     : null;

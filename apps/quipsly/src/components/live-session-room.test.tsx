@@ -104,6 +104,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     callTransportInterrupted,
     stopRequestVersion,
     onSourceLockChange,
+    onRecordingHandoffChange,
     onRecordingConsentChange,
     onOpenDeviceSettings,
     onGuardianEvidenceChange,
@@ -119,6 +120,7 @@ jest.mock("@/components/browser-source-recorder", () => ({
     callTransportInterrupted?: boolean;
     stopRequestVersion?: number;
     onSourceLockChange?: (locked: boolean) => void;
+    onRecordingHandoffChange?: (value: import("@/lib/browser-source-upload-recovery").BrowserRecordingHandoff | null) => void;
     onRecordingConsentChange?: (state: { participantConsentGranted: boolean; everyoneConsentGranted: boolean }) => void;
     onOpenDeviceSettings?: () => void;
     onGuardianEvidenceChange?: (evidence: BrowserRetainedSourceGuardianEvidence) => void;
@@ -146,6 +148,8 @@ jest.mock("@/components/browser-source-recorder", () => ({
       <span data-testid="browser-source-call-transport">{callTransportInterrupted ? "interrupted" : "available"}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
+      <button type="button" onClick={() => onRecordingHandoffChange?.({phase: "uploading", recordingHref: null, transcriptHref: null})}>Simulate upload pending</button>
+      <button type="button" onClick={() => onRecordingHandoffChange?.({phase: "ready", recordingHref: "/sessions/dock-controls-room?mode=recordings&source=new-take", transcriptHref: null})}>Simulate upload verified</button>
       <button type="button" onClick={() => onRecordingConsentChange?.({ participantConsentGranted: true, everyoneConsentGranted: false })}>Simulate participant consent</button>
       <button type="button" onClick={() => onRecordingConsentChange?.({ participantConsentGranted: true, everyoneConsentGranted: true })}>Simulate everyone consent</button>
       <button type="button" onClick={onOpenDeviceSettings}>Choose devices</button>
@@ -537,8 +541,17 @@ describe("LiveSessionRoom", () => {
     expect(slot).toBeEmptyDOMElement();
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
     expect(screen.getByRole("region", {name: "After the call"})).toBeVisible();
+    expect(screen.queryByTestId("call-status-message")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", {name: "Ready to join"})).not.toBeInTheDocument();
     expect(screen.getByRole("link", {name: "Open recordings"})).toHaveAttribute("href", "/sessions/dock-controls-room?mode=recordings");
+    fireEvent.click(screen.getByRole("button", {name: "Simulate upload pending", hidden: true}));
+    expect(screen.getByRole("region", {name: "After the call"})).toHaveTextContent("Uploading your recording");
+    expect(screen.queryByRole("link", {name: "Open recordings"})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "View upload progress"}));
+    expect(within(toolSlot).getByRole("region", {name: "Recording"})).toBeVisible();
+    fireEvent.click(screen.getByRole("button", {name: "Simulate upload verified"}));
+    expect(screen.getByRole("link", {name: "Listen and edit recording"})).toHaveAttribute("href", "/sessions/dock-controls-room?mode=recordings&source=new-take");
+    expect(screen.getByTestId("browser-source-capture-group")).toBe(recorder);
     fireEvent.click(screen.getByRole("link", {name: "Notes and recap"}));
     expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");

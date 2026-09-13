@@ -32,12 +32,14 @@ async function actor(request: Request) {
   return session?.user?.id ? session.user : null;
 }
 
-function handled(error: unknown) {
+function handled(error: unknown, operation: "read" | "write" = "write") {
   if (error instanceof SessionRecordingShareError) {
     return privateJson({ ok: false, code: error.code, error: error.message, ...(error.details || {}) }, error.status);
   }
   console.error("[session-recording-share] operation failed", error);
-  return privateJson({ ok: false, code: "RECORDING_SHARE_UNAVAILABLE", error: "Quipsly could not verify this private recording decision. Nothing was released or changed." }, 503);
+  return privateJson({ ok: false, code: "RECORDING_SHARE_UNAVAILABLE", error: operation === "read"
+    ? "Recording status couldn’t refresh. Try again in a moment."
+    : "Quipsly couldn’t confirm that action. Refresh to check its status before trying again." }, 503);
 }
 
 export async function GET(request: Request, context: { params: Promise<{ roomId: string }> }) {
@@ -51,7 +53,7 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
     const transcriptJobId = text(new URL(request.url).searchParams.get("transcriptJobId"));
     return privateJson({ ok: true, ...await readSessionRecordingShare(getPrismaClient() as any, { roomId, actor: signedIn, ...(takeId ? {takeId} : {}), ...(sourceId ? {sourceId} : {}), ...(transcriptJobId ? {transcriptJobId} : {}) }) });
   } catch (error) {
-    return handled(error);
+    return handled(error, "read");
   }
 }
 

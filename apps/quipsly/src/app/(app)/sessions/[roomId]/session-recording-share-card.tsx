@@ -256,6 +256,7 @@ export function SessionRecordingShareCard({
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [loadNotice, setLoadNotice] = useState<string | null>(null);
   const [editHistory, editDispatch] = useReducer(reduceRecordingEditHistory, undefined, () => recordingEditHistory({
     selected: new Set(), startSeconds: 0, endSeconds: 0, title: "", outputMediaKind: "audio", primaryVideoSourceId: "", excludedTranscriptKeys: new Set(),
   }));
@@ -342,7 +343,9 @@ export function SessionRecordingShareCard({
           setSyncReadError(null);
         } catch (error) {
           if (sequence !== loadSequence.current) return;
-          setSyncReadError(error instanceof Error ? error.message : "Your saved edit could not load.");
+          setSyncReadError(controller.signal.aborted || error instanceof Error && error.name === "AbortError"
+            ? "Connecting to your saved edit is taking longer than expected. Your changes here are kept."
+            : "Your saved edit couldn’t connect. Your changes here are kept; retry when connected.");
         } finally { window.clearTimeout(timeout); }
       }
       if (sequence !== loadSequence.current) return;
@@ -351,6 +354,7 @@ export function SessionRecordingShareCard({
         if (activeEditSync.current === sync) setSyncUpdate(value => value + 1);
       };
       setSnapshot(payload);
+      setLoadNotice(null);
       selectedTake.current = payload.available?.selectedTakeId ? {roomId, id: payload.available.selectedTakeId} : null;
       if (resetDraft && !takeId && selectedTake.current) takeDrafts.current.delete(`${roomId}|${selectedTake.current.id}`);
       if (payload.role !== "COACH") takeDrafts.current.clear();
@@ -358,6 +362,11 @@ export function SessionRecordingShareCard({
       // Refresh and render polling update availability, not the person's draft.
       // Untouched defaults can follow arriving sources; changed drafts stay put.
       const initializeDraft = draftRoom.current !== roomId || resetDraft || !draftTouched.current;
+      if (!initializeDraft && sync) {
+        // Reconnecting autosave must keep work done while its initial read was
+        // unavailable, even when the media snapshot itself has not changed.
+        sync.set(serializeRecordingEdit(currentDraft.current.history.present, currentDraft.current.editing, payload.output));
+      }
       if (initializeDraft) editDispatch({type: "reset", draft: draftFromSnapshot(payload)});
       const restoredDraft = takeId ? takeDrafts.current.get(`${roomId}|${takeId}`) : null;
       const savedState = sync?.state && recordingEditMatchesOutput(sync.state, payload.output) ? sync.state : null;
@@ -372,7 +381,7 @@ export function SessionRecordingShareCard({
       draftRoom.current = roomId;
       if (initializeDraft) draftTouched.current = Boolean(restoredDraft || restoreSaved);
     } catch (error) {
-      if (sequence === loadSequence.current) setNotice(error instanceof Error ? error.message : "Quipsly could not load the recording workspace.");
+      if (sequence === loadSequence.current) setLoadNotice(error instanceof Error ? error.message : "Quipsly could not load the recording workspace.");
     } finally {
       if (sequence === loadSequence.current) setBusy(current => current === "LOAD" ? null : current);
     }
@@ -556,11 +565,12 @@ export function SessionRecordingShareCard({
     }
   }
 
-  if (!snapshot && !notice) {
+  const visibleNotice = loadNotice || notice;
+  if (!snapshot && !visibleNotice) {
     return <section className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-5" role="status"><p className="flex items-center gap-2 text-sm font-semibold text-[#5b472f]"><RefreshCw size={16} className="animate-spin" aria-hidden="true" />Loading recording tools…</p></section>;
   }
   if (!snapshot?.role || !snapshot.room) {
-    return <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5" role="status"><LockKeyhole className="text-amber-800" /><h2 className="mt-3 font-serif text-2xl font-black text-amber-950">Recording tools unavailable</h2><p className="mt-2 text-sm font-semibold text-amber-900">{notice || "Quipsly could not load this recording workspace."}</p><button type="button" onClick={() => void load()} className="mt-3 min-h-11 rounded-full border border-amber-300 bg-white px-4 text-sm font-bold text-amber-950">Try again</button></section>;
+    return <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5" role="status"><LockKeyhole className="text-amber-800" /><h2 className="mt-3 font-serif text-2xl font-black text-amber-950">Recording tools unavailable</h2><p className="mt-2 text-sm font-semibold text-amber-900">{visibleNotice || "Quipsly could not load this recording workspace."}</p><button type="button" onClick={() => void load()} className="mt-3 min-h-11 rounded-full border border-amber-300 bg-white px-4 text-sm font-bold text-amber-950">Try again</button></section>;
   }
 
   const output = snapshot.output;
@@ -582,12 +592,13 @@ export function SessionRecordingShareCard({
         <button type="button" onClick={() => void load()} disabled={Boolean(busy)} className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 disabled:opacity-50"><RefreshCw className={`mr-1.5 inline ${busy === "LOAD" ? "animate-spin" : ""}`} size={14} />Refresh</button>
       </div>
 
-      {notice ? <p className="mt-4 rounded-xl border border-sky-200 bg-white p-3 text-sm font-bold text-sky-950" role="status">{notice}</p> : null}
+      {visibleNotice ? <p className="mt-4 rounded-xl border border-sky-200 bg-white p-3 text-sm font-bold text-sky-950" role="status">{visibleNotice}</p> : null}
       {coach && (syncReadError || activeEditSync.current) ? <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground" aria-label="Edit sync">
         <span role="status">{syncReadError || activeEditSync.current?.error || ({saved: "Edits saved", unsaved: "Saving edits…", saving: "Saving edits…", error: "Edits not synced", conflict: "Edit changed on another device"}[activeEditSync.current?.status ?? "saved"])}</span>
         {activeEditSync.current?.status === "error" ? <button type="button" className="min-h-11 underline" onClick={() => void activeEditSync.current?.flush()}>Retry saving</button> : null}
         {activeEditSync.current?.status === "conflict" && activeEditSync.current.conflictRevision !== null ? <button type="button" className="min-h-11 underline" onClick={() => activeEditSync.current?.keepThisEdit()}>Keep this edit</button> : null}
-        {syncReadError || activeEditSync.current?.status === "conflict" ? <button type="button" className="min-h-11 underline" onClick={() => {
+        {syncReadError ? <button type="button" disabled={Boolean(busy)} className="min-h-11 underline disabled:opacity-50" onClick={() => void load()}>Reconnect saving</button> : null}
+        {activeEditSync.current?.status === "conflict" ? <button type="button" className="min-h-11 underline" onClick={() => {
           if (selectedTake.current) {
             const key = `${roomId}|${selectedTake.current.id}`;
             const old = editSyncs.current.get(key);

@@ -3,6 +3,7 @@ import {
   browserSourceInterruptedRecoveryCandidate,
   browserSourceLocalProofMatchesLedger,
   browserSourcePostStopReceipt,
+  browserRecordingHandoff,
   browserSourceNextReviewAction,
   browserSourceReviewHref,
   browserSourceReceiptExitStatus,
@@ -38,6 +39,23 @@ function ledger(
 }
 
 describe("browser source upload recovery", () => {
+  it("hands off only a verified exact recording and keeps pending uploads out of older edits", () => {
+    expect(browserRecordingHandoff("room", "ready", null)).toBeNull();
+    expect(browserRecordingHandoff("room", "starting", ledger("verified", {serverTranscriptJobId: "old-job"}))).toEqual({
+      phase: "recording", recordingHref: null, transcriptHref: null,
+    });
+    expect(browserRecordingHandoff("room", "stopping", ledger("recording"))).toEqual({
+      phase: "saving", recordingHref: null, transcriptHref: null,
+    });
+    expect(browserRecordingHandoff("room", "uploading", ledger("uploading", {serverRecordingAssetId: "reserved"}))).toEqual({
+      phase: "uploading", recordingHref: null, transcriptHref: null,
+    });
+    expect(browserRecordingHandoff("room", "error", ledger("held", {failureReason: "offline"}))).toMatchObject({phase: "attention", recordingHref: null});
+    expect(browserRecordingHandoff("room", "ready", ledger("verified", {serverTranscriptJobId: "job"}))).toEqual({
+      phase: "ready", recordingHref: "/sessions/room?mode=recordings&source=asset-default",
+      transcriptHref: "/sessions/room?mode=transcript&source=asset-default",
+    });
+  });
   it("binds local upload proof to the exact durable size and checksum", () => {
     const protectedLedger = ledger("stopped", {
       sizeBytes: 4_096,
