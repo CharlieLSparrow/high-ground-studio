@@ -1,4 +1,5 @@
 import "server-only";
+import { isExternallyImportedRecording } from "@high-ground/quipsly-media-processing";
 
 import { createHash, randomUUID } from "node:crypto";
 
@@ -1407,11 +1408,14 @@ function transcriptProcessingSummary(job: any) {
   const result = object(job.resultJson);
   const control = object(result.processingControl);
   const routing = object(control.routing);
+  // Old attempts may have labelled an import as its uploader's isolated mic.
+  // Correct that projection without modifying immutable provider evidence.
+  const imported = isExternallyImportedRecording(job.asset ?? {});
   const persistedRoutingSummary = routing.schema === "quipsly-transcript-routing-summary-v1"
     ? {
-        sourceTopology: text(routing.sourceTopology) || "unknown",
-        participantLabel: text(routing.participantLabel) || null,
-        speakerAuthority: text(routing.speakerAuthority) || "unresolved",
+        sourceTopology: imported ? "unknown" : text(routing.sourceTopology) || "unknown",
+        participantLabel: imported ? null : text(routing.participantLabel) || null,
+        speakerAuthority: imported && routing.speakerAuthority === "source-binding" ? "unresolved" : text(routing.speakerAuthority) || "unresolved",
         provider: text(routing.provider) || null,
         model: text(routing.model) || null,
         modelRevisionPolicy: text(routing.modelRevisionPolicy) || null,

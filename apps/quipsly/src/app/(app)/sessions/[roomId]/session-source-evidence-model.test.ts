@@ -183,6 +183,44 @@ function markAsNestExternalImport(input: ReturnType<typeof fixture>) {
   };
 }
 
+describe("ordinary verified recording imports", () => {
+  function imported() {
+    const input = fixture();
+    markAsNestExternalImport(input);
+    input.stateReceipts = [];
+    input.finalizationReceipts[0].startReceiptId = null;
+    const metadata = input.finalizationReceipts[0].metadataJson as any;
+    metadata.immutableUploadBinding.startReceiptId = null;
+    metadata.immutableUploadBinding.consentVersion = "import-consent";
+    metadata.immutableUploadBinding.processingAuthorization = {
+      kind: "source-import", authorizationId: "import-authorization",
+      attestationVersion: "quipsly-source-import-attestation-2026-09-01",
+      consentVersion: "import-consent",
+    };
+    return input;
+  }
+
+  it("makes an authorized import playable without live capture or staff review receipts", () => {
+    const source = buildSessionSourceEvidence(imported()).sources[0];
+    expect(source).toMatchObject({ status: "VERIFIED_MATCH", boundaryAuthority: "AUTHORIZED_EXTERNAL_IMPORT" });
+    expect(source.protectedPlayback?.sourceId).toBe("asset-1");
+    expect(source.startBoundary).toBeNull();
+    expect(source.stopBoundary).toBeNull();
+  });
+
+  it.each(["authorization", "consent", "hash", "held"])("does not hide invalid %s evidence", (failure) => {
+    const input = imported();
+    const binding = (input.finalizationReceipts[0].metadataJson as any).immutableUploadBinding;
+    if (failure === "authorization") delete binding.processingAuthorization.authorizationId;
+    if (failure === "consent") binding.processingAuthorization.consentVersion = "different";
+    if (failure === "hash") binding.sha256 = "b".repeat(64);
+    if (failure === "held") input.finalizationReceipts[0].processingDisposition = "HELD";
+    const source = buildSessionSourceEvidence(input).sources[0];
+    expect(source.status).not.toBe("VERIFIED_MATCH");
+    expect(source.protectedPlayback).toBeNull();
+  });
+});
+
 function markAsAuditedRecoveryReplica(input: ReturnType<typeof fixture>) {
   const decidedAt = "2026-08-02T20:00:00.000Z";
   const reason = "The original decoded near silence; adopt the independently verified backup.";

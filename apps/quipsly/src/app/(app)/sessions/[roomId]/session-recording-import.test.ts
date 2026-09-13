@@ -6,6 +6,7 @@ import {
   SESSION_RECORDING_EXTERNAL_ATTESTATION,
   SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE,
   sessionRecordingFileType,
+  sessionRecordingLocalDateTimeValue,
   suggestSessionRecordingRange,
 } from "./session-recording-import";
 
@@ -56,6 +57,16 @@ describe("Session recording import", () => {
   it("rejects empty and unrecognized files before reserving private storage", () => {
     expect(() => sessionRecordingFileType({ name: "empty.wav", type: "audio/wav", size: 0 })).toThrow(/empty/i);
     expect(() => sessionRecordingFileType({ name: "notes.txt", type: "text/plain", size: 12 })).toThrow(/supported audio or video/i);
+  });
+
+  it("preserves sub-minute duration and milliseconds through the editable local-time fields", () => {
+    const fallback = new Date("2026-09-13T10:30:45.456Z");
+    const range = suggestSessionRecordingRange({durationSeconds: 30.033, lastModifiedMs: fallback.getTime(), nowMs: fallback.getTime()})!;
+    const start = new Date(sessionRecordingLocalDateTimeValue(range.startedAt, fallback));
+    const stop = new Date(sessionRecordingLocalDateTimeValue(range.stoppedAt, fallback));
+    expect(stop.getTime() - start.getTime()).toBe(30_033);
+    expect(stop.getTime()).toBe(fallback.getTime());
+    expect(sessionRecordingLocalDateTimeValue("invalid", fallback)).toBe(sessionRecordingLocalDateTimeValue(null, fallback));
   });
 
   it("incrementally hashes the exact original and reports completion", async () => {

@@ -2171,7 +2171,9 @@ function SessionSourceEvidenceCard({
           </ul>
         ) : verified ? (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-black leading-5 text-emerald-950">
-            {source.boundaryAuthority === "STAFF_REVIEWED_EXTERNAL_IMPORT"
+            {source.boundaryAuthority === "AUTHORIZED_EXTERNAL_IMPORT"
+              ? "The original file matches its verified upload and import authorization. Live-call START/STOP receipts are not required for imported recordings."
+              : source.boundaryAuthority === "STAFF_REVIEWED_EXTERNAL_IMPORT"
               ? "Nest independently matched the immutable receipt, RecordingAsset, exact server SHA-256 and byte count, cloud object generation, and durable staff release audit. No phone boundary is inferred."
               : source.boundaryAuthority === "AUDITED_RECOVERY_REPLICA"
                 ? "Nest independently matched the recovery request, immutable original identity, imported-source hash, durable replica hash, byte count, storage identity, cloud generation, plan expectation, and release receipt. No native phone boundary is inferred."

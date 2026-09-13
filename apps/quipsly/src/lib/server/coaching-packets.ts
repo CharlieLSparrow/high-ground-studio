@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isExternallyImportedRecording } from "@high-ground/quipsly-media-processing";
 import { readSessionRecordingAttempts } from "./session-recording-attempts";
 import type { Prisma } from "@prisma/client";
 import {
@@ -539,6 +540,7 @@ function sourceBoundTranscriptRouting(job: unknown) {
     typeof job === "object" && job !== null && !Array.isArray(job)
       ? (job as Record<string, unknown>)
       : {};
+  if (isExternallyImportedRecording(packetObject(transcriptJob.asset))) return null;
   const result =
     typeof transcriptJob.resultJson === "object" &&
     transcriptJob.resultJson !== null &&

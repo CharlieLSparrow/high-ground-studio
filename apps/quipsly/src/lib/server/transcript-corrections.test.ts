@@ -533,7 +533,7 @@ describe("transcript correction desk", () => {
     }));
   });
 
-  it("projects isolated source ownership as speaker identity without rewriting provider evidence", async () => {
+  it.each([false, true])("projects source identity without treating an import as an isolated microphone (imported=%s)", async (imported) => {
     const room: any = accessibleRoom();
     room.transcriptJobs[0].resultJson = {
       processingControl: {
@@ -548,6 +548,10 @@ describe("transcript correction desk", () => {
     };
     room.transcriptJobs[0]._count = { words: 1 };
     room.transcriptJobs[0].asset.participantId = "participant-scott";
+    if (imported) room.transcriptJobs[0].asset.localManifestJson = {
+      ...room.transcriptJobs[0].asset.localManifestJson,
+      reportedSourceProfile: { kind: "quipsly-nest-external-recording-import-v1" },
+    };
     room.transcriptJobs[0].segments = [{
       ...segment(),
       speakerLabel: null,
@@ -569,15 +573,15 @@ describe("transcript correction desk", () => {
     });
 
     expect(result.segments[0]).toMatchObject({
-      speakerLabel: "Scott Sparrow",
+      speakerLabel: imported ? null : "Scott Sparrow",
       providerSpeakerLabel: null,
-      speakerAuthority: "source-binding",
-      sourceBoundParticipantId: "participant-scott",
+      speakerAuthority: imported ? "unresolved" : "source-binding",
+      sourceBoundParticipantId: imported ? null : "participant-scott",
     });
     expect(result.processing?.routing).toMatchObject({
-      sourceTopology: "participant-isolated",
-      participantLabel: "Scott Sparrow",
-      speakerAuthority: "source-binding",
+      sourceTopology: imported ? "unknown" : "participant-isolated",
+      participantLabel: imported ? null : "Scott Sparrow",
+      speakerAuthority: imported ? "unresolved" : "source-binding",
       providerOutputRemainsImmutable: true,
     });
   });

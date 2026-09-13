@@ -86,7 +86,7 @@ export type SessionSourceEvidence = {
     startBoundary: { receiptId: string; occurredAt: string } | null;
     stopBoundary: { receiptId: string; occurredAt: string } | null;
     sourceOrigin: "CAPTURE" | "NEST_EXTERNAL_IMPORT" | "NEST_RECOVERY_REPLICA";
-    boundaryAuthority?: "CAPTURE_RECEIPTS" | "STAFF_REVIEWED_EXTERNAL_IMPORT" | "AUDITED_RECOVERY_REPLICA" | null;
+    boundaryAuthority?: "CAPTURE_RECEIPTS" | "AUTHORIZED_EXTERNAL_IMPORT" | "STAFF_REVIEWED_EXTERNAL_IMPORT" | "AUDITED_RECOVERY_REPLICA" | null;
     cloud: {
       sha256: string | null;
       byteSize: string | null;
@@ -548,6 +548,18 @@ export function buildSessionSourceEvidence(input: {
       const transcriptReleaseReason = text(finalization?.transcriptReleaseReason);
       const transcriptReleasedAt = iso(finalization?.transcriptReleasedAt);
       const externalImport = isNestExternalRecordingImport(manifest);
+      // The server finalizer binds an ordinary import authorization to these
+      // exact bytes. Importing a file does not manufacture live-call receipts.
+      const authorization = object(binding.processingAuthorization);
+      const authorizedExternalImport = Boolean(
+        externalImport
+        && authorization.kind === "source-import"
+        && text(authorization.authorizationId)
+        && authorization.attestationVersion === "quipsly-source-import-attestation-2026-09-01"
+        && text(authorization.consentVersion)
+        && authorization.consentVersion === binding.consentVersion
+        && finalization?.processingDisposition === "RELEASED",
+      );
       const durableStaffRelease = Boolean(
         externalImport
         && !start
@@ -586,10 +598,10 @@ export function buildSessionSourceEvidence(input: {
       if (!bindingBucket || !recording.storageBucket) missing.push("The storage-bucket comparison is absent.");
       if (!bindingObjectPath || !recording.storageObjectPath) missing.push("The storage-path comparison is absent.");
       if (!recoveryLineage && (!bindingGeneration || !manifestGeneration)) missing.push("The object-generation comparison is absent.");
-      if (!recoveryLineage && !durableStaffRelease && (!bindingStartReceiptId || !finalizationStartReceiptId || !start)) {
+      if (!recoveryLineage && !durableStaffRelease && !authorizedExternalImport && (!bindingStartReceiptId || !finalizationStartReceiptId || !start)) {
         missing.push("The applied START boundary is incomplete.");
       }
-      if (!recoveryLineage && !durableStaffRelease && !stop) missing.push("The applied STOP boundary is incomplete.");
+      if (!recoveryLineage && !durableStaffRelease && !authorizedExternalImport && !stop) missing.push("The applied STOP boundary is incomplete.");
       if (manifest.exactBytesVerified !== true) missing.push("The RecordingAsset manifest does not claim exact-byte verification.");
       if (
         !["VERIFIED", "HELD"].includes(String(recording.status))
@@ -611,6 +623,8 @@ export function buildSessionSourceEvidence(input: {
           : null
         : start && stop
           ? "CAPTURE_RECEIPTS" as const
+          : authorizedExternalImport
+          ? "AUTHORIZED_EXTERNAL_IMPORT" as const
           : durableStaffRelease
           ? "STAFF_REVIEWED_EXTERNAL_IMPORT" as const
           : null;

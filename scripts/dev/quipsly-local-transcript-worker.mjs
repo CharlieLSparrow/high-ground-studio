@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { defaultLocalMediaRoot } from "../../packages/quipsly-media-processing/src/local-media-paths.ts";
+import { recordingTranscriptSourceTopology } from "../../packages/quipsly-media-processing/src/transcript-routing.ts";
 import { FfmpegAudioSignalProfiler } from "../../apps/quipsly-media-processor/src/audio-signal-profile-ffmpeg.js";
 
 import {
@@ -44,22 +45,12 @@ function object(value) {
 }
 
 export function localWhisperRoutingSummary(asset, options = {}) {
-  const participantLabel = text(asset?.participant?.displayName)
-    || text(asset?.participant?.email)
-    || (asset?.participantId ? String(asset.participantId) : "");
-  const participantIsolated =
-    ["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(String(asset?.kind)) &&
-    Boolean(asset?.participantId) &&
-    Boolean(participantLabel);
-  const sourceTopology = participantIsolated
-    ? "participant-isolated"
-    : String(asset?.kind) === "SERVER_MIX"
-      ? "mixed-room"
-      : "unknown";
+  const topology = recordingTranscriptSourceTopology(asset ?? {});
+  const participantIsolated = topology.kind === "participant-isolated";
   return {
     schema: "quipsly-transcript-routing-summary-v1",
-    sourceTopology,
-    participantLabel: participantIsolated ? participantLabel.slice(0, 160) : null,
+    sourceTopology: topology.kind,
+    participantLabel: participantIsolated ? topology.participantLabel : null,
     speakerAuthority: participantIsolated ? "source-binding" : "unresolved",
     provider: PROVIDER,
     model: text(options.model) || "large-v3-turbo",

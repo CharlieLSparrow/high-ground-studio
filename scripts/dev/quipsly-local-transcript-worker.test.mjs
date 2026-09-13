@@ -237,6 +237,17 @@ test("local Whisper routing preserves participant-owned speaker authority", () =
   });
 });
 
+test("external recording import does not falsely bind every voice to its uploader", () => {
+  const routing = localWhisperRoutingSummary({
+    kind: "LOCAL_AUDIO", participantId: "coach-participant",
+    participant: { displayName: "Casey" },
+    localManifestJson: { reportedSourceProfile: { kind: "quipsly-nest-external-recording-import-v1" } },
+  });
+  assert.equal(routing.sourceTopology, "unknown");
+  assert.equal(routing.speakerAuthority, "unresolved");
+  assert.equal(routing.participantLabel, null);
+});
+
 test("local transcription requires current explicit consent from every audible participant", () => {
   const policyMetadata = {
     consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
