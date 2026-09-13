@@ -87,6 +87,49 @@ describe("SessionRecordingShareCard", () => {
     await waitFor(() => expect(selector).toHaveValue("start:latest"));
     expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
     expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("30");
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("0");
+    await userEvent.click(screen.getByRole("button", {name: "Redo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
+  });
+
+  it("undoes transcript cuts and trims independently, including keyboard shortcuts", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const undo = await screen.findByRole("button", {name: "Undo recording edit"});
+    const redo = screen.getByRole("button", {name: "Redo recording edit"});
+    expect(undo).toBeDisabled();
+    const start = screen.getByRole("slider", {name: "Recording start"});
+    fireEvent.change(start, {target: {value: "2"}});
+    await userEvent.click(screen.getByRole("checkbox", {name: `Keep in recording: ${transcriptSegment.text}`}));
+    await userEvent.click(undo);
+    expect(screen.getByRole("checkbox", {name: `Keep in recording: ${transcriptSegment.text}`})).toBeChecked();
+    expect(start).toHaveValue("2");
+    fireEvent.keyDown(start, {key: "z", metaKey: true});
+    expect(start).toHaveValue("0");
+    fireEvent.keyDown(start, {key: "z", metaKey: true, shiftKey: true});
+    expect(start).toHaveValue("2");
+    await userEvent.click(redo);
+    expect(screen.getByRole("checkbox", {name: `Restore to recording: ${transcriptSegment.text}`})).not.toBeChecked();
+    // Browsers keep their own text undo; the recording history must not steal it.
+    fireEvent.keyDown(screen.getByRole("searchbox", {name: "Search recording transcript"}), {key: "z", ctrlKey: true});
+    expect(screen.getByRole("checkbox", {name: `Restore to recording: ${transcriptSegment.text}`})).not.toBeChecked();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the full range in one undoable action", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const start = await screen.findByRole("slider", {name: "Recording start"});
+    const end = screen.getByRole("slider", {name: "Recording end"});
+    fireEvent.change(start, {target: {value: "3"}});
+    fireEvent.change(end, {target: {value: "24"}});
+    await userEvent.click(screen.getByRole("button", {name: "Use full recording"}));
+    expect(start).toHaveValue("0");
+    expect(end).toHaveValue("30");
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(start).toHaveValue("3");
+    expect(end).toHaveValue("24");
   });
 
   it("ignores a late response from the previous Session", async () => {

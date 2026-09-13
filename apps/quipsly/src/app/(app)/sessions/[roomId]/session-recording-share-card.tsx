@@ -1,8 +1,9 @@
 "use client";
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, RefreshCw, RotateCcw, Scissors, Send, ShieldCheck, Undo2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type SetStateAction } from "react";
+import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, Redo2, RefreshCw, RotateCcw, Scissors, Send, ShieldCheck, Undo2 } from "lucide-react";
+import { recordingEditHistory, reduceRecordingEditHistory, type RecordingEditDraft } from "@/lib/recording-edit-history";
 
 type Source = {
   id: string;
@@ -198,6 +199,19 @@ function missingOutputSourceCount(output: Output | null | undefined, availableSo
   ).length;
 }
 
+function draftFromSnapshot(snapshot: Snapshot): RecordingEditDraft {
+  const output = snapshot.output;
+  return {
+    selected: new Set(outputSourceIds(output, snapshot.available?.sources || [])),
+    title: output?.title || `${snapshot.room?.title || "Coaching Session"} recording`,
+    startSeconds: Number(output?.body.edit?.startSeconds) || 0,
+    endSeconds: Number(output?.body.edit?.endSeconds) || snapshot.available?.programDurationSeconds || 0,
+    excludedTranscriptKeys: transcriptExclusionKeys(output),
+    outputMediaKind: output?.render.mediaKind === "video" ? "video" : "audio",
+    primaryVideoSourceId: output?.render.primaryVideoSourceId || "",
+  };
+}
+
 function recordingCutElementId(key: string) {
   return `recording-cut-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
@@ -239,13 +253,18 @@ export function SessionRecordingShareCard({
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [startSeconds, setStartSeconds] = useState(0);
-  const [endSeconds, setEndSeconds] = useState(0);
-  const [title, setTitle] = useState("");
-  const [outputMediaKind, setOutputMediaKind] = useState<"audio" | "video">("audio");
-  const [primaryVideoSourceId, setPrimaryVideoSourceId] = useState("");
-  const [excludedTranscriptKeys, setExcludedTranscriptKeys] = useState<Set<string>>(new Set());
+  const [editHistory, editDispatch] = useReducer(reduceRecordingEditHistory, undefined, () => recordingEditHistory({
+    selected: new Set(), startSeconds: 0, endSeconds: 0, title: "", outputMediaKind: "audio", primaryVideoSourceId: "", excludedTranscriptKeys: new Set(),
+  }));
+  const {selected, startSeconds, endSeconds, title, outputMediaKind, primaryVideoSourceId, excludedTranscriptKeys} = editHistory.present;
+  function editField<K extends keyof RecordingEditDraft>(key: K, value: SetStateAction<RecordingEditDraft[K]>, group?: string) {
+    editDispatch({type: "change", at: Date.now(), group, update: draft => ({[key]: typeof value === "function" ? (value as (old: RecordingEditDraft[K]) => RecordingEditDraft[K])(draft[key]) : value})});
+  }
+  const setSelected = (value: SetStateAction<Set<string>>) => editField("selected", value);
+  const setStartSeconds = (value: number) => editField("startSeconds", value, "trim-start");
+  const setEndSeconds = (value: number) => editField("endSeconds", value, "trim-end");
+  const setTitle = (value: string) => editField("title", value, "title");
+  const setExcludedTranscriptKeys = (value: SetStateAction<Set<string>>) => editField("excludedTranscriptKeys", value);
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [transcriptView, setTranscriptView] = useState<"all" | "removed">("all");
   const [editing, setEditing] = useState(false);
@@ -259,8 +278,8 @@ export function SessionRecordingShareCard({
   const draftTouched = useRef(false);
   const selectedTake = useRef<{roomId: string; id: string} | null>(null);
   const loadSequence = useRef(0);
-  const currentDraft = useRef({ selected, startSeconds, endSeconds, title, outputMediaKind, primaryVideoSourceId, excludedTranscriptKeys, editing });
-  currentDraft.current = { selected, startSeconds, endSeconds, title, outputMediaKind, primaryVideoSourceId, excludedTranscriptKeys, editing };
+  const currentDraft = useRef({ history: editHistory, editing });
+  currentDraft.current = { history: editHistory, editing };
   const takeDrafts = useRef(new Map<string, typeof currentDraft.current>());
 
   const load = useCallback(async (quiet = false, resetDraft = false, takeId?: string) => {
@@ -295,33 +314,10 @@ export function SessionRecordingShareCard({
       // Refresh and render polling update availability, not the person's draft.
       // Untouched defaults can follow arriving sources; changed drafts stay put.
       const initializeDraft = draftRoom.current !== roomId || resetDraft || !draftTouched.current;
-      if (initializeDraft && payload.role === "COACH" && !payload.output) {
-        setSelected(new Set(defaultParticipantSources(payload.available?.sources || [])));
-        setStartSeconds(0);
-        setEndSeconds(payload.available?.programDurationSeconds || 0);
-        setTitle(`${payload.room?.title || "Coaching Session"} recording`);
-        setExcludedTranscriptKeys(new Set());
-        setOutputMediaKind("audio");
-        setPrimaryVideoSourceId("");
-      }
-      if (initializeDraft && payload.output) {
-        setSelected(new Set(outputSourceIds(payload.output, payload.available?.sources || [])));
-        setTitle(payload.output.title);
-        setStartSeconds(Number(payload.output.body.edit?.startSeconds) || 0);
-        setEndSeconds(Number(payload.output.body.edit?.endSeconds) || 0);
-        setExcludedTranscriptKeys(transcriptExclusionKeys(payload.output));
-        setOutputMediaKind(payload.output.render.mediaKind === "video" ? "video" : "audio");
-        setPrimaryVideoSourceId(payload.output.render.primaryVideoSourceId || "");
-      }
+      if (initializeDraft) editDispatch({type: "reset", draft: draftFromSnapshot(payload)});
       const restoredDraft = takeId ? takeDrafts.current.get(`${roomId}|${takeId}`) : null;
       if (restoredDraft) {
-        setSelected(restoredDraft.selected);
-        setStartSeconds(restoredDraft.startSeconds);
-        setEndSeconds(restoredDraft.endSeconds);
-        setTitle(restoredDraft.title);
-        setOutputMediaKind(restoredDraft.outputMediaKind);
-        setPrimaryVideoSourceId(restoredDraft.primaryVideoSourceId);
-        setExcludedTranscriptKeys(restoredDraft.excludedTranscriptKeys);
+        editDispatch({type: "restore", history: restoredDraft.history});
         setEditing(restoredDraft.editing);
       }
       draftRoom.current = roomId;
@@ -443,13 +439,7 @@ export function SessionRecordingShareCard({
   useEffect(() => {
     if (!focusTranscriptKey || !snapshot?.role) return;
     if (snapshot.output && !editing) {
-      setSelected(new Set(outputSourceIds(snapshot.output, snapshot.available?.sources || [])));
-      setTitle(snapshot.output.title);
-      setStartSeconds(Number(snapshot.output.body.edit?.startSeconds) || 0);
-      setEndSeconds(Number(snapshot.output.body.edit?.endSeconds) || duration);
-      setExcludedTranscriptKeys(transcriptExclusionKeys(snapshot.output));
-      setOutputMediaKind(snapshot.output.render.mediaKind === "video" ? "video" : "audio");
-      setPrimaryVideoSourceId(snapshot.output.render.primaryVideoSourceId || "");
+      editDispatch({type: "reset", draft: draftFromSnapshot(snapshot)});
       setEditing(true);
       return;
     }
@@ -555,15 +545,33 @@ export function SessionRecordingShareCard({
       {coach && renderOriginalRecordings ? <div className="mt-4">{renderOriginalRecordings((snapshot.available?.sources || []).map(source => source.id))}</div> : null}
 
       {coach && (!output || editing) ? (
-        <fieldset disabled={Boolean(busy)} onChange={() => { draftTouched.current = true; }} onClick={() => { draftTouched.current = true; }} aria-label="Recording edit" className="mt-5 min-w-0 space-y-5">
-          {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
+        <fieldset disabled={Boolean(busy)} onChange={() => { draftTouched.current = true; }} onClick={() => { draftTouched.current = true; }}
+          onKeyDown={event => {
+            const target = event.target as HTMLElement;
+            if (target.isContentEditable || target.tagName === "TEXTAREA" || (target.tagName === "INPUT" && (target as HTMLInputElement).type !== "range")) return;
+            if (busy || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+            const key = event.key.toLowerCase();
+            if (key !== "z" && key !== "y") return;
+            event.preventDefault();
+            draftTouched.current = true;
+            editDispatch({type: key === "y" || event.shiftKey ? "redo" : "undo"});
+          }}
+          aria-label="Recording edit" className="mt-5 min-w-0 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3" role="group" aria-label="Recording edit history">
+            <p className="text-xs text-sky-900">Edit freely. Original recordings stay unchanged.</p>
+            <div className="flex gap-2">
+              <button type="button" disabled={!editHistory.past.length} onClick={() => editDispatch({type: "undo"})} aria-label="Undo recording edit" title="Undo (⌘Z / Ctrl+Z)" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-xs font-semibold text-sky-950 disabled:opacity-40"><Undo2 size={15} />Undo</button>
+              <button type="button" disabled={!editHistory.future.length} onClick={() => editDispatch({type: "redo"})} aria-label="Redo recording edit" title="Redo (⌘⇧Z / Ctrl+Shift+Z)" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-xs font-semibold text-sky-950 disabled:opacity-40"><Redo2 size={15} />Redo</button>
+            </div>
+          </div>
+          {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { editDispatch({type: "reset", draft: draftFromSnapshot(snapshot)}); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
           {output && editing && missingCurrentSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">{missingCurrentSources} source{missingCurrentSources === 1 ? " is" : "s are"} no longer in the verified Session take. Quipsly kept the remaining exact source selection and will not substitute another track. Restore or deliberately replace the missing source before creating a new preview.</p> : null}
           {!snapshot.readiness?.hasVerifiedParticipantSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">No complete, verified participant masters are ready yet. Finish the Session recording upload first.</p> : null}
           {timeline && timeline.precision !== "unavailable" ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3" data-testid="recording-timeline-status"><p className="text-xs font-black text-emerald-950">{timeline.authority === "capture-clock-proposal" ? "Synced automatically from device clocks" : timeline.authority === "reported-wall-clock-fallback" ? "Placed automatically from recording start times" : timeline.authority === "reviewed-waveform-placement" ? "Synced from measured audio" : "Recording timeline ready"}{maximumTimingUncertainty > 0 ? ` · estimated within ±${maximumTimingUncertainty.toFixed(0)} ms` : ""}</p><p className="mt-1 text-[11px] font-semibold leading-5 text-emerald-900">{timeline.reason}</p></div> : null}
           <div className="rounded-2xl border border-sky-200 bg-white p-4 sm:p-5" aria-label="Trim recording">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><h3 className="text-sm font-black text-sky-950">Trim the beginning and end</h3><p className="mt-1 text-xs font-semibold text-sky-800">Quipsly selected the high-quality tracks for this recording, including any reconnects.</p></div>
-              <button type="button" onClick={() => { draftTouched.current = true; setStartSeconds(0); setEndSeconds(duration); }} disabled={!duration || (startSeconds === 0 && endSeconds === duration)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-45"><RotateCcw className="mr-1 inline" size={12} />Use full recording</button>
+              <button type="button" onClick={() => { draftTouched.current = true; editDispatch({type: "change", at: Date.now(), update: {startSeconds: 0, endSeconds: duration}}); }} disabled={!duration || (startSeconds === 0 && endSeconds === duration)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-45"><RotateCcw className="mr-1 inline" size={12} />Use full recording</button>
             </div>
             <div className="mt-5 space-y-5">
               <label className="block text-xs font-black uppercase tracking-wide text-sky-900"><span className="flex items-center justify-between gap-3"><span>Start</span><output className="rounded-full bg-sky-100 px-2.5 py-1 font-mono text-[11px] normal-case tracking-normal text-sky-950">{time(startSeconds)}</output></span><input aria-label="Recording start" type="range" min={0} max={duration} step="0.1" value={startSeconds} onChange={(event) => setStartSeconds(trimStart(Number(event.target.value), endSeconds, duration))} className="mt-2 block w-full accent-sky-800" /></label>
@@ -576,17 +584,18 @@ export function SessionRecordingShareCard({
             <legend className="text-sm font-black text-sky-950">Preview format</legend>
             <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-sky-50 p-1" role="radiogroup" aria-label="Preview format">
               {(["audio", "video"] as const).map((kind) => <button key={kind} type="button" role="radio" aria-checked={outputMediaKind === kind} onClick={() => {
-                setOutputMediaKind(kind);
-                if (kind === "video" && !primaryVideoSourceId && videoSources[0]) {
-                  setPrimaryVideoSourceId(videoSources[0].id);
-                  setSelected((current) => new Set(current).add(videoSources[0]!.id));
-                }
+                const source = kind === "video" && !primaryVideoSourceId ? videoSources[0] : null;
+                editDispatch({type: "change", at: Date.now(), update: {
+                  outputMediaKind: kind,
+                  ...(source ? {primaryVideoSourceId: source.id, selected: new Set(selected).add(source.id)} : {}),
+                }});
               }} className={`rounded-lg px-3 py-2 text-xs font-black capitalize ${outputMediaKind === kind ? "bg-sky-800 text-white shadow-sm" : "text-sky-900"}`}>{kind}</button>)}
             </div>
             {outputMediaKind === "video" ? <label className="mt-4 block text-xs font-black uppercase tracking-wide text-sky-900">Primary camera
               <select value={primaryVideoSourceId} onChange={(event) => {
-                setPrimaryVideoSourceId(event.target.value);
-                setSelected((current) => new Set(current).add(event.target.value));
+                editDispatch({type: "change", at: Date.now(), update: {
+                  primaryVideoSourceId: event.target.value, selected: new Set(selected).add(event.target.value),
+                }});
               }} className="mt-1 block w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-sm normal-case tracking-normal text-sky-950">
                 {videoSources.map((source) => <option key={source.id} value={source.id}>{source.participantLabel} · {source.fileName || "Camera"}</option>)}
               </select>
@@ -737,7 +746,7 @@ export function SessionRecordingShareCard({
         </div> : null}
         {coach && output.status === "RELEASED" ? <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("REVOKE")} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-900"><Undo2 className="mr-1.5 inline" size={14} />Revoke client access</button> : null}
         {!coach && output.status === "RELEASED" ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />Your coach shared this private recording in your Session.</p> : null}
-        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
+        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { editDispatch({type: "reset", draft: draftFromSnapshot(snapshot)}); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
       </div> : null}
 
       {coach ? <p className="mt-4 text-[11px] font-semibold leading-5 text-sky-800"><LockKeyhole className="mr-1 inline" size={13} />{output?.status === "RELEASED"
