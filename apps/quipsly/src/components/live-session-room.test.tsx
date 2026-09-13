@@ -485,6 +485,26 @@ describe("LiveSessionRoom", () => {
 
     fireEvent.click(screen.getByRole("button", {name: "Back to call"}));
     fireEvent.click(within(slot).getByRole("button", {name: "Record"}));
+    const toolSlot = screen.getByTestId("live-call-tool-panel");
+    const recorder = screen.getByTestId("browser-source-capture-group");
+    expect(within(toolSlot).getByRole("region", {name: "Recording"})).toBeVisible();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(toolSlot).not.toContainElement(slot);
+    fireEvent.click(within(slot).getByRole("button", {name: "Devices"}));
+    expect(within(toolSlot).getByRole("region", {name: "Audio and video settings"})).toBeVisible();
+    expect(within(toolSlot).queryByRole("region", {name: "Recording"})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Show chat"}));
+    expect(toolSlot).toHaveClass("hidden");
+    fireEvent.click(within(slot).getByRole("button", {name: "More"}));
+    expect(document.getElementById("live-call-chat-panel")).toHaveClass("hidden");
+    expect(within(toolSlot).getByRole("region", {name: "Call details"})).toBeVisible();
+    fireEvent.keyDown(screen.getByRole("button", {name: "Close call details"}), {key: "Escape"});
+    expect(toolSlot).toHaveClass("hidden");
+    expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
+    fireEvent.click(within(slot).getByRole("button", {name: "Record"}));
+    expect(screen.getByTestId("browser-source-capture-group")).toBe(recorder);
+    expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1);
+    expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", {name: "Simulate retained source start"}));
     fireEvent.click(screen.getByRole("button", {name: "Close recording"}));
     fireEvent.click(screen.getByRole("button", {name: "Show chat"}));

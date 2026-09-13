@@ -503,6 +503,9 @@ export function LiveSessionRoom({
   controlsContainer = null,
   stageLayout = false,
   onOpenSessionWork,
+  toolPanelContainer = null,
+  activeToolPanel,
+  onToolPanelChange,
 }: {
   callRoomId: string;
   captureGroupId?: string | null;
@@ -523,10 +526,18 @@ export function LiveSessionRoom({
   controlsContainer?: HTMLElement | null;
   stageLayout?: boolean;
   onOpenSessionWork?: () => void;
+  toolPanelContainer?: HTMLElement | null;
+  activeToolPanel?: "devices" | "recording" | "details" | null;
+  onToolPanelChange?: (panel: "devices" | "recording" | "details" | null) => void;
 }) {
   const router = useRouter();
-  const [toolPanel, setToolPanel] = useState<"devices" | "recording" | "details" | null>(null);
-  const closeToolPanel = useCallback(() => setToolPanel(null), []);
+  const [localToolPanel, setLocalToolPanel] = useState<"devices" | "recording" | "details" | null>(null);
+  const toolPanel = activeToolPanel === undefined ? localToolPanel : activeToolPanel;
+  const setToolPanel = useCallback((panel: "devices" | "recording" | "details" | null) => {
+    if (onToolPanelChange) onToolPanelChange(panel);
+    else setLocalToolPanel(panel);
+  }, [onToolPanelChange]);
+  const closeToolPanel = useCallback(() => setToolPanel(null), [setToolPanel]);
   const [consentContainer, setConsentContainer] = useState<HTMLDivElement | null>(null);
   const experience = useMemo(
     () => sessionExperienceForPurpose(purpose || (kind === "episode" ? "PODCAST" : "COACHING")),
@@ -2533,13 +2544,13 @@ export function LiveSessionRoom({
           {/* One stable recorder owns capture/recovery across call transitions.
               Keep it mounted in the lobby so a reload resumes saved uploads
               without asking someone to join the conversation again. */}
-          <CallWorkspacePanel title="Recording" open={toolPanel === "recording"} onClose={closeToolPanel} inline={!stageLayout}>
+          <CallWorkspacePanel title="Recording" open={toolPanel === "recording"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
           <div hidden={!showRetainedSourceControls} data-testid="session-recorder-surface">
             {retainedSourceControls}
           </div>
           </CallWorkspacePanel>
 
-          <CallWorkspacePanel title="Audio and video settings" open={toolPanel === "devices"} onClose={closeToolPanel} inline={!stageLayout}>
+          <CallWorkspacePanel title="Audio and video settings" open={toolPanel === "devices"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
           <details ref={deviceSettingsRef} open={stageLayout || undefined} data-testid="call-device-settings" className={stageLayout ? "" : "rounded-2xl border border-[#d8c7a7] bg-white p-4"}>
             <summary className={stageLayout ? "hidden" : "cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]"}>Audio and video settings</summary>
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
@@ -2564,7 +2575,7 @@ export function LiveSessionRoom({
               <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "other-device" ? "text-violet-100" : "text-[#765f40]"}`}>Prevents echo when joining twice</span>
             </button>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2" role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
+          <div className={`mt-4 grid gap-3 ${toolPanelContainer ? "" : "md:grid-cols-2"}`} role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
             {callAudioMode === "this-device" ? <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
               <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a microphone</option>{microphones.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
@@ -2641,7 +2652,7 @@ export function LiveSessionRoom({
 
         </div>
 
-        <CallWorkspacePanel title="Call details" open={toolPanel === "details"} onClose={closeToolPanel} inline={!stageLayout}>
+        <CallWorkspacePanel title="Call details" open={toolPanel === "details"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
         <aside className="space-y-3">
           <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={["recording", "needs-review"].includes(providerRecordingState)}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">More call and recording options</summary>

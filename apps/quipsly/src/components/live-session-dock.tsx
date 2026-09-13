@@ -102,7 +102,9 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
   const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "devices" | "recording" | "details" | null>(null);
+  const chatOpen = workspacePanel === "chat";
+  const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
   const dockDialogRef = useRef<HTMLDialogElement>(null);
 
@@ -114,7 +116,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   }, [active?.callRoomId, isOpen]);
 
   useEffect(() => {
-    setChatOpen(false);
+    setWorkspacePanel(null);
   }, [active?.callRoomId]);
 
   const requestSession = useCallback((config: LiveSessionDockConfig, requestOpen: boolean) => {
@@ -194,15 +196,15 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || !isOpen) return;
       event.preventDefault();
-      if (chatOpen) {
-        setChatOpen(false);
+      if (workspacePanel) {
+        setWorkspacePanel(null);
         return;
       }
       minimize();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [chatOpen, isOpen, minimize]);
+  }, [workspacePanel, isOpen, minimize]);
 
   const value = useMemo<LiveSessionDockContextValue>(() => ({
     activeCallRoomId: active?.callRoomId || null,
@@ -227,7 +229,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
           <dialog
             ref={dockDialogRef}
             aria-label={`${active.sessionTitle} live call dock`}
-            onCancel={(event) => { event.preventDefault(); minimize(); }}
+            onCancel={(event) => { event.preventDefault(); if (workspacePanel) setWorkspacePanel(null); else minimize(); }}
             aria-hidden={!isOpen}
             inert={!isOpen ? true : undefined}
             className={isOpen
@@ -242,7 +244,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{liveSessionStatusLabel(status)}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" onClick={() => setChatOpen((open) => !open)} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button>
+                  <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button>
                   <button type="button" onClick={minimize} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Minimize live call"><ChevronDown size={18} /></button>
                   <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Close live call"><X size={18} /></button>
                 </div>
@@ -287,9 +289,11 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </section>
             ) : null}
 
-            <div data-testid="live-call-workspace" className={`relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6 ${chatOpen ? "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,23rem)]" : "lg:grid-cols-1"}`}>
-              <div id="live-call-stage-panel" className={`min-h-0 min-w-0 overflow-y-auto overscroll-contain ${chatOpen ? "hidden lg:block" : "block"}`}>
-              <LiveSessionRoom
+            <div data-testid="live-call-workspace" className={`relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6 ${workspacePanel ? "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,23rem)]" : "lg:grid-cols-1"}`}>
+              <div id="live-call-stage-panel" className={`min-h-0 min-w-0 overflow-y-auto overscroll-contain ${workspacePanel ? "hidden lg:block" : "block"}`}>
+              {/* Mount the call only after its persistent portal host exists;
+                  moving an already-mounted recorder into a portal restarts it. */}
+              {toolPanelContainer ? <LiveSessionRoom
                 key={active.callRoomId}
                 callRoomId={active.callRoomId}
                 captureGroupId={active.captureGroupId}
@@ -308,10 +312,13 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 stageLayout
                 onOpenSessionWork={minimize}
                 controlsContainer={controlsContainer}
-              />
+                toolPanelContainer={toolPanelContainer}
+                activeToolPanel={workspacePanel === "chat" ? null : workspacePanel}
+                onToolPanelChange={setWorkspacePanel}
+              /> : null}
               </div>
               <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>
-              <button type="button" onClick={() => setChatOpen(false)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted lg:hidden"><PanelRightClose size={16} />Back to call</button>
+              <button type="button" onClick={() => setWorkspacePanel(null)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted"><PanelRightClose size={16} />Back to call</button>
                 <SessionThread
                   projectSlug={active.projectSlug ?? undefined}
                   roomId={active.callRoomId}
@@ -323,6 +330,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   fillHeight
                 />
               </div>
+              <div ref={setToolPanelContainer} data-testid="live-call-tool-panel"
+                className={`min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border ${workspacePanel && !chatOpen ? "block" : "hidden"}`} />
             </div>
             <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-foreground empty:hidden" />
           </dialog>
