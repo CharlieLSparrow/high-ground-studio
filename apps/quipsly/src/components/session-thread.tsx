@@ -34,6 +34,7 @@ type ThreadResponse = {
   messages?: SessionMessage[];
   message?: SessionMessage;
   nextCursor?: string | null;
+  unreadCount?: number;
   capabilities?: { canWrite: boolean };
 };
 
@@ -66,6 +67,7 @@ function ScopedCollaborationThread({
   scopeDescription,
   liveHintThreadKey = null,
   fillHeight = false,
+  onOpenWork,
 }: {
   projectSlug: string;
   threadKey: string;
@@ -79,6 +81,7 @@ function ScopedCollaborationThread({
   scopeDescription?: string;
   liveHintThreadKey?: string | null;
   fillHeight?: boolean;
+  onOpenWork?: () => void;
 }) {
   const panelActive = useWorkspacePanelActive();
   const [messages, setMessages] = useState<SessionMessage[]>([]);
@@ -109,6 +112,7 @@ function ScopedCollaborationThread({
   const endpoint = sessionRoomId ? `/api/sessions/${encodeURIComponent(sessionRoomId)}/conversation` : "/api/nest-chat";
   const writable = canPost && serverCanWrite;
   const focusedMessageRef = useRef<string | null>(null);
+  const markedReadRef = useRef<string | null>(null);
 
   const refresh = useCallback(async (quiet = false) => {
     if (refreshingRef.current) return;
@@ -128,6 +132,13 @@ function ScopedCollaborationThread({
       if (payload.capabilities) setServerCanWrite(payload.capabilities.canWrite);
       if (!historyLoadedRef.current) setNextCursor(payload.nextCursor ?? null);
       setLoadError("");
+      const latest = payload.messages?.at(-1);
+      if (sessionRoomId && payload.unreadCount && latest && markedReadRef.current !== latest.id) {
+        markedReadRef.current = latest.id;
+        void fetch(endpoint, {method: "POST", headers: {"content-type": "application/json"},
+          body: JSON.stringify({action: "MARK_READ", lastReadMessageId: latest.id}),
+        }).then(response => {if (!response.ok) markedReadRef.current = null;}, () => {markedReadRef.current = null;});
+      }
     } catch (nextError) {
       if (activeRef.current) setLoadError(nextError instanceof Error ? nextError.message : "Conversation could not load.");
     } finally {
@@ -315,6 +326,7 @@ function ScopedCollaborationThread({
             {message.canEdit && <><button type="button" className="min-h-11" onClick={() => { setEditing(message.id); setEditDraft(message.body); }}>Edit</button><button type="button" className="min-h-11" disabled={mutating} onClick={() => void changeMessage(message, "DELETE")}>Remove</button></>}
           </div>}
           {engagementId && <ConversationTaskAction engagementId={engagementId} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
+          {sessionRoomId && !message.deletedAt && <ConversationTaskAction roomId={sessionRoomId} messageId={message.id} body={message.body} canCreate={writable} tasks={message.linkedTasks} onOpenWork={onOpenWork} />}
           {threadKey === "default" && <ConversationTaskAction projectSlug={projectSlug} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
         </article>)}
       </div>
@@ -341,6 +353,7 @@ export function SessionThread({
   scopeDescription,
   fillHeight = false,
   heading = "Session thread",
+  onOpenWork,
 }: {
   projectSlug?: string;
   roomId: string;
@@ -350,6 +363,7 @@ export function SessionThread({
   scopeDescription?: string;
   fillHeight?: boolean;
   heading?: string;
+  onOpenWork?: () => void;
 }) {
   return <CollaborationThread
     projectSlug={projectSlug}
@@ -357,6 +371,7 @@ export function SessionThread({
     liveHintThreadKey={`session:${roomId}`}
     collaborationTitle={sessionTitle}
     heading={heading}
+    onOpenWork={onOpenWork}
     fillHeight={fillHeight}
     clientSurface="session-room-web"
     canPost={canPost}

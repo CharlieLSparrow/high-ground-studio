@@ -99,7 +99,7 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
       <TagSearchChips tags={entry.tags} label={`${entry.title || entry.kind} tags`} />
       <SessionWorkControls entry={entry} assignmentContext={assignmentContext} onUpdate={update => setCurrent(previous => previous.map(item => item.id === entry.id ? {...item, ...update} : item))} />
       <div className="mt-2 flex flex-wrap gap-x-4">
-        {entry.sourceHref && <Link href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">From recording</Link>}
+        {entry.sourceHref && <Link href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{entry.fromConversation ? "From conversation" : "From recording"}</Link>}
         {mine && <Link href={`/work?${entry.kind === "TASK" ? "task" : "goal"}=${encodeURIComponent(entry.id)}`} className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline underline-offset-4">Open in Work</Link>}
       </div>
     </article>;

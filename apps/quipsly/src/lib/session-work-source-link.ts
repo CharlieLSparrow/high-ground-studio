@@ -15,6 +15,10 @@ export function sessionWorkSourceHref(roomId: string | null | undefined, sourceJ
   if (!roomId || !sourceJson || typeof sourceJson !== "object" || Array.isArray(sourceJson)) return null;
   const source = sourceJson as Record<string, unknown>;
   if (source.roomId !== roomId) return null;
+  if (source.schema === "quipsly-session-work-entry-v1" && typeof source.sourceMessageId === "string" && source.sourceMessageId.trim()) {
+    const query = new URLSearchParams({mode: "conversation", message: source.sourceMessageId});
+    return `/sessions/${encodeURIComponent(roomId)}?${query}#conversation-message-${encodeURIComponent(source.sourceMessageId)}`;
+  }
 
   const anchor = readTranscriptDerivedNoteSource(source)
     ?? readTranscriptDerivedTaskSource(source)

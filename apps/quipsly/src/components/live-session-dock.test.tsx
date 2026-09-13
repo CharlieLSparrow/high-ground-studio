@@ -55,9 +55,9 @@ jest.mock("./live-session-room", () => ({
 }));
 
 jest.mock("./session-thread", () => ({
-  SessionThread: ({ roomId }: { roomId: string }) => {
+  SessionThread: ({ roomId, onOpenWork }: { roomId: string; onOpenWork?: () => void }) => {
     const [draft, setDraft] = useState("");
-    return <div>Durable thread {roomId}<textarea aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} /></div>;
+    return <div>Durable thread {roomId}<textarea aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} /><button onClick={onOpenWork}>Open linked task</button></div>;
   },
 }));
 
@@ -90,6 +90,17 @@ describe("LiveSessionDockProvider", () => {
     mockRoomLifecycle.mounted.mockClear();
     mockRoomLifecycle.unmounted.mockClear();
     mockRoomLifecycle.leaveRequested.mockClear();
+  });
+
+  it("keeps the connected room alive while opening work linked from chat", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    await user.click(screen.getByRole("button", {name: "Open linked task"}));
+    expect(screen.getByLabelText("Minimized live call")).toBeVisible();
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
   });
 
   it("switches call and chat views without remounting the room or discarding a draft", async () => {

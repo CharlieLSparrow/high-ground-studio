@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { sessionConversationTasks } from "./session-conversation-work";
 import {
   sessionConversationAccessWhere,
   sessionMutationAccessWhere,
@@ -206,12 +207,14 @@ export async function GET(
         : {}),
     },
   });
+  const linkedTasks = await sessionConversationTasks(access.prisma, roomId,
+    messages.filter((message: any) => !message.deletedAt).map((message: any) => message.id));
   return NextResponse.json({
     ok: true,
     room: access.room,
     nextCursor,
     messages: messages.map((row: any) =>
-      serialize(row, access.session.user.id),
+      ({...serialize(row, access.session.user.id), linkedTasks: linkedTasks.get(row.id) || []}),
     ),
     unreadCount,
     capabilities: {

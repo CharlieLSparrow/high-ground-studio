@@ -55,7 +55,8 @@ export async function loadSessionWork(input: {
     .map((row) => {
       const source = object(row.sourceJson);
       const sourceHref = sessionWorkSourceHref(roomId, source);
-      const fromTranscript = sourceHref !== null;
+      const fromConversation = sourceHref !== null && source.schema === "quipsly-session-work-entry-v1" && typeof source.sourceMessageId === "string";
+      const fromTranscript = sourceHref !== null && !fromConversation;
       const visibility = source.visibility === "engagement-shared"
         ? "ENGAGEMENT_SHARED" as const
         : source.visibility === "SESSION_SHARED" ? "SESSION_SHARED" as const : "AUTHOR_PRIVATE" as const;
@@ -67,7 +68,7 @@ export async function loadSessionWork(input: {
         ownerUserId: row.userId,
         engagementId: row.engagementId ?? null,
         ownerLabel: row.user?.name || row.user?.primaryEmail || "Unassigned",
-        canEdit: writable.has(row.id), fromTranscript,
+        canEdit: writable.has(row.id), fromTranscript, fromConversation,
         sourceHref,
         tags: (row.tagLinks || []).map((link: any) => link.tag)
           .filter((tag: any) => tag.isActive && tag.projectId === room.projectId)

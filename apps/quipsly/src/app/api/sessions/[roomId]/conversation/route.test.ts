@@ -77,6 +77,7 @@ function row(
 
 function prismaBase() {
   const prisma: any = {
+    actionItem: {findMany: jest.fn().mockResolvedValue([])},
     callRoom: {
       findFirst: jest.fn().mockResolvedValue({ id: roomId, title: "Session" }),
     },

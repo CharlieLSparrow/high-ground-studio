@@ -10,10 +10,12 @@ export type ConversationLinkedTask = {
   tags?: { id: string; label: string; hexColor: string | null; isActive: boolean }[];
 };
 
-type ConversationTaskTarget = { engagementId: string; projectSlug?: never } | { engagementId?: never; projectSlug: string };
+type ConversationTaskTarget = { engagementId: string; projectSlug?: never; roomId?: never }
+  | { engagementId?: never; projectSlug: string; roomId?: never }
+  | { engagementId?: never; projectSlug?: never; roomId: string };
 
-export function ConversationTaskAction({ engagementId, projectSlug, messageId, body, canCreate, tasks = [] }: ConversationTaskTarget & {
-  messageId: string; body: string; canCreate: boolean; tasks?: ConversationLinkedTask[];
+export function ConversationTaskAction({ engagementId, projectSlug, roomId, messageId, body, canCreate, tasks = [], onOpenWork }: ConversationTaskTarget & {
+  messageId: string; body: string; canCreate: boolean; tasks?: ConversationLinkedTask[]; onOpenWork?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(body.replace(/\s+/g, " ").trim().slice(0, 160));
@@ -42,14 +44,16 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
     setError("");
     const normalized = title.trim();
     const tagIds = selectedTags.map(tag => tag.id).sort();
-    const fingerprint = JSON.stringify([engagementId, projectSlug, messageId, normalized, tagIds, newTagLabels]);
+    const fingerprint = JSON.stringify([engagementId, projectSlug, roomId, messageId, normalized, tagIds, newTagLabels]);
     const intent = request.current?.fingerprint === fingerprint ? request.current : { fingerprint, id: crypto.randomUUID() };
     request.current = intent;
     try {
-      const endpoint = engagementId ? `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work` : "/api/nest-chat/tasks";
+      const endpoint = roomId ? `/api/sessions/${encodeURIComponent(roomId)}/work`
+        : engagementId ? `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work` : "/api/nest-chat/tasks";
       const response = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: "TASK", title: normalized, body, sourceMessageId: messageId, clientRequestId: intent.id,
+          ...(roomId ? {visibility: "SESSION_SHARED"} : {}),
           ...(projectSlug ? { projectSlug } : {}), ...(tagIds.length || newTagLabels.length ? { tags: { tagIds, ...(newTagLabels.length ? {newTagLabels} : {}) } } : {}) }),
       });
       const result = await response.json();
@@ -59,7 +63,7 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
       setSelectedTags([]);
       setNewTagLabels([]);
       setOpen(false);
-      window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", { detail: { engagementId } }));
+      window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", { detail: { engagementId, roomId } }));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not create the task. Your title is still here.");
     } finally {
@@ -69,7 +73,8 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
   }
 
   return <div className="mt-2 space-y-2">
-    {linked.map(task => <Link key={task.id} href={engagementId
+    {linked.map(task => <Link key={task.id} onClick={onOpenWork} href={roomId
+      ? `/sessions/${encodeURIComponent(roomId)}?mode=work#quick-entry-${encodeURIComponent(task.id)}` : engagementId
       ? `/coaching/engagements/${encodeURIComponent(engagementId)}?work=${encodeURIComponent(task.id)}#relationship-work`
       : `/work?task=${encodeURIComponent(task.id)}`}
       className="flex min-h-11 min-w-0 items-start gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent">
@@ -90,9 +95,9 @@ export function ConversationTaskAction({ engagementId, projectSlug, messageId, b
     {open && <form onSubmit={create} className="space-y-2 rounded-xl border border-border bg-card p-3">
       <label className="block text-sm font-semibold">Task title<input aria-label="Task title from message" value={title} onChange={event => setTitle(event.target.value)} maxLength={500} required disabled={pending}
         className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-background px-3 text-foreground" autoFocus /></label>
-      <WorkTagPicker engagementId={engagementId} projectSlug={projectSlug} selected={selectedTags} onChange={setSelectedTags} disabled={pending} onPendingChange={setTagPending}
-        newLabels={newTagLabels} onNewLabelsChange={engagementId ? setNewTagLabels : undefined} />
-      <p className="text-xs text-muted-foreground">Shared in this space and linked to this message. You can change the task anytime.</p>
+      {!roomId && <WorkTagPicker engagementId={engagementId} projectSlug={projectSlug} selected={selectedTags} onChange={setSelectedTags} disabled={pending} onPendingChange={setTagPending}
+        newLabels={newTagLabels} onNewLabelsChange={engagementId ? setNewTagLabels : undefined} />}
+      <p className="text-xs text-muted-foreground">{roomId ? "Assigned to you and shared in this Session." : "Shared in this space"} Linked to this message. You can change the task anytime.</p>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2"><button type="submit" disabled={pending || tagPending || !title.trim() || !canCreate} className="min-h-11 rounded-lg bg-primary px-3 font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Creating…" : "Add task"}</button>
         <button type="button" disabled={pending || tagPending} onClick={() => setOpen(false)} className="min-h-11 px-3 text-sm">Cancel</button></div>

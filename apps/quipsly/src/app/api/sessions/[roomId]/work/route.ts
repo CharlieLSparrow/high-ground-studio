@@ -69,6 +69,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
   const kind = text(body.kind, 20).toUpperCase() as "TASK" | "GOAL";
   const title = text(body.title, 500);
   const detail = text(body.body, 5_000);
+  const sourceMessageId = text(body.sourceMessageId, 240);
   const visibility = text(body.visibility, 40).toUpperCase() as "AUTHOR_PRIVATE" | "SESSION_SHARED" | "ENGAGEMENT_SHARED";
   const ownerUserId = text(body.ownerUserId, 240) || session.user.id;
   const targetAt = optionalDate(body.targetAt);
@@ -101,6 +102,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
     visibility,
     targetAt: targetAt?.toISOString() || null,
     ...(body.ownerUserId ? {ownerUserId} : {}),
+    ...(sourceMessageId ? {sourceMessageId} : {}),
   })).digest("hex");
 
   try {
@@ -110,6 +112,14 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
         select: { id: true, projectId: true },
       });
       if (!room) return { kind: "unavailable" as const };
+      // A conversation ID is not permission, and Session discussion must not
+      // be copied into a wider client-space scope by a supplied visibility.
+      if (sourceMessageId && visibility !== "SESSION_SHARED") return {kind: "invalid-source-scope" as const};
+      const sourceMessage = sourceMessageId ? await tx.sessionConversationMessage.findFirst({
+        where: {id: sourceMessageId, roomId: room.id, deletedAt: null},
+        select: {id: true, body: true, revision: true, authorUserId: true},
+      }) : null;
+      if (sourceMessageId && (!sourceMessage || !sourceMessage.body.trim())) return {kind: "source-unavailable" as const};
       const assignment = visibility === "ENGAGEMENT_SHARED"
         ? await loadSessionWorkAssignmentContext({prisma: tx, roomId, actor: session.user}) : null;
       const owner = assignment?.members.find(member => member.id === ownerUserId);
@@ -122,6 +132,8 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
         clientRequestId,
         requestFingerprint,
         roomId: room.id,
+        ...(sourceMessage ? {sourceMessageId: sourceMessage.id, sourceMessageRevision: sourceMessage.revision,
+          sourceMessageExcerpt: sourceMessage.body.slice(0, 5_000), sourceMessageAuthorUserId: sourceMessage.authorUserId} : {}),
         actorUserId: session.user.id,
         visibility: visibility === "ENGAGEMENT_SHARED" ? "engagement-shared" : visibility,
         humanCommitted: true,
@@ -162,7 +174,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
               assignedUserId: ownerUserId,
               ...(assignment ? {engagementId: assignment.engagementId} : {}),
               title,
-              detail: detail || null,
+              detail: sourceMessage ? sourceMessage.body.slice(0, 5_000) : detail || null,
               status: "OPEN",
               dueAt: targetAt,
               sourceJson,
@@ -176,7 +188,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
               ownerUserId,
               ...(assignment ? {engagementId: assignment.engagementId} : {}),
               title,
-              description: detail || null,
+              description: sourceMessage ? sourceMessage.body.slice(0, 5_000) : detail || null,
               status: "ACTIVE",
               targetAt,
               sourceJson,
@@ -190,6 +202,12 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
     }
     if (result.kind === "conflict") {
       return NextResponse.json({ ok: false, error: "That retry identity belongs to different Session work. Nothing changed." }, { status: 409 });
+    }
+    if (result.kind === "source-unavailable") {
+      return NextResponse.json({ok: false, error: "That message is no longer available. Refresh the conversation."}, {status: 404});
+    }
+    if (result.kind === "invalid-source-scope") {
+      return NextResponse.json({ok: false, error: "Tasks from this conversation stay shared with this Session."}, {status: 400});
     }
     if (result.kind === "invalid-owner") {
       return NextResponse.json({ok: false, error: "Choose a current collaborator in this client space."}, {status: 403});

@@ -24,6 +24,19 @@ describe("SessionThread", () => {
     globalThis.fetch = originalFetch;
   });
 
+  it("marks visible unread conversation history once and keeps linked tasks available in view-only mode", async () => {
+    const task = {id: "task", title: "Read the chapter", status: "OPEN"};
+    jest.mocked(fetch).mockResolvedValue({ok: true, json: async () => ({ok: true, unreadCount: 1,
+      capabilities: {canWrite: false}, messages: [{id: "message", body: "Read this chapter", createdAt: "2026-09-13T12:00:00Z", linkedTasks: [task]}]})} as Response);
+    await act(async () => {render(<SessionThread roomId="room" sessionTitle="Session" />);});
+    expect(screen.getByRole("link", {name: /Read the chapter/})).toHaveAttribute("href", "/sessions/room?mode=work#quick-entry-task");
+    expect(screen.queryByRole("button", {name: "Create task"})).not.toBeInTheDocument();
+    await act(async () => {jest.advanceTimersByTime(6_000);});
+    const writes = jest.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][1]!.body as string)).toEqual({action: "MARK_READ", lastReadMessageId: "message"});
+  });
+
   async function mountThread() {
     await act(async () => { render(<SessionThread projectSlug="coaching" roomId="room-1" sessionTitle="Coaching" />); });
   }

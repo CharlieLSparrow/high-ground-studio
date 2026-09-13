@@ -3,6 +3,11 @@ import { sessionWorkSourceHref } from "./session-work-source-link";
 const generated = { origin: "quipsly-session-follow-through", roomId: "room-1", recordingAssetId: "asset-1" };
 
 describe("work-to-recording navigation", () => {
+  it("opens the exact conversation message without confusing it with a recording", () => {
+    const source = {schema: "quipsly-session-work-entry-v1", roomId: "room-1", sourceMessageId: "message&one"};
+    expect(sessionWorkSourceHref("room-1", source)).toBe("/sessions/room-1?mode=conversation&message=message%26one#conversation-message-message%26one");
+    expect(sessionWorkSourceHref("another-room", source)).toBeNull();
+  });
   it("seeks on the selected source clock, including zero, rather than the assembled clock", () => {
     expect(sessionWorkSourceHref("room-1", { ...generated, sourceStartSeconds: 2.34, startSeconds: 122.34 }))
       .toBe("/sessions/room-1?mode=transcript&source=asset-1&at=2.34");

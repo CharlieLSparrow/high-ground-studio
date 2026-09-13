@@ -332,6 +332,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   canPost={active.canPost}
                   scopeLabel="This live Session"
                   scopeDescription="Messages stay here after the call."
+                  onOpenWork={minimize}
                   heading="Chat"
                   fillHeight
                 />

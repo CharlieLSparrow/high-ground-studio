@@ -84,7 +84,7 @@ import { SessionSourceClockAttentionCard } from "./session-source-clock-attentio
 import { SessionSourceAlignmentCard } from "./session-source-alignment-card";
 import type { SessionSourceClockAttention } from "./session-source-clock-attention";
 import { SessionVersionedOutputGraphCard } from "./session-versioned-output-graph-card";
-import { SessionConversationThread } from "./session-conversation-thread";
+import { SessionThread } from "@/components/session-thread";
 import { CoachingSessionPlanCard } from "./coaching-session-plan-card";
 import type { SessionVersionedOutputGraph } from "./session-versioned-output-graph";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
@@ -592,6 +592,7 @@ export type SessionQuickEntry = {
   engagementId?: string | null;
   dueAt?: string | null;
   fromTranscript?: boolean;
+  fromConversation?: boolean;
   sourceHref?: string | null;
 };
 
@@ -3919,7 +3920,7 @@ export function SessionReviewClient({
       ) : null}
 
       {mode === "conversation" ? (
-        <SessionConversationThread roomId={roomId} />
+        <SessionThread roomId={roomId} sessionTitle={sessionTitle} heading="Conversation" />
       ) : null}
 
       {mode === "work" ? (

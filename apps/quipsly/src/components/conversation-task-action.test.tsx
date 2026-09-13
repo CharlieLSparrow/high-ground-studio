@@ -5,6 +5,22 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 const props = { engagementId: "space", messageId: "message", body: "Prepare a first chapter together", canCreate: true };
 
+test("creates a Session task, preserves retry identity and opens its existing work surface", async () => {
+  const fetchMock = jest.fn().mockRejectedValueOnce(new Error("Reply lost"))
+    .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, entry: {id: "task", title: "Read the chapter", status: "OPEN"}})});
+  globalThis.fetch = fetchMock;
+  render(<ConversationTaskAction roomId="room" messageId="message" body="Read the chapter" canCreate />);
+  fireEvent.click(screen.getByRole("button", {name: "Create task"}));
+  expect(screen.getByText(/Assigned to you and shared in this Session/)).toBeVisible();
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Add task"}));});
+  expect(screen.getByRole("textbox", {name: "Task title from message"})).toHaveValue("Read the chapter");
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Add task"}));});
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/sessions/room/work");
+  expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[0][1].body);
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({sourceMessageId: "message", visibility: "SESSION_SHARED"});
+  expect(screen.getByRole("link", {name: /Read the chapter/})).toHaveAttribute("href", "/sessions/room?mode=work#quick-entry-task");
+});
+
 test("creates and colors the first shared tag inline before saving the task", async () => {
   let finishTag!: (value: unknown) => void;
   const tag = { id: "research", label: "Research", hexColor: "#506b46", isActive: true };
