@@ -930,14 +930,19 @@ process.stdin.on("end", () => {
 });
 ' "$TEST_CLASS" "$TEST_CASE"
 
-"${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results tests \
-  --path "$RESULT_BUNDLE_PATH" |
+"${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results test-details \
+  --path "$RESULT_BUNDLE_PATH" --test-id "${TEST_CLASS}/${TEST_CASE}()" |
   node -e '
 let raw = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => { raw += chunk; });
 process.stdin.on("end", () => {
   const tree = JSON.parse(raw);
+  const [expectedClass, expectedCase] = process.argv.slice(1);
+  if (tree.testIdentifier !== `${expectedClass}/${expectedCase}()` || !Array.isArray(tree.testRuns) || tree.testRuns.length === 0) {
+    console.error("Capture runtime warning details are missing or belong to another test.");
+    process.exit(5);
+  }
   const warnings = [];
   // Xcode 17 / iOS 26.3.1 emits this SwiftUI framework warning on the
   // supported Form text-input path when it first presents the keyboard.
@@ -952,6 +957,7 @@ process.stdin.on("end", () => {
     }
     if (Array.isArray(node.children)) node.children.forEach(visit);
     if (Array.isArray(node.testNodes)) node.testNodes.forEach(visit);
+    if (Array.isArray(node.testRuns)) node.testRuns.forEach(visit);
   }
   visit(tree);
   const unexpectedWarnings = warnings.filter(
@@ -971,4 +977,4 @@ process.stdin.on("end", () => {
     unexpectedRuntimeWarnings: 0,
   }, null, 2));
 });
-'
+' "$TEST_CLASS" "$TEST_CASE"

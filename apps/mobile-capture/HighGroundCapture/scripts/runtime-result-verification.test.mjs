@@ -20,14 +20,14 @@ const goodCase = {
 };
 const goodSummary = { result: 'Passed', passedTests: 1, failedTests: 0, skippedTests: 0, totalTestCount: 1 };
 
-function run(t, { cases = [goodCase], bundle = 'HighGroundCaptureUITests', summary = goodSummary, warnings = [], readFailure = false, malformed = false } = {}) {
+function run(t, { cases = [goodCase], bundle = 'HighGroundCaptureUITests', summary = goodSummary, warnings = [], details, readFailure = false, malformed = false } = {}) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'quipsly-runtime-results-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const xcrun = path.join(directory, 'xcrun');
   writeFileSync(xcrun, `#!${process.execPath}
 if (process.env.QA_READ_FAILURE === 'true') process.exit(29);
 if (process.env.QA_MALFORMED === 'true') { process.stdout.write('not JSON'); process.exit(0); }
-process.stdout.write(process.argv.includes('summary') ? process.env.QA_SUMMARY : process.env.QA_TREE);
+process.stdout.write(process.argv.includes('summary') ? process.env.QA_SUMMARY : process.argv.includes('test-details') ? process.env.QA_DETAILS : process.env.QA_TREE);
 `, { mode: 0o755 });
   return spawnSync('bash', ['-euo', 'pipefail', '-c', verification], {
     encoding: 'utf8', timeout: 15_000,
@@ -42,8 +42,16 @@ process.stdout.write(process.argv.includes('summary') ? process.env.QA_SUMMARY :
       QA_READ_FAILURE: String(readFailure),
       QA_MALFORMED: String(malformed),
       QA_SUMMARY: JSON.stringify(summary),
+      QA_DETAILS: JSON.stringify(details ?? {
+        testIdentifier: `${expectedClass}/${expectedCase}()`,
+        testRuns: [{ nodeType: 'Device', children: [{ nodeType: 'Test Plan Configuration',
+          children: warnings.map(name => ({ nodeType: 'Runtime Warning', name })),
+        }] }],
+      }),
       QA_TREE: JSON.stringify({ testNodes: [{ nodeType: 'UI test bundle', name: bundle, children: [
-        ...cases, ...warnings.map(name => ({ nodeType: 'Runtime Warning', name })),
+        ...cases, ...(warnings.length > 1
+          ? [{ nodeType: 'Runtime Warning', name: 'Multiple Runtime Warnings' }]
+          : warnings.map(name => ({ nodeType: 'Runtime Warning', name }))),
       ] }] }),
     },
   });
@@ -85,4 +93,25 @@ test('runtime shell still rejects a new runtime warning', t => {
   const result = run(t, { warnings: ['Unexpected actor isolation violation'] });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /unexpected runtime warnings/);
+});
+
+test('runtime shell inspects individual warnings when Xcode aggregates the overview', t => {
+  const result = run(t, { warnings: [
+    'Invalid frame dimension (negative or non-finite).',
+    'Invalid frame dimension (negative or non-finite).',
+  ] });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Invalid frame dimension/);
+});
+
+test('runtime shell rejects an unknown warning mixed with the known framework warning', t => {
+  const result = run(t, { warnings: ['Invalid frame dimension (negative or non-finite).', 'Unexpected actor isolation violation'] });
+  assert.equal(result.status, 5);
+  assert.match(result.stderr, /Unexpected actor isolation violation/);
+});
+
+test('runtime shell does not silently accept missing warning details', t => {
+  const result = run(t, { details: {} });
+  assert.equal(result.status, 5);
+  assert.match(result.stderr, /warning details are missing/);
 });
