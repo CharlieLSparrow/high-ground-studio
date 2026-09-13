@@ -29,6 +29,34 @@ describe("Session work workspace", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/api/sessions/room-1/work");
     expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("");
   });
+  it("shows work without unusable create controls to a read-only participant", () => {
+    render(<SessionWorkWorkspace roomId="room-1" entries={[{...task, canEdit: false}]} canCreate={false} />);
+    expect(screen.getByRole("heading", {name: task.title!})).toBeVisible();
+    expect(screen.queryByRole("form", {name: "New session work"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Mark done"})).not.toBeInTheDocument();
+  });
+
+  it("assigns shared client-space work and returns private work to its creator", async () => {
+    const context = {engagementId: "space-1", currentUserId: "coach-1", members: [
+      {id: "coach-1", label: "Casey", role: "COACH"}, {id: "client-1", label: "Riley", role: "CLIENT"},
+    ]};
+    const fetchMock = jest.fn().mockResolvedValue(response({ok: true, entry: {...task, visibility: "ENGAGEMENT_SHARED", ownerUserId: "client-1", ownerLabel: "Riley", ownedByCurrentActor: false, engagementId: "space-1"}})); global.fetch = fetchMock;
+    render(<SessionWorkWorkspace roomId="room-1" entries={[]} assignmentContext={context} />);
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByRole("combobox", {name: "Assigned to"}), "client-1");
+    await user.type(screen.getByRole("textbox", {name: "Task title"}), "A reflection for Riley");
+    await user.click(screen.getByRole("button", {name: "Save task"}));
+    await screen.findByRole("status");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ownerUserId: "client-1", visibility: "ENGAGEMENT_SHARED"});
+    expect(screen.getByText("Shared client space · Riley")).toBeVisible();
+    await user.click(screen.getByText(/Details, date and sharing/));
+    await user.selectOptions(screen.getByRole("combobox", {name: "Who can see it"}), "AUTHOR_PRIVATE");
+    expect(within(screen.getByRole("form", {name: "New session work"})).queryByRole("combobox", {name: "Assigned to"})).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", {name: "Task title"}), "My private preparation");
+    await user.click(screen.getByRole("button", {name: "Save task"}));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ownerUserId: "coach-1", visibility: "AUTHOR_PRIVATE"});
+  });
 
   it("preserves the entire failed private goal and reuses its identity on retry", async () => {
     const user = userEvent.setup();

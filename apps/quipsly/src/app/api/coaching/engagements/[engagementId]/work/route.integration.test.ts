@@ -5,6 +5,8 @@ import { GET as readChat } from "@/app/api/nest-chat/route";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadSessionWork } from "@/lib/server/session-work";
+import { loadSessionWorkAssignmentContext } from "@/lib/server/session-work-assignment";
+import { POST as createSessionWork } from "@/app/api/sessions/[roomId]/work/route";
 import { coachingSpaceTaskWhere } from "@/lib/server/coaching-work-access";
 import { createAndAssignWorkEntityTag, replaceWorkEntityTags, readTaskTagContext, readNoteTagContext, readNewCoachingTaskTagContext, workTagSlug } from "@/lib/server/work-tags";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
@@ -80,6 +82,59 @@ if (enabled) {
       await prisma.studioWorkspace.deleteMany({where: {id: workspaceId}});
       await prisma.user.deleteMany({where: {id: {in: people.map((person) => person.id)}}});
     } finally { await prisma.$disconnect(); }
+  });
+
+  it("assigns session work to a client using the shared client-space records and current membership", async () => {
+    const roster = await loadSessionWorkAssignmentContext({prisma, roomId, actor: coach!});
+    expect(roster?.members.map(member => member.id).sort()).toEqual([coach!.id, client!.id].sort());
+    for (const person of [observer!, guest!, outsider!]) {
+      expect(await loadSessionWorkAssignmentContext({prisma, roomId, actor: person})).toBeNull();
+    }
+    async function create(input: Record<string, unknown>, person = coach!) {
+      jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: person} as never);
+      const response = await createSessionWork(new Request(`http://localhost/api/sessions/${roomId}/work`, {
+        method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(input),
+      }), {params: Promise.resolve({roomId})});
+      return {status: response.status, body: await response.json()};
+    }
+    for (const kind of ["TASK", "GOAL"] as const) {
+      const input = {clientRequestId: randomUUID(), kind, title: `Assigned ${kind}`, body: "A next step from our session",
+        ownerUserId: client!.id, visibility: "ENGAGEMENT_SHARED", targetAt: null};
+      for (const person of [observer!, guest!, outsider!]) expect((await create(input, person)).status).toBeGreaterThanOrEqual(400);
+      expect((await create({...input, ownerUserId: outsider!.id})).status).toBe(403);
+      expect((await create({...input, ownerUserId: observer!.id})).status).toBe(403);
+      expect((await create({...input, visibility: "AUTHOR_PRIVATE"})).status).toBe(400);
+      const [saved, simultaneousReplay] = await Promise.all([create(input), create(input)]);
+      expect(saved).toMatchObject({status: 200, body: {entry: {kind, ownerUserId: client!.id, ownerLabel: "client",
+        ownedByCurrentActor: false, canEdit: true, engagementId, visibility: "ENGAGEMENT_SHARED"}}});
+      const id = saved.body.entry.id;
+      expect(simultaneousReplay).toMatchObject({status: 200, body: {entry: {id}}});
+      expect(await create(input)).toMatchObject({status: 200, body: {idempotentReplay: true, entry: {id}}});
+      expect((await create({...input, ownerUserId: coach!.id})).status).toBe(409);
+      for (const person of [coach!, client!]) {
+        const sessionWork = await loadSessionWork({prisma, roomId, actor: person});
+        expect(sessionWork.find(entry => entry.id === id)).toMatchObject({canEdit: true, ownerUserId: client!.id, engagementId});
+        expect((await act("GET", {}, person)).body.engagement.entries.some((entry: {id: string}) => entry.id === id)).toBe(true);
+      }
+      expect((await loadSessionWork({prisma, roomId, actor: guest!})).some(entry => entry.id === id)).toBe(false);
+      const edited = await act("PATCH", {kind, id, clientRequestId: randomUUID(), expectedUpdatedAt: saved.body.entry.updatedAt,
+        title: "Completed by the client", body: input.body, ownerUserId: client!.id,
+        status: kind === "TASK" ? "DONE" : "ACHIEVED", targetAt: null}, client!);
+      expect(edited).toMatchObject({status: 200, body: {entry: {id, title: "Completed by the client", owner: {id: client!.id}}}});
+      const reassigned = await act("PATCH", {kind, id, clientRequestId: randomUUID(), expectedUpdatedAt: edited.body.entry.updatedAt,
+        title: "Coach follow-up", body: input.body, ownerUserId: coach!.id,
+        status: kind === "TASK" ? "OPEN" : "ACTIVE", targetAt: null}, coach!);
+      expect(reassigned).toMatchObject({status: 200, body: {entry: {id, owner: {id: coach!.id}}}});
+      expect(await create(input)).toMatchObject({status: 200, body: {idempotentReplay: true,
+        entry: {id, ownerUserId: coach!.id, ownerLabel: "coach", ownedByCurrentActor: true}}});
+    }
+    await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: client!.id}, data: {status: "REMOVED"}});
+    try {
+      expect((await create({clientRequestId: randomUUID(), kind: "TASK", title: "Revoked owner", ownerUserId: client!.id,
+        visibility: "ENGAGEMENT_SHARED"})).status).toBe(403);
+    } finally {
+      await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: client!.id}, data: {status: "ACTIVE"}});
+    }
   });
 
   it("keeps personal session tasks editable in context without sharing, copying, or losing colored tags and sources", async () => {

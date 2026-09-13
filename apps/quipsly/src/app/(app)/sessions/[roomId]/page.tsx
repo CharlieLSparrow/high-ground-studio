@@ -13,6 +13,7 @@ import { sessionAccessWhere, sessionInvitationAccessWhere, sessionMutationAccess
 import { sessionRelationMatchesProject } from "@/lib/server/session-episode-binding";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 import { loadSessionWork } from "@/lib/server/session-work";
+import { loadSessionWorkAssignmentContext } from "@/lib/server/session-work-assignment";
 import { readTranscriptCorrectionImpactSummary } from "@/lib/server/transcript-corrections";
 import {
   canEditSessionNoteProjection,
@@ -648,7 +649,7 @@ export default async function SessionReviewPage({
       orderBy: [{ category: "asc" }, { label: "asc" }],
       select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true },
     }) : [];
-    const [sessionNoteRows, sessionWork] = await Promise.all([
+    const [sessionNoteRows, sessionWork, workAssignmentContext] = await Promise.all([
       prisma.coachingNote.findMany({
         where: {
           roomId: room.id,
@@ -676,6 +677,7 @@ export default async function SessionReviewPage({
         },
       }),
       loadSessionWork({ prisma, roomId: room.id, actor: session.user }),
+      workspaceMode === "work" ? loadSessionWorkAssignmentContext({prisma, roomId: room.id, actor: session.user}) : null,
     ]);
     const isQuickEntry = (value: unknown) => [
       MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA,
@@ -842,7 +844,7 @@ export default async function SessionReviewPage({
         publicationEligible: versionedOutputGraph.currentPacket?.publicationEligible ?? false,
       } : undefined,
     };
-    return <div className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "min-w-0"}`}><div className="mx-auto max-w-[1240px]"><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} recordingWorkspaceAudience={recordingWorkspaceAudience} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} focusedPlaybackSeconds={focusedPlaybackSeconds} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></div>;
+    return <div className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "min-w-0"}`}><div className="mx-auto max-w-[1240px]"><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} recordingWorkspaceAudience={recordingWorkspaceAudience} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} focusedPlaybackSeconds={focusedPlaybackSeconds} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} workAssignmentContext={workAssignmentContext} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></div>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

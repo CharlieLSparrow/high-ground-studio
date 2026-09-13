@@ -1,6 +1,7 @@
 "use client";
 
 import { SessionWorkWorkspace } from "./session-work-workspace";
+import type { SessionWorkAssignmentContext } from "@/lib/session-work-assignment";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -587,6 +588,8 @@ export type SessionQuickEntry = {
   ownedByCurrentActor?: boolean;
   canEdit?: boolean;
   ownerLabel?: string;
+  ownerUserId?: string | null;
+  engagementId?: string | null;
   dueAt?: string | null;
   fromTranscript?: boolean;
   sourceHref?: string | null;
@@ -3236,6 +3239,7 @@ export function SessionReviewClient({
   sessionNotes = [],
   canUseProjectTeamNotes = false,
   sessionQuickEntries = [],
+  workAssignmentContext = null,
   captureReceipts = { captures: [] },
   sessionContinuity = null,
   collaborationContext = {
@@ -3282,6 +3286,7 @@ export function SessionReviewClient({
   sessionNotes?: SessionWorkspaceNote[];
   canUseProjectTeamNotes?: boolean;
   sessionQuickEntries?: SessionQuickEntry[];
+  workAssignmentContext?: SessionWorkAssignmentContext | null;
   captureReceipts?: SessionCaptureReceipts;
   sessionContinuity?: SessionContinuityState | null;
   collaborationContext?: SessionCollaborationContext;
@@ -3921,6 +3926,8 @@ export function SessionReviewClient({
             key={roomId}
             roomId={roomId}
             entries={sessionQuickEntries}
+            assignmentContext={workAssignmentContext}
+            canCreate={canManageSourcePlan}
           />
           {sessionContinuity ? (
             <SessionContinuityCard

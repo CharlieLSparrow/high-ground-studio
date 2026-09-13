@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { TagSearchChips } from "@/components/tag-search-chips";
 import type { SessionQuickEntry } from "./session-review-client";
 import { SessionWorkControls } from "./session-work-controls";
+import type { SessionWorkAssignmentContext } from "@/lib/session-work-assignment";
 
 type WorkKind = "TASK" | "GOAL";
 type WorkFilter = "ALL" | WorkKind;
@@ -13,7 +14,9 @@ const isFinished = (entry: SessionQuickEntry) => ["DONE", "ACHIEVED", "CANCELED"
 const workEntries = (entries: SessionQuickEntry[]) => entries.filter(entry => entry.kind === "TASK" || entry.kind === "GOAL");
 const inputClass = "mt-1 block min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground";
 
-export function SessionWorkWorkspace({ roomId, entries }: {roomId: string; entries: SessionQuickEntry[]}) {
+export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null, canCreate = true }: {
+  roomId: string; entries: SessionQuickEntry[]; assignmentContext?: SessionWorkAssignmentContext | null; canCreate?: boolean;
+}) {
   const router = useRouter();
   const [current, setCurrent] = useState(() => workEntries(entries));
   const [filter, setFilter] = useState<WorkFilter>("ALL");
@@ -21,7 +24,8 @@ export function SessionWorkWorkspace({ roomId, entries }: {roomId: string; entri
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [targetAt, setTargetAt] = useState("");
-  const [visibility, setVisibility] = useState("SESSION_SHARED");
+  const [visibility, setVisibility] = useState(assignmentContext ? "ENGAGEMENT_SHARED" : "SESSION_SHARED");
+  const [ownerUserId, setOwnerUserId] = useState(assignmentContext?.currentUserId || "");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -35,8 +39,10 @@ export function SessionWorkWorkspace({ roomId, entries }: {roomId: string; entri
     if (inFlight.current) return;
     // Read the submitted controls, including native date-picker/autofill values
     // that may not have delivered a React change event before submit.
+    const submittedVisibility = String(form.get("visibility") || "SESSION_SHARED");
     const submitted = {title: String(form.get("title") || ""), body: String(form.get("body") || ""),
-      targetAt: String(form.get("targetAt") || ""), visibility: String(form.get("visibility") || "SESSION_SHARED")};
+      targetAt: String(form.get("targetAt") || ""), visibility: submittedVisibility,
+      ...(assignmentContext ? {ownerUserId: submittedVisibility === "AUTHOR_PRIVATE" ? assignmentContext.currentUserId : String(form.get("ownerUserId") || assignmentContext.currentUserId)} : {})};
     setTitle(submitted.title); setBody(submitted.body); setTargetAt(submitted.targetAt); setVisibility(submitted.visibility);
     inFlight.current = true;
     setBusy(true); setNotice(null); setFailed(false);
@@ -55,7 +61,7 @@ export function SessionWorkWorkspace({ roomId, entries }: {roomId: string; entri
       attempt.current = null;
       setFilter("ALL");
       if (options.current) options.current.open = false;
-      setNotice(`${kind === "TASK" ? "Task" : "Goal"} saved. ${submitted.visibility === "AUTHOR_PRIVATE" ? "Only you can see it." : "Shared with this session."}`);
+      setNotice(`${kind === "TASK" ? "Task" : "Goal"} saved. ${submitted.visibility === "AUTHOR_PRIVATE" ? "Only you can see it." : submitted.visibility === "ENGAGEMENT_SHARED" ? "Shared with your client space." : "Shared with this session."}`);
       router.refresh();
     } catch (error) {
       setFailed(true);
@@ -91,7 +97,7 @@ export function SessionWorkWorkspace({ roomId, entries }: {roomId: string; entri
         {dateLabel && <> · {entry.kind === "GOAL" ? "Target" : "Due"} <time dateTime={entry.dueAt!}>{dateLabel}</time></>}
       </p>
       <TagSearchChips tags={entry.tags} label={`${entry.title || entry.kind} tags`} />
-      <SessionWorkControls entry={entry} onUpdate={update => setCurrent(previous => previous.map(item => item.id === entry.id ? {...item, ...update} : item))} />
+      <SessionWorkControls entry={entry} assignmentContext={assignmentContext} onUpdate={update => setCurrent(previous => previous.map(item => item.id === entry.id ? {...item, ...update} : item))} />
       <div className="mt-2 flex flex-wrap gap-x-4">
         {entry.sourceHref && <Link href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">From recording</Link>}
         {mine && <Link href={`/work?${entry.kind === "TASK" ? "task" : "goal"}=${encodeURIComponent(entry.id)}`} className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline underline-offset-4">Open in Work</Link>}
@@ -105,7 +111,7 @@ export function SessionWorkWorkspace({ roomId, entries }: {roomId: string; entri
         <p className="mt-1 text-sm text-muted-foreground">{tasks} task{tasks === 1 ? "" : "s"} · {goals} goal{goals === 1 ? "" : "s"}</p></div>
       <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-semibold">All my work</Link>
     </header>
-    <form aria-label="New session work" onSubmit={event => {event.preventDefault(); void createWork(new FormData(event.currentTarget));}}
+    {canCreate && <form aria-label="New session work" onSubmit={event => {event.preventDefault(); void createWork(new FormData(event.currentTarget));}}
       className="rounded-xl border border-border bg-card p-4 text-card-foreground">
       <fieldset disabled={busy} className="min-w-0 space-y-3">
         <div className="flex gap-1" role="group" aria-label="Create work type">
@@ -119,26 +125,31 @@ export function SessionWorkWorkspace({ roomId, entries }: {roomId: string; entri
           </label>
           <button type="submit" className="min-h-11 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{busy ? "Saving…" : `Save ${kind.toLowerCase()}`}</button>
         </div>
+        {assignmentContext && visibility === "ENGAGEMENT_SHARED" && <label className="flex flex-wrap items-center gap-2 text-sm font-medium">Assigned to
+          <select name="ownerUserId" value={ownerUserId} onChange={event => setOwnerUserId(event.target.value)} className="min-h-11 rounded-lg border border-input bg-background px-3 text-foreground">
+            {assignmentContext.members.map(member => <option key={member.id} value={member.id}>{member.id === assignmentContext.currentUserId ? "Me" : `${member.label} · ${member.role.toLowerCase()}`}</option>)}
+          </select>
+        </label>}
         <details ref={options}>
-          <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground">Details, date and sharing · {visibility === "AUTHOR_PRIVATE" ? "Only me" : "Shared"}</summary>
+          <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground">Details, date and sharing · {visibility === "AUTHOR_PRIVATE" ? "Only me" : visibility === "ENGAGEMENT_SHARED" ? "Shared client space" : "Shared"}</summary>
           <div className="grid gap-3 pt-2 sm:grid-cols-2">
             <label className="text-sm font-medium sm:col-span-2">Context (optional)<textarea name="body" maxLength={5000} rows={3} value={body} onChange={event => setBody(event.target.value)} className={inputClass} /></label>
             <label className="text-sm font-medium">{kind === "TASK" ? "Due date" : "Target date"} (optional)<input name="targetAt" type="date" value={targetAt} onChange={event => setTargetAt(event.target.value)} className={inputClass} /></label>
             <label className="text-sm font-medium">Who can see it<select name="visibility" value={visibility} onChange={event => setVisibility(event.target.value)} className={inputClass}>
-              <option value="SESSION_SHARED">Everyone in this Session</option><option value="AUTHOR_PRIVATE">Only me</option>
+              {assignmentContext ? <option value="ENGAGEMENT_SHARED">Shared client space</option> : <option value="SESSION_SHARED">Everyone in this Session</option>}<option value="AUTHOR_PRIVATE">Only me</option>
             </select></label>
           </div>
         </details>
       </fieldset>
       {notice && <p role={failed ? "alert" : "status"} className={`mt-2 text-sm ${failed ? "text-destructive" : "text-muted-foreground"}`}>{notice}</p>}
-    </form>
+    </form>}
     {current.length > 0 && <div role="group" aria-label="Filter session work" className="flex flex-wrap gap-2">
       {(["ALL", "TASK", "GOAL"] as const).map(value => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}
         className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${filter === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}>{value === "ALL" ? "All" : value === "TASK" ? "Tasks" : "Goals"}</button>)}
     </div>}
     <div className="space-y-3" aria-label="Unfinished work">
       {unfinished.map(renderEntry)}
-      {!unfinished.length && <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{current.length ? "You're caught up here." : "Add a next step, or find the editable tasks and goals Quipsly creates from your transcript here."}</p>}
+      {!unfinished.length && <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{current.length ? "You're caught up here." : canCreate ? "Add a next step, or find the editable tasks and goals Quipsly creates from your transcript here." : "No tasks or goals yet."}</p>}
     </div>
     {completed.length > 0 && <details className="rounded-xl border border-border p-3">
       <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">{hasArchived ? "Completed and archived" : "Completed"} ({completed.length})</summary>

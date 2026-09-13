@@ -668,6 +668,7 @@ describe("Session review goal candidates", () => {
       roomId="room-1"
       sessionTitle="Coaching review"
       mode="work"
+      canManageSourcePlan
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
     />);
 

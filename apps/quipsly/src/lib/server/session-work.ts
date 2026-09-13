@@ -33,7 +33,7 @@ export async function loadSessionWork(input: {
     { AND: [relationship, { OR: personalOrSharedCoachingGoalAccessWhere(actor.id) }] },
   ] };
   const common = {
-    id: true, title: true, status: true, sourceJson: true, createdAt: true, updatedAt: true,
+    id: true, engagementId: true, title: true, status: true, sourceJson: true, createdAt: true, updatedAt: true,
     tagLinks: { select: { tag: { select: { id: true, label: true, slug: true, isActive: true, projectId: true, hexColor: true } } } },
   };
   const [tasks, goals, writableTasks, writableGoals] = await Promise.all([
@@ -64,6 +64,8 @@ export async function loadSessionWork(input: {
         createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
         dueAt: row.dueAt?.toISOString() ?? null, visibility,
         ownedByCurrentActor: row.userId === actor.id,
+        ownerUserId: row.userId,
+        engagementId: row.engagementId ?? null,
         ownerLabel: row.user?.name || row.user?.primaryEmail || "Unassigned",
         canEdit: writable.has(row.id), fromTranscript,
         sourceHref,
