@@ -982,9 +982,13 @@ describe("TranscriptCorrectionDesk", () => {
       fireEvent.timeUpdate(media);
     }
     fireEvent.click(screen.getByRole("checkbox", { name: /normal exchange/i }));
+    // Once the first window exists, the desk also reads its experiment runs.
+    // Keep that independent read out of the mutation's ordered response slots.
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ok: true, runs: []}) });
     fireEvent.click(screen.getByRole("button", { name: /add to private accuracy corpus/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/transcript-evaluation?roomId=room-1&view=runs");
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
       operation: "approve-evaluation-window",
       roomId: "room-1",

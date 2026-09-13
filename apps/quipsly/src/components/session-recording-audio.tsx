@@ -1,6 +1,7 @@
 "use client";
 
-import { forwardRef, useEffect, useState, type ComponentPropsWithoutRef } from "react";
+import { forwardRef, useCallback, useEffect, useState, type ComponentPropsWithoutRef } from "react";
+import { RecordingAudioControls } from "./recording-audio-controls";
 
 type Props = Omit<ComponentPropsWithoutRef<"audio">, "src"> & { src?: string; contentType?: string };
 const sourcePath = /^\/api\/sessions\/([^/]+)\/recordings\/([^/]+)\/media$/;
@@ -9,8 +10,14 @@ const sourcePath = /^\/api\/sessions\/([^/]+)\/recordings\/([^/]+)\/media$/;
  * Conversion is automatic, private, idempotent and shared with native playback.
  */
 export const SessionRecordingAudio = forwardRef<HTMLAudioElement, Props>(function SessionRecordingAudio(
-  { src, contentType, onError, ...props }, ref,
+  { src, contentType, onError, controls, className, ...props }, ref,
 ) {
+  const [media, setMedia] = useState<HTMLAudioElement | null>(null);
+  const attach = useCallback((node: HTMLAudioElement | null) => {
+    setMedia(node);
+    if (typeof ref === "function") ref(node);
+    else if (ref) ref.current = node;
+  }, [ref]);
   const endpoint = typeof src === "string" && sourcePath.test(src)
     ? src.replace(/\/media$/, "/audition") : null;
   const needsCopy = /^audio\/(x-)?caf(?:;|$)/i.test(contentType ?? "");
@@ -27,8 +34,12 @@ export const SessionRecordingAudio = forwardRef<HTMLAudioElement, Props>(functio
     let polls = 0;
     setState({ source: src, preparing: true });
     const check = async (method: "POST" | "GET") => {
+      const request = new AbortController();
+      const cancel = () => request.abort();
+      controller.signal.addEventListener("abort", cancel, { once: true });
+      const timeout = setTimeout(() => request.abort(), 20_000);
       try {
-        const response = await fetch(endpoint, { method, signal: controller.signal, credentials: "same-origin", cache: "no-store" });
+        const response = await fetch(endpoint, { method, signal: request.signal, credentials: "same-origin", cache: "no-store" });
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || "Playback couldn't be prepared. Please try again.");
         if (controller.signal.aborted) return;
@@ -44,19 +55,27 @@ export const SessionRecordingAudio = forwardRef<HTMLAudioElement, Props>(functio
         if (++polls > 180) throw new Error("This recording is still processing. Try again in a moment.");
         timer = setTimeout(() => void check("GET"), polls < 10 ? 2000 : 5000);
       } catch (error) {
-        if (!controller.signal.aborted) setState({ source: src, error: error instanceof Error ? error.message : "Playback couldn't be prepared." });
+        if (!controller.signal.aborted) setState({ source: src, error: request.signal.aborted
+          ? "Preparing playback is taking longer than expected. Try again when connected."
+          : error instanceof Error ? error.message : "Playback couldn't be prepared." });
+      } finally {
+        clearTimeout(timeout);
+        controller.signal.removeEventListener("abort", cancel);
       }
     };
     void check("POST");
     return () => { controller.abort(); clearTimeout(timer); };
   }, [prepare, endpoint, src, attempt]);
 
-  const preparing = prepare && (!current || current.preparing);
+  const preparing = Boolean(prepare && (!current || current.preparing));
+  const resolvedSource = prepare ? current?.url : src;
   return <>
-    <audio {...props} ref={ref} src={prepare ? current?.url : src} onError={(event) => {
-      if (endpoint && !prepare) setFallbackSource(src ?? null);
+    <audio {...props} ref={attach} className={controls ? "hidden" : className} src={resolvedSource} onError={(event) => {
+      if (endpoint && !prepare && [3, 4].includes(event.currentTarget.error?.code ?? 4)) setFallbackSource(src ?? null);
       else onError?.(event);
     }} />
+    {controls ? <RecordingAudioControls media={media} src={resolvedSource} preparing={preparing}
+      label={props["aria-label"] ?? "Recording"} className={className} /> : null}
     {preparing ? <p role="status" className="mt-2 text-sm text-current/70">Preparing playback…</p> : null}
     {current?.error ? <div role="status" className="mt-2 text-sm">
       <p>{current.error}</p>
