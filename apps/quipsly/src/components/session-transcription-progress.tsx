@@ -17,7 +17,7 @@ export function SessionTranscriptionProgress({sources, onUpdated}: {
     activeRequest.current = null;
   }, []);
   async function retry(source: TranscriptionProgressSource) {
-    if (inFlight.current) return;
+    if (inFlight.current || source.retryable === false) return;
     inFlight.current = true;
     setBusy(source.recordingAssetId);
     setError(null);
@@ -58,20 +58,22 @@ export function SessionTranscriptionProgress({sources, onUpdated}: {
             <p className="text-sm font-semibold text-foreground">{source.participantLabel}</p>
             <p role="status" className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
               {active ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : null}
-              {transcriptionProgressLabel(source.status)}
+              {source.failureCode === "NO_AUDIO_SIGNAL" ? "No audio was captured" : transcriptionProgressLabel(source.status)}
             </p>
           </div>
-          {!active && source.status !== "COMPLETED" ? <button type="button" disabled={Boolean(busy)} onClick={() => void retry(source)}
+          {!active && source.status !== "COMPLETED" && source.retryable !== false ? <button type="button" disabled={Boolean(busy)} onClick={() => void retry(source)}
             aria-label={`${source.transcriptJobId ? "Retry" : "Start"} transcription for ${source.participantLabel}`}
             className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-semibold disabled:opacity-50">
             {busy === source.recordingAssetId ? <LoaderCircle size={15} className="animate-spin" /> : <RefreshCw size={15} />}
             {busy === source.recordingAssetId ? "Starting…" : source.transcriptJobId ? "Retry transcription" : "Transcribe"}
           </button> : null}
         </div>
-        {source.error ? <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">What happened?</summary><p className="mt-2 break-words">{source.error}</p></details> : null}
+        {source.error ? <p className="mt-2 text-sm leading-6 text-muted-foreground">{source.error}</p> : null}
       </div>;
     })}
     {error ? <p role="alert" className="rounded-xl border border-destructive/30 p-3 text-sm text-destructive">{error}</p> : null}
-    <p className="text-xs text-muted-foreground">Your recording is saved. You can keep working while transcription finishes.</p>
+    <p className="text-xs text-muted-foreground">{sources.some(source => ["QUEUED", "RUNNING", "PROCESSING"].includes(source.status ?? ""))
+      ? "Your recording is saved. You can keep working while transcription finishes."
+      : "Your recording is saved. You can listen to it or keep working in this session."}</p>
   </section>;
 }

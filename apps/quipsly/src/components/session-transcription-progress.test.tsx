@@ -43,6 +43,15 @@ it("offers transcription when the saved source has no job yet", async () => {
   await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
 });
 
+it("explains a silent source without offering a futile retry or claiming work is still running", () => {
+  render(<SessionTranscriptionProgress sources={[{...source, failureCode: "NO_AUDIO_SIGNAL", retryable: false,
+    error: "This recording contains no audio signal. Check the microphone before recording again."}]} onUpdated={jest.fn()} />);
+  expect(screen.getByRole("status")).toHaveTextContent("No audio was captured");
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByText(/Check the microphone/)).toBeVisible();
+  expect(screen.queryByText(/while transcription finishes/)).not.toBeInTheDocument();
+});
+
 it("shows a failed request without losing the recording or disabling another attempt", async () => {
   global.fetch = jest.fn().mockResolvedValue({ok: false, json: async () => ({error: "Transcription service is unavailable."})});
   const onUpdated = jest.fn();

@@ -167,6 +167,9 @@ export type SessionReviewPacket = {
     id: string;
     status: string;
     provider: string;
+    failureCode?: string | null;
+    retryable?: boolean;
+    errorMessage?: string | null;
     segmentCount: number;
     wordCount?: number;
     readiness?: SessionTranscriptConfidence;

@@ -112,7 +112,8 @@ describe("Session transcript correction desk", () => {
     const result = await readSessionTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor }) as any;
     expect(prisma.recordingAsset.findMany.mock.calls[0]![0].where).not.toHaveProperty("transcriptJobs");
     expect(result.sessionTranscript).toMatchObject({ status: "incomplete", pendingSourceCount: 1, sourceCount: sameTake ? 1 : 0 });
-    expect(result.sessionTranscript.pendingSources).toEqual([{recordingAssetId: "pending", participantLabel: "Participant recording", transcriptJobId: "pending-job", status: "FAILED", error: "Temporary provider failure"}]);
+    expect(result.sessionTranscript.pendingSources).toEqual([{recordingAssetId: "pending", participantLabel: "Participant recording", transcriptJobId: "pending-job", status: "FAILED",
+      error: "Quipsly could not finish this transcript. The exact recording remains safe and can be tried again.", failureCode: "TRANSCRIPTION_FAILED", retryable: true}]);
     expect(prisma.transcriptJob.findMany).toHaveBeenCalledWith(expect.objectContaining({where: {roomId: "room-1", assetId: {in: ["pending"]}}}));
     expect(result.segments).toEqual(sameTake ? ready.segments : []);
     expect(result.playback).toEqual(sameTake ? ready.playback : null);

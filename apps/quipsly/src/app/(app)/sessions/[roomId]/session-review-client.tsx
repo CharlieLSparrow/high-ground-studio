@@ -4183,7 +4183,7 @@ export function SessionReviewClient({
                     </p>
                   </details>
                 ) : null}
-                {!["QUEUED", "RUNNING", "PROCESSING"].includes(
+                {packet.transcriptJob?.failureCode !== "NO_AUDIO_SIGNAL" && !["QUEUED", "RUNNING", "PROCESSING"].includes(
                   packet.transcriptJob?.status || "",
                 ) &&
                 packet.packet?.safeActions?.find(

@@ -131,7 +131,7 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     expect(screen.getByText(/No configured complete-decode threshold flagged a range/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open in Transcript at 00:00" })).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript&source=master&at=0#transcript-audio-review",
+      "/sessions/room-1?mode=transcript&source=master&at=0",
     );
   });
 
@@ -146,7 +146,7 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     const audio = screen.getByLabelText("Protected source MV7i master.wav") as HTMLAudioElement;
     audio.currentTime = 7.25;
     fireEvent.seeked(audio);
-    expect(screen.getByRole("link", { name: "Open in Transcript at 00:07" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=master&at=7.25#transcript-audio-review");
+    expect(screen.getByRole("link", { name: "Open in Transcript at 00:07" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=master&at=7.25");
   });
   it("restores a source-local moment and reports explicit seek and participant changes", () => {
     const selected = jest.fn();
@@ -173,7 +173,7 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/source check from 00:04/i));
     expect(screen.getByRole("link", { name: "Open in Transcript at 00:04" })).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript&source=historical&at=4#transcript-audio-review",
+      "/sessions/room-1?mode=transcript&source=historical&at=4",
     );
     expect(screen.getByText(/no heard\/approved claim is written/i)).toBeInTheDocument();
   });

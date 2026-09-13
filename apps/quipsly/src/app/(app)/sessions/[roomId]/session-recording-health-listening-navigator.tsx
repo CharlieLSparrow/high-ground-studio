@@ -122,7 +122,7 @@ export function SessionRecordingHealthListeningNavigator({
   const selected = sources.find((source) => source.recordingAssetId === selectedId) ?? sources[0] ?? null;
   const waveform = useMemo(() => compactWaveform(selected?.signal ?? null), [selected?.signal]);
   const transcriptHref = selected
-    ? `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(selected.recordingAssetId)}&at=${encodeURIComponent(String(Number(selectedSeconds.toFixed(3))))}#transcript-audio-review`
+    ? `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(selected.recordingAssetId)}&at=${encodeURIComponent(String(Number(selectedSeconds.toFixed(3))))}`
     : null;
 
   useEffect(() => {

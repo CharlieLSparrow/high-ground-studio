@@ -584,6 +584,49 @@ describe("TranscriptCorrectionDesk", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["NOT_STARTED", "FAILED"])("starts the focused saved source from %s and reveals its resulting words", async status => {
+    const waiting = {...desk(true), transcriptJobId: status === "NOT_STARTED" ? null : "job-1",
+      transcriptStatus: status === "NOT_STARTED" ? null : status, segments: [],
+      processing: status === "NOT_STARTED" ? null : {...desk(true).processing, status, retryable: true,
+        failureCode: "TRANSCRIPTION_FAILED", message: "Transcription could not finish. Try again."}};
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ok: true, json: async () => waiting})
+      .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, status: "COMPLETED"})})
+      .mockResolvedValue({ok: true, json: async () => desk(true)});
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" />);
+    const start = await screen.findByRole("button", {name: `${status === "NOT_STARTED" ? "Start" : "Retry"} transcription for session.wav`});
+    expect(screen.getByRole("heading", {name: "Your transcript"})).toBeVisible();
+    fireEvent.click(start);
+    await screen.findByText("Welcome, everybody.");
+    expect(fetchMock.mock.calls[1]).toEqual(["/api/mobile/capture/transcripts/run", expect.objectContaining({
+      body: JSON.stringify({recordingAssetId: "asset-1"}),
+    })]);
+    expect(screen.getByRole("heading", {name: "Edit the transcript"})).toBeVisible();
+  });
+
+  it("shows a focused silent recording with no retry and no false ready message", async () => {
+    const silent = {...desk(true), transcriptStatus: "FAILED", segments: [], processing: {...desk(true).processing,
+      status: "FAILED", failureCode: "NO_AUDIO_SIGNAL", retryable: false,
+      message: "This recording contains no audio signal. Check the microphone before recording again."}};
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => silent});
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" />);
+    await screen.findByText("No audio was captured");
+    expect(screen.queryByRole("button", {name: /Retry transcription/})).not.toBeInTheDocument();
+    expect(screen.queryByText("Ready to review, correct, and share.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No persisted transcript/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Check the microphone/)).toBeVisible();
+  });
+
+  it("explains a pending recording choice without offering transcription before permission", async () => {
+    const pending = {...desk(false), transcriptJobId: null, transcriptStatus: null, processing: null, segments: [],
+      gate: {allowed: false, error: "Riley has not allowed transcription yet."}};
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => pending});
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" />);
+    expect(await screen.findByText("Riley has not allowed transcription yet.")).toBeVisible();
+    expect(screen.queryByRole("button", {name: /Start transcription/})).not.toBeInTheDocument();
+  });
+
   it("does not stack background reads or apply an old response over a manual refresh", async () => {
     jest.useFakeTimers();
     let finishOld!: (value: unknown) => void;

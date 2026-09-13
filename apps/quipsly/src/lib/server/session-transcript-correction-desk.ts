@@ -1,6 +1,7 @@
 import "server-only";
 import type { TranscriptionProgressSource } from "../transcription-progress";
 import { readSessionRecordingAttempts } from "./session-recording-attempts";
+import { transcriptFailurePresentation } from "./transcript-failure-presentation";
 
 import {
   readTranscriptCorrectionDesk,
@@ -125,12 +126,14 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     where: {roomId: input.roomId, assetId: {in: pendingLanes.map(source => source.id)}},
     orderBy: [{createdAt: "desc"}, {id: "desc"}],
     distinct: ["assetId"],
-    select: {id: true, assetId: true, status: true, errorMessage: true},
+    select: {id: true, assetId: true, status: true, provider: true, errorMessage: true},
   }) : [];
   const pendingSources: TranscriptionProgressSource[] = pendingLanes.map(source => {
     const job = pendingJobs.find((job: any) => job.assetId === source.id);
+    const failure = transcriptFailurePresentation(job);
     return {recordingAssetId: source.id, participantLabel: text(source.participant?.displayName) || "Participant recording",
-      transcriptJobId: job?.id ?? null, status: job?.status ?? null, error: job?.errorMessage ?? null};
+      transcriptJobId: job?.id ?? null, status: job?.status ?? null, error: failure.errorMessage,
+      failureCode: failure.failureCode, retryable: failure.failureCode ? failure.retryable : undefined};
   });
   const selected = lanes.filter(source => source.transcriptJobs[0]?.id);
   if (!selected.length) {

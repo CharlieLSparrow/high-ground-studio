@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { transcriptFailurePresentation } from "@/lib/server/transcript-failure-presentation";
 import {
   isTranscriptGoalReviewDecision,
   isTranscriptNoteReviewDecision,
@@ -1444,6 +1445,7 @@ export async function GET(request: Request) {
           id: latestTranscriptJob.id,
           status: latestTranscriptJob.status,
           provider: latestTranscriptJob.provider,
+          ...transcriptFailurePresentation(latestTranscriptJob),
           segmentCount: latestTranscriptJob._count?.segments ?? 0,
           wordCount: latestTranscriptJob._count?.words ?? 0,
           readiness: transcriptConfidence,

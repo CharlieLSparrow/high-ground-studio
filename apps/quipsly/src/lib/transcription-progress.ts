@@ -4,6 +4,8 @@ export type TranscriptionProgressSource = {
   transcriptJobId: string | null;
   status: string | null;
   error: string | null;
+  failureCode?: string | null;
+  retryable?: boolean;
 };
 
 export function transcriptionProgressLabel(status: string | null) {

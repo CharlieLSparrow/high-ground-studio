@@ -1018,6 +1018,19 @@ describe("Session review goal candidates", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started\. This page updates automatically while Quipsly works/i);
   });
 
+  it("does not offer a second retry for a conclusively silent source in session details", async () => {
+    const failed = packetReadyToBuild();
+    failed.transcriptJob = {...failed.transcriptJob!, status: "FAILED", segmentCount: 0,
+      failureCode: "NO_AUDIO_SIGNAL", retryable: false};
+    failed.packet = {...failed.packet!, status: "NOT_READY", safeActions: [{
+      id: "repair-transcript-first", label: "Retry", enabled: true, risk: "medium", why: "Failed", boundary: "Same source",
+    }]};
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(failed));
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{total: 2, granted: 2, transcriptionPermitted: 2}} />);
+    await screen.findByText("Failed");
+    expect(screen.queryByRole("button", {name: "Retry transcription"})).not.toBeInTheDocument();
+  });
+
   it("retries a released transcript that was held before current consent became ready", async () => {
     const held = packetReadyToBuild();
     held.transcriptJob = {

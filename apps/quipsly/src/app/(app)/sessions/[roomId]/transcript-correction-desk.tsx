@@ -164,6 +164,8 @@ type Desk = {
   processing: null | {
     status: string;
     message: string | null;
+    failureCode?: string | null;
+    retryable?: boolean;
     wordCount: number;
     sourceBound: boolean;
     executionRequestedAt: string | null;
@@ -2239,6 +2241,16 @@ function TranscriptCorrectionDeskContent({
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{readError || "The transcript could not load. Please try again."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
+  const progressSources: TranscriptionProgressSource[] = desk.sessionTranscript?.pendingSources?.length
+    ? desk.sessionTranscript.pendingSources
+    : desk.recording && desk.transcriptStatus !== "COMPLETED" ? [{
+      recordingAssetId: desk.recording.id,
+      participantLabel: desk.processing?.routing?.participantLabel || desk.recording.fileName,
+      transcriptJobId: desk.transcriptJobId, status: desk.transcriptStatus,
+      error: !desk.gate.allowed ? desk.gate.error || "Recording permission is needed before transcription can start." : desk.processing?.message ?? null,
+      failureCode: desk.processing?.failureCode,
+      retryable: !desk.gate.allowed ? false : desk.processing?.failureCode ? desk.processing.retryable : undefined,
+    }] : [];
   const unidentifiedSpeakerCount = speakerGroupsNeedingIdentity.length;
   const identifiedSpeakerCount = Math.max(0, (desk.speakerGroups?.length ?? 0) - unidentifiedSpeakerCount);
   const timingIntegrity = currentEvidence?.transcript.timingIntegrity ?? null;
@@ -2274,8 +2286,10 @@ function TranscriptCorrectionDeskContent({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Transcript</p>
-            <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Edit the transcript</h2>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Correct any words or speaker names directly. Play a passage whenever hearing the source would help. Transcript corrections never cut the recording.</p>
+            <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{desk.segments.length ? "Edit the transcript" : "Your transcript"}</h2>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">{desk.segments.length
+              ? "Correct any words or speaker names directly. Play a passage whenever hearing the source would help. Transcript corrections never cut the recording."
+              : "Your recording and transcript stay together. Timed words will appear here when transcription is ready."}</p>
             {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{desk.segments.length} timed passage{desk.segments.length === 1 ? "" : "s"}{reviewedSegmentCount > 0 ? ` · ${reviewedSegmentCount} edited or marked correct` : ""}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -2297,22 +2311,15 @@ function TranscriptCorrectionDeskContent({
             <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=recordings`} className="mt-2 inline-flex min-h-11 items-center font-semibold underline underline-offset-4">View recordings and progress</Link> : null}
           {desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs text-muted-foreground">Timing is estimated. Source audio and original timestamps are preserved.</p> : null}
         </div> : null}
-        {desk.sessionTranscript?.pendingSources?.length ? <SessionTranscriptionProgress key={`${roomId}:${recordingAssetId ?? "session"}`} sources={desk.sessionTranscript.pendingSources} onUpdated={() => load(true)} /> : null}
-        {desk.processing && (
+        {progressSources.length ? <SessionTranscriptionProgress key={`${roomId}:${recordingAssetId ?? "session"}`} sources={progressSources} onUpdated={() => load(true)} /> : null}
+        {desk.processing && desk.transcriptStatus === "COMPLETED" && (
           <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#987443]">
-                {desk.transcriptStatus === "COMPLETED"
-                  ? `${desk.processing.wordCount} timed words ready`
-                  : desk.transcriptStatus === "RUNNING"
-                    ? "Transcribing safely in the background"
-                    : `Transcript ${humanize(desk.transcriptStatus || "not started")}`}
+                {desk.processing.wordCount} timed words ready
               </p>
               <p className="mt-1 text-sm font-semibold leading-relaxed text-[#5f4d37]">
-                {desk.processing.message
-                  || (desk.transcriptStatus === "RUNNING"
-                    ? "You can leave this page and come back when it is ready."
-                    : "Ready to review, correct, and share.")}
+                Ready to review, correct, and share.
               </p>
             </div>
             <details className="rounded-xl border border-indigo-200 bg-white p-4">
@@ -2434,7 +2441,7 @@ function TranscriptCorrectionDeskContent({
             </ol>
           </div>
         </section>
-      ) : desk.gate.allowed ? <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No persisted transcript segments are available for this session.</div> : desk.sessionTranscript?.pendingSources?.length ? null : protectedPlaybackSurface}
+      ) : progressSources.length ? null : desk.gate.allowed ? <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">There are no transcript words in this recording yet.</div> : protectedPlaybackSurface}
 
       <section id="transcript-audio-review" tabIndex={-1} className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 shadow-sm" aria-labelledby="transcript-quality-heading">
         <button
