@@ -48,7 +48,18 @@ describe("recording attempts within one Session", () => {
 
   it("never binds a source to a receipt owned by another participant", () => {
     const groups = recordingShareAttempts([sources[3]!], [{...receipts[3]!, participantId: "unrelated"}]);
-    expect(groups[0]?.id).toBe("group:same-session");
+    expect(groups[0]?.id).toBe("span:source-3");
+  });
+
+  it("separates standalone recordings without START receipts while preserving overlapping reconnect coverage", () => {
+    const groups = recordingShareAttempts(sources, []);
+    expect(groups.map(group => group.sources.map(source => source.id))).toEqual([
+      ["source-3"], ["source-0", "source-1", "source-2"],
+    ]);
+    const short = [0, 1, 2].map(n => ({ ...sources[0]!, id: `short-${n}`, recordedStartedAt: at(n * 30), recordedStoppedAt: at(n * 30 + 9) }));
+    expect(recordingShareAttempts(short, []).map(group => group.sources.map(source => source.id))).toEqual([
+      ["short-2"], ["short-1"], ["short-0"],
+    ]);
   });
 
   async function read(takeId?: string, role = "coach") {

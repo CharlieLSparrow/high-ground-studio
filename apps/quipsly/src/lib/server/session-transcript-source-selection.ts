@@ -23,11 +23,27 @@ export function selectSessionTranscriptSources<T extends SessionTranscriptSource
   anchorRecordingAssetId?: string | null;
   attempts?: SessionRecordingAttempt<T>[];
 }): Array<T | null> {
-  const rows = input.rows.filter((row) => row.participantId && row.transcriptJobs[0]?.id);
+  return selectSessionTranscriptRecordingLanes(input).map(source => source?.transcriptJobs[0]?.id ? source : null);
+}
+
+/** Keep pending recordings in the take and coverage calculation. Readiness must
+ * never switch an explicitly selected take or erase a reconnect segment. */
+export function selectSessionTranscriptRecordingLanes<T extends SessionTranscriptSourceCandidate>(input: {
+  rows: T[];
+  participantIds?: string[];
+  anchorRecordingAssetId?: string | null;
+  attempts?: SessionRecordingAttempt<T>[];
+}): Array<T | null> {
+  const rows = input.rows.filter((row) => row.participantId);
   const anchor = rows.find((row) => row.id === input.anchorRecordingAssetId) ?? null;
+  if (input.anchorRecordingAssetId && !anchor) return (input.participantIds ?? []).map(() => null);
   const anchorGroupId = captureGroupId(anchor?.localManifestJson);
+  const newestGroupId = captureGroupId([...rows].sort((a, b) =>
+    b.recordedStartedAt.getTime() - a.recordedStartedAt.getTime() || a.id.localeCompare(b.id),
+  )[0]?.localManifestJson);
+  const selectedGroupId = anchor ? anchorGroupId : newestGroupId;
   const attempts = input.attempts;
-  const attempt = attempts?.some(value => value.id.startsWith("start:"))
+  const attempt = attempts?.some(value => value.id.startsWith("start:") || value.id !== "group:unbound")
     ? anchor
       ? attempts.find(value => value.sources.some(source => source.id === anchor.id))
       : attempts[0]
@@ -35,8 +51,8 @@ export function selectSessionTranscriptSources<T extends SessionTranscriptSource
   const attemptSourceIds = attempt && new Set(attempt.sources.map(source => source.id));
   const take = attemptSourceIds
     ? rows.filter(row => attemptSourceIds.has(row.id))
-    : anchorGroupId
-    ? rows.filter((row) => captureGroupId(row.localManifestJson) === anchorGroupId)
+    : selectedGroupId
+    ? rows.filter((row) => captureGroupId(row.localManifestJson) === selectedGroupId)
     : anchor
       ? newestCoherentRecordingTake(rows.filter((row) => (
           Math.abs(row.recordedStartedAt.getTime() - anchor.recordedStartedAt.getTime()) <= 30_000
@@ -77,10 +93,11 @@ export function selectSessionTranscriptSources<T extends SessionTranscriptSource
       const rightDuration = right.recordedStoppedAt instanceof Date
         ? right.recordedStoppedAt.getTime() - right.recordedStartedAt.getTime()
         : 0;
-      return rightDuration - leftDuration
+      return Number(Boolean(right.transcriptJobs[0]?.id)) - Number(Boolean(left.transcriptJobs[0]?.id))
+        || rightDuration - leftDuration
         || (left.id === input.anchorRecordingAssetId ? -1 : right.id === input.anchorRecordingAssetId ? 1 : 0)
         || kindPriority(left.kind) - kindPriority(right.kind)
-        || right.transcriptJobs[0]!.createdAt.getTime() - left.transcriptJobs[0]!.createdAt.getTime()
+        || (right.transcriptJobs[0]?.createdAt.getTime() ?? 0) - (left.transcriptJobs[0]?.createdAt.getTime() ?? 0)
         || left.id.localeCompare(right.id);
     })[0]!);
   });

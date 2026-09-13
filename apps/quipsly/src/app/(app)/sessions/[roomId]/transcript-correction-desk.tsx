@@ -253,6 +253,7 @@ type Desk = {
     status: "single-source" | "assembled" | "incomplete" | "held";
     reason: string;
     sourceCount: number;
+    pendingSourceCount?: number;
     programClock: null | {
       authority: "single-source-origin" | "reviewed-waveform-placement" | "capture-clock-proposal" | "reported-wall-clock-fallback";
       waveformReviewRequired: boolean;
@@ -1938,10 +1939,12 @@ function TranscriptCorrectionDeskContent({
   }, [desk?.playback?.sourceId, normalizedInitialPlaybackSeconds]);
 
   useEffect(() => {
-    if (!["QUEUED", "RUNNING"].includes(desk?.transcriptStatus || "")) return;
-    const interval = window.setInterval(() => void load(true), 5_000);
+    if (!["QUEUED", "RUNNING"].includes(desk?.transcriptStatus || "") && !desk?.sessionTranscript?.pendingSourceCount) return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") void load(true);
+    }, 5_000);
     return () => window.clearInterval(interval);
-  }, [desk?.transcriptStatus, load]);
+  }, [desk?.transcriptStatus, desk?.sessionTranscript?.pendingSourceCount, load]);
 
   useEffect(() => {
     const revealLinkedAudioReview = () => {
@@ -2363,7 +2366,16 @@ function TranscriptCorrectionDeskContent({
         </div>
         {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-900">{message}</p>}
         {readError && <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">{readError}</p>}
-        {desk.sessionTranscript ? <div className={`mt-4 rounded-xl border p-4 text-sm font-semibold leading-relaxed ${desk.sessionTranscript.status === "assembled" ? "border-indigo-200 bg-indigo-50 text-indigo-950" : desk.sessionTranscript.status === "held" || desk.sessionTranscript.status === "incomplete" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-slate-200 bg-slate-50 text-slate-800"}`}><p className="font-black">{desk.sessionTranscript.status === "assembled" ? `${desk.sessionTranscript.sourceCount} participant recordings on one Session timeline` : desk.sessionTranscript.status === "single-source" ? "One participant recording ready" : "Complete Session transcript still preparing"}</p><p className="mt-1 text-xs">{desk.sessionTranscript.reason}</p>{desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs font-black uppercase tracking-wide">Provisional clock placement · waveform and drift review still required</p> : null}</div> : null}
+        {desk.sessionTranscript ? <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4 text-sm leading-relaxed text-foreground">
+          <p className="font-semibold">{desk.sessionTranscript.status === "assembled"
+            ? `${desk.sessionTranscript.sourceCount} participant recordings on one Session timeline`
+            : desk.sessionTranscript.status === "single-source" ? "One participant recording ready"
+              : desk.sessionTranscript.sourceCount ? "Your available transcript" : "Transcript not ready yet"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{desk.sessionTranscript.reason}</p>
+          {desk.sessionTranscript.status === "incomplete" || desk.sessionTranscript.status === "held" ?
+            <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=recordings`} className="mt-2 inline-flex min-h-11 items-center font-semibold underline underline-offset-4">View recordings and progress</Link> : null}
+          {desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs text-muted-foreground">Timing is estimated. Source audio and original timestamps are preserved.</p> : null}
+        </div> : null}
         {preparedTranscript ? <a href={preparedTranscript.url} download={preparedTranscript.filename} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Download size={15} aria-hidden="true" />Download prepared transcript</a> : null}
         {desk.processing && (
           <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">

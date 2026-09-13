@@ -4,6 +4,7 @@ type Source = {
   id: string;
   participantId: string | null;
   recordedStartedAt: Date;
+  recordedStoppedAt?: Date | null;
   localManifestJson?: unknown;
 };
 export type RecordingAttemptReceipt = {
@@ -50,7 +51,29 @@ export function recordingShareAttempts<T extends Source>(
     group.sources.push(source);
     groups.set(id, group);
   }
-  return [...groups.values()].sort(
+  const attempts = [...groups.values()].flatMap(group => {
+    if (group.id.startsWith("start:") || !group.sources.every(source =>
+      source.recordedStoppedAt instanceof Date && source.recordedStoppedAt > source.recordedStartedAt,
+    )) return [group];
+    // A room can be reused for many standalone Record/Stop actions. Without a
+    // shared START receipt, only overlapping recording coverage joins sources.
+    // A continuous participant track bridges another participant's reconnect.
+    const spans: Array<SessionRecordingAttempt<T> & { end: number }> = [];
+    for (const source of [...group.sources].sort((a, b) =>
+      a.recordedStartedAt.getTime() - b.recordedStartedAt.getTime() || a.id.localeCompare(b.id),
+    )) {
+      const previous = spans.at(-1);
+      if (previous && source.recordedStartedAt.getTime() <= previous.end + 2_000) {
+        previous.sources.push(source);
+        previous.end = Math.max(previous.end, source.recordedStoppedAt!.getTime());
+      } else {
+        spans.push({ id: `span:${source.id}`, startedAt: source.recordedStartedAt,
+          sources: [source], end: source.recordedStoppedAt!.getTime() });
+      }
+    }
+    return spans.map(({ end: _end, ...attempt }) => attempt);
+  });
+  return attempts.sort(
     (a, b) => b.startedAt.getTime() - a.startedAt.getTime() || a.id.localeCompare(b.id),
   );
 }

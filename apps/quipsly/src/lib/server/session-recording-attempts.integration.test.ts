@@ -91,4 +91,24 @@ if (enabled) {
     const earlier = selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: id("source-0")}).filter(row => row !== null);
     expect(new Set(earlier.map(row => row.id))).toEqual(new Set([0, 1, 2].map(n => id(`source-${n}`))));
   });
+
+  it("opens one standalone capture rather than padding reused-room recordings into a long timeline", async () => {
+    for (const [index, start] of [7200, 7230].entries()) {
+      await prisma.recordingAsset.create({data: {id: id(`standalone-${index}`), roomId: id("room"), participantId: id("coach-participant"), kind: "LOCAL_AUDIO", status: "VERIFIED",
+        contentType: "audio/webm", byteSize: 1000n, checksum: "c".repeat(64), storageBucket: "local-test", storageObjectPath: `${prefix}/standalone-${index}.webm`,
+        recordedStartedAt: at(start), recordedStoppedAt: at(start + 9),
+        localManifestJson: {captureId: randomUUID(), captureGroupId: group, exactBytesVerified: true}}});
+    }
+    const latest = await readSessionRecordingShare(prisma, {roomId: id("room"), actor: actor("coach")});
+    expect(latest.available.programDurationSeconds).toBe(9);
+    expect(latest.available.sources.map(source => source.id)).toEqual([id("standalone-1")]);
+    expect(latest.available.takes).toHaveLength(4);
+    const assets = await prisma.recordingAsset.findMany({where: {roomId: id("room")}});
+    const rows = assets.map(asset => ({ ...asset, recordedStartedAt: asset.recordedStartedAt!,
+      transcriptJobs: asset.id.includes("standalone") ? [] : [{ id: `job-${asset.id}`, createdAt: asset.createdAt }],
+    }));
+    const attempts = await readSessionRecordingAttempts(prisma, id("room"), rows);
+    expect(selectSessionTranscriptSources({rows, attempts})).toEqual([null]);
+    expect(selectSessionTranscriptSources({rows, attempts, anchorRecordingAssetId: id("source-3")}).map(row => row?.id)).toEqual([id("source-3")]);
+  });
 });

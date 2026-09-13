@@ -138,7 +138,6 @@ async function readCompleteCoachingTranscript(input: {
       checksum: { not: null },
       recordedStartedAt: { not: null },
       recordedStoppedAt: { not: null },
-      transcriptJobs: { some: { status: "COMPLETED" } },
     },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
     select: {
@@ -161,7 +160,7 @@ async function readCompleteCoachingTranscript(input: {
     rows,
     attempts: await readSessionRecordingAttempts(input.prisma, input.roomId, rows),
     participantIds,
-    anchorRecordingAssetId: input.recordingAssetId ?? anchor.recording.id,
+    anchorRecordingAssetId: input.recordingAssetId,
   });
   if (selected.some((source) => !source)) {
     throw new CoachingTranscriptReportError(

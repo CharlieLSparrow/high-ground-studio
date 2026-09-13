@@ -532,6 +532,29 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.queryByText(/taking too long to load/i)).not.toBeInTheDocument();
   });
 
+  it("refreshes missing participant transcripts even when the visible transcript is completed, preserving a draft", async () => {
+    jest.useFakeTimers();
+    const partial = { ...desk(true), transcriptStatus: "COMPLETED", sessionTranscript: {
+      schema: "quipsly-session-transcript-correction-desk-v1", status: "incomplete", sourceCount: 1,
+      pendingSourceCount: 1, reason: "Another participant transcript is not ready yet.", programClock: null, sources: [],
+    } };
+    const ready = { ...partial, sessionTranscript: { ...partial.sessionTranscript, status: "assembled", pendingSourceCount: 0, sourceCount: 2 } };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => partial })
+      .mockResolvedValue({ ok: true, json: async () => ready });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await act(async () => { render(<TranscriptCorrectionDesk roomId="room-1" />); });
+    expect(screen.getByRole("link", { name: "View recordings and progress" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    fireEvent.change(screen.getByLabelText(/correct transcript words/i), { target: { value: "My unfinished correction." } });
+    await act(async () => { jest.advanceTimersByTime(5_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText(/correct transcript words/i)).toHaveValue("My unfinished correction.");
+    expect(screen.getByText("2 participant recordings on one Session timeline")).toBeInTheDocument();
+    await act(async () => { jest.advanceTimersByTime(15_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("does not stack background reads or apply an old response over a manual refresh", async () => {
     jest.useFakeTimers();
     let finishOld!: (value: unknown) => void;
@@ -1143,7 +1166,7 @@ describe("TranscriptCorrectionDesk", () => {
     await waitFor(() => expect(clientMedia.getAttribute("src")).toBe("/api/ingest/media/source-2"));
     expect(clientMedia.currentTime).toBe(2);
     expect(screen.getByText(/2 participant recordings on one session timeline/i)).toBeInTheDocument();
-    expect(screen.getByText(/waveform and drift review still required/i)).toBeInTheDocument();
+    expect(screen.getByText(/Timing is estimated\. Source audio and original timestamps are preserved/i)).toBeInTheDocument();
   });
 
   it.each([true, false])("creates a self-owned task with exact source identity when playback availability is %s", async (hasPlayback) => {

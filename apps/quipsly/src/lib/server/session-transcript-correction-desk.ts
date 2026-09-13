@@ -14,7 +14,7 @@ import {
   SessionReviewedSourcePlacementError,
 } from "./session-reviewed-source-placement";
 import {
-  selectSessionTranscriptSources,
+  selectSessionTranscriptRecordingLanes,
   transcriptSourceCaptureGroupId,
   type SessionTranscriptSourceCandidate,
 } from "./session-transcript-source-selection";
@@ -94,7 +94,6 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       checksum: { not: null },
       recordedStartedAt: { not: null },
       recordedStoppedAt: { not: null },
-      transcriptJobs: { some: { status: "COMPLETED" } },
     },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
     select: {
@@ -113,12 +112,26 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       },
     },
   })) as Candidate[];
-  const selected = selectSessionTranscriptSources({
+  const lanes = selectSessionTranscriptRecordingLanes({
     rows,
     attempts: await readSessionRecordingAttempts(input.prisma, input.roomId, rows),
-    anchorRecordingAssetId: anchor.recording?.id ?? null,
   }).filter((source): source is Candidate => Boolean(source));
+  const pendingCount = lanes.filter(source => !source.transcriptJobs[0]?.id).length;
+  const selected = lanes.filter(source => source.transcriptJobs[0]?.id);
   if (!selected.length) {
+    if (pendingCount) return {
+      ...anchor,
+      transcriptJobId: null, recording: null, playback: null, spectralContext: null,
+      transcriptStatus: null, processing: null, evidence: null,
+      segments: [], speakerGroups: [],
+      gate: { allowed: false, error: "This recording’s transcript is not ready yet." },
+      sessionTranscript: {
+        schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
+        status: "incomplete" as const,
+        reason: "This recording’s transcript is not ready yet. Check its progress in Recordings; earlier recordings remain available there too.",
+        sourceCount: 0, pendingSourceCount: pendingCount, programClock: null, sources: [],
+      },
+    };
     return anchor;
   }
 
@@ -146,10 +159,12 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       ...visibleDesk,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
-        status: "single-source" as const,
+        status: pendingCount ? "incomplete" as const : "single-source" as const,
         reason:
-          "Only one participant-owned transcript source is ready in this Session take.",
+          pendingCount ? "Some recording transcripts are not ready yet. You can work with the available transcript now; check progress in Recordings."
+            : "Only one participant-owned transcript source is ready in this Session take.",
         sourceCount: 1,
+        pendingSourceCount: pendingCount,
         programClock: null,
         sources: [sourceSummary(visibleDesk, selected[0]!)],
       },
@@ -169,6 +184,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
             ? "The participant-owned transcript is still held or changed identity. The current accessible transcript remains reviewable."
             : "Another participant source is still held or changed identity. The exact current source remains reviewable.",
         sourceCount: validDesks.length,
+        pendingSourceCount: pendingCount,
         programClock: null,
         sources: desks.map((desk, index) =>
           sourceSummary(desk, selected[index]!),
@@ -233,9 +249,10 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       segments,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
-        status: "assembled" as const,
-        reason: programClock.reason,
+        status: pendingCount ? "incomplete" as const : "assembled" as const,
+        reason: pendingCount ? "Some recording transcripts are not ready yet. Available participant tracks are on the timeline now; check progress in Recordings." : programClock.reason,
         sourceCount: sources.length,
+        pendingSourceCount: pendingCount,
         programClock,
         sources,
       },

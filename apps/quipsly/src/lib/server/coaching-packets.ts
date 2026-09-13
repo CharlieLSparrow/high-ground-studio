@@ -802,7 +802,6 @@ export async function resolveSessionPacketTranscript(input: {
       checksum: { not: null },
       recordedStartedAt: { not: null },
       recordedStoppedAt: { not: null },
-      transcriptJobs: { some: { status: "COMPLETED" } },
     },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
     include: {

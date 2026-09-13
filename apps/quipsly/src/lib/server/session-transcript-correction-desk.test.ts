@@ -94,6 +94,28 @@ describe("Session transcript correction desk", () => {
     jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValue([]),
   );
 
+  it.each([false, true])("keeps missing transcript coverage visible without showing an older take (same take: %s)", async (sameTake) => {
+    const ready = desk({ participantId: "coach", recordingAssetId: "ready", transcriptJobId: "ready-job", sha: "a".repeat(64), segmentId: "ready-turn", startSeconds: 0, text: "Available words." });
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(ready as any);
+    const rows = [{
+      id: "ready", participantId: "coach", kind: "LOCAL_AUDIO", checksum: "a".repeat(64),
+      recordedStartedAt: new Date("2026-09-09T12:00:00Z"), recordedStoppedAt: new Date("2026-09-09T12:10:00Z"),
+      localManifestJson: { captureGroupId: "first" }, transcriptJobs: [{ id: "ready-job", createdAt: new Date() }],
+    }, {
+      id: "pending", participantId: "client", kind: "LOCAL_AUDIO", checksum: "b".repeat(64),
+      recordedStartedAt: new Date(sameTake ? "2026-09-09T12:00:00Z" : "2026-09-09T13:00:00Z"), recordedStoppedAt: new Date("2026-09-09T13:10:00Z"),
+      localManifestJson: { captureGroupId: sameTake ? "first" : "second" }, transcriptJobs: [],
+    }];
+    const prisma = { recordingAsset: { findMany: jest.fn(async (_query: { where: Record<string, unknown> }) => rows) } };
+    const result = await readSessionTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor }) as any;
+    expect(prisma.recordingAsset.findMany.mock.calls[0]![0].where).not.toHaveProperty("transcriptJobs");
+    expect(result.sessionTranscript).toMatchObject({ status: "incomplete", pendingSourceCount: 1, sourceCount: sameTake ? 1 : 0 });
+    expect(result.segments).toEqual(sameTake ? ready.segments : []);
+    expect(result.playback).toEqual(sameTake ? ready.playback : null);
+    expect(result.transcriptJobId).toBe(sameTake ? "ready-job" : null);
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledTimes(sameTake ? 2 : 1);
+  });
+
   it("does not pull an earlier Record/Stop into the current transcript in the same room group", async () => {
     const captureIds = [
       "50000000-0000-4000-8000-000000000001",
