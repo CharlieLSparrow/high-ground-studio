@@ -3859,13 +3859,13 @@ export function SessionReviewClient({
             key={`${roomId}|${focusedRecordingAssetId || "latest"}`} roomId={roomId}
             initialSourceId={focusedRecordingAssetId}
             onTakeSourcesChange={mediaNavigation.selectTake}
-            renderOriginalRecordings={sourceIds => {
+            renderOriginalRecordings={(sourceIds, trimControls) => {
               const health = buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence });
               return <><RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} sourceIds={sourceIds} />
               <SessionRecordingHealthListeningNavigator key={sourceIds.join("|")} roomId={roomId}
                 health={{...health, sources: health.sources.filter(source => sourceIds.includes(source.recordingAssetId || ""))}}
                 evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
-                onMediaFocusChange={mediaNavigation.select} presentation="workspace" /></>;
+                onMediaFocusChange={mediaNavigation.select} trimControls={trimControls} presentation="workspace" /></>;
             }} /> : null}
           <details className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
             <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Import a recording</summary>

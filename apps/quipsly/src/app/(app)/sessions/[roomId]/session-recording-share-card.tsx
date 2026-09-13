@@ -252,7 +252,13 @@ export function SessionRecordingShareCard({
   roomId: string;
   focusTranscriptKey?: string | null;
   initialSourceId?: string | null;
-  renderOriginalRecordings?: (sourceIds: string[]) => ReactNode;
+  renderOriginalRecordings?: (sourceIds: string[], editing: {
+    selectedSourceIds: string[];
+    startSeconds: number;
+    endSeconds: number;
+    disabled: boolean;
+    onTrimBoundary: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
+  }) => ReactNode;
   onTakeSourcesChange?: (sourceIds: string[]) => void;
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -406,6 +412,27 @@ export function SessionRecordingShareCard({
   }, [load, snapshot?.output]);
 
   const duration = snapshot?.available?.programDurationSeconds || 0;
+  function markTrimBoundary(boundary: "start" | "end", sourceId: string, sourceSeconds: number) {
+    if (snapshot?.role !== "COACH" || busy) return;
+    const source = snapshot.available?.sources.find(candidate => candidate.id === sourceId);
+    if (!source || !selected.has(sourceId) || !Number.isFinite(sourceSeconds)
+      || sourceSeconds < 0 || !Number.isFinite(sourceDuration(source)) || sourceSeconds > sourceDuration(source)
+      || !Number.isFinite(source.programOffsetSeconds)) {
+      setNotice("Choose a track included in this edit before marking its start or end.");
+      return;
+    }
+    // The player clock belongs to one source; edit boundaries belong to the
+    // assembled session. Never treat a late-joining participant's zero as zero.
+    const position = Math.max(0, Math.min(duration, source.programOffsetSeconds + sourceSeconds));
+    if (boundary === "start" ? position > endSeconds - MIN_TRIM_SECONDS : position < startSeconds + MIN_TRIM_SECONDS) {
+      setNotice(boundary === "start" ? "Choose a start before the current end, or extend the end first." : "Choose an end after the current start, or move the start first.");
+      return;
+    }
+    draftTouched.current = true;
+    setEditing(true);
+    editDispatch({type: "change", at: Date.now(), update: boundary === "start" ? {startSeconds: position} : {endSeconds: position}});
+    setNotice(null);
+  }
   const timeline = snapshot?.available?.timeline;
   const maximumTimingUncertainty = Math.max(
     0,
@@ -630,7 +657,9 @@ export function SessionRecordingShareCard({
         <span className="mt-1 block text-xs font-normal">Separate recordings stay separate. Reconnected devices stay with their original attempt.</span>
       </label> : null}
 
-      {coach && renderOriginalRecordings ? <div className="mt-4">{renderOriginalRecordings((snapshot.available?.sources || []).map(source => source.id))}</div> : null}
+      {coach && renderOriginalRecordings ? <div className="mt-4">{renderOriginalRecordings((snapshot.available?.sources || []).map(source => source.id), {
+        selectedSourceIds: [...selected], startSeconds, endSeconds, disabled: Boolean(busy), onTrimBoundary: markTrimBoundary,
+      })}</div> : null}
 
       {coach && (!output || editing) ? (
         <fieldset disabled={Boolean(busy)} onChange={() => { draftTouched.current = true; }} onClick={() => { draftTouched.current = true; }}

@@ -62,6 +62,7 @@ export function SessionRecordingHealthListeningNavigator({
   preferredSourceId = null,
   initialPlaybackSeconds = null,
   onMediaFocusChange,
+  trimControls,
 }: {
   roomId: string;
   health: SessionRecordingHealth;
@@ -70,6 +71,13 @@ export function SessionRecordingHealthListeningNavigator({
   preferredSourceId?: string | null;
   initialPlaybackSeconds?: number | null;
   onMediaFocusChange?: (sourceId: string, seconds: number | null) => void;
+  trimControls?: {
+    selectedSourceIds: string[];
+    startSeconds: number;
+    endSeconds: number;
+    disabled: boolean;
+    onTrimBoundary: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
+  };
 }) {
   const workspace = presentation === "workspace";
   const sources = useMemo<AuditionSource[]>(() => {
@@ -168,7 +176,7 @@ export function SessionRecordingHealthListeningNavigator({
         ? `Playing ${selected.label} from ${timestampForSeconds(playStart)}.`
         : `Playing a bounded ${Math.max(1, Math.ceil((stopAt ?? playStart) - playStart))}-second source check from ${timestampForSeconds(playStart)}.`);
     } catch {
-      setMessage("Playback needs a direct browser interaction. Use the native source controls, then retry the selected time.");
+      setMessage("Press Play in the recording controls to start listening, then try again.");
     }
   }
 
@@ -207,8 +215,13 @@ export function SessionRecordingHealthListeningNavigator({
       </button></li>)}
     </ul>
 
-    {selected ? <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]">
-      <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 p-4 text-white">
+    {selected ? <div className={`mt-3 grid gap-4 ${workspace ? "" : "xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]"}`}>
+      <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 p-4 text-white" onSeekedCapture={event => {
+        const media = event.target;
+        if (!(media instanceof HTMLMediaElement)) return;
+        observe(media);
+        onMediaFocusChange?.(selected.recordingAssetId, media.currentTime);
+      }}>
         <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-wide text-cyan-200">{selected.participantLabel} · {workspace ? ({loading: "Loading audio", ready: "Ready to play", playing: "Playing", paused: "Paused", error: "Playback unavailable"}[playbackState]) : selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className="inline-flex items-center gap-1 font-mono text-xs font-black text-cyan-100"><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
         {selected.kind === "video"
           ? <video key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 max-h-80 w-full rounded-lg bg-black" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />
@@ -216,23 +229,39 @@ export function SessionRecordingHealthListeningNavigator({
 
         {waveform.length ? <div className="mt-4 flex h-24 items-end gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-900 px-2 pt-2" aria-label="Complete-decode waveform overview" role="img">{waveform.map((point, index) => <span key={`${point.startSeconds}-${index}`} className="min-w-px flex-1 rounded-t-sm bg-cyan-300/80" style={{ height: `${waveformHeight(point.rmsDbfs)}%` }} />)}</div> : <p className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-slate-300">{workspace ? "You can listen now. The waveform will appear when audio analysis finishes." : "No waveform overview is attached. Native playback remains available, but Quipsly does not invent a visual signal trace."}</p>}
 
-        <label htmlFor="flight-deck-source-clock" className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-100">Selected source time</label>
+        {!workspace ? <><label htmlFor="flight-deck-source-clock" className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-100">Selected source time</label>
         <input id="flight-deck-source-clock" type="range" min={0} max={selected.durationSeconds} step={0.01} value={Math.min(selectedSeconds, selected.durationSeconds)} onChange={(event) => seek(Number(event.target.value))} className="mt-2 w-full accent-cyan-300" />
+        </> : null}
         <div className="mt-3 flex flex-wrap gap-2">
+          {!workspace ? <>
           <button type="button" onClick={() => void play(null)} disabled={playbackState === "error"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-cyan-200 px-4 text-xs font-black text-slate-950 disabled:opacity-50"><Play size={14} fill="currentColor" aria-hidden="true" />Play from selected time</button>
           <button type="button" onClick={() => void play(10)} disabled={playbackState === "error"} data-flight-deck-ten-second-check className="inline-flex min-h-11 items-center gap-2 rounded-full border border-cyan-300 bg-slate-900 px-4 text-xs font-black text-cyan-100 disabled:opacity-50"><Clock3 size={14} aria-hidden="true" />Check up to 10 seconds</button>
           <button type="button" onClick={() => { mediaRef.current?.pause(); stopAtRef.current = null; setPlaybackState("paused"); }} disabled={playbackState !== "playing"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-600 bg-slate-900 px-4 text-xs font-black text-slate-200 disabled:opacity-50"><Pause size={14} aria-hidden="true" />Pause</button>
+          </> : null}
+          {trimControls ? (["start", "end"] as const).map(boundary => <button key={boundary} type="button"
+            disabled={trimControls.disabled || !trimControls.selectedSourceIds.includes(selected.recordingAssetId) || playbackState === "loading" || playbackState === "error"}
+            onClick={() => trimControls.onTrimBoundary(boundary, selected.recordingAssetId, mediaRef.current?.currentTime ?? selectedSeconds)}
+            className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">
+            Set {boundary} here
+          </button>) : null}
           {transcriptHref ? <Link href={transcriptHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-100 px-4 text-xs font-black text-violet-950">Open in Transcript at {timestampForSeconds(selectedSeconds)}</Link> : null}
         </div>
+        {trimControls ? <p role="status" aria-label="Recording trim range" className="mt-3 text-sm tabular-nums text-slate-200">
+          Keep {timestampForSeconds(trimControls.startSeconds)} – {timestampForSeconds(trimControls.endSeconds)} of the session
+        </p> : null}
         {message ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-cyan-100">{message}</p> : null}
         {!workspace ? <p className="mt-3 text-[9px] font-black uppercase tracking-wide text-slate-500">Client playback is navigation only · no heard/approved claim is written</p> : null}
       </div>
 
-      <aside className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4" aria-label="Signal observations for selected source">
+      <details open={workspace ? undefined : true} className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
+        <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-cyan-950">Audio details</summary>
+      <aside aria-label="Signal observations for selected source">
+        {workspace ? <button type="button" onClick={() => void play(10)} disabled={playbackState === "error"} data-flight-deck-ten-second-check className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-cyan-300 px-4 text-xs font-bold text-cyan-950 disabled:opacity-50"><Clock3 size={14} aria-hidden="true" />Check up to 10 seconds</button> : null}
         <p className="text-[10px] font-black uppercase tracking-wide text-cyan-900">Exact-time observations</p>
         {selected.signal?.observations.length ? <ol className="mt-3 space-y-2">{selected.signal.observations.map((observation, index) => <li key={`${observation.kind}-${observation.startSeconds}-${index}`}><button type="button" onClick={() => { seek(observation.startSeconds); void play(10, observation.startSeconds); }} className="min-h-11 w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs font-bold leading-5 text-amber-950"><span className="block font-black uppercase tracking-wide">{timestampForSeconds(observation.startSeconds)} · {observation.kind.replaceAll("-", " ")}</span><span className="mt-1 block">{observation.detail}</span></button></li>)}</ol> : <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><ShieldCheck size={15} className="mr-1 inline" aria-hidden="true" />{workspace ? (selected.signal ? "No audio issues flagged by the available analysis." : "Audio analysis is not available yet.") : "No configured complete-decode threshold flagged a range. Use the source controls for a representative listen; this is not proof of subjective quality."}</p>}
         {playbackState === "error" ? <p className="mt-3 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950"><CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{workspace ? "This recording could not play. Refresh to try again, or choose another track." : "Playback failed closed. Health evidence remains visible, but no listening claim is available."}</p> : null}
       </aside>
+      </details>
     </div> : null}
   </section>;
 }

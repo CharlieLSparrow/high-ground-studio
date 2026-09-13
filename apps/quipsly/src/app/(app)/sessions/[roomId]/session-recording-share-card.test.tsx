@@ -109,6 +109,52 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByTestId("recording-timeline-status")).not.toHaveTextContent("estimated within");
   });
 
+  it("maps playhead marks to the assembled timeline, saves them, and undoes each mark independently", async () => {
+    const writes: any[] = [];
+    const workspace = {...snapshot, available: {...snapshot.available, selectedTakeId: "take-offset", programDurationSeconds: 35,
+      sources: [{...snapshot.available.sources[0]!, programOffsetSeconds: 5}]}};
+    global.fetch = jest.fn(async (url: string, options?: RequestInit) => {
+      if (!url.includes("/recording-edit")) return response(workspace);
+      if (options?.method === "PUT") {
+        writes.push(JSON.parse(String(options.body)));
+        return response({ok: true, edit: {revision: writes.length}});
+      }
+      return response({ok: true, actorUserId: "coach_user_0001", edit: null});
+    }) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={(_ids, controls) => <>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", 2.125)}>Mark source start</button>
+      <button onClick={() => controls.onTrimBoundary("end", "recording_asset_0001", 20.375)}>Mark source end</button>
+    </>} />);
+    await userEvent.click(await screen.findByRole("button", {name: "Mark source start"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("7.125");
+    await userEvent.click(screen.getByRole("button", {name: "Mark source end"}));
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("25.375");
+    await waitFor(() => expect(writes.at(-1)?.state).toMatchObject({startSeconds: 7.125, endSeconds: 25.375, editing: true}), {timeout: 3000});
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("35");
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("7.125");
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("0");
+    await userEvent.click(screen.getByRole("button", {name: "Redo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("7.125");
+  });
+
+  it("rejects foreign, invalid, and crossed playhead marks without changing the edit", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={(_ids, controls) => <>
+      <button onClick={() => controls.onTrimBoundary("start", "another-take", 5)}>Foreign track</button>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", Number.NaN)}>Invalid clock</button>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", 31)}>Past source end</button>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", 30)}>Cross end</button>
+    </>} />);
+    for (const name of ["Foreign track", "Invalid clock", "Past source end", "Cross end"]) {
+      await userEvent.click(await screen.findByRole("button", {name}));
+      expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("0");
+      expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("30");
+      expect(screen.getByRole("button", {name: "Undo recording edit"})).toBeDisabled();
+    }
+  });
+
   it("keeps an in-progress trim when reconnecting an initial autosave timeout", async () => {
     let offline = true;
     const writes: any[] = [];
