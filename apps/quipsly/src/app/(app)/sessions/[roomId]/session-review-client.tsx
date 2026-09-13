@@ -4380,12 +4380,20 @@ export function SessionReviewClient({
                 health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
                 evidence={sourceEvidence} presentation="workspace" />
             </OriginalRecordings>
-          ) : (
+          ) : purpose !== "COACHING" ? (
             <SessionRecordingHealthListeningNavigator roomId={roomId}
               health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
               evidence={sourceEvidence} presentation="workspace" />
-          )}
-          {purpose === "COACHING" && recordingWorkspaceAudience === "producer" ? <SessionRecordingShareCard roomId={roomId} /> : null}
+          ) : null}
+          {purpose === "COACHING" && recordingWorkspaceAudience === "producer" ? <SessionRecordingShareCard
+            key={`${roomId}|${focusedRecordingAssetId || "latest"}`} roomId={roomId}
+            initialSourceId={focusedRecordingAssetId}
+            renderOriginalRecordings={sourceIds => {
+              const health = buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence });
+              return <SessionRecordingHealthListeningNavigator roomId={roomId}
+                health={{...health, sources: health.sources.filter(source => sourceIds.includes(source.recordingAssetId || ""))}}
+                evidence={sourceEvidence} preferredSourceId={focusedRecordingAssetId} presentation="workspace" />;
+            }} /> : null}
           <details className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
             <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Import a recording</summary>
             <div className="mt-4"><SessionRecordingImportCard roomId={roomId} preparation={preparation} /></div>

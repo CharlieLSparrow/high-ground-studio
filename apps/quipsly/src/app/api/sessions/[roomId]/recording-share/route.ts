@@ -47,7 +47,8 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   if (!roomId) return privateJson({ ok: false, code: "ROOM_REQUIRED", error: "Choose one Session before opening its recording." }, 400);
   try {
     const takeId = text(new URL(request.url).searchParams.get("takeId"));
-    return privateJson({ ok: true, ...await readSessionRecordingShare(getPrismaClient() as any, { roomId, actor: signedIn, ...(takeId ? {takeId} : {}) }) });
+    const sourceId = text(new URL(request.url).searchParams.get("sourceId"));
+    return privateJson({ ok: true, ...await readSessionRecordingShare(getPrismaClient() as any, { roomId, actor: signedIn, ...(takeId ? {takeId} : {}), ...(sourceId ? {sourceId} : {}) }) });
   } catch (error) {
     return handled(error);
   }

@@ -1,7 +1,7 @@
 "use client";
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, RefreshCw, RotateCcw, Scissors, Send, ShieldCheck, Undo2 } from "lucide-react";
 
 type Source = {
@@ -14,6 +14,7 @@ type Source = {
   sizeBytes: number;
   startedAt: string;
   stoppedAt: string;
+  durationSeconds?: number;
   programOffsetSeconds: number;
   playbackUrl: string;
 };
@@ -120,6 +121,11 @@ function megabytes(value: number | null | undefined) {
   return value ? `${(value / 1024 / 1024).toFixed(value > 10 * 1024 * 1024 ? 0 : 1)} MB` : null;
 }
 
+function sourceDuration(source: Source) {
+  return typeof source.durationSeconds === "number" && Number.isFinite(source.durationSeconds) && source.durationSeconds > 0
+    ? source.durationSeconds : Math.max(0, (Date.parse(source.stoppedAt) - Date.parse(source.startedAt)) / 1_000);
+}
+
 function defaultParticipantSources(sources: Source[]) {
   const byParticipant = new Map<string, Source[]>();
   for (const source of sources) {
@@ -139,7 +145,7 @@ function defaultParticipantSources(sources: Source[]) {
       if (!Number.isFinite(startedAt) || !Number.isFinite(stoppedAt) || stoppedAt <= startedAt) return null;
       return {
         startSeconds: source.programOffsetSeconds,
-        endSeconds: source.programOffsetSeconds + (stoppedAt - startedAt) / 1_000,
+        endSeconds: source.programOffsetSeconds + sourceDuration(source),
       };
     };
     const timed = candidates.every((source) => interval(source) !== null);
@@ -160,8 +166,7 @@ function defaultParticipantSources(sources: Source[]) {
     }
     for (const group of groups) {
       const preferred = [...group].sort((left, right) =>
-        (Date.parse(right.stoppedAt) - Date.parse(right.startedAt)) -
-          (Date.parse(left.stoppedAt) - Date.parse(left.startedAt)) ||
+        sourceDuration(right) - sourceDuration(left) ||
         left.id.localeCompare(right.id),
       )[0];
       if (preferred) selected.push(preferred);
@@ -223,9 +228,13 @@ function editDuration(startSeconds: number, endSeconds: number, exclusions: Tran
 export function SessionRecordingShareCard({
   roomId,
   focusTranscriptKey = null,
+  initialSourceId = null,
+  renderOriginalRecordings,
 }: {
   roomId: string;
   focusTranscriptKey?: string | null;
+  initialSourceId?: string | null;
+  renderOriginalRecordings?: (sourceIds: string[]) => ReactNode;
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -249,13 +258,24 @@ export function SessionRecordingShareCard({
   const draftRoom = useRef<string | null>(null);
   const draftTouched = useRef(false);
   const selectedTake = useRef<{roomId: string; id: string} | null>(null);
+  const loadSequence = useRef(0);
+  const currentDraft = useRef({ selected, startSeconds, endSeconds, title, outputMediaKind, primaryVideoSourceId, excludedTranscriptKeys, editing });
+  currentDraft.current = { selected, startSeconds, endSeconds, title, outputMediaKind, primaryVideoSourceId, excludedTranscriptKeys, editing };
+  const takeDrafts = useRef(new Map<string, typeof currentDraft.current>());
 
   const load = useCallback(async (quiet = false, resetDraft = false, takeId?: string) => {
+    const sequence = ++loadSequence.current;
+    if (takeId && selectedTake.current?.roomId === roomId && draftTouched.current) {
+      takeDrafts.current.set(`${roomId}|${selectedTake.current.id}`, currentDraft.current);
+    }
     if (!quiet) { setBusy("LOAD"); setNotice(null); }
     try {
       const requestedTakeId = takeId ?? (selectedTake.current?.roomId === roomId ? selectedTake.current.id : "");
-      const query = requestedTakeId ? `?${new URLSearchParams({takeId: requestedTakeId})}` : "";
+      const query = requestedTakeId ? `?${new URLSearchParams({takeId: requestedTakeId})}`
+        : initialSourceId ? `?${new URLSearchParams({sourceId: initialSourceId})}` : "";
       const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-share${query}`, { cache: "no-store" });
+      const payload = await response.json() as Snapshot;
+      if (sequence !== loadSequence.current) return;
       if ([401, 403, 404].includes(response.status)) {
         setSnapshot(null);
         setEditing(false);
@@ -264,11 +284,13 @@ export function SessionRecordingShareCard({
         selectedTake.current = null;
         requestIds.current = {};
         requestFingerprints.current = {};
+        takeDrafts.current.clear();
       }
-      const payload = await response.json() as Snapshot;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Quipsly could not load the recording workspace.");
       setSnapshot(payload);
       selectedTake.current = payload.available?.selectedTakeId ? {roomId, id: payload.available.selectedTakeId} : null;
+      if (resetDraft && !takeId && selectedTake.current) takeDrafts.current.delete(`${roomId}|${selectedTake.current.id}`);
+      if (payload.role !== "COACH") takeDrafts.current.clear();
       if (takeId) { setEditing(false); setAudition(null); setAuditionNotice(null); }
       // Refresh and render polling update availability, not the person's draft.
       // Untouched defaults can follow arriving sources; changed drafts stay put.
@@ -291,16 +313,27 @@ export function SessionRecordingShareCard({
         setOutputMediaKind(payload.output.render.mediaKind === "video" ? "video" : "audio");
         setPrimaryVideoSourceId(payload.output.render.primaryVideoSourceId || "");
       }
+      const restoredDraft = takeId ? takeDrafts.current.get(`${roomId}|${takeId}`) : null;
+      if (restoredDraft) {
+        setSelected(restoredDraft.selected);
+        setStartSeconds(restoredDraft.startSeconds);
+        setEndSeconds(restoredDraft.endSeconds);
+        setTitle(restoredDraft.title);
+        setOutputMediaKind(restoredDraft.outputMediaKind);
+        setPrimaryVideoSourceId(restoredDraft.primaryVideoSourceId);
+        setExcludedTranscriptKeys(restoredDraft.excludedTranscriptKeys);
+        setEditing(restoredDraft.editing);
+      }
       draftRoom.current = roomId;
-      if (initializeDraft) draftTouched.current = false;
+      if (initializeDraft) draftTouched.current = Boolean(restoredDraft);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Quipsly could not load the recording workspace.");
+      if (sequence === loadSequence.current) setNotice(error instanceof Error ? error.message : "Quipsly could not load the recording workspace.");
     } finally {
-      if (!quiet) setBusy(null);
+      if (sequence === loadSequence.current) setBusy(current => current === "LOAD" ? null : current);
     }
-  }, [roomId]);
+  }, [roomId, initialSourceId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); return () => { loadSequence.current += 1; }; }, [load]);
   useEffect(() => {
     if (!snapshot?.output || !["QUEUED", "PROCESSING"].includes(snapshot.output.render.status)) return;
     const timer = window.setInterval(() => void load(true), 1_500);
@@ -518,6 +551,8 @@ export function SessionRecordingShareCard({
         </select>
         <span className="mt-1 block text-xs font-normal">Separate recordings stay separate. Reconnected devices stay with their original attempt.</span>
       </label> : null}
+
+      {coach && renderOriginalRecordings ? <div className="mt-4">{renderOriginalRecordings((snapshot.available?.sources || []).map(source => source.id))}</div> : null}
 
       {coach && (!output || editing) ? (
         <fieldset disabled={Boolean(busy)} onChange={() => { draftTouched.current = true; }} onClick={() => { draftTouched.current = true; }} aria-label="Recording edit" className="mt-5 min-w-0 space-y-5">

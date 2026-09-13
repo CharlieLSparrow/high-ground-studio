@@ -603,7 +603,9 @@ describe("Session review goal candidates", () => {
       await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/sessions/room-1/recording-share", { cache: "no-store" }));
       const diagnostics = screen.getByText("Recording details & troubleshooting").closest("details")!;
       expect(diagnostics).not.toHaveAttribute("open");
-      expect(screen.getByText("No recording ready to play yet").compareDocumentPosition(diagnostics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // A malformed workspace response must not leave an independent player
+      // showing a different take beside an unavailable editor.
+      expect((await screen.findByText("Recording tools unavailable")).compareDocumentPosition(diagnostics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     } else {
       expect(fetchMock).not.toHaveBeenCalled();
     }
@@ -629,7 +631,7 @@ describe("Session review goal candidates", () => {
     expect(upload).toBeVisible();
     if (coach) {
       expect(source).toBeVisible();
-      expect(source.compareDocumentPosition(shared) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(shared.closest("section")).toContainElement(source);
       expect(screen.queryByText("Original recordings")).not.toBeInTheDocument();
     } else {
       expect(shared.compareDocumentPosition(upload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

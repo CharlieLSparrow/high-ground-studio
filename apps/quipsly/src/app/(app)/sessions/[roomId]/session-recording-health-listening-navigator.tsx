@@ -59,11 +59,13 @@ export function SessionRecordingHealthListeningNavigator({
   health,
   evidence,
   presentation = "technical",
+  preferredSourceId = null,
 }: {
   roomId: string;
   health: SessionRecordingHealth;
   evidence: SessionSourceEvidence;
   presentation?: "technical" | "workspace";
+  preferredSourceId?: string | null;
 }) {
   const workspace = presentation === "workspace";
   const sources = useMemo<AuditionSource[]>(() => {
@@ -95,7 +97,8 @@ export function SessionRecordingHealthListeningNavigator({
       }];
     });
   }, [evidence.sources, health.sources]);
-  const initialId = sources.find((source) => source.state === "READY")?.recordingAssetId ?? sources[0]?.recordingAssetId ?? null;
+  const initialId = sources.find(source => source.recordingAssetId === preferredSourceId)?.recordingAssetId
+    ?? sources.find((source) => source.state === "READY")?.recordingAssetId ?? sources[0]?.recordingAssetId ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(initialId);
   const [selectedSeconds, setSelectedSeconds] = useState(0);
   const [playbackState, setPlaybackState] = useState<"loading" | "ready" | "playing" | "paused" | "error">("loading");
@@ -116,6 +119,7 @@ export function SessionRecordingHealthListeningNavigator({
   useEffect(() => {
     setSelectedSeconds(0);
     setMessage(null);
+    setPlaybackState("loading");
     stopAtRef.current = null;
   }, [selected?.recordingAssetId]);
 
@@ -138,7 +142,7 @@ export function SessionRecordingHealthListeningNavigator({
   async function play(checkSeconds: number | null, requestedStartSeconds = selectedSeconds) {
     const media = mediaRef.current;
     if (!media || !selected || playbackState === "error") {
-      setMessage("Protected source bytes are not ready for audition.");
+      setMessage(workspace ? "This recording is not ready to play. Try refreshing the recording tools." : "Protected source bytes are not ready for audition.");
       return;
     }
     try {
@@ -186,7 +190,7 @@ export function SessionRecordingHealthListeningNavigator({
     </div>
 
     <ul className="mt-4 flex gap-2 overflow-x-auto pb-2" aria-label="Protected recording sources">
-      {sources.map((source) => <li key={source.recordingAssetId}><button type="button" aria-pressed={selected?.recordingAssetId === source.recordingAssetId} onClick={() => choose(source.recordingAssetId)} data-flight-deck-audition-source={source.recordingAssetId} className={`min-h-16 min-w-52 rounded-xl border px-3 py-2 text-left transition ${stateTone(source.state)} ${selected?.recordingAssetId === source.recordingAssetId ? "ring-2 ring-cyan-500 ring-offset-2" : ""}`}>
+      {sources.map((source) => <li key={source.recordingAssetId}><button type="button" aria-pressed={selected?.recordingAssetId === source.recordingAssetId} onClick={() => choose(source.recordingAssetId)} data-flight-deck-audition-source={source.recordingAssetId} className={`min-h-16 min-w-52 rounded-xl border px-3 py-2 text-left transition ${workspace ? "border-[#ddcdaf] bg-[#f6f0e4] text-[#3d3122]" : stateTone(source.state)} ${selected?.recordingAssetId === source.recordingAssetId ? "ring-2 ring-cyan-500 ring-offset-2" : ""}`}>
         <span className="block text-[9px] font-black uppercase tracking-wide">{workspace ? source.participantLabel : `${source.state} · ${source.participantLabel}`}</span>
         <span className="mt-1 block max-w-64 truncate text-xs font-black">{source.label}</span>
         <span className="mt-1 block font-mono text-[9px] font-bold">{timestampForSeconds(source.durationSeconds)}</span>
@@ -195,12 +199,12 @@ export function SessionRecordingHealthListeningNavigator({
 
     {selected ? <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]">
       <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 p-4 text-white">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-wide text-cyan-200">{selected.participantLabel} · {selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className="inline-flex items-center gap-1 font-mono text-xs font-black text-cyan-100"><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-wide text-cyan-200">{selected.participantLabel} · {workspace ? ({loading: "Loading audio", ready: "Ready to play", playing: "Playing", paused: "Paused", error: "Playback unavailable"}[playbackState]) : selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className="inline-flex items-center gap-1 font-mono text-xs font-black text-cyan-100"><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
         {selected.kind === "video"
           ? <video key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 max-h-80 w-full rounded-lg bg-black" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />
           : <SessionRecordingAudio contentType={selected.contentType ?? undefined} key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 w-full" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />}
 
-        {waveform.length ? <div className="mt-4 flex h-24 items-end gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-900 px-2 pt-2" aria-label="Complete-decode waveform overview" role="img">{waveform.map((point, index) => <span key={`${point.startSeconds}-${index}`} className="min-w-px flex-1 rounded-t-sm bg-cyan-300/80" style={{ height: `${waveformHeight(point.rmsDbfs)}%` }} />)}</div> : <p className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-slate-300">No waveform overview is attached. Native playback remains available, but Quipsly does not invent a visual signal trace.</p>}
+        {waveform.length ? <div className="mt-4 flex h-24 items-end gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-900 px-2 pt-2" aria-label="Complete-decode waveform overview" role="img">{waveform.map((point, index) => <span key={`${point.startSeconds}-${index}`} className="min-w-px flex-1 rounded-t-sm bg-cyan-300/80" style={{ height: `${waveformHeight(point.rmsDbfs)}%` }} />)}</div> : <p className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-slate-300">{workspace ? "You can listen now. The waveform will appear when audio analysis finishes." : "No waveform overview is attached. Native playback remains available, but Quipsly does not invent a visual signal trace."}</p>}
 
         <label htmlFor="flight-deck-source-clock" className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-100">Selected source time</label>
         <input id="flight-deck-source-clock" type="range" min={0} max={selected.durationSeconds} step={0.01} value={Math.min(selectedSeconds, selected.durationSeconds)} onChange={(event) => seek(Number(event.target.value))} className="mt-2 w-full accent-cyan-300" />
@@ -216,8 +220,8 @@ export function SessionRecordingHealthListeningNavigator({
 
       <aside className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4" aria-label="Signal observations for selected source">
         <p className="text-[10px] font-black uppercase tracking-wide text-cyan-900">Exact-time observations</p>
-        {selected.signal?.observations.length ? <ol className="mt-3 space-y-2">{selected.signal.observations.map((observation, index) => <li key={`${observation.kind}-${observation.startSeconds}-${index}`}><button type="button" onClick={() => { seek(observation.startSeconds); void play(10, observation.startSeconds); }} className="min-h-11 w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs font-bold leading-5 text-amber-950"><span className="block font-black uppercase tracking-wide">{timestampForSeconds(observation.startSeconds)} · {observation.kind.replaceAll("-", " ")}</span><span className="mt-1 block">{observation.detail}</span></button></li>)}</ol> : <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><ShieldCheck size={15} className="mr-1 inline" aria-hidden="true" />No configured complete-decode threshold flagged a range. Use the source controls for a representative listen; this is not proof of subjective quality.</p>}
-        {playbackState === "error" ? <p className="mt-3 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950"><CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />Playback failed closed. Health evidence remains visible, but no listening claim is available.</p> : null}
+        {selected.signal?.observations.length ? <ol className="mt-3 space-y-2">{selected.signal.observations.map((observation, index) => <li key={`${observation.kind}-${observation.startSeconds}-${index}`}><button type="button" onClick={() => { seek(observation.startSeconds); void play(10, observation.startSeconds); }} className="min-h-11 w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs font-bold leading-5 text-amber-950"><span className="block font-black uppercase tracking-wide">{timestampForSeconds(observation.startSeconds)} · {observation.kind.replaceAll("-", " ")}</span><span className="mt-1 block">{observation.detail}</span></button></li>)}</ol> : <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><ShieldCheck size={15} className="mr-1 inline" aria-hidden="true" />{workspace ? (selected.signal ? "No audio issues flagged by the available analysis." : "Audio analysis is not available yet.") : "No configured complete-decode threshold flagged a range. Use the source controls for a representative listen; this is not proof of subjective quality."}</p>}
+        {playbackState === "error" ? <p className="mt-3 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950"><CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{workspace ? "This recording could not play. Refresh to try again, or choose another track." : "Playback failed closed. Health evidence remains visible, but no listening claim is available."}</p> : null}
       </aside>
     </div> : null}
   </section>;

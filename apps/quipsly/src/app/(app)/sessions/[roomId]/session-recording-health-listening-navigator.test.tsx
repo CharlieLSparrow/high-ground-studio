@@ -161,6 +161,23 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     expect(screen.getByText(/no heard\/approved claim is written/i)).toBeInTheDocument();
   });
 
+  it("honors a source link and reports playback independently of processing health", () => {
+    const sourceHealth = health();
+    sourceHealth.sources[0]!.state = "BLOCKED";
+    const view = render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={sourceHealth}
+      evidence={evidence()} presentation="workspace" preferredSourceId="historical" />);
+    const audio = screen.getByLabelText("Protected source Historical browser.wav");
+    fireEvent.loadedMetadata(audio);
+    expect(screen.getByText("Charlie · Ready to play")).toBeInTheDocument();
+    expect(screen.queryByText(/Charlie · BLOCKED/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("slider", {name: "Selected source time"}), {target: {value: "7"}});
+    view.rerender(<SessionRecordingHealthListeningNavigator roomId="room-1"
+      health={{...sourceHealth, sources: sourceHealth.sources.slice(1)}} evidence={evidence()} presentation="workspace" />);
+    expect(screen.queryByLabelText("Protected source Historical browser.wav")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Protected source MV7i master.wav")).toBeInTheDocument();
+    expect(screen.getByRole("slider", {name: "Selected source time"})).toHaveValue("0");
+  });
+
   it("fails visibly when no authorized protected source is attached", () => {
     const withoutPlayback = evidence();
     for (const source of withoutPlayback.sources) source.protectedPlayback = null;

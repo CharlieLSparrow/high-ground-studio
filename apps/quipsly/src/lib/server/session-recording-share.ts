@@ -348,6 +348,7 @@ export function sessionRecordingShareAudioMixSourceIds(
     participantId: string;
     kind?: string | null;
     contentType?: string | null;
+    durationSeconds?: number | null;
     recordedStartedAt?: Date | null;
     recordedStoppedAt?: Date | null;
   }>,
@@ -380,7 +381,7 @@ export function sessionRecordingShareAudioMixSourceIds(
         startSeconds,
         endSeconds:
           startSeconds +
-          (source.recordedStoppedAt.getTime() - source.recordedStartedAt.getTime()) / 1_000,
+          recordingSourceDuration(source),
       };
     };
     const timed = candidates.every((source) =>
@@ -409,8 +410,7 @@ export function sessionRecordingShareAudioMixSourceIds(
     for (const group of overlapGroups) {
       const preferred = group.find((source) => source.id === primaryVideoSourceId) || [...group].sort(
         (left, right) =>
-          (right.recordedStoppedAt!.getTime() - right.recordedStartedAt!.getTime()) -
-            (left.recordedStoppedAt!.getTime() - left.recordedStartedAt!.getTime()) ||
+          recordingSourceDuration(right) - recordingSourceDuration(left) ||
           left.id.localeCompare(right.id),
       )[0];
       if (preferred) selected.add(preferred.id);
@@ -503,6 +503,7 @@ async function loadSources(
       storageObjectPath: true,
       recordedStartedAt: true,
       recordedStoppedAt: true,
+      durationSeconds: true,
       localManifestJson: true,
       verifiedAt: true,
       createdAt: true,
@@ -625,6 +626,14 @@ export function sessionRecordingShareProgramClock(rows: any[]) {
   };
 }
 
+function recordingSourceDuration(source: {durationSeconds?: number | null; recordedStartedAt?: Date | null; recordedStoppedAt?: Date | null}) {
+  // A native pause removes media time, not wall-clock time. Prefer the
+  // canonical source duration; retain timestamps only as a legacy fallback.
+  if (typeof source.durationSeconds === "number" && Number.isFinite(source.durationSeconds) && source.durationSeconds > 0) return source.durationSeconds;
+  return source.recordedStartedAt && source.recordedStoppedAt
+    ? Math.max(0, (source.recordedStoppedAt.getTime() - source.recordedStartedAt.getTime()) / 1_000) : 0;
+}
+
 function sourceSummary(rows: any[]) {
   if (!rows.length)
     return {
@@ -640,11 +649,7 @@ function sourceSummary(rows: any[]) {
     0,
     ...rows.map((row) => {
       const offset = timingBySourceId.get(row.id)?.programOffsetSeconds ?? 0;
-      const duration = Math.max(
-        0,
-        (row.recordedStoppedAt.getTime() - row.recordedStartedAt.getTime()) /
-          1_000,
-      );
+      const duration = recordingSourceDuration(row);
       return offset + duration;
     }),
   );
@@ -662,6 +667,7 @@ function sourceSummary(rows: any[]) {
       sha256: clean(row.checksum, 64).toLowerCase(),
       startedAt: row.recordedStartedAt.toISOString(),
       stoppedAt: row.recordedStoppedAt.toISOString(),
+      durationSeconds: recordingSourceDuration(row),
       programOffsetSeconds:
         timingBySourceId.get(row.id)?.programOffsetSeconds ?? 0,
       timingUncertaintyMilliseconds:
@@ -1273,7 +1279,7 @@ async function reconcileRender(client: RestoreClient, output: any) {
 
 export async function readSessionRecordingShare(
   client: RestoreClient,
-  input: { roomId: string; actor: SessionAccessActor; takeId?: string },
+  input: { roomId: string; actor: SessionAccessActor; takeId?: string; sourceId?: string },
 ) {
   const room = await loadRoom(client, input.roomId, input.actor, "read");
   const canPrepare = Boolean(
@@ -1317,11 +1323,13 @@ export async function readSessionRecordingShare(
   const outputAttempt = outputSourceIds.size ? attempts.find(attempt =>
     [...outputSourceIds].every(id => attempt.sources.some(source => source.id === id))) : null;
   const selectedAttempt = input.takeId ? attempts.find(attempt => attempt.id === input.takeId)
+    : input.sourceId ? attempts.find(attempt => attempt.sources.some(source => source.id === input.sourceId))
     : outputAttempt || attempts[0];
-  if (canPrepare && input.takeId && !selectedAttempt) throw new SessionRecordingShareError(
+  if (canPrepare && (input.takeId || input.sourceId) && (!selectedAttempt ||
+    (input.sourceId && !selectedAttempt.sources.some(source => source.id === input.sourceId)))) throw new SessionRecordingShareError(
     404, "RECORDING_ATTEMPT_NOT_FOUND", "This recording attempt is not available in this Session.",
   );
-  if (canPrepare && input.takeId && outputAttempt?.id !== selectedAttempt?.id) output = null;
+  if (canPrepare && (input.takeId || input.sourceId) && outputAttempt?.id !== selectedAttempt?.id) output = null;
   const sourceRows = selectedAttempt?.sources || [];
   const available = sourceSummary(sourceRows);
   const transcriptSegments = canPrepare

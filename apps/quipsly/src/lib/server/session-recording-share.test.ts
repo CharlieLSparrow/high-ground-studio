@@ -62,17 +62,17 @@ describe("recording attempts within one Session", () => {
     ]);
   });
 
-  async function read(takeId?: string, role = "coach") {
+  async function read(takeId?: string, role = "coach", sourceId?: string, sourceRows: Array<(typeof sources)[number] & {durationSeconds?: number}> = sources) {
     const room = {id: "room", title: "Coaching", captureGroupId: "same-session",
       booking: {coachUserId: "coach", clientUserId: "client", coachUser: {id: "coach"}, clientUser: {id: "client"}}};
     const client: any = {
       callRoom: {findFirst: jest.fn().mockResolvedValueOnce(room).mockResolvedValueOnce(role === "coach" ? room : null)},
       sessionOutput: {findFirst: jest.fn().mockResolvedValue(null)},
-      recordingAsset: {findMany: jest.fn().mockResolvedValue(sources)},
+      recordingAsset: {findMany: jest.fn().mockResolvedValue(sourceRows)},
       callRecordingEndpointReceipt: {findMany: jest.fn().mockResolvedValue(receipts)},
       transcriptJob: {findMany: jest.fn().mockResolvedValue([])},
     };
-    const result = await readSessionRecordingShare(client, {roomId: "room", actor: {id: role, primaryEmail: `${role}@example.test`, isStaff: false}, takeId});
+    const result = await readSessionRecordingShare(client, {roomId: "room", actor: {id: role, primaryEmail: `${role}@example.test`, isStaff: false}, takeId, sourceId});
     return {result, client};
   }
 
@@ -91,11 +91,33 @@ describe("recording attempts within one Session", () => {
     await expect(read("start:another-room")).rejects.toMatchObject({status: 404, code: "RECORDING_ATTEMPT_NOT_FOUND"});
   });
 
+  it("uses the actual media duration for trimming a paused source, not elapsed clock time", async () => {
+    const {result} = await read(undefined, "coach", "source-3", sources.map(source => ({...source, durationSeconds: 8.466833})));
+    expect(result.available.programDurationSeconds).toBe(8.466833);
+    expect(result.available.sources[0].durationSeconds).toBe(8.466833);
+    expect(result.available.sources[0].stoppedAt).toBe(at(3612).toISOString());
+  });
+
   it("does not expose private recording attempts to the client", async () => {
     const {result, client} = await read("start:first", "client");
     expect(result.available.sources).toEqual([]);
     expect(result.available.takes).toEqual([]);
     expect(client.callRecordingEndpointReceipt.findMany).not.toHaveBeenCalled();
+  });
+
+  it("anchors an editing deep link to the exact source's attempt, including reconnects", async () => {
+    const {result} = await read(undefined, "coach", "source-2");
+    expect(result.available.selectedTakeId).toBe("start:first");
+    expect(result.available.sources.map(source => source.id)).toEqual(["source-0", "source-1", "source-2"]);
+    await expect(read(undefined, "coach", "source-other-room")).rejects.toMatchObject({status: 404});
+    await expect(read("start:second", "coach", "source-2")).rejects.toMatchObject({status: 404});
+  });
+
+  it("never uses a source deep link to widen a client's access", async () => {
+    const {result, client} = await read(undefined, "client", "source-2");
+    expect(result.available.sources).toEqual([]);
+    expect(result.available.takes).toEqual([]);
+    expect(client.recordingAsset.findMany).not.toHaveBeenCalled();
   });
 });
 

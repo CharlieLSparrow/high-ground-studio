@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionRecordingShareCard } from "./session-recording-share-card";
@@ -68,15 +68,37 @@ describe("SessionRecordingShareCard", () => {
       sources: [{...snapshot.available.sources[0]!, id: "earlier-source", stoppedAt: "2026-08-22T12:00:20.000Z"}], transcriptSegments: []}};
     const fetchMock = jest.fn(async (url: string) => response(url.includes("start%3Aearlier") ? earlier : latest));
     global.fetch = fetchMock as typeof fetch;
-    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    render(<SessionRecordingShareCard roomId="session_room_0001" initialSourceId="recording_asset_0001"
+      renderOriginalRecordings={ids => <div data-testid="selected-take-player">{ids.join(",")}</div>} />);
     const selector = await screen.findByRole("combobox", {name: /Recording attempt/});
+    expect(fetchMock).toHaveBeenCalledWith("/api/sessions/session_room_0001/recording-share?sourceId=recording_asset_0001", expect.anything());
     expect(selector).toHaveValue("start:latest");
+    expect(screen.getByTestId("selected-take-player")).toHaveTextContent("recording_asset_0001");
+    fireEvent.change(screen.getByRole("slider", {name: "Recording start"}), {target: {value: "3"}});
     await userEvent.selectOptions(selector, "start:earlier");
     await waitFor(() => expect(selector).toHaveValue("start:earlier"));
     expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("20");
+    expect(screen.getByTestId("selected-take-player")).toHaveTextContent("earlier-source");
+    expect(screen.getByTestId("selected-take-player")).not.toHaveTextContent("recording_asset_0001");
     expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
     expect(fetchMock).toHaveBeenLastCalledWith("/api/sessions/session_room_0001/recording-share?takeId=start%3Aearlier", expect.anything());
+    await userEvent.selectOptions(selector, "start:latest");
+    await waitFor(() => expect(selector).toHaveValue("start:latest"));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("30");
+  });
+
+  it("ignores a late response from the previous Session", async () => {
+    let resolveOld!: (value: Response) => void;
+    global.fetch = jest.fn().mockImplementationOnce(() => new Promise<Response>(resolve => {resolveOld = resolve;}))
+      .mockResolvedValue(response({...snapshot, room: {...snapshot.room, id: "new-room", title: "New session"}}));
+    const view = render(<SessionRecordingShareCard roomId="old-room" />);
+    view.rerender(<SessionRecordingShareCard roomId="new-room" />);
+    await screen.findByRole("heading", {name: "Trim and share"});
+    await act(async () => {resolveOld(response({...snapshot, room: {...snapshot.room, title: "Stale session"}}));});
+    expect(screen.queryByDisplayValue("Stale session recording")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("New session recording")).toBeInTheDocument();
   });
 
   it("shows loading rather than a permission failure while the workspace is being read", () => {
