@@ -1310,7 +1310,7 @@ final class CaptureExperienceModel: ObservableObject {
                 expectedUpdatedAt: expectedUpdatedAt,
                 replacingHeld: replacingHeld
             )
-            sessionNoteEditMessage = "The complete note edit is protected on \(CaptureDeviceVocabulary.thisDevice). Nest will recheck authorship, Session access, audience, tags, and revision before applying it."
+            sessionNoteEditMessage = "Saved on \(CaptureDeviceVocabulary.thisDevice). Syncing changes…"
             sessionNoteEditMessageRoomID = roomID
             Task { [weak self] in
                 await self?.syncSessionNoteEdit(edit)

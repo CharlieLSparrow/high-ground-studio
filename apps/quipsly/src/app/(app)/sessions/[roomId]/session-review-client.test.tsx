@@ -1230,7 +1230,11 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("heading", { name: "Goals" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /00:12-00:17.*build a repeatable coaching review habit/i })).toHaveAttribute("href", "#transcript-segment-segment-1");
     expect(screen.getByText("Every brief item points to immutable transcript evidence.")).toBeInTheDocument();
-    expect(screen.getByText("Inspect exact saved packet text")).toBeInTheDocument();
+    expect(screen.getByText("Source passages").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText(packet().packet!.summary!.body)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit recap in Notes" })).toHaveAttribute(
+      "href", `/sessions/room-1?mode=notes#session-note-${packet().packet!.summary!.id}`,
+    );
   });
 
   it("offers one plain retry when automatic follow-up preparation fails", async () => {
@@ -1789,7 +1793,8 @@ describe("Session review goal candidates", () => {
     await user.clear(note);
     await user.type(note, "Pause, then let the question breathe.");
     await user.click(within(article).getByRole("button", { name: "Save revision" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("earlier versions remain available");
+    expect(await screen.findByRole("status")).toHaveTextContent("Note updated.");
+    expect(screen.getByRole("button", { name: "Undo last edit" })).toBeInTheDocument();
     expect(fetchMock.mock.calls[0][0]).toBe("/api/notes/mobile-note-1");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       title: "Opening rhythm",

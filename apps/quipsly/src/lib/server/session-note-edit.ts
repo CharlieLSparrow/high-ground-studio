@@ -3,7 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import {
-  type EditableSessionNoteKind,
+  type MutableSessionNoteKind,
+  isGeneratedSessionNoteKind,
   type SessionNoteVisibility,
 } from "@/lib/session-note-contract";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
@@ -25,7 +26,7 @@ export type EditSessionNoteInput = {
   noteId: string;
   title: string;
   body: string;
-  kind: EditableSessionNoteKind | null;
+  kind: MutableSessionNoteKind | null;
   visibility: SessionNoteVisibility | null;
   tagIds: string[] | null;
   expectedUpdatedAt: Date;
@@ -122,7 +123,7 @@ function replayMatches(snapshotJson: unknown, input: {
   expectedUpdatedAt: string;
   title: string | null;
   body: string;
-  kind: EditableSessionNoteKind;
+  kind: MutableSessionNoteKind;
   visibility: SessionNoteVisibility;
   tagIds: string[];
 }) {
@@ -147,7 +148,7 @@ async function replayResult(input: {
     expectedUpdatedAt: string;
     title: string | null;
     body: string;
-    kind: EditableSessionNoteKind;
+    kind: MutableSessionNoteKind;
     visibility: SessionNoteVisibility;
     tagIds: string[];
   };
@@ -228,7 +229,10 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
     return { ok: false, code: "NOT_FOUND", error: "You no longer have access to this note's Session." };
   }
 
-  const nextKind = input.kind ?? note.kind as EditableSessionNoteKind;
+  const nextKind = input.kind ?? note.kind as MutableSessionNoteKind;
+  if (nextKind !== note.kind && (isGeneratedSessionNoteKind(note.kind) || isGeneratedSessionNoteKind(nextKind))) {
+    return { ok: false, code: "INVALID_INPUT", error: "Edit the recap or key moment directly; its source type stays with it." };
+  }
   const nextVisibility = input.visibility ?? note.visibility as SessionNoteVisibility;
   if (
     input.visibility !== null

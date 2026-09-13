@@ -2662,6 +2662,45 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testGeneratedSessionRecapEditsAndPersistsAcrossRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let noteID = try XCTUnwrap(credentials.noteID)
+        let finalTitle = try XCTUnwrap(credentials.noteEditUpdatedTitle)
+        let finalBody = try XCTUnwrap(credentials.noteEditUpdatedBody)
+        func openNotes(_ app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let notes = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(notes, in: app, timeout: 25, swipeAttempts: 12))
+            notes.tap()
+        }
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openNotes(app)
+        let edit = app.buttons["CaptureSessionNoteEdit_\(noteID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 20, swipeAttempts: 10),
+                      "The generated shared recap must expose the ordinary note editor to its collaborator.")
+        edit.tap()
+        let sheet = app.descendants(matching: .any)["CaptureSessionNoteEditSheet"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10))
+        let title = app.textFields["CaptureSessionNoteEditTitle"].firstMatch
+        replaceText(in: title, with: finalTitle, app: app, dismissKeyboardAfterEditing: false)
+        let body = app.textFields["CaptureSessionNoteEditBody"].firstMatch
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        body.typeKey("a", modifierFlags: .command)
+        body.typeText(finalBody)
+        app.buttons["CaptureSessionNoteEditKeyboardDone"].firstMatch.tap()
+        let save = app.buttons["CaptureSessionNoteEditSave"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(save, in: app, timeout: 15, swipeAttempts: 8))
+        save.tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 30))
+        XCTAssertTrue(waitForRuntimeElement(app.staticTexts.matching(NSPredicate(format: "label == %@", finalBody)).firstMatch, in: app, timeout: 30, swipeAttempts: 10))
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openNotes(app)
+        XCTAssertTrue(waitForRuntimeElement(app.staticTexts.matching(NSPredicate(format: "label == %@", finalBody)).firstMatch, in: app, timeout: 25, swipeAttempts: 12))
+        XCTAssertTrue(app.staticTexts[finalTitle].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Edited generated recap after native relaunch")
+    }
+
     func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {

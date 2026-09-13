@@ -31,6 +31,7 @@ import {
   type SessionWorkspaceNote,
 } from "./session-notes-model";
 import { timestampForSeconds } from "./session-review-model";
+import { isGeneratedSessionNoteKind } from "@/lib/session-note-contract";
 
 function NoteAudienceIcon({ visibility }: { visibility: SessionNoteVisibility }) {
   if (visibility === "AUTHOR_PRIVATE") return <LockKeyhole className="h-4 w-4" aria-hidden="true" />;
@@ -72,6 +73,7 @@ export function SessionNotesWorkspace({
   const [notes, setNotes] = useState(initialNotes);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [undoEdit, setUndoEdit] = useState<{ previous: SessionWorkspaceNote; savedAt: string } | null>(null);
   const createForm = useRef<HTMLFormElement>(null);
 
   useEffect(() => setNotes(initialNotes), [initialNotes]);
@@ -124,7 +126,7 @@ export function SessionNotesWorkspace({
     }
   }
 
-  async function saveNote(note: SessionWorkspaceNote, formData: FormData) {
+  async function saveNote(note: SessionWorkspaceNote, formData: FormData, restoring = false) {
     setBusyId(note.id);
     setNotice(null);
     try {
@@ -156,12 +158,27 @@ export function SessionNotesWorkspace({
         throw new Error(payload.error || "The Session note was not saved.");
       }
       replaceNote({ ...note, ...payload.note });
-      setNotice("Note updated. Its earlier versions remain available in the history.");
+      setUndoEdit(restoring ? null : { previous: note, savedAt: payload.note.updatedAt });
+      setNotice(restoring ? "Previous version restored." : "Note updated.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The Session note was not saved.");
     } finally {
       setBusyId(null);
     }
+  }
+
+  async function undoLastEdit() {
+    if (!undoEdit) return;
+    const current = notes.find((note) => note.id === undoEdit.previous.id);
+    if (!current) return;
+    const form = new FormData();
+    form.set("title", undoEdit.previous.title || "");
+    form.set("body", undoEdit.previous.body);
+    form.set("kind", undoEdit.previous.kind);
+    form.set("visibility", undoEdit.previous.visibility);
+    // Use the saved edit's version, not a later refreshed value. A collaborator's
+    // intervening edit must produce a conflict rather than be silently undone.
+    await saveNote({ ...current, updatedAt: undoEdit.savedAt }, form, true);
   }
 
   async function saveNoteTags(note: SessionWorkspaceNote, formData: FormData) {
@@ -272,7 +289,11 @@ export function SessionNotesWorkspace({
           ))}
         </nav>
 
-        {notice ? <p role="status" className="mt-4 rounded-xl border border-orange-200 bg-white px-4 py-3 text-xs font-bold leading-5 text-orange-950">{notice}</p> : null}
+        {notice ? <div role="status" className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground">
+          <p>{notice}</p>
+          {undoEdit ? <button type="button" disabled={busyId !== null} onClick={() => void undoLastEdit()}
+            className="mt-1 min-h-11 font-semibold underline underline-offset-4 disabled:opacity-50">Undo last edit</button> : null}
+        </div> : null}
 
         <form ref={createForm} action={(formData) => void createNote(formData)} className="mt-5 grid gap-3 rounded-2xl border border-orange-200 bg-white p-4">
           <p className="text-sm font-black text-orange-950">Add a note</p>
@@ -348,9 +369,12 @@ export function SessionNotesWorkspace({
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
                         Note type
-                        <select name="kind" defaultValue={note.kind} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                        {isGeneratedSessionNoteKind(note.kind) ? <>
+                          <input type="hidden" name="kind" value={note.kind} />
+                          <span className="mt-1 block py-3 text-sm font-semibold normal-case tracking-normal">{sessionNoteKindLabel(note.kind)}</span>
+                        </> : <select name="kind" defaultValue={note.kind} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                           {editableKinds(canUseProjectTeamNotes).map((kind) => <option key={kind} value={kind}>{sessionNoteKindLabel(kind)}</option>)}
-                        </select>
+                        </select>}
                       </label>
                       {note.canChangeVisibility !== false ? (
                         <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">

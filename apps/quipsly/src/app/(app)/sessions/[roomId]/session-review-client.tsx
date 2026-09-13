@@ -439,6 +439,16 @@ function packetBrief(summary: PacketSummary) {
 }
 
 function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
+  return <div className="mt-3 space-y-4">
+    <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">{summary.body}</p>
+    {packetBrief(summary) ? <details className="rounded-xl border border-border p-4">
+      <summary className="cursor-pointer text-sm font-medium">Source passages</summary>
+      <ReviewPacketSourceDetails summary={summary} />
+    </details> : null}
+  </div>;
+}
+
+function ReviewPacketSourceDetails({ summary }: { summary: PacketSummary }) {
   const brief = packetBrief(summary);
   if (!brief)
     return (
@@ -535,14 +545,6 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
       <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold leading-relaxed text-emerald-950">
         {brief.sourceTruth}
       </p>
-      <details className="rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]">
-        <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-          Inspect exact saved packet text
-        </summary>
-        <p className="mt-4 whitespace-pre-wrap font-semibold leading-relaxed">
-          {summary.body}
-        </p>
-      </details>
     </div>
   );
 }
@@ -4794,6 +4796,10 @@ export function SessionReviewClient({
                   {packet.packet?.summary ? (
                     <>
                       <ReviewPacketSummary summary={packet.packet.summary} />
+                      <Link href={`${sessionWorkspaceHref(roomId, "notes")}#session-note-${encodeURIComponent(packet.packet.summary.id)}`}
+                        className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">
+                        Edit recap in Notes
+                      </Link>
                       {packetStale ? (
                         <div
                           className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4"
@@ -4858,8 +4864,9 @@ export function SessionReviewClient({
                           </button>
                           <p className="mt-3 text-xs font-bold leading-relaxed text-violet-900">
                             Quipsly normally prepares this automatically from
-                            the exact transcript. Retrying creates no task or
-                            goal and sends or publishes nothing.
+                            the transcript. Retrying updates generated notes,
+                            tasks, and goals without duplicating them or replacing
+                            your edits. Nothing is sent or published.
                           </p>
                         </div>
                       ) : null}

@@ -483,6 +483,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  generated-session-note-edit)
+    TEST_CASE="testGeneratedSessionRecapEditsAndPersistsAcrossRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_NOTE_ID" || -z "$TEST_NOTE_EDIT_UPDATED_TITLE" || -z "$TEST_NOTE_EDIT_UPDATED_BODY" ]]; then
+      echo "Generated-note edit mode requires an exact Session, note ID, and updated title/body."
+      exit 2
+    fi
+    ;;
   session-note-edit)
     TEST_CASE="testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox"
     if [[ -z "$TEST_SESSION_ID" ]]; then

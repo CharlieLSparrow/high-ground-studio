@@ -71,6 +71,8 @@ export function sessionNoteVisibilityLabel(visibility: SessionNoteVisibility) {
 }
 
 export function sessionNoteKindLabel(kind: SessionNoteKind) {
+  if (kind === "SUMMARY") return "Recap";
+  if (kind === "HIGHLIGHT") return "Key moment";
   if (kind === "FOLLOW_UP") return "Continuity brief";
   if (kind === "DECISION") return "Decision";
   if (kind === "PRODUCTION") return "Production note";

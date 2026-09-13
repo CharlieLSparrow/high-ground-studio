@@ -5569,7 +5569,7 @@ private struct CapturePacketNoteCandidateCard: View {
             && (candidate.sourceSpan?.segments.allSatisfy { $0.reviewStatus == "human-reviewed" } ?? true)
     }
     private var availableKinds: [MobileSessionNoteKind] {
-        canUseProjectTeamNotes ? MobileSessionNoteKind.allCases : MobileSessionNoteKind.allCases.filter { $0 != .production }
+        canUseProjectTeamNotes ? MobileSessionNoteKind.creatableCases : MobileSessionNoteKind.creatableCases.filter { $0 != .production }
     }
     private var availableVisibilities: [MobileSessionNoteVisibility] {
         canUseProjectTeamNotes ? MobileSessionNoteVisibility.allCases : MobileSessionNoteVisibility.allCases.filter { $0 != .projectTeam }

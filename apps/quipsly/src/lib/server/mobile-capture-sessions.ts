@@ -31,6 +31,7 @@ import type { SessionNoteVisibility } from "../session-note-contract";
 
 const MOBILE_CAPTURE_ACTION_PACKET_KIND = "quipsly-capture-action-packet-v1";
 const DELIBERATE_SESSION_NOTE_KINDS = new Set([
+  "SUMMARY",
   "SESSION_NOTE",
   "HIGHLIGHT",
   "FOLLOW_UP",

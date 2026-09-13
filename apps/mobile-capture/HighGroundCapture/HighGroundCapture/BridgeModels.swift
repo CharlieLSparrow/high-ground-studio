@@ -432,6 +432,8 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
 
     var purposeLabel: String {
         switch kind.uppercased() {
+        case "SUMMARY": "Recap"
+        case "HIGHLIGHT": "Key moment"
         case "FOLLOW_UP": "Continuity brief"
         case "DECISION": "Decision"
         case "PRODUCTION": "Production note"
@@ -9182,7 +9184,7 @@ final class CaptureSessionClient: ObservableObject {
                 idempotentReplay: payload.idempotentReplay == true,
                 message: payload.idempotentReplay == true
                     ? "This note was already synced."
-                    : "Note updated. Earlier versions remain available."
+                    : "Note updated."
             )
         } catch {
             return .retryable(

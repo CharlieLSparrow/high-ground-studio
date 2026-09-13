@@ -3,7 +3,8 @@ import "server-only";
 import type { Prisma, StudioProjectAccessRole } from "@prisma/client";
 
 import {
-  EDITABLE_SESSION_NOTE_KINDS,
+  MUTABLE_SESSION_NOTE_KINDS,
+  SESSION_NOTE_KINDS,
   type SessionNoteVisibility,
 } from "@/lib/session-note-contract";
 import {
@@ -11,12 +12,7 @@ import {
   type SessionAccessActor,
 } from "@/lib/server/session-access";
 
-export const SESSION_NOTE_VISIBLE_KINDS = [
-  "SESSION_NOTE",
-  "FOLLOW_UP",
-  "DECISION",
-  "PRODUCTION",
-] as const;
+export const SESSION_NOTE_VISIBLE_KINDS = SESSION_NOTE_KINDS;
 
 export function canUseProjectTeamNotes(
   role: StudioProjectAccessRole | null | undefined,
@@ -57,7 +53,7 @@ export function sessionNoteMutationWhere(
     .toLowerCase();
 
   return {
-    kind: { in: [...EDITABLE_SESSION_NOTE_KINDS] },
+    kind: { in: [...MUTABLE_SESSION_NOTE_KINDS] },
     room: sessionMutationActorAccessWhere(actor),
     OR: [
       { authorUserId: actor.id },
@@ -93,7 +89,7 @@ export function canEditSessionNoteProjection(input: {
   canUseProjectTeam: boolean;
 }) {
   if (!input.canMutateSession) return false;
-  if (!(EDITABLE_SESSION_NOTE_KINDS as readonly string[]).includes(input.kind)) return false;
+  if (!(MUTABLE_SESSION_NOTE_KINDS as readonly string[]).includes(input.kind)) return false;
   if (input.authorUserId === input.actorUserId) return true;
   if (input.visibility === "SESSION_SHARED" || input.visibility === "CLIENT_SAFE") return true;
   return input.visibility === "PROJECT_TEAM" && input.canUseProjectTeam;

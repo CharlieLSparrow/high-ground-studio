@@ -29,14 +29,21 @@ enum MobileQuickEntryKind: String, Codable, CaseIterable, Identifiable {
 }
 
 enum MobileSessionNoteKind: String, Codable, CaseIterable, Identifiable {
+    case summary = "SUMMARY"
+    case highlight = "HIGHLIGHT"
     case sessionNote = "SESSION_NOTE"
     case decision = "DECISION"
     case production = "PRODUCTION"
 
     var id: String { rawValue }
 
+    static var creatableCases: [Self] { [.sessionNote, .decision, .production] }
+    var isGenerated: Bool { self == .summary || self == .highlight }
+
     var title: String {
         switch self {
+        case .summary: "Recap"
+        case .highlight: "Key moment"
         case .sessionNote: "Session note"
         case .decision: "Decision"
         case .production: "Production note"

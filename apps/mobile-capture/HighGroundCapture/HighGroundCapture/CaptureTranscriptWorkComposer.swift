@@ -42,7 +42,7 @@ struct CaptureTranscriptWorkComposer: View {
                 if kind == .note {
                     Section {
                         Picker("Purpose", selection: noteKind) {
-                            ForEach(MobileSessionNoteKind.allCases.filter { canUseProjectTeamNotes || $0 != .production }) {
+                            ForEach(MobileSessionNoteKind.creatableCases.filter { canUseProjectTeamNotes || $0 != .production }) {
                                 Text($0.title).tag($0)
                             }
                         }

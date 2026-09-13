@@ -15241,7 +15241,9 @@ private struct CaptureSessionNotesSheetContent: View {
     }
 
     private var canonicalNotes: [MobileCaptureSessionNote] {
-        session.sessionNotes ?? []
+        // A sheet retains its original presentation value. Read the current
+        // shared model so acknowledged edits appear without closing the sheet.
+        (model.sessions.first { $0.callRoomId == session.callRoomId } ?? session).sessionNotes ?? []
     }
 
     private var pendingNotes: [PendingMobileQuickEntry] {
@@ -15561,7 +15563,10 @@ private struct CaptureSessionNoteEditSheet: View {
     }
 
     private var availableKinds: [MobileSessionNoteKind] {
-        MobileSessionNoteKind.allCases.filter {
+        if let originalKind = MobileSessionNoteKind(rawValue: note.kind), originalKind.isGenerated {
+            return [originalKind]
+        }
+        return MobileSessionNoteKind.creatableCases.filter {
             $0 != .production || canUseProjectTeamNotes || $0 == noteKind
         }
     }
@@ -15978,8 +15983,8 @@ struct CaptureQuickEntrySheet: View {
 
     private var availableNoteKinds: [MobileSessionNoteKind] {
         canUseProjectTeamNotes
-            ? MobileSessionNoteKind.allCases
-            : MobileSessionNoteKind.allCases.filter { $0 != .production }
+            ? MobileSessionNoteKind.creatableCases
+            : MobileSessionNoteKind.creatableCases.filter { $0 != .production }
     }
 
     private var availableNoteVisibilities: [MobileSessionNoteVisibility] {

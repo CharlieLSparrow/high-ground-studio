@@ -75,6 +75,54 @@ describe("Session Notes workspace", () => {
     expect(screen.getByText(/By you · Only you\./i)).toBeInTheDocument();
   });
 
+  it.each(["SUMMARY", "HIGHLIGHT"] as const)("edits generated %s directly without changing its source type", async (kind) => {
+    const original = note({ id: "generated-note", kind, title: "Generated recap", visibility: "SESSION_SHARED" });
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse({ ok: true, note: { ...original, body: "Our edited recap.", updatedAt: "2026-07-24T13:00:00.000Z", revisionCount: 2 } })) as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionNotesWorkspace roomId="room-1" activeView="all" taxonomy={null} canUseProjectTeamNotes={false} initialNotes={[original]} />);
+    const card = screen.getByRole("heading", { name: "Generated recap" }).closest("article")!;
+    await user.click(within(card).getByText("Edit note, audience, and tags"));
+    expect(within(card).queryByRole("combobox", { name: "Note type" })).not.toBeInTheDocument();
+    await user.clear(within(card).getByRole("textbox", { name: "Note" }));
+    await user.type(within(card).getByRole("textbox", { name: "Note" }), "Our edited recap.");
+    await user.click(within(card).getByRole("button", { name: "Save revision" }));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)).toMatchObject({ kind, body: "Our edited recap.", expectedUpdatedAt: original.updatedAt });
+    expect(await screen.findByText("Our edited recap.", { selector: "p" })).toBeInTheDocument();
+  });
+
+  it.each([200, 409])("undoes a generated recap edit without overwriting a newer collaborator revision (%s)", async (status) => {
+    const original = note({ id: "recap", kind: "SUMMARY", title: "Our recap", body: "Original recap.", visibility: "SESSION_SHARED" });
+    const saved = { ...original, body: "Edited recap.", updatedAt: "2026-07-24T13:00:00.000Z", revisionCount: 2 };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, note: saved }))
+      .mockResolvedValueOnce(status === 200
+        ? jsonResponse({ ok: true, note: { ...original, updatedAt: "2026-07-24T14:00:00.000Z", revisionCount: 3 } })
+        : jsonResponse({ ok: false, error: "Someone updated this note. Reload before editing." }, 409));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionNotesWorkspace roomId="room-1" activeView="all" taxonomy={null} canUseProjectTeamNotes={false} initialNotes={[original]} />);
+    const card = screen.getByRole("heading", { name: "Our recap" }).closest("article")!;
+    await user.click(within(card).getByText("Edit note, audience, and tags"));
+    await user.clear(within(card).getByRole("textbox", { name: "Note" }));
+    await user.type(within(card).getByRole("textbox", { name: "Note" }), saved.body);
+    await user.click(within(card).getByRole("button", { name: "Save revision" }));
+    await user.click(await screen.findByRole("button", { name: "Undo last edit" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      title: original.title, body: original.body, kind: "SUMMARY", visibility: "SESSION_SHARED", expectedUpdatedAt: saved.updatedAt,
+    });
+    if (status === 200) {
+      expect(await screen.findByText("Previous version restored.")).toBeInTheDocument();
+      expect(within(card).getByText(original.body, { selector: "p" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Undo last edit" })).not.toBeInTheDocument();
+    } else {
+      expect(await screen.findByText("Someone updated this note. Reload before editing.")).toBeInTheDocument();
+      expect(within(card).getByText(saved.body, { selector: "p" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Undo last edit" })).toBeEnabled();
+    }
+  });
+
   it("shows only notes in the selected URL-addressable view", () => {
     render(<SessionNotesWorkspace
       roomId="room-1"
@@ -213,7 +261,8 @@ describe("Session Notes workspace", () => {
       visibility: "CLIENT_SAFE",
       expectedUpdatedAt: initial.updatedAt,
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Note updated. Its earlier versions remain available in the history.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Note updated.");
+    expect(screen.getByRole("button", { name: "Undo last edit" })).toBeInTheDocument();
     const updated = screen.getByRole("heading", { name: "Shared reflection" }).closest("article")!;
     expect(updated).toBeInTheDocument();
     expect(screen.getByText(/2 versions/)).toBeInTheDocument();

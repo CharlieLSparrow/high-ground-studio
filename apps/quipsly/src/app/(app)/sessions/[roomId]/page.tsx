@@ -652,7 +652,7 @@ export default async function SessionReviewPage({
       prisma.coachingNote.findMany({
         where: {
           roomId: room.id,
-          kind: { in: ["SESSION_NOTE", "FOLLOW_UP", "DECISION", "PRODUCTION"] },
+          kind: { in: ["SUMMARY", "HIGHLIGHT", "SESSION_NOTE", "FOLLOW_UP", "DECISION", "PRODUCTION"] },
           ...sessionNoteVisibilityWhere({
             actorUserId: session.user.id,
             canViewProjectTeam: canViewProjectTeamNotes,
@@ -687,6 +687,7 @@ export default async function SessionReviewPage({
       .map(({ id, label, slug, hexColor }: any) => ({ id, label, slug, hexColor }));
     const noteOriginLabel = (sourceJson: unknown) => {
       const source = jsonObject(sourceJson);
+      if (source.automaticallyCreated === true) return "From the transcript";
       if (readTranscriptDerivedNoteSource(sourceJson)) return "Transcript review";
       if (source.schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA) return "iPhone Capture";
       if (source.schema === "quipsly-session-continuity-brief-v1") return "Saved continuity";

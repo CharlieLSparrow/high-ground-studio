@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadLibrary } from "@/app/(app)/library/library-page";
+import { generatedPacketNoteCanRefresh } from "@/lib/server/coaching-packets";
 
 import { PATCH } from "./route";
 
@@ -117,6 +118,41 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       body: JSON.stringify({ title, body, expectedUpdatedAt: expectedUpdatedAt.toISOString(), ...options }),
     }), { params: Promise.resolve({ noteId }) });
   }
+
+  it.each(["SUMMARY", "HIGHLIGHT"] as const)("lets collaborators edit generated %s notes with source retention, retries, and isolation", async (kind) => {
+    const generated = await prisma.coachingNote.create({ data: {
+      roomId, authorUserId: actorUserId, kind, visibility: "SESSION_SHARED",
+      title: "Generated session work", body: "The original generated wording.",
+      sourceJson: { origin: "quipsly-session-follow-through", automaticallyCreated: true,
+        packetBuildId: "packet-test", transcriptJobId: "source-transcript",
+        generatedNoteSnapshot: { schema: "quipsly-generated-packet-note-snapshot-v1",
+          title: "Generated session work", body: "The original generated wording." } },
+    } });
+    expect(generatedPacketNoteCanRefresh(generated)).toBe(true);
+    const requestId = randomUUID();
+    const edit = (overrides = {}) => PATCH(new Request(`http://localhost/api/notes/${generated.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Our session recap", body: "We agreed to practice the opening question.",
+        kind, visibility: "SESSION_SHARED", tagIds: [], expectedUpdatedAt: generated.updatedAt.toISOString(),
+        clientRequestId: requestId, ...overrides }),
+    }), { params: Promise.resolve({ noteId: generated.id }) });
+    signedInAs(outsiderUserId, outsiderEmail);
+    expect((await edit()).status).toBe(404);
+    signedInAs(otherUserId, otherEmail);
+    const response = await edit();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, note: { id: generated.id, kind, body: "We agreed to practice the opening question." } });
+    expect(await (await edit()).json()).toMatchObject({ ok: true, idempotentReplay: true });
+    const saved = await prisma.coachingNote.findUniqueOrThrow({ where: { id: generated.id } });
+    expect(generatedPacketNoteCanRefresh(saved)).toBe(false);
+    expect(saved.sourceJson).toMatchObject({ transcriptJobId: "source-transcript", packetBuildId: "packet-test",
+      lastEditReceipt: { previous: { body: generated.body } } });
+    expect(await prisma.coachingNoteRevision.count({ where: { noteId: generated.id } })).toBe(1);
+    expect((await edit({ kind: "SESSION_NOTE", clientRequestId: randomUUID(), expectedUpdatedAt: saved.updatedAt.toISOString() })).status).toBe(400);
+    expect((await edit({ body: "A stale edit", clientRequestId: randomUUID() })).status).toBe(409);
+    await prisma.coachingNote.update({ where: { id: generated.id }, data: { visibility: "AUTHOR_PRIVATE" } });
+    expect((await edit()).status).toBe(404);
+  });
 
   it("updates the exact actor-owned note through its Nest editor grant with a retained previous-value receipt", async () => {
     signedInAs(actorUserId, actorEmail);
