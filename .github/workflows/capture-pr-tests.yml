@@ -121,6 +121,7 @@ jobs:
           bash apps/mobile-capture/HighGroundCapture/scripts/test-protected-session-cache-identity.sh
           bash scripts/test-capture-document-note-edits.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-recording-edit-sync.sh
+          bash apps/mobile-capture/HighGroundCapture/scripts/test-provider-room-call-audio-evidence.sh
           bash scripts/test-capture-task-reminders.sh
           bash scripts/test-capture-voice-writing-continuation.sh
           bash scripts/test-capture-voice-writing-account-context.sh

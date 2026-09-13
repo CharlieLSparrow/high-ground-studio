@@ -13,3 +13,9 @@ xcrun swiftc \
   -o "$temporary_root/ProviderRoomCallAudioEvidenceHarness"
 
 "$temporary_root/ProviderRoomCallAudioEvidenceHarness"
+
+xcrun swiftc \
+  "$capture_root/HighGroundCapture/CaptureCallLifecycle.swift" \
+  "$capture_root/Testing/CaptureCallLifecycleHarness.swift" \
+  -o "$temporary_root/CaptureCallLifecycleHarness"
+"$temporary_root/CaptureCallLifecycleHarness"

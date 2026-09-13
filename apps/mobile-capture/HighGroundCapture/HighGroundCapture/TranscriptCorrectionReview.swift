@@ -4893,7 +4893,7 @@ struct CaptureTranscriptReviewView: View {
                         Label("Share transcript", systemImage: "square.and.arrow.up")
                             .frame(minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .accessibilityIdentifier("CaptureTranscriptShareExport")
                     .accessibilityValue(exportURL.lastPathComponent)
                     Text("Includes text corrections. Timestamps match this transcript’s recording timeline, not a trimmed export.")

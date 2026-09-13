@@ -1340,7 +1340,8 @@ requireIncludes(capturePhoneShellText, ".sheet(isPresented: $showsCallChat)", "t
 requireIncludes(sessionConversationText, "QuipslyCapture/SessionConversation", "Session conversation uses a distinct protected cache namespace");
 requireIncludes(sessionConversationText, 'hint.threadKey == "session:\\(context.roomID)"', "native Session hints accept only the exact requested durable thread");
 requireIncludes(sessionConversationText, '"clientRequestId": send.requestID.uuidString.lowercased()', "native Session message retries preserve one request identity");
-requireIncludes(sessionConversationText, "Messages stay with this Session.", "Session conversation states its exact-call collaboration boundary");
+// Room scoping is verified by the conversation API and multi-account workflow
+// tests, not by forcing an explanatory sentence into the call interface.
 requireIncludes(sessionConversationText, "AuthManager.shared.authenticatedData", "Session conversation uses the verified native account request boundary");
 requireIncludes(sessionConversationText, "FileProtectionType.complete", "Session conversation cache is protected while the iPhone is locked");
 requireIncludes(sessionConversationText, "stableOwnerSnapshot()", "Session conversation cache is partitioned by stable account owner");
@@ -3035,15 +3036,14 @@ requireIncludes(providerRoomText, "func refreshPermissionReadinessSnapshot() asy
 requireIncludes(providerRoomText, "guard lastFailureWasMicrophonePermission else { return }", "return-from-Settings clears only a permission-specific call failure");
 requireIncludes(providerRoomText, "try? await room.localParticipant.setMicrophone(enabled: false)", "revoked microphone access reconciles a formerly live provider microphone to muted without leaving the call");
 requireIncludes(captureAppText, "ProviderRoomController.shared", "the app lifecycle refreshes the one process-wide call controller after Settings changes");
-requireIncludes(providerRoomText, "enum PendingCallKitEndDisposition", "native CallKit cleanup uses one coherent person-ended, programmatic, or reconnect-exhausted policy");
-requireIncludes(providerRoomText, "case reconnectExhausted", "native CallKit cleanup represents exhausted provider reconnect explicitly");
-requireIncludes(providerRoomText, "var protectsLocalSource: Bool", "native CallKit end policy keeps source protection separate from rejoin eligibility");
-requireIncludes(providerRoomText, "var allowsRejoin: Bool", "native CallKit end policy exposes manual-rejoin eligibility explicitly");
-requireIncludes(providerRoomText, "allowRejoin: reconnectWasExhausted", "provider reconnect exhaustion preserves the manual Rejoin path through CallKit cleanup");
+requireIncludes(providerRoomText, "private var callLifecycle = CaptureCallLifecycle()", "native call operations share cancellation and teardown ownership");
+requireIncludes(providerRoomText, "guard self.activeCallUUID == action.callUUID else", "a stale system hangup cannot end a later call");
+requireIncludes(providerRoomText, "if protectLocalSource { _ = await protectLocalSourceBeforeNativeCallEnd?() }", "source protection is app-owned and does not depend on a delayed CallKit transaction");
+requireIncludes(providerRoomText, "reason: reconnectWasExhausted ? .failed : .remoteEnded", "provider reconnect exhaustion reports transport failure without impersonating a person ending their recording");
 requireIncludes(providerRoomText, "@Published private(set) var rejoinableCallRoomID", "manual Rejoin eligibility is scoped to the Session that actually disconnected");
 requireIncludes(providerRoomText, "func canRejoin(callRoomID: String) -> Bool", "native call recovery cannot unlock a different Session");
-requireIncludes(providerRoomText, "let rejoinCallRoomID = shouldAllowRejoin ? self.activeCallRoomID : nil", "CallKit cleanup snapshots the exact room before asynchronous teardown clears its live bridge");
-requireIncludes(providerRoomText, "self.rejoinableCallRoomID = rejoinCallRoomID", "CallKit's asynchronous end handler preserves only the exhausted room's Rejoin state");
+requireIncludes(providerRoomText, "let disconnectedCallRoomID = self.activeCallRoomID", "provider cleanup snapshots the exact room before clearing its live bridge");
+requireIncludes(providerRoomText, "self.rejoinableCallRoomID = disconnectedCallRoomID", "provider reconnect exhaustion preserves only the affected room's Rejoin state");
 requireIncludes(providerRoomText, "let resetCallRoomID = self.activeCallRoomID", "CallKit reset snapshots the exact affected room before provider cleanup");
 requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = true", "CallKit reset owns one deterministic recovery result rather than racing room-delegate inference");
 requireIncludes(captureExperienceModelText, "providerRoom.canRejoin(callRoomID: session.callRoomId)", "room preparation bypasses route locks only for the selected disconnected Session");
@@ -3088,10 +3088,10 @@ for (const forbidden of [
 requireIncludes(captureExperienceModelText, "Confirm that everyone agreed to be recorded before you tap Record.", "Record explains the missing consent action in ordinary language");
 requireIncludes(captureExperienceModelText, "Quipsly syncs the Session in the background.", "active recording status hides internal receipt machinery");
 requireIncludes(captureExperienceModelText, "Your local recording is safe, and Quipsly will retry automatically.", "background Session-sync recovery stays calm and actionable");
-requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = !shouldAllowRejoin", "provider-exhausted cleanup remains distinct from a deliberate person-owned hang-up");
+requireIncludes(providerRoomText, "let reconnectWasExhausted = !self.intentionalProviderDisconnect", "provider-exhausted cleanup remains distinct from a deliberate person-owned hang-up");
 requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
 requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");
-requireIncludes(providerRoomText, "SwiftUIVideoView(track, layoutMode: .fill)", "native call renders subscribed remote video using the provider SDK");
+requireIncludes(providerRoomText, "SwiftUIVideoView(track, layoutMode: .fit)", "native call renders the full subscribed remote frame using the provider SDK");
 requireIncludes(providerRoomText, 'accessibilityIdentifier("CaptureRemoteCallVideo")', "native remote video has a stable automation identity");
 requireIncludes(capturePhoneShellText, "model.providerRoom.hasRemoteVideo", "shipping call surface reveals remote video only when a real track exists");
 assert(!providerRoomText.includes("setCamera(enabled: true)"), "Live call must not silently seize the iPhone camera from retained local capture.", { forbidden: "setCamera(enabled: true)" });
@@ -3131,11 +3131,11 @@ const connectedRecorderDock = capturePhoneShellText.slice(
   localOnlyRecorderDockStart,
 );
 assert(
-  connectedRecorderDock.indexOf("CapturePersistentRecorderDock(") >= 0
-    && connectedRecorderDock.indexOf("ProviderRoomDock(")
-      > connectedRecorderDock.indexOf("CapturePersistentRecorderDock("),
-  "Record must remain immediately reachable above ordinary call controls after Join.",
-  { label: "connected iPhone call keeps persistent Record above Mute, Camera, and Leave" },
+  connectedRecorderDock.includes("sessionRecorderDock(session)")
+    && connectedRecorderDock.includes("ProviderRoomDock(")
+    && connectedRecorderDock.includes("AnyView(sessionRecorderDock(session, compactControl: true))"),
+  "Record stays in the fixed call controls, expanding only when the recording needs more space.",
+  { label: "connected call keeps both compact and expanded recording controls reachable" },
 );
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersistentRecorderDock")', "persistent iPhone Record row has a stable automation identity");
 requireIncludes(capturePhoneShellText, "Waiting for consent", "persistent iPhone Record row explains participant readiness without extra administration");
@@ -3320,9 +3320,10 @@ assert(
 );
 const providerRenderText = providerAudioMasterText.slice(providerRenderStart, providerRenderEnd);
 assert(
-  providerRenderText.indexOf("source.render(pcmBuffer: pcmBuffer)") >= 0
-    && providerRenderText.indexOf("source.render(pcmBuffer: pcmBuffer)")
-      < providerRenderText.indexOf("liveTranscriptPCMConsumer?(pcmBuffer)"),
+  providerRenderText.indexOf("source.render(pcmBuffer: retainedBuffer)") >= 0
+    && providerRenderText.indexOf("source.render(pcmBuffer: retainedBuffer)")
+      < providerRenderText.indexOf("liveTranscriptPCMConsumer?(retainedBuffer)")
+    && providerRenderText.includes("ProviderAudioPrivacyBuffer.silence(matching: pcmBuffer)"),
   "Protected source persistence must be scheduled before best-effort live transcription.",
   { label: "provider source writer remains first in PCM render order" },
 );
@@ -3341,7 +3342,7 @@ requireIncludes(captureExperienceModelText, "activeAudioCapture?.isUsingProvider
 requireIncludes(captureExperienceModelText, "case .recording, .paused:", "native mute stays available across active and deliberately paused provider masters");
 requireIncludes(captureExperienceModelText, "case .finalizing:", "native mute waits through the brief local-master finalization boundary");
 requireIncludes(captureExperienceModelText, "retainedRecordingContinues: retainedRecordingContinues", "native mute explicitly tells the call layer when its protected master continues");
-requireIncludes(providerRoomText, '"Call muted. Protected local recording continues."', "native mute plainly distinguishes outbound silence from a continuing local master");
+requireIncludes(providerRoomText, '"Microphone muted in the call and recording."', "native mute accurately describes microphone privacy in both destinations");
 requireIncludes(capturePhoneShellText, "model.providerMuteControlLockedForLocalCapture", "persistent native Mute remains usable during a compatible protected local master");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");
 requireIncludes(captureExperienceModelText, "guard providerRoom.isConnected,", "native Speaker requires an active call instead of the broad local-recording lock");

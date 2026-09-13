@@ -468,7 +468,7 @@ const nativeStart = providerRoom.slice(providerRoom.indexOf("private func startN
 check("CallKit identity exists before transaction callbacks can activate audio",
   nativeStart.indexOf("activeCallUUID = uuid") < nativeStart.indexOf("try await requestCallKitTransaction(transaction)")
     && nativeStart.includes("guard activeCallUUID == uuid else")
-    && nativeStart.includes("if activeCallUUID == uuid { clearNativeCallPresentation() }"));
+    && nativeStart.includes("guard activeCallUUID == uuid else { return false }"));
 const startAction = providerRoom.slice(providerRoom.indexOf("perform action: CXStartCallAction"), providerRoom.indexOf("perform action: CXEndCallAction"));
 check("the current authenticated CallKit start configures audio before fulfillment",
   startAction.includes("self.activeCallUUID == action.callUUID")
@@ -478,6 +478,24 @@ check("the current authenticated CallKit start configures audio before fulfillme
 check("call activation teardown preserves an earlier actionable failure",
   providerRoom.includes("let activationFailure = lastTechnicalError")
     && providerRoom.includes('technical: activationFailure)'));
+
+const nativeEnd = providerRoom.slice(providerRoom.indexOf("private func endNativeCallPresentation("), providerRoom.indexOf("private func clearNativeCallPresentation("));
+check("programmatic cleanup reports the ended call without scheduling a duplicate person-ended action",
+  nativeEnd.includes("callKitProvider.reportCall(with: uuid")
+    && !nativeEnd.includes("requestCallKitTransaction")
+    && !nativeEnd.includes("CXEndCallAction")
+    && nativeEnd.indexOf("if protectLocalSource") < nativeEnd.indexOf("guard let uuid"));
+const endAction = providerRoom.slice(providerRoom.indexOf("perform action: CXEndCallAction"), providerRoom.indexOf("didActivate audioSession:"));
+check("a system hangup consumes only its own call identity before protecting the source",
+  endAction.includes("guard self.activeCallUUID == action.callUUID else")
+    && endAction.indexOf("self.clearNativeCallPresentation()") < endAction.indexOf("await self.protectLocalSourceBeforeNativeCallEnd")
+    && endAction.includes("self.callLifecycle.beginTeardown()"));
+check("suspended connection phases revalidate operation ownership",
+  providerRoom.split("guard callLifecycle.isCurrentConnection(connectionID) else { return }").length >= 7
+    && providerRoom.includes("defer { callLifecycle.finishConnection(connectionID) }"));
+const clearCall = providerRoom.slice(providerRoom.indexOf("private func clearNativeCallPresentation("), providerRoom.indexOf("private func clearEpisodeWatchBridge("));
+check("a new call cannot inherit a stale activated-audio flag",
+  clearCall.includes("isCallAudioSessionActive = false") && clearCall.includes("activeCallUUID = nil"));
 
 console.log(`quipsly iOS capture durability contract: ${checks.length}/${checks.length} checks passed`);
 for (const name of checks) console.log(`  ✓ ${name}`);

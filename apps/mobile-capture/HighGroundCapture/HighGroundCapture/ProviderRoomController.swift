@@ -176,16 +176,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private let callController = CXCallController()
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
     private var activeCallUUID: UUID?
+    private var callLifecycle = CaptureCallLifecycle()
     private var intentionalProviderDisconnect = false
-    private enum PendingCallKitEndDisposition {
-        case personEnded
-        case programmaticCleanup
-        case reconnectExhausted
-
-        var protectsLocalSource: Bool { self == .personEnded }
-        var allowsRejoin: Bool { self == .reconnectExhausted }
-    }
-    private var pendingCallKitEndDisposition: PendingCallKitEndDisposition?
     private var activeOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     private var accountObserver: NSObjectProtocol?
     private var activeCallRoomID: String?
@@ -330,6 +322,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         joinMuted: Bool = false
     ) async {
         #if canImport(LiveKit)
+        guard !isConnecting, !isConnected else { return }
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
             fail(
                 "Your Quipsly account changed. Join again with the current account.",
@@ -355,6 +348,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
             fail("This call couldn't start. Refresh the Session and try again.", technical: "Nest returned an incomplete provider-room join packet.")
             return
         }
+        guard let connectionID = callLifecycle.beginConnection() else { return }
+        defer { callLifecycle.finishConnection(connectionID) }
         activeOwnerSnapshot = expectedOwnerSnapshot
         activeCallRoomID = session.callRoomId
         activeChatThreadKeys = Set([
@@ -391,6 +386,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         let callKitStarted = useCallAudio
             ? await startNativeCallPresentation(session: session, join: join)
             : true
+        guard callLifecycle.isCurrentConnection(connectionID) else { return }
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
             await abortForAccountChange()
             return
@@ -405,6 +401,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         let callAudioActivated = useCallAudio
             ? await waitForCallAudioActivation(expectedOwnerSnapshot: expectedOwnerSnapshot)
             : true
+        guard callLifecycle.isCurrentConnection(connectionID) else { return }
         guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
             await abortForAccountChange()
             return
@@ -434,6 +431,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 token: participantToken,
                 connectOptions: ConnectOptions(autoSubscribe: useCallAudio)
             )
+            guard callLifecycle.isCurrentConnection(connectionID) else { return }
             guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
                 await abortForAccountChange()
                 return
@@ -444,6 +442,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             try await room.localParticipant.setMicrophone(
                 enabled: useCallAudio && !joinMuted
             )
+            guard callLifecycle.isCurrentConnection(connectionID) else { return }
             guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
                 await abortForAccountChange()
                 return
@@ -469,7 +468,11 @@ final class ProviderRoomController: NSObject, ObservableObject {
             // signing out while a subscription is in flight must not revive UI
             // state from the previous account when it returns.
             await receiveCompanionVideo()
+            guard callLifecycle.isCurrentConnection(connectionID) else { return }
         } catch {
+            guard callLifecycle.isCurrentConnection(connectionID) else { return }
+            let teardownID = callLifecycle.beginTeardown()
+            defer { callLifecycle.finishTeardown(teardownID) }
             stopCallAudioMeter()
             rejoinableCallRoomID = nil
             intentionalProviderDisconnect = true
@@ -702,6 +705,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     func disconnect() async {
+        let teardownID = callLifecycle.beginTeardown()
+        defer { callLifecycle.finishTeardown(teardownID) }
         rejoinableCallRoomID = nil
         intentionalProviderDisconnect = true
         #if canImport(LiveKit)
@@ -822,7 +827,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
             Self.callLog.info("Outgoing call transaction accepted")
             return true
         } catch {
-            if activeCallUUID == uuid { clearNativeCallPresentation() }
+            guard activeCallUUID == uuid else { return false }
+            clearNativeCallPresentation()
             nativeCallPresentationLabel = "CallKit unavailable"
             lastTechnicalError = "Native call presentation failed: \(error.localizedDescription)"
             Self.callLog.error("Outgoing call transaction rejected: \(error.localizedDescription, privacy: .public)")
@@ -842,32 +848,20 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     private func endNativeCallPresentation(
         reason: CXCallEndedReason,
-        protectLocalSource: Bool = false,
-        allowRejoin: Bool = false
+        protectLocalSource: Bool = false
     ) async {
+        let teardownID = callLifecycle.beginTeardown()
+        defer { callLifecycle.finishTeardown(teardownID) }
+        // Protection is app-owned work, not dependent on delivery of a future
+        // CallKit action. It also applies to companion devices without a UUID.
+        if protectLocalSource { _ = await protectLocalSourceBeforeNativeCallEnd?() }
         guard let uuid = activeCallUUID else {
-            isNativeCallPresentationActive = false
-            activeCallUUIDString = nil
-            nativeCallPresentationLabel = "CallKit ready"
+            clearNativeCallPresentation()
             return
         }
 
-        // Programmatic CallKit cleanup must not masquerade as a person ending
-        // the call from the lock screen or a headset. In particular, an
-        // exhausted LiveKit reconnect must leave the participant-owned master
-        // running so the person can rejoin without losing the take.
-        pendingCallKitEndDisposition = allowRejoin
-            ? .reconnectExhausted
-            : protectLocalSource
-                ? .personEnded
-                : .programmaticCleanup
-        let action = CXEndCallAction(call: uuid)
-        let transaction = CXTransaction(action: action)
-        do {
-            try await requestCallKitTransaction(transaction)
-        } catch {
-            pendingCallKitEndDisposition = nil
-        }
+        // The provider has already ended or failed. Report that fact, rather
+        // than request a second end action that could arrive during rejoin.
         callKitProvider.reportCall(with: uuid, endedAt: Date(), reason: reason)
         clearNativeCallPresentation()
     }
@@ -877,6 +871,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
         activeCallUUIDString = nil
         isNativeCallPresentationActive = false
         nativeCallPresentationLabel = "CallKit ready"
+        // A later join must wait for its own activation, not inherit the prior
+        // call's true flag while CallKit's deactivation callback is in flight.
+        isCallAudioSessionActive = false
+        callAudioSessionLabel = "Call audio idle"
     }
 
     private func clearEpisodeWatchBridge() {
@@ -1080,6 +1078,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     private func abortForAccountChange() async {
+        let teardownID = callLifecycle.beginTeardown()
+        defer { callLifecycle.finishTeardown(teardownID) }
         stopCallAudioMeter()
         rejoinableCallRoomID = nil
         intentionalProviderDisconnect = true
@@ -1110,6 +1110,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     private func abortAfterCallAudioActivationFailure(_ error: Error) async {
+        let teardownID = callLifecycle.beginTeardown()
+        defer { callLifecycle.finishTeardown(teardownID) }
         let technicalMessage = "Provider audio could not activate safely, so Quipsly left the room instead of showing a silent connection: \(error.localizedDescription)"
         stopCallAudioMeter()
         rejoinableCallRoomID = nil
@@ -1154,6 +1156,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
 extension ProviderRoomController: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
         Task { @MainActor in
+            let teardownID = self.callLifecycle.beginTeardown()
+            defer { self.callLifecycle.finishTeardown(teardownID) }
             let resetCallRoomID = self.activeCallRoomID
             let shouldAllowRejoin = resetCallRoomID != nil
                 && self.permanentlyClosedCallRoomID != resetCallRoomID
@@ -1170,7 +1174,6 @@ extension ProviderRoomController: CXProviderDelegate {
             #endif
             self.stopCallAudioMeter()
             self.clearNativeCallPresentation()
-            self.pendingCallKitEndDisposition = nil
             try? self.audioSessionCoordinator.callKitDidDeactivate()
             self.audioSessionCoordinator.providerDidDisconnect()
             self.isConnected = false
@@ -1216,24 +1219,24 @@ extension ProviderRoomController: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor in
+            guard self.activeCallUUID == action.callUUID else {
+                Self.callLog.notice("Ignoring superseded end-call action")
+                action.fulfill()
+                return
+            }
+            let teardownID = self.callLifecycle.beginTeardown()
+            defer { self.callLifecycle.finishTeardown(teardownID) }
+            // Consume this identity before suspending: a duplicate callback
+            // must not close the same recorder twice.
+            self.clearNativeCallPresentation()
             // Fulfill the system-owned action promptly. Local source protection
             // starts before provider disconnect; CallKit may deactivate its
             // audio lease independently while the already-issued recorder stop
             // finishes closing durable bytes.
             action.fulfill()
-            let disposition = self.pendingCallKitEndDisposition ?? .personEnded
-            self.pendingCallKitEndDisposition = nil
-            let shouldProtectLocalSource = disposition.protectsLocalSource
-            let shouldAllowRejoin = disposition.allowsRejoin
-            let rejoinCallRoomID = shouldAllowRejoin ? self.activeCallRoomID : nil
-            let localSourceProtected: Bool
-            if shouldProtectLocalSource {
-                localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
-            } else {
-                localSourceProtected = true
-            }
-            self.rejoinableCallRoomID = rejoinCallRoomID
-            self.intentionalProviderDisconnect = !shouldAllowRejoin
+            self.intentionalProviderDisconnect = true
+            self.rejoinableCallRoomID = nil
+            let localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
             #if canImport(LiveKit)
             self.localVideoSource?.setLiveVideoFrameConsumer(nil)
             if self.isConnected || self.isConnecting {
@@ -1252,9 +1255,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.activeOwnerSnapshot = nil
             self.clearEpisodeWatchBridge()
             self.connectionStateLabel = "Disconnected"
-            self.statusText = shouldAllowRejoin
-                ? "The call disconnected. Your recording is still protected on \(CaptureDeviceVocabulary.thisDevice). Tap Rejoin call when ready."
-                : localSourceProtected
+            self.statusText = localSourceProtected
                     ? "Native call ended. \(CaptureDeviceVocabulary.thisDevicePossessive) local source is protected; upload and transcript work can continue."
                     : "Native call ended. \(CaptureDeviceVocabulary.thisDeviceCapitalized) is still closing its local source; keep Quipsly open until Library shows the result."
         }
@@ -1304,6 +1305,7 @@ extension ProviderRoomController: RoomDelegate {
         from oldConnectionState: ConnectionState
     ) {
         Task { @MainActor in
+            guard room === self.room, room.connectionState == connectionState else { return }
             self.connectionStateLabel = "\(connectionState)".capitalized
             self.remoteParticipantCount = room.remoteParticipants.count
             self.refreshRemoteVideoTrack()
@@ -1341,6 +1343,8 @@ extension ProviderRoomController: RoomDelegate {
                 self.connectionStateLabel = "Reconnecting"
                 self.statusText = "Reconnecting…"
             case .disconnected:
+                let teardownID = self.callLifecycle.beginTeardown()
+                defer { self.callLifecycle.finishTeardown(teardownID) }
                 let disconnectedCallRoomID = self.activeCallRoomID
                 let ownedLiveRoomState = disconnectedCallRoomID != nil
                     || self.isConnected
@@ -1369,10 +1373,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.usesCallAudio = false
                 self.remoteParticipantCount = 0
                 self.audioSessionCoordinator.providerDidDisconnect()
-                await self.endNativeCallPresentation(
-                    reason: .remoteEnded,
-                    allowRejoin: reconnectWasExhausted
-                )
+                await self.endNativeCallPresentation(reason: reconnectWasExhausted ? .failed : .remoteEnded)
                 self.activeOwnerSnapshot = nil
                 self.clearEpisodeWatchBridge()
                 self.clearRemoteVideoTrack()
