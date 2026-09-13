@@ -1225,7 +1225,15 @@ function CorrectionEditor({
       setNoteTitle(`Note — ${segment.text}`.slice(0, 180));
       setNoteBody(segment.text);
     }
-  }, [segment.id, segment.text, segment.speakerLabel, segment.acceptedCorrection?.id, editing, creatingDraft, creatingNote]);
+    if (!creatingTask) {
+      setTaskTitle(segment.text.slice(0, 180));
+      setTaskDetail(`From ${timestampForSeconds(programStartSeconds)}–${timestampForSeconds(programEndSeconds)} on the Session timeline: ${segment.text}`);
+    }
+    if (!creatingGoal) {
+      setGoalTitle(segment.text.slice(0, 180));
+      setGoalDescription(`Source commitment at ${timestampForSeconds(programStartSeconds)}–${timestampForSeconds(programEndSeconds)} on the Session timeline: ${segment.text}`);
+    }
+  }, [segment.id, segment.text, segment.speakerLabel, segment.acceptedCorrection?.id, programStartSeconds, programEndSeconds, editing, creatingDraft, creatingNote, creatingTask, creatingGoal]);
 
   function beginEditing() {
     editingSource.current = segment;

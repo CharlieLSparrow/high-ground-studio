@@ -51,6 +51,41 @@ describe("mobile transcript run versioning", () => {
     });
   });
 
+  it.each([
+    ["selected-source", 200],
+    ["older-source-in-same-room", 409],
+  ])("binds an explicitly selected job to its source (%s)", async (assetId, expectedStatus) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "coach", isStaff: false } } as any);
+    const findFirst = jest.fn().mockResolvedValue({ id: "selected-job", assetId });
+    jest.mocked(getPrismaClient).mockReturnValue({ transcriptJob: { findFirst } } as any);
+    jest.mocked(reconcileCaptureTranscriptJob).mockResolvedValue({ status: "completed", transcriptJobId: "selected-job", segmentCount: 2, wordCount: 12, alreadyCompleted: true });
+    const result = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcriptJobId: "selected-job", recordingAssetId: "selected-source" }),
+    }));
+    expect(result.status).toBe(expectedStatus);
+    if (expectedStatus === 409) {
+      expect(await result.json()).toMatchObject({ ok: false, code: "TRANSCRIPT_SOURCE_MISMATCH" });
+      expect(reconcileCaptureTranscriptJob).not.toHaveBeenCalled();
+      expect(dispatchCaptureTranscriptFollowThrough).not.toHaveBeenCalled();
+    } else {
+      expect(await result.json()).toMatchObject({ ok: true, transcriptJobId: "selected-job" });
+    }
+    expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
+  });
+
+  it("does not disclose a source mismatch before checking job access", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "outsider", isStaff: false } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({ transcriptJob: { findFirst: jest.fn().mockResolvedValue(null) } } as any);
+    const result = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcriptJobId: "private-job", recordingAssetId: "wrong-source" }),
+    }));
+    expect(result.status).toBe(404);
+    expect(reconcileCaptureTranscriptJob).not.toHaveBeenCalled();
+    expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
+  });
+
   it("creates a new transcript job instead of requeueing a segment-bearing version", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "user-1", primaryEmail: " Producer@Example.com ", isStaff: false },

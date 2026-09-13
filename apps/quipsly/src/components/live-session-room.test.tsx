@@ -269,6 +269,27 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("browser-source-capture-group")).not.toBeVisible();
   });
 
+  it("offers an optional sound check directly in the lobby without starting capture or joining", async () => {
+    const getUserMedia = jest.fn();
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([]), getUserMedia,
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    await act(async () => { render(<LiveSessionRoom stageLayout callRoomId="lobby-audio-test"
+      captureGroupId="55555555-5555-4555-8555-555555555551" sessionTitle="Coaching session" kind="coaching" />); });
+    const lobby = screen.getByRole("region", { name: "Ready to join" });
+    const check = within(lobby).getByTestId("lobby-audio-check");
+    expect(check).not.toHaveAttribute("open");
+    fireEvent.click(within(check).getByText("Test mic and speakers"));
+    expect(check).toHaveAttribute("open");
+    expect(within(check).getByRole("button", { name: "Test microphone" })).toBeEnabled();
+    expect(within(check).getByRole("button", { name: "Test speakers" })).toBeEnabled();
+    expect(screen.getAllByRole("region", { name: "Microphone test" })).toHaveLength(1);
+    expect(within(lobby).getByRole("button", { name: "Join call" })).toBeEnabled();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+  });
+
   it("asks for media only from Join and enters muted when permission stays unavailable", async () => {
     const getUserMedia = jest.fn().mockResolvedValue({
       getTracks: () => [{ stop: jest.fn() }],

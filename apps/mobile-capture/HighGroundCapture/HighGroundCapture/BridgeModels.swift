@@ -545,6 +545,8 @@ struct MobileCaptureSourceTranscriptSummary: Codable, Hashable {
     let quipslyCloudASRRequested: Bool?
     let quipslyCloudASRCompleted: Bool?
     let fallbackReasonCode: String?
+    var failureCode: String? = nil
+    var retryable: Bool? = nil
 
     var routingLabel: String {
         switch recognitionExecution?
@@ -9337,9 +9339,11 @@ final class CaptureSessionClient: ObservableObject {
         }
     }
 
-    func runTranscript(for session: MobileCaptureSession) async -> Bool {
-        let transcriptJobId = session.latestTranscriptJobId
-        let recordingAssetId = session.latestRecordingAssetId
+    func runTranscript(for session: MobileCaptureSession, recordingAssetID: String? = nil) async -> Bool {
+        let recordingAssetId = recordingAssetID ?? session.latestRecordingAssetId
+        // A selected recording is authoritative. The room's latest job may
+        // belong to an older take or another participant.
+        let transcriptJobId = recordingAssetId == nil ? session.latestTranscriptJobId : nil
         guard transcriptJobId != nil || recordingAssetId != nil else {
             status = "No recording"
             errorMessage = session.hasProviderRecordingReceiptSlot
@@ -9389,10 +9393,10 @@ final class CaptureSessionClient: ObservableObject {
 
             if payload.alreadyCompleted == true {
                 status = "Transcript already complete"
-            } else if payload.ensuredFromRecording == true {
-                status = "Transcript repaired"
-            } else {
+            } else if payload.status?.uppercased() == "COMPLETED" {
                 status = "Transcript complete"
+            } else {
+                status = "Transcript processing"
             }
             latestTranscriptRunResponse = payload
             await load()

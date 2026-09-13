@@ -2,6 +2,7 @@ import AVKit
 import SwiftUI
 
 struct CapturePostCallWorkspace: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var model: CaptureExperienceModel
     let session: MobileCaptureSession
     let completedCall: CaptureCompletedCall
@@ -17,6 +18,13 @@ struct CapturePostCallWorkspace: View {
         library.recordings.filter {
             $0.callRoomId == completedCall.roomID && completedCall.recordingIDs.contains($0.id)
         }
+    }
+
+    private var transcriptMonitorID: String {
+        let assetIDs = Set(recordings.compactMap(\.recordingAssetId))
+        let states = (session.captureSources ?? []).filter { assetIDs.contains($0.recordingAssetId) }
+            .map { "\($0.recordingAssetId):\($0.transcript?.id ?? "none"):\($0.transcript?.status ?? "none")" }.sorted()
+        return "\(completedCall.id)|\(scenePhase)|\(states.joined(separator: "|"))"
     }
 
     var body: some View {
@@ -84,6 +92,7 @@ struct CapturePostCallWorkspace: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePostCallWorkspace")
+        .task(id: transcriptMonitorID) { await refreshRecordingResults() }
         .onDisappear { playback.stop() }
         .sheet(isPresented: Binding(
             get: { playback.videoPlayer != nil },
@@ -93,6 +102,34 @@ struct CapturePostCallWorkspace: View {
                 VideoPlayer(player: player)
                     .ignoresSafeArea()
                     .onDisappear { playback.stop() }
+            }
+        }
+    }
+
+    @MainActor
+    private func refreshRecordingResults() async {
+        guard scenePhase == .active, !model.usesPreviewData,
+              !recordings.isEmpty, AuthManager.shared.networkActionsAllowed else { return }
+        var delay = 3.0
+        let expiresAt = Date().addingTimeInterval(20 * 60)
+        while !Task.isCancelled, Date() < expiresAt {
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard !Task.isCancelled, AuthManager.shared.networkActionsAllowed else { return }
+            let result = await model.sessionClient.load(authoritativeSessionID: session.id)
+            guard !Task.isCancelled else { return }
+            switch result {
+            case .loaded:
+                guard let updated = model.sessionClient.sessions.first(where: { $0.id == session.id }) else { return }
+                let pending = recordings.contains { recording in
+                    guard recording.shouldBeginAutomaticOnDeviceTranscript, !recording.needsClearSpeechRetry else { return false }
+                    guard let sourceID = recording.recordingAssetId,
+                          let source = updated.captureSources?.first(where: { $0.recordingAssetId == sourceID }) else { return true }
+                    return !["COMPLETED", "FAILED", "HELD"].contains(source.transcript?.status?.uppercased() ?? "")
+                }
+                if !pending { return }
+                delay = min(delay * 1.7, 30)
+            case .transportUnavailable: delay = min(delay * 2, 60)
+            case .forbidden, .authoritativeAbsent, .invalidResponse: return
             }
         }
     }
@@ -144,6 +181,8 @@ struct CapturePostCallWorkspace: View {
                 Button("Open recording recovery", action: onLibrary)
                     .frame(minHeight: 44)
             }
+            Divider()
+            CapturePostCallTranscript(recording: recording, session: session, sessionClient: model.sessionClient)
         }
         .captureCard()
     }

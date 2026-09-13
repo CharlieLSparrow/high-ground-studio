@@ -1638,6 +1638,7 @@ struct CaptureRecordingShareEditor: View {
                     HStack { recordingMarkButtons(source, snapshot: snapshot) }
                     VStack(alignment: .leading) { recordingMarkButtons(source, snapshot: snapshot) }
                 }
+                .buttonStyle(.bordered)
                 .disabled(!loaded || sourcePlayback.isPreparing || !selectedSourceIDs.contains(source.id) || client.busyAction != nil)
                 Text("Keep \(captureRecordingShareTime(startSeconds))–\(captureRecordingShareTime(endSeconds)) of the session")
                     .font(.caption.monospacedDigit())

@@ -1244,6 +1244,28 @@ final class OnDeviceTranscriptManager: ObservableObject {
         )
     }
 
+    /// One recovery path for spoken writing and recorded sessions. Reuse saved
+    /// words and accepted cloud work before starting recognition again.
+    func retryTranscript(recording: LocalRecording, fileURL: URL?) {
+        guard !recording.needsClearSpeechRetry || storedTranscript(for: recording.id) != nil else { return }
+        let recoverLocally = OnDeviceTranscriptDeliveryPolicy.shouldRecoverLocallyAfterPermissionChange(
+            fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+            cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
+            cloudFallbackStatus: recording.cloudTranscriptFallbackStatus,
+            speechRecognitionIsAuthorized: SFSpeechRecognizer.authorizationStatus() == .authorized,
+            localSourceIsAvailable: fileURL != nil,
+            sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry)
+        switch phase(for: recording.id) {
+        case .savedLocally, .waitingForVerifiedUpload:
+            submitSavedTranscript(recording: recording)
+        case .failed where recording.cloudTranscriptFallbackRequestId != nil && !recoverLocally:
+            submitPendingCloudFallback(recording: recording)
+        default:
+            guard let fileURL else { return }
+            begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
+        }
+    }
+
     func submitSavedTranscript(recording: LocalRecording) {
         guard !phase(for: recording.id).isBusy,
               activeTasks[recording.id] == nil else { return }

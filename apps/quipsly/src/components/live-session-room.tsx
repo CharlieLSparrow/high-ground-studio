@@ -2443,6 +2443,16 @@ export function LiveSessionRoom({
     </div>
   ) : null;
 
+  const microphoneTest = !connected && callAudioMode === "this-device" ? <StudioSoundCheck
+    getInputStream={currentPreflightStream}
+    prepareInputStream={() => startSelectedPreview(true)}
+    microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
+    outputId={outputId}
+    evidence={meterEvidence}
+    setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
+    disabled={status === "checking" || status === "joining"}
+  /> : null;
+
   return (
     <section className={stageLayout ? "flex h-full min-h-0 min-w-0 flex-col text-foreground" : `overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div ref={bindRemoteMediaElement} aria-label="Remote participant audio" className="hidden" />
@@ -2545,6 +2555,15 @@ export function LiveSessionRoom({
                     : stageLayout ? "" : "This device will handle the conversation audio."}
                 {" "}Joining doesn’t start recording.
               </p>
+              {stageLayout && callAudioMode === "this-device" ? <details className="mt-3 min-w-0 rounded-xl border border-border lg:col-start-2" data-testid="lobby-audio-check">
+                <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-semibold">Test mic and speakers</summary>
+                <div className="space-y-4 border-t border-border p-3">
+                  <StudioSpeakerTest outputId={outputId}
+                    outputLabel={outputs.find((device) => device.deviceId === outputId)?.label || "the system output"}
+                    disabled={status === "checking" || status === "joining"} />
+                  {microphoneTest}
+                </div>
+              </details> : null}
             </section>
           ) : null}
 
@@ -2637,19 +2656,11 @@ export function LiveSessionRoom({
             <button type="button" onClick={() => void refreshDevices("none", "manual")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50"><RefreshCw size={15} /> Refresh devices</button>
           </div>
 
-          {!connected && callAudioMode === "this-device" ? (
+          {!stageLayout && !connected && callAudioMode === "this-device" ? (
             <details className="mt-4">
               <summary className="cursor-pointer text-[10px] font-semibold text-foreground">Test microphone</summary>
               <div className="mt-3">
-              <StudioSoundCheck
-                getInputStream={currentPreflightStream}
-                prepareInputStream={() => startSelectedPreview(true)}
-                microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
-                outputId={outputId}
-                evidence={meterEvidence}
-                setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
-                disabled={status === "checking" || status === "joining"}
-              />
+              {microphoneTest}
               </div>
             </details>
           ) : null}

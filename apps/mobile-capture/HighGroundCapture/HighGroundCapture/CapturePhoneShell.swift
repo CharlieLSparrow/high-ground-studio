@@ -9026,25 +9026,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     }
 
     private func performTranscriptAction() {
-        guard !recording.needsClearSpeechRetry
-            || transcriptManager.storedTranscript(for: recording.id) != nil else {
-            return
-        }
-        switch phase {
-        case .modelDownloadRequired:
-            guard let fileURL else { return }
-            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
-        case .savedLocally, .waitingForVerifiedUpload:
-            transcriptManager.submitSavedTranscript(recording: recording)
-        case .failed where canRecoverLocallyAfterSpeechPermission:
-            guard let fileURL else { return }
-            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
-        case .failed where recording.cloudTranscriptFallbackRequestId != nil:
-            transcriptManager.submitPendingCloudFallback(recording: recording)
-        default:
-            guard let fileURL else { return }
-            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
-        }
+        transcriptManager.retryTranscript(recording: recording, fileURL: fileURL)
     }
 
     private func seedWritingIfAvailable() {
@@ -13129,7 +13111,7 @@ private struct CaptureRecorderView: View {
             : model.providerRoom.isConnected ? (model.selectedSession?.displayTitle ?? "Call") : "Sessions")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(
-            model.selectedSession?.isPersonalVoiceNote == true || model.providerRoom.isConnected ? .hidden : .visible,
+            model.selectedSession?.isPersonalVoiceNote == true || model.providerRoom.isConnected ? .hidden : .automatic,
             for: .tabBar
         )
         .toolbar {
@@ -23230,6 +23212,8 @@ struct CaptureRecordingEditScreen: View {
         .background(CapturePalette.canvas)
         .navigationTitle("Edit recording")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .scrollBounceBehavior(.basedOnSize)
         .accessibilityLabel("Edit recording for \(sessionTitle)")
         .accessibilityIdentifier("CaptureRecordingEditScreen")
     }

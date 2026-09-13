@@ -20,3 +20,7 @@ xcrun swiftc -o "${capture_edit_test_dir}/recording-playback-format" \
   "${capture_root}/HighGroundCapture/CaptureRecordingPlaybackFormat.swift" \
   "${capture_root}/Testing/CaptureRecordingPlaybackFormatHarness.swift"
 "${capture_edit_test_dir}/recording-playback-format"
+xcrun swiftc -o "${capture_edit_test_dir}/transcript-source-binding" \
+  "${capture_root}/HighGroundCapture/CaptureTranscriptSourceBinding.swift" \
+  "${capture_root}/Testing/CaptureTranscriptSourceBindingHarness.swift"
+"${capture_edit_test_dir}/transcript-source-binding"

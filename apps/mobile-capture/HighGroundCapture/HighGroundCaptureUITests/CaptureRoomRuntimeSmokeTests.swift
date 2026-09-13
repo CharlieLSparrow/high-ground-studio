@@ -6520,6 +6520,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(edit.waitForExistence(timeout: 120), "The verified uploaded source should become editable without leaving this screen.")
             edit.tap()
             XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingEditScreen"].firstMatch.waitForExistence(timeout: 10))
+            XCTAssertFalse(app.tabBars.firstMatch.exists, "Editing controls should own the screen without the global tab bar overlapping them.")
             let listen = app.buttons["CaptureRecordingListenToggle"].firstMatch
             XCTAssertTrue(waitForRuntimeElement(listen, in: app, timeout: 20, swipeAttempts: 6))
             listen.tap()
@@ -6560,6 +6561,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         } else {
             XCTAssertTrue(app.staticTexts["CapturePostCallNoLocalRecording"].exists,
                           "A call without recording must not claim that an older session take was just saved.")
+        }
+        if recordSource {
+            let transcriptStatus = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "CapturePostCallTranscriptStatus_")).firstMatch
+            XCTAssertTrue(waitForRuntimeElement(transcriptStatus, in: app, timeout: 15, swipeAttempts: 6),
+                          "The saved recording must show its own transcript progress after the call.")
         }
         attachRuntimeScreenshot(app, name: "Native post-call workspace")
         let postCallTasks = app.buttons["CapturePostCallTasks"].firstMatch

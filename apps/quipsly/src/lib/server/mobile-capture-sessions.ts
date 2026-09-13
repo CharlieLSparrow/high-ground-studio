@@ -26,6 +26,7 @@ import {
 import { mobileSessionScheduledTimezone } from "./mobile-capture-session-schedule";
 import { canEditSessionNoteProjection } from "./session-note-access";
 import { sessionProtectedPlaybackBinding } from "./session-protected-playback";
+import { transcriptFailurePresentation } from "./transcript-failure-presentation";
 import { sessionTranscriptResults } from "./session-transcript-results";
 import type { SessionNoteVisibility } from "../session-note-contract";
 
@@ -341,17 +342,6 @@ function positiveByteSize(value: unknown) {
   return /^[1-9][0-9]*$/.test(normalized) ? normalized : null;
 }
 
-function mobileSourceTranscriptStatusMessage(job: any) {
-  const status = label(job?.status)?.toUpperCase();
-  if (status === "FAILED") {
-    return "Quipsly could not finish this transcript. The exact recording remains safe and can be tried again.";
-  }
-  if (status === "HELD") {
-    return "This transcript is paused until the Session's current recording and transcription permissions allow processing.";
-  }
-  return null;
-}
-
 function mobileSourceTranscriptRouting(job: any) {
   const provider = (label(job?.provider) || "").trim().toLowerCase();
   const result = sourceJson(job?.resultJson);
@@ -537,7 +527,7 @@ export function captureSourceSummaries(
               id: transcriptJob.id,
               status: transcriptJob.status,
               provider: transcriptJob.provider,
-              errorMessage: mobileSourceTranscriptStatusMessage(transcriptJob),
+              ...transcriptFailurePresentation(transcriptJob),
               segmentCount: transcriptJob._count?.segments ?? 0,
               wordCount: transcriptJob._count?.words ?? 0,
               ...transcriptRouting,

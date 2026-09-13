@@ -370,6 +370,28 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByRole("button", { name: "Revise transcript" })).toBeEnabled();
   });
 
+  it.each([
+    ["task", "Make this my task", "Task title"],
+    ["goal", "Make this my goal", "Goal title"],
+  ])("starts a %s from current corrected words but preserves an open draft on refresh", async (_kind, action, titleLabel) => {
+    let currentDesk = desk(true);
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => currentDesk })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    currentDesk = { ...currentDesk, segments: [{ ...segment, text: "Finish the chapter outline by Friday." }] };
+    fireEvent.click(screen.getByRole("button", { name: "Refresh", exact: true }));
+    await screen.findByText("Finish the chapter outline by Friday.");
+    fireEvent.click(screen.getByText("Create from this moment"));
+    fireEvent.click(screen.getByRole("button", { name: action, exact: true }));
+    const title = screen.getByLabelText(titleLabel, { exact: true });
+    expect(title).toHaveValue("Finish the chapter outline by Friday.");
+    fireEvent.change(title, { target: { value: "My own carefully written follow-up" } });
+    currentDesk = { ...currentDesk, segments: [{ ...segment, text: "The transcript was corrected again." }] };
+    fireEvent.click(screen.getByRole("button", { name: "Refresh", exact: true }));
+    await screen.findByText("The transcript was corrected again.");
+    expect(title).toHaveValue("My own carefully written follow-up");
+  });
+
   it("saves a source-anchored transcript edit without forcing playback first", async () => {
     const directEditDesk = desk(false);
     directEditDesk.recording.eligibleForProtectedPlaybackPreparation = false;
