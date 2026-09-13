@@ -22,6 +22,7 @@ import {
   SESSION_NOTE_VIEWS,
   SESSION_NOTE_VISIBILITIES,
   sessionNoteKindLabel,
+  sessionNoteCreationDefaults,
   sessionNotesHref,
   sessionNoteViewCounts,
   sessionNoteVisibilityLabel,
@@ -75,8 +76,25 @@ export function SessionNotesWorkspace({
   const [notice, setNotice] = useState<string | null>(null);
   const [undoEdit, setUndoEdit] = useState<{ previous: SessionWorkspaceNote; savedAt: string } | null>(null);
   const createForm = useRef<HTMLFormElement>(null);
+  const createDisclosure = useRef<HTMLDetailsElement>(null);
+  const createAttempt = useRef<{payload: string; requestId: string} | null>(null);
+  const [creationDefaults, setCreationDefaults] = useState(() => sessionNoteCreationDefaults(activeView, canUseProjectTeamNotes));
+  const [draftVisibility, setDraftVisibility] = useState(creationDefaults.visibility);
+  const [draftKind, setDraftKind] = useState(creationDefaults.kind);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftBody, setDraftBody] = useState("");
 
   useEffect(() => setNotes(initialNotes), [initialNotes]);
+  useEffect(() => {
+    const form = createForm.current;
+    const draft = form ? new FormData(form) : null;
+    // Switching filters must not silently change the audience of an existing draft.
+    if (String(draft?.get("body") ?? "").trim() || String(draft?.get("title") ?? "").trim()) return;
+    const defaults = sessionNoteCreationDefaults(activeView, canUseProjectTeamNotes);
+    setCreationDefaults(defaults);
+    setDraftVisibility(defaults.visibility);
+    setDraftKind(defaults.kind);
+  }, [activeView, canUseProjectTeamNotes]);
 
   const counts = sessionNoteViewCounts(notes);
   const visibleNotes = notes.filter((note) => noteAppearsInView(note, activeView));
@@ -92,15 +110,20 @@ export function SessionNotesWorkspace({
     setBusyId("create");
     setNotice(null);
     try {
+      const content = {
+        title: String(formData.get("title") || ""),
+        body: String(formData.get("body") || ""),
+        kind: String(formData.get("kind") || creationDefaults.kind),
+        visibility: String(formData.get("visibility") || draftVisibility),
+      };
+      const payloadKey = JSON.stringify({roomId, ...content});
+      if (createAttempt.current?.payload !== payloadKey) createAttempt.current = {payload: payloadKey, requestId: crypto.randomUUID()};
       const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/notes`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          clientRequestId: crypto.randomUUID(),
-          title: String(formData.get("title") || ""),
-          body: String(formData.get("body") || ""),
-          kind: String(formData.get("kind") || "SESSION_NOTE"),
-          visibility: String(formData.get("visibility") || "SESSION_SHARED"),
+          clientRequestId: createAttempt.current.requestId,
+          ...content,
         }),
       });
       const payload = await response.json() as {
@@ -113,7 +136,14 @@ export function SessionNotesWorkspace({
         throw new Error(payload.error || "The Session note was not saved.");
       }
       replaceNote(payload.note);
-      createForm.current?.reset();
+      setDraftTitle("");
+      setDraftBody("");
+      const nextDefaults = sessionNoteCreationDefaults(activeView, canUseProjectTeamNotes);
+      setCreationDefaults(nextDefaults);
+      setDraftVisibility(nextDefaults.visibility);
+      setDraftKind(nextDefaults.kind);
+      createAttempt.current = null;
+      if (createDisclosure.current) createDisclosure.current.open = false;
       const appearsHere = noteAppearsInView(payload.note, activeView);
       setNotice(
         `${payload.idempotentReplay ? "This note was already saved." : "Note saved."} ${audienceHelp(payload.note.visibility)}`
@@ -255,25 +285,18 @@ export function SessionNotesWorkspace({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-orange-200 bg-orange-50/45 p-5" aria-labelledby="session-notes-heading">
+      <section className="rounded-2xl border border-border bg-card p-4 text-card-foreground" aria-labelledby="session-notes-heading">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <span className="rounded-xl bg-white p-2 text-orange-700"><NotebookPen aria-hidden="true" /></span>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-800">Session notes</p>
-              <h2 id="session-notes-heading" className="mt-1 font-serif text-3xl font-black text-[#3d3122]">{notes.length} note{notes.length === 1 ? "" : "s"}</h2>
-              <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-                Capture what matters, then choose whether each note stays private or is shared in this Session.
-              </p>
+              <h2 id="session-notes-heading" className="text-xl font-semibold">{notes.length} note{notes.length === 1 ? "" : "s"}</h2>
             </div>
           </div>
-          <span className="rounded-full border border-orange-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-orange-900">
-            {counts.private} private · {counts.shared} shared · {counts["client-safe"]} client-safe
-          </span>
         </div>
 
-        <nav aria-label="Session note views" className="mt-5 flex gap-2 overflow-x-auto pb-1">
-          {SESSION_NOTE_VIEWS.map((view) => (
+        <nav aria-label="Session note views" className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          {SESSION_NOTE_VIEWS.filter(view => ["all", "private", "shared"].includes(view.id) || view.id === activeView || counts[view.id] > 0).map((view) => (
             <Link
               key={view.id}
               href={sessionNotesHref(roomId, view.id)}
@@ -295,32 +318,36 @@ export function SessionNotesWorkspace({
             className="mt-1 min-h-11 font-semibold underline underline-offset-4 disabled:opacity-50">Undo last edit</button> : null}
         </div> : null}
 
-        <form ref={createForm} action={(formData) => void createNote(formData)} className="mt-5 grid gap-3 rounded-2xl border border-orange-200 bg-white p-4">
-          <p className="text-sm font-black text-orange-950">Add a note</p>
-          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Note<textarea name="body" required maxLength={20_000} rows={4} placeholder="Write a note…" className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Title <span className="normal-case tracking-normal text-orange-700">(optional)</span><input name="title" maxLength={500} placeholder="Add a title" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+        <details ref={createDisclosure} open={initialNotes.length === 0 || undefined} className="mt-3 rounded-xl border border-border bg-background p-3">
+          <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Add a note</summary>
+        <form ref={createForm} onSubmit={event => { event.preventDefault(); void createNote(new FormData(event.currentTarget)); }} className="mt-3 grid gap-3" aria-label="New session note">
+          <fieldset disabled={busyId === "create"} className="contents">
+          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Note<textarea name="body" required maxLength={20_000} rows={4} value={draftBody} onChange={event => setDraftBody(event.target.value)} placeholder="Write a note…" className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Title <span className="normal-case tracking-normal text-orange-700">(optional)</span><input name="title" maxLength={500} value={draftTitle} onChange={event => setDraftTitle(event.target.value)} placeholder="Add a title" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
           <details className="rounded-xl border border-orange-100 bg-orange-50/45 p-3">
             <summary className="cursor-pointer text-xs font-black text-orange-950">Note type and sharing</summary>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
                 Note type
-                <select name="kind" defaultValue="SESSION_NOTE" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                <select name="kind" value={draftKind} onChange={event => setDraftKind(event.target.value as EditableSessionNoteKind)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                   {editableKinds(canUseProjectTeamNotes).map((kind) => <option key={kind} value={kind}>{sessionNoteKindLabel(kind)}</option>)}
                 </select>
               </label>
               <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
                 Who can read it
-                <select name="visibility" defaultValue="SESSION_SHARED" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                <select name="visibility" value={draftVisibility} onChange={event => setDraftVisibility(event.target.value as SessionNoteVisibility)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                   {editableVisibilities(canUseProjectTeamNotes).map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
                 </select>
               </label>
             </div>
           </details>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs font-bold leading-5 text-orange-950">Shared with this Session by default. Choose Only me when a note is private.</p>
+            <p className="text-xs font-semibold leading-5 text-muted-foreground" data-testid="new-note-audience">{audienceHelp(draftVisibility)}</p>
             <button type="submit" disabled={busyId === "create"} className="min-h-11 rounded-full bg-orange-800 px-5 py-2 text-xs font-black text-white disabled:opacity-50">{busyId === "create" ? "Saving…" : "Save note"}</button>
           </div>
+          </fieldset>
         </form>
+        </details>
       </section>
 
       {visibleNotes.length ? (
@@ -365,7 +392,7 @@ export function SessionNotesWorkspace({
               {note.canEdit ? (
                 <details className="mt-4 rounded-xl border border-orange-100 bg-orange-50/35 p-3">
                   <summary className="cursor-pointer text-xs font-black text-orange-950">Edit note, audience, and tags</summary>
-                  <form key={`${note.id}-${note.updatedAt}`} action={(formData) => void saveNote(note, formData)} className="mt-4 grid gap-3">
+                  <form key={`${note.id}-${note.updatedAt}`} onSubmit={event => { event.preventDefault(); void saveNote(note, new FormData(event.currentTarget)); }} className="mt-4 grid gap-3">
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
                         Note type
@@ -398,7 +425,7 @@ export function SessionNotesWorkspace({
 
                   {taxonomy?.canManageVocabulary ? (
                     <div className="mt-5 border-t border-orange-100 pt-4">
-                      <form action={(formData) => void saveNoteTags(note, formData)}>
+                      <form onSubmit={event => { event.preventDefault(); void saveNoteTags(note, new FormData(event.currentTarget)); }}>
                         <fieldset className="grid gap-2 sm:grid-cols-2">
                           <legend className="mb-2 text-[10px] font-black uppercase tracking-wide text-sky-900">Canonical {taxonomy.project.name} tags</legend>
                           {taxonomy.catalog.map((tag) => (
@@ -409,7 +436,7 @@ export function SessionNotesWorkspace({
                         </fieldset>
                         <button type="submit" disabled={busyId === note.id} className="mt-3 min-h-11 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black text-sky-950 disabled:opacity-50">Save tags</button>
                       </form>
-                      <form action={(formData) => void createNoteTag(note, formData)} className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <form onSubmit={event => { event.preventDefault(); void createNoteTag(note, new FormData(event.currentTarget)); }} className="mt-3 flex flex-col gap-2 sm:flex-row">
                         <label className="flex-1 text-[10px] font-black uppercase tracking-wide text-violet-900">New reusable tag<input name="label" required maxLength={80} placeholder="e.g. Opening craft" className="mt-1 block min-h-11 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
                         <button type="submit" disabled={busyId === note.id} className="min-h-11 self-end rounded-full border border-violet-300 bg-violet-50 px-4 py-2 text-xs font-black text-violet-950 disabled:opacity-50">Create and attach</button>
                       </form>

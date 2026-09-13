@@ -517,7 +517,8 @@ describe("LiveSessionRoom", () => {
     expect(screen.queryByRole("region", {name: "Ready to join"})).not.toBeInTheDocument();
     expect(screen.getByRole("link", {name: "Open recordings"})).toHaveAttribute("href", "/sessions/dock-controls-room?mode=recordings");
     fireEvent.click(screen.getByRole("link", {name: "Notes and recap"}));
-    expect(screen.getByLabelText("Minimized live call")).toHaveTextContent("Call ended");
+    expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
     expect(mockLiveKitRoom.disconnect).toHaveBeenCalledTimes(1);
   });
 

@@ -50,7 +50,7 @@ jest.mock("./live-session-room", () => ({
       mockRoomLifecycle.mounted(mountedRoomId);
       return () => mockRoomLifecycle.unmounted(mountedRoomId);
     }, [mountedRoomId]);
-    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}<button onClick={() => onStatusChange?.("connected")}>Simulate connection</button><button onClick={() => onStatusChange?.("reconnecting")}>Simulate reconnect</button></div>;
+    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}<button onClick={() => onStatusChange?.("connected")}>Simulate connection</button><button onClick={() => onStatusChange?.("reconnecting")}>Simulate reconnect</button><button onClick={() => onStatusChange?.("ended")}>Simulate ended call</button><button onClick={() => onProtectionChange?.(false)}>Simulate saved sources</button></div>;
   },
 }));
 
@@ -154,6 +154,21 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.getByTestId("live-room-episode-session-1")).toBeInTheDocument();
     expect(screen.getByLabelText("Minimized live call")).toBeInTheDocument();
     expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
+  });
+
+  it("removes the ended-call overlay after source protection finishes without unmounting recovery", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("button", {name: "Simulate ended call"}));
+    await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+    expect(screen.getByLabelText("Minimized live call")).toBeInTheDocument();
+    await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
+    await user.click(screen.getByRole("button", {name: "Simulate saved sources"}));
+    await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+    expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
+    expect(screen.getByTestId("live-room-coaching-session-2")).toBeInTheDocument();
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
   });
 
   it("opens the session workspace from the lobby without joining or discarding the prepared room", async () => {

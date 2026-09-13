@@ -4449,6 +4449,7 @@ export function SessionReviewClient({
 
       {mode === "notes" ? (
         <SessionNotesWorkspace
+          key={roomId}
           roomId={roomId}
           initialNotes={sessionNotes}
           activeView={notesView}

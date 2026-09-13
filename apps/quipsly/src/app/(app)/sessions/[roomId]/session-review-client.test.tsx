@@ -1712,7 +1712,8 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("heading", { name: "Quick note" }).closest("article")).toHaveAttribute("id", "session-note-mobile-note-1");
     expect(screen.queryByText("Proof-listen act one")).not.toBeInTheDocument();
     expect(screen.queryByText("Make coaching follow-through obvious")).not.toBeInTheDocument();
-    expect(screen.getByText(/capture what matters.*private or is shared in this Session/i)).toBeInTheDocument();
+    expect(screen.getByText("Add a note")).toBeVisible();
+    expect(screen.getByRole("form", {name: "New session note"})).not.toBeVisible();
   });
 
   it("keeps canonical iPhone tasks and goals in Work without mixing in notes", async () => {

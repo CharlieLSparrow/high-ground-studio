@@ -338,7 +338,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
         ) : null}
       </div>
 
-      {active && !isOpen ? (
+      {active && !isOpen && (status !== "ended" || sourceProtected) ? (
         <section className="fixed bottom-20 left-3 right-3 z-[65] flex items-center gap-3 rounded-2xl border border-[#d8c7a7] bg-[#3d3122] p-2.5 text-white shadow-2xl shadow-black/30 md:bottom-5 md:left-auto md:right-5 md:w-[min(32rem,calc(100vw-2.5rem))]" aria-label="Minimized live call">
           <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${callIsActive(status) ? "bg-emerald-400 text-emerald-950" : "bg-amber-200 text-amber-950"}`}><Mic2 size={18} /></span>
           <button type="button" onClick={() => setIsOpen(true)} className="min-w-0 flex-1 text-left">

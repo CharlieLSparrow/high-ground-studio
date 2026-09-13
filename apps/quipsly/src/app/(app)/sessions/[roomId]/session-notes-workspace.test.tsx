@@ -40,6 +40,69 @@ describe("Session Notes workspace", () => {
     jest.restoreAllMocks();
   });
 
+  it("shows existing notes first and keeps a collapsed composer draft intact", async () => {
+    const user = userEvent.setup();
+    render(<SessionNotesWorkspace roomId="room-1" activeView="all" taxonomy={null} canUseProjectTeamNotes={false}
+      initialNotes={[note({id: "recap", title: "Our recap"})]} />);
+    expect(screen.getByRole("heading", {name: "Our recap"})).toBeVisible();
+    expect(screen.getByRole("form", {name: "New session note"})).not.toBeVisible();
+    await user.click(screen.getByText("Add a note"));
+    const form = screen.getByRole("form", {name: "New session note"});
+    await user.type(within(form).getByRole("textbox", {name: "Note"}), "A thought to keep");
+    await user.click(screen.getByText("Add a note"));
+    await user.click(screen.getByText("Add a note"));
+    expect(within(form).getByRole("textbox", {name: "Note"})).toHaveValue("A thought to keep");
+  });
+
+  it("creates a private note directly from the private view", async () => {
+    const user = userEvent.setup();
+    const saved = note({id: "private-note", body: "My private reflection"});
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse({ok: true, note: saved}));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionNotesWorkspace roomId="room-1" activeView="private" taxonomy={null} canUseProjectTeamNotes={false} initialNotes={[]} />);
+    expect(screen.getByTestId("new-note-audience")).toHaveTextContent("Only you.");
+    await user.type(screen.getByRole("textbox", {name: "Note"}), "My private reflection");
+    await user.click(screen.getByRole("button", {name: "Save note"}));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({body: "My private reflection", visibility: "AUTHOR_PRIVATE"});
+    expect(await screen.findByRole("status")).toHaveTextContent("Note saved. Only you.");
+  });
+
+  it("does not change a written draft's audience when the view changes", async () => {
+    const user = userEvent.setup();
+    const props = {roomId: "room-1", taxonomy: null, canUseProjectTeamNotes: false, initialNotes: []};
+    const view = render(<SessionNotesWorkspace {...props} activeView="private" />);
+    await user.type(screen.getByRole("textbox", {name: "Note"}), "Private draft");
+    view.rerender(<SessionNotesWorkspace {...props} activeView="shared" />);
+    expect(screen.getByRole("textbox", {name: "Note"})).toHaveValue("Private draft");
+    expect(screen.getByTestId("new-note-audience")).toHaveTextContent("Only you.");
+  });
+
+  it("retains a failed note and reuses its request identity on retry", async () => {
+    const user = userEvent.setup();
+    const fetchMock = jest.fn().mockResolvedValueOnce(jsonResponse({ok: false, error: "Connection interrupted."}, 503))
+      .mockResolvedValueOnce(jsonResponse({ok: true, idempotentReplay: true, note: note({id: "saved-once", title: "A decision", body: "Keep this text", kind: "DECISION"})}));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionNotesWorkspace roomId="room-1" activeView="private" taxonomy={null} canUseProjectTeamNotes={false} initialNotes={[]} />);
+    await user.type(screen.getByRole("textbox", {name: "Note"}), "Keep this text");
+    await user.type(screen.getByRole("textbox", {name: /^Title/}), "A decision");
+    await user.click(screen.getByText("Note type and sharing"));
+    await user.selectOptions(screen.getByRole("combobox", {name: "Note type"}), "DECISION");
+    await user.click(screen.getByRole("button", {name: "Save note"}));
+    expect(await screen.findByRole("status")).toHaveTextContent("Connection interrupted.");
+    expect(screen.getByRole("textbox", {name: "Note"})).toHaveValue("Keep this text");
+    expect(screen.getByRole("textbox", {name: /^Title/})).toHaveValue("A decision");
+    expect(screen.getByRole("combobox", {name: "Note type"})).toHaveValue("DECISION");
+    expect(screen.getByRole("combobox", {name: "Who can read it"})).toHaveValue("AUTHOR_PRIVATE");
+    await user.click(screen.getByRole("button", {name: "Save note"}));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const first = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(first);
+    expect(first.clientRequestId).toBeTruthy();
+    expect(await screen.findByRole("status")).toHaveTextContent("This note was already saved.");
+    expect(screen.getAllByRole("heading", {name: "A decision"})).toHaveLength(1);
+  });
+
   it("makes every visibility lane explicit and lets collaborators edit shared note content", () => {
     render(<SessionNotesWorkspace
       roomId="room-1"
@@ -267,5 +330,23 @@ describe("Session Notes workspace", () => {
     expect(updated).toBeInTheDocument();
     expect(screen.getByText(/2 versions/)).toBeInTheDocument();
     expect(within(updated).getByRole("combobox", { name: "Who can read it" })).toHaveValue("CLIENT_SAFE");
+  });
+
+  it("keeps an existing note's unsaved revision after a failed save", async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse({ok: false, error: "Could not save. Try again."}, 503)) as typeof fetch;
+    render(<SessionNotesWorkspace roomId="room-1" activeView="all" taxonomy={null} canUseProjectTeamNotes={false}
+      initialNotes={[note({id: "existing", title: "Original title", body: "Original body"})]} />);
+    const article = screen.getByRole("heading", {name: "Original title"}).closest("article")!;
+    await user.click(within(article).getByText("Edit note, audience, and tags"));
+    const title = within(article).getByRole("textbox", {name: "Title"});
+    const body = within(article).getByRole("textbox", {name: "Note"});
+    await user.clear(title); await user.type(title, "Changed title");
+    await user.clear(body); await user.type(body, "An important change");
+    await user.click(within(article).getByRole("button", {name: "Save revision"}));
+    expect(await screen.findByRole("status")).toHaveTextContent("Could not save. Try again.");
+    expect(title).toHaveValue("Changed title");
+    expect(body).toHaveValue("An important change");
+    expect(within(article).getByText("Original body", {selector: "p"})).toBeInTheDocument();
   });
 });
