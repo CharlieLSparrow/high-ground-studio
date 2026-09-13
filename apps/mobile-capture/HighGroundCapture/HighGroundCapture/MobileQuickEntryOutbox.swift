@@ -1,6 +1,30 @@
 import Foundation
 import Combine
 
+/// A filing intent is independent of whether its destination is currently in
+/// a cached picker list. Missing cache entries must never mean "current room".
+enum MobileQuickEntryDestination: Equatable {
+    case session
+    case home
+    case project(String)
+
+    init?(selection: String) {
+        if selection == "SESSION" { self = .session }
+        else if selection == "HOME_NEST" { self = .home }
+        else if selection.hasPrefix("NEST:") {
+            let id = String(selection.dropFirst(5))
+            guard !id.isEmpty, id.count <= 200,
+                  id == id.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+            self = .project(id)
+        } else { return nil }
+    }
+
+    var projectID: String? {
+        if case let .project(id) = self { return id }
+        return nil
+    }
+}
+
 enum MobileQuickEntryKind: String, Codable, CaseIterable, Identifiable {
     case note = "NOTE"
     case task = "TASK"

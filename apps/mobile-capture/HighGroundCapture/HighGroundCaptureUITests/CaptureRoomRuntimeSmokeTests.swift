@@ -6332,14 +6332,25 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         createNote.tap()
         let noteTitle = app.textFields["CaptureQuickEntryTitle"].firstMatch
         XCTAssertTrue(noteTitle.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["CaptureQuickEntryNoteDetails"].value as? String == "Collapsed, Only me",
-                      "Creating from Only me must not quietly share a private thought.")
+        // Check the audience shown above the writing area. The advanced note
+        // details row is below the fold on iPhone, unlike the iPad sheet.
+        let audienceSummary = app.staticTexts["CaptureQuickEntryAudienceSummary"].firstMatch
+        XCTAssertEqual(audienceSummary.label, "Only you can see this note.",
+                       "Creating from Only me must not quietly share a private thought.")
         let callNoteTitle = "Native call note \(UUID().uuidString.prefix(8))"
         noteTitle.tap()
         noteTitle.typeText(callNoteTitle)
         let noteBody = app.textFields["CaptureQuickEntryBody"].firstMatch
         noteBody.tap()
         noteBody.typeText("Synthetic coaching note written while the call stays connected.")
+        app.buttons["Close"].tap()
+        XCTAssertTrue(createNote.waitForExistence(timeout: 8))
+        createNote.tap()
+        XCTAssertTrue(noteTitle.waitForExistence(timeout: 8))
+        XCTAssertEqual(noteTitle.value as? String, callNoteTitle,
+                       "Closing a new note during a call must retain the unfinished thought.")
+        XCTAssertEqual(noteBody.value as? String, "Synthetic coaching note written while the call stays connected.")
+        XCTAssertEqual(audienceSummary.label, "Only you can see this note.")
         app.buttons["CaptureQuickEntrySave"].tap()
         XCTAssertTrue(createNote.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts[callNoteTitle].firstMatch.waitForExistence(timeout: 20),

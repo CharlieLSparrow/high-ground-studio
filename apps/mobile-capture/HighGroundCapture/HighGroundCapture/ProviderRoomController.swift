@@ -429,7 +429,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             usesCallAudio = false
             remoteParticipantCount = 0
             activeRoomName = nil
-            fail("The call couldn't connect. Check your internet connection and try again.", technical: error.localizedDescription)
+            fail("The call couldn't connect. Try joining again.", technical: error.localizedDescription)
         }
 
         isConnecting = false

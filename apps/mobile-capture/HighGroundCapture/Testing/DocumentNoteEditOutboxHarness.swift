@@ -194,6 +194,57 @@ private struct DocumentNoteEditOutboxHarness {
             "Acknowledging one account must never remove another account's edit."
         )
 
-        print("DocumentNoteEditOutboxHarness: PASS")
+        let draftDirectory = directory.appendingPathComponent("new-session-notes")
+        require(MobileQuickEntryDestination(selection: "NEST:uncached-project")?.projectID == "uncached-project",
+                "A missing cached workspace must keep its exact ID, not fall back to the current session.")
+        require(MobileQuickEntryDestination(selection: "SESSION") == .session, "Session selection must be explicit.")
+        require(MobileQuickEntryDestination(selection: "HOME_NEST") == .home, "Personal filing must remain explicit.")
+        require(MobileQuickEntryDestination(selection: "NEST:") == nil
+                && MobileQuickEntryDestination(selection: "unknown") == nil,
+                "Invalid saved destinations must not turn into a different filing choice.")
+        AuthManager.ownerAccountID = ownerA
+        let draftID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-1", origin: "https://nest.quipsly.com", audience: .authorPrivate)
+        let otherAudienceID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-1", origin: "https://nest.quipsly.com", audience: .sessionShared)
+        let otherOriginID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-1", origin: "http://localhost:3012", audience: .authorPrivate)
+        let otherRoomID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-2", origin: "https://nest.quipsly.com", audience: .authorPrivate)
+        require(Set([draftID, otherAudienceID, otherOriginID, otherRoomID]).count == 4,
+                "Draft recovery must not cross environment, session, or initial audience.")
+        let drafts = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerA, observeAccountChanges: false)
+        require(drafts.save(roomID: "session-1", noteID: draftID, title: "An unfinished idea",
+            body: "Keep this exact text when closing the composer.", noteKind: .sessionNote,
+            noteVisibility: .authorPrivate, tagIDs: ["tag-1"], baseUpdatedAt: "",
+            destination: "SESSION", newTagLabels: ["Research"]), "New notes must be durable before dismissal.")
+        let recovered = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerA, observeAccountChanges: false)
+        let recoveredDraft = recovered.draft(for: draftID)
+        require(recoveredDraft?.body == "Keep this exact text when closing the composer.", "Relaunch must restore exact text.")
+        require(recoveredDraft?.noteVisibility == .authorPrivate, "Relaunch must retain private sharing.")
+        require(recoveredDraft?.newTagLabels == ["Research"] && recoveredDraft?.tagIDs == ["tag-1"], "Both new and canonical tags must survive.")
+        require(recoveredDraft?.destination == "SESSION", "The original filing destination must survive.")
+
+        AuthManager.ownerAccountID = ownerB
+        require(!recovered.save(roomID: "session-1", noteID: draftID, title: "Wrong account",
+            body: "Must not save", noteKind: .sessionNote, noteVisibility: .sessionShared,
+            tagIDs: [], baseUpdatedAt: ""), "An old account's store cannot save after sign-in changes.")
+        let otherOwnerDrafts = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerB, observeAccountChanges: false)
+        require(otherOwnerDrafts.draft(for: draftID) == nil, "A second account must not see the first account's unfinished note.")
+        require(otherOwnerDrafts.save(roomID: "session-1", noteID: draftID, title: "Owner B",
+            body: "A separate thought", noteKind: .sessionNote, noteVisibility: .authorPrivate,
+            tagIDs: [], baseUpdatedAt: ""), "A second account can keep its own draft in the same session.")
+        otherOwnerDrafts.remove(noteID: draftID)
+        AuthManager.ownerAccountID = ownerA
+        let afterOtherDiscard = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerA, observeAccountChanges: false)
+        require(afterOtherDiscard.draft(for: draftID) == recoveredDraft, "Discard must not erase another account's draft.")
+        afterOtherDiscard.remove(noteID: draftID)
+        require(afterOtherDiscard.draft(for: draftID) == nil, "Explicit discard must clear the current draft.")
+
+        print("DocumentNoteEditOutboxHarness: PASS (document edits and Session composition recovery)")
     }
 }

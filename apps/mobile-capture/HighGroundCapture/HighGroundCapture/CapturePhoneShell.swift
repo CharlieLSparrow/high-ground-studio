@@ -16195,6 +16195,13 @@ struct CaptureQuickEntrySheet: View {
     let initialProject: MobileCaptureProjectDestination?
     @ObservedObject var model: CaptureExperienceModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var compositionDraftID: String?
+    @State private var compositionOwner: AuthManager.StableOwnerSnapshot?
+    @State private var initialSessionID: String?
+    @State private var compositionSaveTask: Task<Void, Never>?
+    @State private var compositionError: String?
+    @State private var committedComposition = false
     @State private var title = ""
     @State private var entryBody = ""
     @State private var selectedTagIDs: Set<String> = []
@@ -16229,8 +16236,21 @@ struct CaptureQuickEntrySheet: View {
         self.session = session
         self.initialProject = initialProject
         self.model = model
-        _noteVisibility = State(initialValue: initialNoteVisibility)
-        _destination = State(initialValue: initialProject.map { "NEST:\($0.id)" } ?? (session == nil ? "HOME_NEST" : "SESSION"))
+        _compositionOwner = State(initialValue: AuthManager.shared.stableOwnerSnapshot())
+        _initialSessionID = State(initialValue: session?.callRoomId)
+        let origin = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+        let draftID = kind == .note && initialProject == nil ? session.map {
+            SessionNoteWorkingDraftStore.compositionID(roomID: $0.callRoomId, origin: origin, audience: initialNoteVisibility)
+        } : nil
+        _compositionDraftID = State(initialValue: draftID)
+        let draft = draftID.flatMap { SessionNoteWorkingDraftStore.shared.draft(for: $0) }
+        _title = State(initialValue: draft?.title ?? "")
+        _entryBody = State(initialValue: draft?.body ?? "")
+        _noteKind = State(initialValue: draft?.noteKind ?? .sessionNote)
+        _noteVisibility = State(initialValue: draft?.noteVisibility ?? initialNoteVisibility)
+        _selectedTagIDs = State(initialValue: Set(draft?.tagIDs ?? []))
+        _newTagLabels = State(initialValue: draft?.newTagLabels ?? [])
+        _destination = State(initialValue: draft?.destination ?? initialProject.map { "NEST:\($0.id)" } ?? (session == nil ? "HOME_NEST" : "SESSION"))
     }
 
     private var homeNest: MobileCaptureProjectDestination? {
@@ -16409,7 +16429,7 @@ struct CaptureQuickEntrySheet: View {
     }
 
     private var destinationProjectID: String? {
-        selectedProject?.id
+        MobileQuickEntryDestination(selection: destination)?.projectID
     }
 
     private var destinationProjectName: String? {
@@ -16525,7 +16545,8 @@ struct CaptureQuickEntrySheet: View {
     }
 
     var contentIsValid: Bool {
-        kind == .note || kind == .source
+        guard MobileQuickEntryDestination(selection: destination) != nil else { return false }
+        return kind == .note || kind == .source
             ? !entryBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             : !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -16533,6 +16554,11 @@ struct CaptureQuickEntrySheet: View {
     var bodyView: some View {
         NavigationStack {
             Form {
+                if let compositionError {
+                    Text(compositionError)
+                        .foregroundStyle(CapturePalette.brass)
+                        .accessibilityIdentifier("CaptureQuickEntryDraftError")
+                }
                 Section {
                     if kind == .source {
                         LabeledContent("Save to", value: "Personal Inbox")
@@ -16559,6 +16585,7 @@ struct CaptureQuickEntrySheet: View {
                         : savesSessionNote
                             ? (noteVisibility == .authorPrivate ? "Only you can see this note." : noteVisibility.boundary)
                             : "Saved privately. If you are offline, Quipsly syncs it when you reconnect.")
+                        .accessibilityIdentifier("CaptureQuickEntryAudienceSummary")
                 }
 
                 Section(kind == .note ? "Note" : kind.title) {
@@ -16712,13 +16739,28 @@ struct CaptureQuickEntrySheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(compositionDraftID == nil ? "Cancel" : "Close") { dismiss() }
+                }
+                ToolbarItem(placement: .secondaryAction) {
+                    if compositionDraftID != nil {
+                        Menu("Note options", systemImage: "ellipsis") {
+                            Button("Discard draft", role: .destructive) {
+                                guard let compositionOwner, AuthManager.shared.matchesStableOwnerSnapshot(compositionOwner) else { return }
+                                if let compositionDraftID { SessionNoteWorkingDraftStore.shared.remove(noteID: compositionDraftID) }
+                                committedComposition = true
+                                compositionSaveTask?.cancel()
+                                dismiss()
+                            }
+                        }
+                        .accessibilityIdentifier("CaptureQuickEntryNoteOptions")
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         // Let the focused sheet finish dismissing before its
                         // protected outbox and reminder projections update the
                         // much larger recorder hierarchy behind it.
+                        guard saveCompositionDraft() else { return }
                         savesWhenDismissed = true
                         focusedField = nil
                         dismiss()
@@ -16753,11 +16795,24 @@ struct CaptureQuickEntrySheet: View {
                 if !availableNoteKinds.contains(noteKind) { noteKind = .sessionNote }
                 noteVisibility = .sessionShared
             }
+            scheduleCompositionDraftSave()
+        }
+        .onChange(of: title) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: entryBody) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: noteKind) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: noteVisibility) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: selectedTagIDs) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: newTagLabels) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { _ = saveCompositionDraft() }
         }
         .onDisappear {
+            compositionSaveTask?.cancel()
+            _ = saveCompositionDraft()
             guard savesWhenDismissed else { return }
             savesWhenDismissed = false
-            model.saveQuickEntry(
+            guard model.usesPreviewData || compositionOwner.map({ AuthManager.shared.matchesStableOwnerSnapshot($0) }) == true else { return }
+            let saved = model.saveQuickEntry(
                 kind: kind,
                 title: title,
                 body: entryBody,
@@ -16766,17 +16821,51 @@ struct CaptureQuickEntrySheet: View {
                 destinationProjectName: destinationProjectName,
                 noteKind: savesSessionNote ? noteKind : nil,
                 noteVisibility: savesSessionNote ? noteVisibility : nil,
+                sessionID: initialSessionID,
                 tagIDs: Array(selectedTagIDs).sorted(),
                 newTagLabels: newTagLabels,
                 dueAt: dueAt,
                 reminderAt: reminderAt,
                 recurrence: recurrence
             )
+            if saved, let compositionDraftID {
+                committedComposition = true
+                SessionNoteWorkingDraftStore.shared.remove(noteID: compositionDraftID)
+            }
         }
         .accessibilityIdentifier("CaptureQuickEntrySheet_\(kind.rawValue)")
     }
 
     var body: some View { bodyView }
+
+    private func scheduleCompositionDraftSave() {
+        guard compositionDraftID != nil else { return }
+        compositionSaveTask?.cancel()
+        compositionSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            _ = saveCompositionDraft()
+        }
+    }
+
+    @discardableResult
+    private func saveCompositionDraft() -> Bool {
+        guard let compositionDraftID, let initialSessionID, !model.usesPreviewData else { return true }
+        guard !committedComposition else { return true }
+        guard let compositionOwner, AuthManager.shared.matchesStableOwnerSnapshot(compositionOwner) else { return false }
+        if title.isEmpty && entryBody.isEmpty && selectedTagIDs.isEmpty && newTagLabels.isEmpty {
+            SessionNoteWorkingDraftStore.shared.remove(noteID: compositionDraftID)
+            return true
+        }
+        let saved = SessionNoteWorkingDraftStore.shared.save(
+            roomID: initialSessionID, noteID: compositionDraftID,
+            title: title, body: entryBody, noteKind: noteKind, noteVisibility: noteVisibility,
+            tagIDs: selectedTagIDs.sorted(), baseUpdatedAt: "",
+            destination: destination, newTagLabels: newTagLabels
+        )
+        compositionError = saved ? nil : "Your draft couldn't be saved on this device. Keep this note open and try again."
+        return saved
+    }
 }
 
 private struct CaptureTimeZonePickerSheet: View {

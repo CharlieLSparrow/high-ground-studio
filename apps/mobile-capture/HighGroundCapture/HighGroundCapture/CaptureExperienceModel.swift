@@ -1114,15 +1114,21 @@ final class CaptureExperienceModel: ObservableObject {
         destinationProjectName: String? = nil,
         noteKind: MobileSessionNoteKind? = nil,
         noteVisibility: MobileSessionNoteVisibility? = nil,
+        sessionID: String? = nil,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
         reminderAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil
     ) -> Bool {
-        let session = kind == .source || saveToHomeNest || destinationProjectID != nil
-            ? nil
-            : selectedSession
+        let savesInSession = kind != .source && !saveToHomeNest && destinationProjectID == nil
+        let session = savesInSession
+            ? sessionID.flatMap { id in sessions.first { $0.callRoomId == id } } ?? (sessionID == nil ? selectedSession : nil)
+            : nil
+        if savesInSession, sessionID != nil, session == nil {
+            errorMessage = "This session is no longer available. Your draft is still on this device."
+            return false
+        }
         if usesPreviewData && !CaptureLaunchConfiguration.usesReminderDeterministicUITest {
             quickEntrySyncMessage = "Preview only — no note, task, goal, or source was saved."
             return true

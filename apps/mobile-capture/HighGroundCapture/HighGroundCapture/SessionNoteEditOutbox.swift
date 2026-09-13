@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 
 struct PendingSessionNoteEdit: Codable, Equatable, Identifiable {
@@ -38,6 +39,8 @@ struct SessionNoteWorkingDraft: Codable, Equatable {
     let tagIDs: [String]
     let baseUpdatedAt: String
     let updatedAt: Date
+    var destination: String?
+    var newTagLabels: [String]?
 }
 
 /// Continuously protects unfinished Session-note text without claiming it has
@@ -46,6 +49,13 @@ struct SessionNoteWorkingDraft: Codable, Equatable {
 @MainActor
 final class SessionNoteWorkingDraftStore {
     static let shared = SessionNoteWorkingDraftStore()
+
+    static func compositionID(roomID: String, origin: String, audience: MobileSessionNoteVisibility) -> String {
+        let parts = [origin, roomID, audience.rawValue]
+        let data = (try? JSONEncoder().encode(parts)) ?? Data()
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return "new-session-note:\(digest)"
+    }
 
     private let fileManager: FileManager
     private let ledgerURL: URL
@@ -123,7 +133,9 @@ final class SessionNoteWorkingDraftStore {
         noteKind: MobileSessionNoteKind,
         noteVisibility: MobileSessionNoteVisibility,
         tagIDs: [String],
-        baseUpdatedAt: String
+        baseUpdatedAt: String,
+        destination: String? = nil,
+        newTagLabels: [String] = []
     ) -> Bool {
         let cleanTagIDs = Array(Set(tagIDs.map(Self.cleanID).filter { !$0.isEmpty })).sorted()
         guard let owner = activeOwnerAccountID,
@@ -133,7 +145,9 @@ final class SessionNoteWorkingDraftStore {
               title.count <= 5_000,
               body.count <= 500_000,
               cleanTagIDs.count == tagIDs.count,
-              cleanTagIDs.count <= 24 else {
+              cleanTagIDs.count <= 24,
+              newTagLabels.count <= 8,
+              newTagLabels.allSatisfy({ !$0.isEmpty && $0.count <= 80 }) else {
             return false
         }
         let draft = SessionNoteWorkingDraft(
@@ -146,7 +160,9 @@ final class SessionNoteWorkingDraftStore {
             noteVisibility: noteVisibility,
             tagIDs: cleanTagIDs,
             baseUpdatedAt: baseUpdatedAt,
-            updatedAt: Date()
+            updatedAt: Date(),
+            destination: destination,
+            newTagLabels: newTagLabels
         )
         var updated = storedDrafts.filter {
             !(Self.normalizedOwnerID($0.ownerAccountID) == owner && $0.noteID == noteID)
