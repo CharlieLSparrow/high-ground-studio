@@ -67,6 +67,41 @@ const nestLauncher = readFileSync(nestLauncherPath, "utf8");
 const down = readFileSync(downPath, "utf8");
 const doctor = readFileSync(doctorPath, "utf8");
 const generatedMobileDogfood = readFileSync(generatedMobileDogfoodPath, "utf8");
+test("local auth identities survive both explicit shutdown and service replacement", () => {
+  assert.match(stateHelper, /emulators:export/);
+  assert.match(stateHelper, /Application Support\/Quipsly\/firebase-auth/);
+  assert.match(down, /quipsly_local_save_auth\n\nif/);
+  assert.match(up, /replace_macos_jobs\(\) \{\n  local label\n  quipsly_local_save_auth/);
+  assert.match(up, /auth_import_args=\(--import "\$\{auth_export_dir\}"\)/);
+  assert.match(up, /--export-on-exit "\$\{auth_export_dir\}"/);
+});
+test("auth export preserves spaced arguments and failed exports stop shutdown", () => {
+  const dir = mkdtempSync(join(tmpdir(), "quipsly-auth-persistence-"));
+  try {
+    writeFileSync(join(dir, "firebase.label"), "com.quipsly.local.firebase");
+    const executable = join(dir, "firebase-stub");
+    writeFileSync(executable, '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify(process.argv.slice(2))); process.exit(Number(process.env.EXPORT_STATUS || 0));\n');
+    chmodSync(executable, 0o700);
+    const exportDir = join(dir, "Application Support", "auth");
+    for (const status of [0, 1]) {
+      const result = spawnSync("bash", ["-c", `
+        set -e
+        source "$helper"
+        quipsly_local_auth_export_dir() { printf '%s' "$exportDir"; }
+        curl() { return 0; }
+        quipsly_local_save_auth
+        printf '\\nSHUTDOWN_ALLOWED'
+      `], { encoding: "utf8", env: { ...process.env,
+        helper: stateHelperPath, exportDir, QUIPSLY_LOCAL_STATE_DIR: dir,
+        QUIPSLY_LOCAL_FIREBASE_BIN: executable, EXPORT_STATUS: String(status),
+      } });
+      assert.equal(result.status, status, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout.split("\n")[0]), ["emulators:export", exportDir,
+        "--project", "quipsly-reef", "--config", "ops/firebase-auth-emulator.local.json", "--force"]);
+      assert.equal(result.stdout.includes("SHUTDOWN_ALLOWED"), status === 0);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 const captureAuthManager = readFileSync(
   fileURLToPath(
     new URL(
@@ -177,7 +212,7 @@ test("machine-wide services use machine-wide ownership state", () => {
   );
   assert.match(
     up,
-    /"\$\{local_firebase_bin\}" emulators:start/,
+    /nohup bash "\$\{script_dir\}\/quipsly-local-up.sh" --run-firebase/,
     "both launcher paths must execute the pinned Firebase CLI directly",
   );
   assert.doesNotMatch(up, /pnpm exec firebase/);
@@ -221,7 +256,7 @@ test("machine-wide services use machine-wide ownership state", () => {
   );
   assert.match(
     up,
-    /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_media_root\}\/capture-vault\}"/,
+    /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_worker_media_root\}\/capture-vault\}"/,
   );
   assert.match(
     up,

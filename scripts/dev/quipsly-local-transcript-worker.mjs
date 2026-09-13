@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { defaultLocalMediaRoot } from "../../packages/quipsly-media-processing/src/local-media-paths.ts";
 import { FfmpegAudioSignalProfiler } from "../../apps/quipsly-media-processor/src/audio-signal-profile-ffmpeg.js";
 
 import {
@@ -613,7 +614,7 @@ async function runWorker() {
   const mediaRoot = path.resolve(
     process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT ||
       process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT ||
-      path.join(os.tmpdir(), "quipsly-media-ingest"),
+      defaultLocalMediaRoot(),
   );
   const captureVaultRoot = path.resolve(
     process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT

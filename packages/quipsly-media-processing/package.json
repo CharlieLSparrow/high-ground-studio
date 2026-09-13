@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./local-media-paths": {
+      "types": "./src/local-media-paths.ts",
+      "import": "./src/local-media-paths.ts"
+    },
     "./local-media-job-storage": {
       "types": "./src/local-media-job-storage.ts",
       "import": "./src/local-media-job-storage.ts"

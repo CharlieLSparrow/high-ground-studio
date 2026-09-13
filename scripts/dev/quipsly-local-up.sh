@@ -59,10 +59,18 @@ fi
 
 if [[ "${1:-}" == "--run-firebase" ]]; then
   cd "${script_repo_root}"
+  auth_export_dir="$(quipsly_local_auth_export_dir)"
+  auth_import_args=()
+  if [[ -f "${auth_export_dir}/firebase-export-metadata.json" ]]; then
+    auth_import_args=(--import "${auth_export_dir}")
+  fi
+  umask 077
   exec "${QUIPSLY_LOCAL_FIREBASE_BIN:?Missing launcher Firebase CLI path}" emulators:start \
     --only auth \
     --project quipsly-reef \
-    --config ops/firebase-auth-emulator.local.json
+    --config ops/firebase-auth-emulator.local.json \
+    --export-on-exit "${auth_export_dir}" \
+    "${auth_import_args[@]}"
 fi
 
 if [[ "${1:-}" == "--run-nest" ]]; then
@@ -176,7 +184,7 @@ firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
 compose_project="${QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio}"
 local_database_url="${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
-local_media_root="${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-$(node -p 'require("node:path").join(require("node:os").tmpdir(), "quipsly-media-ingest")')}"
+local_media_root="${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-$(node --input-type=module -e 'import {defaultLocalMediaRoot} from "./packages/quipsly-media-processing/src/local-media-paths.ts"; console.log(defaultLocalMediaRoot())')}"
 local_media_workspace_config="${QUIPSLY_LOCAL_MEDIA_WORKSPACE_CONFIG:-$(node -p 'require("node:path").join(require("node:os").homedir(), "Library", "Application Support", "Quipsly", "local-media-workspace.json")')}"
 local_active_media_workspace_root="${QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT:-}"
 local_media_legacy_roots_json="${QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON:-}"
@@ -200,7 +208,7 @@ if [[ ! -d "${local_worker_media_root}" || ! -w "${local_worker_media_root}" ]];
   echo "Reconnect its volume instead of falling back to the system disk." >&2
   exit 1
 fi
-local_capture_vault_root="${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-${local_media_root}/capture-vault}"
+local_capture_vault_root="${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-${local_worker_media_root}/capture-vault}"
 local_capture_upload_origin="${QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-${nest_url}}"
 local_app_host="${QUIPSLY_LOCAL_APP_HOST:-${nest_url}}"
 local_spatial_vault_root="${QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT:-${resolved_spatial_vault_root}}"
@@ -506,6 +514,7 @@ wait_for_port_release() {
 
 replace_macos_jobs() {
   local label
+  quipsly_local_save_auth
   for label in "${nest_label}" "${firebase_label}" "${media_worker_label}" "${transcript_worker_label}" "${livekit_label}"; do
     if launchctl_job_exists "${label}"; then
       launchctl remove "${label}"
@@ -831,10 +840,8 @@ else
   else
     (
       cd "${repo_root}"
-      nohup "${local_firebase_bin}" emulators:start \
-        --only auth \
-        --project quipsly-reef \
-        --config ops/firebase-auth-emulator.local.json \
+      QUIPSLY_LOCAL_FIREBASE_BIN="${local_firebase_bin}" \
+      nohup bash "${script_dir}/quipsly-local-up.sh" --run-firebase \
         >"${state_dir}/firebase.log" 2>&1 &
       record_process "firebase" "$!" "${repo_root}"
     )

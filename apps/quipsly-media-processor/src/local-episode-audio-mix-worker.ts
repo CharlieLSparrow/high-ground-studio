@@ -1,3 +1,4 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -135,7 +136,13 @@ export class PostgresLocalEpisodeAudioMixStore implements LocalEpisodeAudioMixSt
 
 export function newLocalEpisodeAudioMixRuntime(input: { pool: InstanceType<typeof Pool>; localMediaRoot: string; leaseMs: number; buildId: string }) { return { store: new PostgresLocalEpisodeAudioMixStore(input.pool), renderer: new FfmpegEpisodeAudioMixRenderer(), mastery: new FfmpegAudioMasteringEngine(), options: { executionId: randomUUID(), buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, localMediaRoot: input.localMediaRoot, now: () => new Date() } satisfies LocalEpisodeAudioMixWorkerOptions }; }
 
-async function authorizedRoot(configuredRoot: string) { const temporaryRoot = await realpath(tmpdir()); const resolved = path.resolve(configuredRoot); await mkdir(resolved, { recursive: true, mode: 0o700 }); const root = await realpath(resolved); if (root === temporaryRoot || !inside(temporaryRoot, root)) throw new TerminalEpisodeAudioMixError("episode-mix-root-rejected", "Local mix root must be a dedicated directory below the operating-system temporary directory."); return root; }
+async function authorizedRoot(configuredRoot: string) {
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalEpisodeAudioMixError("episode-mix-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
+  }
+}
 async function authorizedPath(root: string, locator: string, kind: "source" | "target") { const resolved = kind === "source" ? await realpath(locator).catch(() => "") : path.resolve(locator); if (!resolved || !inside(root, resolved)) throw new TerminalEpisodeAudioMixError(`episode-mix-${kind}-path-rejected`, `The local mix ${kind} escaped the authorized media root.`); return resolved; }
 async function authorizedTarget(root: string, locator: string) { const requested = path.isAbsolute(locator) ? path.resolve(locator) : path.resolve(root, locator); if (!requested.endsWith(".wav")) throw new TerminalEpisodeAudioMixError("episode-mix-target-path-rejected", "The local mix target must be a WAV below the authorized media root."); await mkdir(path.dirname(requested), { recursive: true, mode: 0o700 }); const target = path.join(await realpath(path.dirname(requested)), path.basename(requested)); if (!inside(root, target)) throw new TerminalEpisodeAudioMixError("episode-mix-target-path-rejected", "The local mix target escaped the authorized media root."); return target; }
 async function bindingFor(assetId: string, localPath: string, contentType: string, locator = localPath): Promise<AudioMasterySourceBinding> { const file = await stat(localPath); const sha256 = await sha256File(localPath); return { assetId, provider: "local", locator, generation: `sha256:${sha256}`, sha256, sizeBytes: file.size, contentType }; }

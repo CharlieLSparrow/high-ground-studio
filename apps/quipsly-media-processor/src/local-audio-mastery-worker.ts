@@ -1,6 +1,6 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -359,12 +359,11 @@ export function newLocalAudioMasteryRuntime(input: { pool: InstanceType<typeof P
 }
 
 async function authorizedRoot(configuredRoot: string) {
-  const tempRoot = await realpath(tmpdir());
-  const resolved = path.resolve(configuredRoot);
-  await mkdir(resolved, { recursive: true, mode: 0o700 });
-  const root = await realpath(resolved);
-  if (root === tempRoot || !pathIsInside(tempRoot, root)) throw new TerminalAudioMasteryError("audio-mastery-root-rejected", "Local mastering root must be a dedicated directory below the operating-system temporary directory.");
-  return root;
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalAudioMasteryError("audio-mastery-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
+  }
 }
 
 async function authorizedSource(root: string, locator: string) {

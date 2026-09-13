@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import { Prisma } from "@prisma/client";
@@ -397,7 +397,7 @@ export async function reconcileDialogueRepairExperiment(input: Coordinates & { c
   const current = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
   if (current.sha256 !== job.source.sha256 || current.generation !== job.source.generation || current.sizeBytes !== job.source.sizeBytes) throw new DialogueRepairError("The immutable source changed before Dialogue Repair registration.", 409, "DIALOGUE_REPAIR_SOURCE_DRIFT");
 
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const candidatePath = path.resolve(root, result.derivative.locator);
   const outputPath = await resolveAllowedLocalStudioMediaPath(candidatePath);
   if (!outputPath) throw new DialogueRepairError("Dialogue Repair output escaped the authorized local media root.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
@@ -555,7 +555,7 @@ export async function appendDialogueRepairAudition(input: Coordinates & {
     const output = exactGcsLocation(result.derivative.locator, result.derivative.generation);
     await assertCloudDialogueRepairOutput(getMediaBucket(output.bucketName), job, result);
   } else {
-    const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+    const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
     const previewPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.derivative.locator));
     if (!previewPath) throw new DialogueRepairError("The Dialogue Repair preview escaped the authorized media root.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
     const [previewStat, previewEvidence] = await Promise.all([stat(previewPath), inspectImmutableStudioMediaSource(previewPath, "audio/wav")]);

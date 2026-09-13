@@ -1,6 +1,6 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -303,14 +303,11 @@ export function newLocalSessionAudioAlignmentRuntime(input: {
 }
 
 async function authorizedRoot(configuredRoot: string) {
-  const temporaryRoot = await realpath(tmpdir());
-  const resolved = path.resolve(configuredRoot);
-  await mkdir(resolved, { recursive: true, mode: 0o700 });
-  const canonical = await realpath(resolved);
-  if (canonical === temporaryRoot || !inside(temporaryRoot, canonical)) {
-    throw new TerminalAudioAlignmentError("audio-alignment-root-rejected", "Alignment media root must be a dedicated directory below the operating-system temporary directory.");
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalAudioAlignmentError("audio-alignment-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
   }
-  return canonical;
 }
 
 async function authorizedSource(root: string, candidate: string) {

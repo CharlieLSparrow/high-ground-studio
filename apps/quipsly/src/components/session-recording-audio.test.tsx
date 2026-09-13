@@ -14,6 +14,14 @@ test("CAF playback automatically prepares a private listening copy", async () =>
   expect(fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ method: "POST", credentials: "same-origin" }));
 });
 
+test.each(["FAILED", "HELD"])("does not promise source retention or automatic recovery for %s preparation", async (state) => {
+  global.fetch = jest.fn(() => response({ ok: true, state }));
+  render(<SessionRecordingAudio aria-label="Recording" src={src} contentType="audio/caf" />);
+  expect(await screen.findByText(/Check recording details/i)).toBeTruthy();
+  expect(screen.queryByText(/original recording is saved|try again shortly/i)).toBeNull();
+  expect(screen.getByLabelText("Recording").getAttribute("src")).toBeNull();
+});
+
 test("ordinary audio stays direct, with automatic fallback for unsupported source formats", async () => {
   global.fetch = jest.fn(() => response({ ok: true, state: "READY", derivative: { url: `${endpoint}/media` } }));
   render(<SessionRecordingAudio aria-label="Recording" src={src} controls />);

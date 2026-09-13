@@ -1,6 +1,6 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -145,7 +145,13 @@ export function newLocalEpisodeRenderProofRuntime(input: { pool: InstanceType<ty
   return { store: new PostgresLocalEpisodeRenderProofStore(input.pool), renderer: new FfmpegEpisodeRenderProofRenderer(), options: { executionId: input.executionId ?? randomUUID(), custodianNodeId: input.custodianNodeId, storageScopeId: input.storageScopeId, buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, localMediaRoot: input.localMediaRoot, now: () => new Date() } satisfies LocalEpisodeRenderProofWorkerOptions };
 }
 
-async function authorizedRoot(configuredRoot: string) { const temporaryRoot = await realpath(tmpdir()); const resolved = path.resolve(configuredRoot); await mkdir(resolved, { recursive: true, mode: 0o700 }); const root = await realpath(resolved); if (root === temporaryRoot || !inside(temporaryRoot, root)) throw new TerminalEpisodeRenderProofError("episode-render-proof-root-rejected", "Local proof root must be a dedicated directory below the operating-system temporary directory."); return root; }
+async function authorizedRoot(configuredRoot: string) {
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalEpisodeRenderProofError("episode-render-proof-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
+  }
+}
 async function authorizedSource(root: string, locator: string) { const source = await realpath(locator).catch(() => ""); if (!source || !inside(root, source)) throw new TerminalEpisodeRenderProofError("episode-render-proof-source-path-rejected", "A proof source escaped the authorized local media root."); return source; }
 async function authorizedTarget(root: string, locator: string) { const requested = path.resolve(root, locator); if (!requested.endsWith(".mp4") || !inside(root, requested)) throw new TerminalEpisodeRenderProofError("episode-render-proof-target-path-rejected", "The proof target escaped the authorized local media root."); await mkdir(path.dirname(requested), { recursive: true, mode: 0o700 }); return path.join(await realpath(path.dirname(requested)), path.basename(requested)); }
 async function inspect(filePath: string) { const details = await stat(filePath); if (!details.isFile() || details.size <= 0) throw new TerminalEpisodeRenderProofError("episode-render-proof-file-unavailable", "An exact proof file is empty or unavailable."); return { sizeBytes: details.size, sha256: await sha256File(filePath) }; }

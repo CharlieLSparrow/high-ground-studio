@@ -1,6 +1,6 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -185,12 +185,11 @@ export function newLocalAudioSpectralRuntime(input: { pool: InstanceType<typeof 
 }
 
 async function authorizedRoot(configuredRoot: string) {
-  const temporaryRoot = await realpath(tmpdir());
-  const resolved = path.resolve(configuredRoot);
-  await mkdir(resolved, { recursive: true, mode: 0o700 });
-  const root = await realpath(resolved);
-  if (root === temporaryRoot || !pathIsInside(temporaryRoot, root)) throw new TerminalAudioSpectralError("audio-spectral-root-rejected", "Local spectral root must be a dedicated directory below the operating-system temporary directory.");
-  return root;
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalAudioSpectralError("audio-spectral-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
+  }
 }
 async function authorizedSource(root: string, locator: string) {
   const source = await realpath(locator).catch(() => "");

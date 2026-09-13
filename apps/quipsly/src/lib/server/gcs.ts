@@ -1,6 +1,6 @@
 import { Storage } from "@google-cloud/storage";
 import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot, dedicatedLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 import {
   buildMediaVaultObjectName,
@@ -15,7 +15,6 @@ import {
 const storage = new Storage();
 
 const MEDIA_UPLOAD_RESUMABLE_THRESHOLD_BYTES = 8 * 1024 * 1024;
-const DEFAULT_LOCAL_MEDIA_INGEST_ROOT = path.join(tmpdir(), "quipsly-media-ingest");
 
 export const MEDIA_BUCKET_ENV_NAMES = [
   ...MEDIA_VAULT_BUCKET_ENV_NAMES,
@@ -60,22 +59,10 @@ export function getLocalMediaIngestRoot() {
     );
   }
 
-  const temporaryRoot = path.resolve(/* turbopackIgnore: true */ tmpdir());
-  const configuredRoot = path.resolve(
-    /* turbopackIgnore: true */
+  const configuredRoot = dedicatedLocalMediaRoot(
     process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT
-      || DEFAULT_LOCAL_MEDIA_INGEST_ROOT,
+      || defaultLocalMediaRoot(),
   );
-  const relativeToTemporaryRoot = path.relative(temporaryRoot, configuredRoot);
-  if (
-    !relativeToTemporaryRoot
-    || relativeToTemporaryRoot.startsWith("..")
-    || path.isAbsolute(relativeToTemporaryRoot)
-  ) {
-    throw new Error(
-      "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT must be below the operating-system temporary directory.",
-    );
-  }
   return configuredRoot;
 }
 

@@ -34,6 +34,20 @@ truth.
 
 ## Nest
 
+Local originals and worker artifacts live in
+`~/Library/Application Support/Quipsly/local-media`, not an OS temporary folder.
+The launcher shares that root across upload, capture, transcription, and media
+workers; an explicitly selected media workspace takes precedence. Temporary
+directories remain appropriate for disposable test fixtures and processing
+scratch files, not retained recordings. Back up original media as well as
+PostgreSQL: database rows alone cannot restore recording bytes.
+
+Local Firebase Auth is exported before controlled shutdown/replacement and
+imported on startup from `~/Library/Application Support/Quipsly/firebase-auth`.
+This retains the identities referenced by PostgreSQL without reseeding accounts
+or changing their UIDs. These are local emulator credentials, never production
+users. A forced process kill can still lose changes since the last export.
+
 ```bash
 pnpm --filter quipsly typecheck
 pnpm --filter quipsly test --maxWorkers=2

@@ -101,6 +101,8 @@ stop_macos_job() {
   rm -f "${label_file}"
 }
 
+quipsly_local_save_auth
+
 if [[ "$(uname -s)" == "Darwin" ]]; then
   stop_macos_job "nest" "com.quipsly.local.nest"
   stop_macos_job "transcript-worker" "com.quipsly.local.transcript-worker"

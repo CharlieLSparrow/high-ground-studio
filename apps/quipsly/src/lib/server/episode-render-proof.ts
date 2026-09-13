@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { open, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -494,7 +494,7 @@ async function buildManifest(input: {
 }
 
 export async function verifyLocalRenderResult(locator: string, expectedSha256: string, expectedSizeBytes: number) {
-  const workerRoot = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const workerRoot = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const candidate = path.resolve(workerRoot, locator);
   const resolved = await resolveAllowedLocalStudioMediaPath(candidate);
   if (!resolved) throw new EpisodeRenderProofError("The proof output escaped the authorized local media vault.");

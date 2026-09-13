@@ -1,3 +1,4 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
@@ -381,11 +382,11 @@ export function newLocalStudioTranscriptRuntime(input: {
 }
 
 async function authorizedRoot(configuredRoot: string) {
-  const temporaryRoot = await realpath(tmpdir());
-  await mkdir(path.resolve(configuredRoot), { recursive: true, mode: 0o700 });
-  const root = await realpath(path.resolve(configuredRoot));
-  if (root === temporaryRoot || !pathIsInside(temporaryRoot, root)) throw new TerminalStudioTranscriptError("studio-transcript-root-rejected", "Local transcript root must be a dedicated directory below the operating-system temporary directory.");
-  return root;
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalStudioTranscriptError("studio-transcript-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
+  }
 }
 async function authorizedSource(root: string, locator: string) {
   const source = await realpath(locator).catch(() => "");

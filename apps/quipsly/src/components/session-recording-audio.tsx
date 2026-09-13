@@ -39,7 +39,8 @@ export const SessionRecordingAudio = forwardRef<HTMLAudioElement, Props>(functio
           setState({ source: src, url: result.derivative.url });
           return;
         }
-        if (result.state === "FAILED" || result.state === "HELD") throw new Error("Playback isn't available yet. Your original recording is saved; please try again shortly.");
+        if (result.state === "FAILED") throw new Error("The playback copy could not be prepared. Check recording details for recovery options.");
+        if (result.state === "HELD") throw new Error("Playback needs attention. Check recording details before retrying.");
         if (++polls > 180) throw new Error("This recording is still processing. Try again in a moment.");
         timer = setTimeout(() => void check("GET"), polls < 10 ? 2000 : 5000);
       } catch (error) {

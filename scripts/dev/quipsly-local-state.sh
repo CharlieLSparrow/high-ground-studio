@@ -30,6 +30,25 @@ quipsly_local_port_listener_pid() {
   lsof -nP -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null | head -1 || true
 }
 
+quipsly_local_auth_export_dir() {
+  printf '%s/Library/Application Support/Quipsly/firebase-auth\n' "$HOME"
+}
+
+# Save before stopping the emulator: PostgreSQL retains Firebase UIDs, so an
+# empty auth restart would strand otherwise durable people and shared work.
+quipsly_local_save_auth() {
+  local lifecycle_dir firebase_bin export_dir
+  lifecycle_dir="$(quipsly_local_state_dir)"
+  [[ -f "${lifecycle_dir}/firebase.label" || -f "${lifecycle_dir}/firebase.pid" ]] || return 0
+  curl --silent --fail --max-time 3 \
+    http://127.0.0.1:9099/emulator/v1/projects/quipsly-reef/config >/dev/null || return 0
+  firebase_bin="${QUIPSLY_LOCAL_FIREBASE_BIN:-${lifecycle_dir}/tools/firebase-tools-15.29.0/node_modules/.bin/firebase}"
+  export_dir="$(quipsly_local_auth_export_dir)"
+  mkdir -p "$(dirname "${export_dir}")"
+  (umask 077; "${firebase_bin}" emulators:export "${export_dir}" \
+    --project quipsly-reef --config ops/firebase-auth-emulator.local.json --force)
+}
+
 quipsly_local_process_cwd() {
   local pid="$1"
   lsof -a -p "${pid}" -d cwd -Fn 2>/dev/null |

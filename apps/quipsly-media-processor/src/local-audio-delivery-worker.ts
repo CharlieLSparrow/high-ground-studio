@@ -1,6 +1,6 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -159,7 +159,13 @@ export function newLocalAudioDeliveryRuntime(input: { pool: InstanceType<typeof 
   return { store: new PostgresLocalAudioDeliveryStore(input.pool), encoder: new FfmpegAudioDeliveryEncoder(), measurer: new FfmpegAudioMasteringEngine(), options: { executionId: randomUUID(), buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, localMediaRoot: input.localMediaRoot, now: () => new Date() } satisfies LocalAudioDeliveryWorkerOptions };
 }
 
-async function authorizedRoot(configuredRoot: string) { const temp = await realpath(tmpdir()); const resolved = path.resolve(configuredRoot); await mkdir(resolved, { recursive: true, mode: 0o700 }); const root = await realpath(resolved); if (root === temp || !inside(temp, root)) throw new TerminalAudioDeliveryError("audio-delivery-root-rejected", "Local delivery root must be a dedicated directory below the operating-system temporary directory."); return root; }
+async function authorizedRoot(configuredRoot: string) {
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalAudioDeliveryError("audio-delivery-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
+  }
+}
 async function authorizedSource(root: string, locator: string) { const source = await realpath(locator).catch(() => ""); if (!source || !inside(root, source)) throw new TerminalAudioDeliveryError("audio-delivery-source-path-rejected", "Promoted master escaped the authorized media root."); return source; }
 function authorizedTarget(root: string, locator: string) { const output = path.resolve(root, locator); if (!inside(root, output) || !output.endsWith(".m4a")) throw new TerminalAudioDeliveryError("audio-delivery-target-path-rejected", "Delivery target escaped the authorized media root."); return output; }
 async function assertSource(job: SupportedAudioDeliveryJob, sourcePath: string) { const sourceStat = await stat(sourcePath); if (!sourceStat.isFile() || sourceStat.size !== job.source.sizeBytes || await sha256File(sourcePath) !== job.source.sha256) throw new TerminalAudioDeliveryError("audio-delivery-source-byte-mismatch", "Promoted candidate no longer matches its immutable byte receipt."); }
