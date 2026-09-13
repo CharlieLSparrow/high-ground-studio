@@ -672,6 +672,7 @@ describe("Session review goal candidates", () => {
     />);
 
     await user.type(screen.getByRole("textbox", { name: "Task title" }), "Send the reflection worksheet");
+    await user.click(screen.getByText(/Details, date and sharing/));
     await user.type(screen.getByRole("textbox", { name: /Context/ }), "Share it before Friday.");
     await user.click(screen.getByRole("button", { name: "Save task" }));
 
@@ -1731,10 +1732,10 @@ describe("Session review goal candidates", () => {
     />);
 
     expect(await screen.findByRole("heading", { name: "Tasks and goals" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open same task in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
-    expect(screen.getByRole("link", { name: "Open same goal in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");
+    expect(within(screen.getByRole("heading", { name: "Proof-listen act one" }).closest("article")!).getByRole("link", { name: "Open in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
+    expect(within(screen.getByRole("heading", { name: "Make coaching follow-through obvious" }).closest("article")!).getByRole("link", { name: "Open in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");
     expect(screen.queryByText("Quick note")).not.toBeInTheDocument();
-    expect(screen.getByText(/1 task · 1 goal.*continue it in Work/i)).toBeInTheDocument();
+    expect(screen.getByText("1 task · 1 goal")).toBeInTheDocument();
   });
 
   it("edits the same iPhone note and replaces its canonical Nest tags with optimistic revisions", async () => {

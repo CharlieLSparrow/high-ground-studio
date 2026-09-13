@@ -37,6 +37,7 @@ function publicEntry(kind: "TASK" | "GOAL", row: any, visibility: "AUTHOR_PRIVAT
     status: String(row.status),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    dueAt: (kind === "TASK" ? row.dueAt : row.targetAt)?.toISOString() ?? null,
     tags: [],
     visibility,
     ownedByCurrentActor: true,

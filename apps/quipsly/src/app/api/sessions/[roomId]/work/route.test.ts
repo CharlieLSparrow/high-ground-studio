@@ -63,7 +63,7 @@ describe("Session work creation", () => {
     expect(payload).toMatchObject({
       ok: true,
       idempotentReplay: false,
-      entry: { kind: "TASK", visibility: "SESSION_SHARED", ownedByCurrentActor: true },
+      entry: { kind: "TASK", visibility: "SESSION_SHARED", ownedByCurrentActor: true, dueAt: null },
       boundaries: {
         explicitHumanCapture: true,
         canonicalRecordCommitted: true,
@@ -158,6 +158,7 @@ describe("Session work creation", () => {
           title: "Practice reflective listening",
           description: "Review progress together next Session.",
           status: "ACTIVE",
+          targetAt: new Date("2026-09-01T12:00:00.000Z"),
           createdAt: now,
           updatedAt: now,
         }),
@@ -180,6 +181,7 @@ describe("Session work creation", () => {
       kind: "GOAL",
       title: "Practice reflective listening",
       visibility: "AUTHOR_PRIVATE",
+      dueAt: "2026-09-01T12:00:00.000Z",
     });
     expect(prisma.goal.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
