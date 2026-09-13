@@ -257,7 +257,9 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
         if selectedRoomID != roomID { selectedTakeID = nil; selectedRoomID = roomID }
         if let focus {
-            url.append(queryItems: [URLQueryItem(name: "transcriptJobId", value: focus.transcriptJobID)])
+            if !focus.transcriptJobID.isEmpty {
+                url.append(queryItems: [URLQueryItem(name: "transcriptJobId", value: focus.transcriptJobID)])
+            }
             if let sourceID = focus.recordingAssetID { url.append(queryItems: [URLQueryItem(name: "sourceId", value: sourceID)]) }
         } else if let requestedTake = takeID ?? selectedTakeID {
             url.append(queryItems: [URLQueryItem(name: "takeId", value: requestedTake)])
@@ -699,8 +701,8 @@ private struct CaptureRecordingShareSheet: UIViewControllerRepresentable {
 }
 
 struct CaptureRecordingEditorFocus: Equatable, Hashable {
-    let transcriptJobID: String
-    let segmentID: String
+    var transcriptJobID: String = ""
+    var segmentID: String = ""
     var recordingAssetID: String? = nil
 }
 
@@ -917,7 +919,7 @@ struct CaptureRecordingShareEditor: View {
             .accessibilityIdentifier("CaptureRecordingEditRedo")
         }
         .buttonStyle(.bordered)
-        if let focus {
+        if let focus, !focus.segmentID.isEmpty {
             focusedPassageCard(snapshot: snapshot, focus: focus)
         }
         if let output = snapshot.output {

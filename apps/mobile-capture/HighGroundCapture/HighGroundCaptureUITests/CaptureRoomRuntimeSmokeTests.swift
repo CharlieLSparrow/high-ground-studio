@@ -6172,7 +6172,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         try exerciseLiveCallWorkspace(primaryEndpoint: false)
     }
 
-    private func exerciseLiveCallWorkspace(primaryEndpoint: Bool) throws {
+    func testCompanionCallRecordsAndOpensSavedSource() throws {
+        try exerciseLiveCallWorkspace(primaryEndpoint: false, recordSource: true)
+    }
+
+    private func exerciseLiveCallWorkspace(primaryEndpoint: Bool, recordSource: Bool = false) throws {
         let credentials = try runtimeSmokeCredentials()
         guard credentials.sessionID?.isEmpty == false,
               credentials.sessionTitle?.isEmpty == false else {
@@ -6259,7 +6263,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let simulatorActivationFailure = app.staticTexts[
             "Call audio couldn't start. Try again, or record without joining."
         ].firstMatch
-        if simulatorActivationFailure.waitForExistence(timeout: 12) {
+        if primaryEndpoint && simulatorActivationFailure.waitForExistence(timeout: 12) {
             XCTAssertTrue(
                 app.buttons["ProviderJoinRoomButton"].firstMatch.exists,
                 "A simulator-only CallKit audio failure must return to an explicit retry state."
@@ -6314,14 +6318,68 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let tools = app.buttons["CaptureCallToggleTools"].firstMatch
         tools.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.waitForExistence(timeout: 5))
+        if recordSource {
+            let audioMode = app.segmentedControls["CaptureRecordingModePicker"].buttons["Audio"]
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(audioMode, in: app))
+            audioMode.tap()
+            if let consentSheet = openRecordingConsentIfNeeded(in: app) {
+                turnOn(app.switches["CaptureConsentRecordAudioToggle"], in: app)
+                turnOn(app.switches["CaptureConsentTranscriptionToggle"], in: app)
+                let save = app.buttons["CaptureConsentSaveChoicesButton"]
+                XCTAssertTrue(waitForRuntimeElement(save, in: app, timeout: 8, swipeAttempts: 5))
+                save.tap()
+                XCTAssertTrue(consentSheet.waitForNonExistence(timeout: 30))
+            }
+            let start = recordingStartActions(in: app)[0]
+            XCTAssertTrue(start.isEnabled, "The coach must be able to start a recording from the call dock.")
+            start.tap()
+            let stop = recordingStopActions(in: app)[0]
+            XCTAssertTrue(stop.waitForExistence(timeout: 20))
+            RunLoop.current.run(until: Date().addingTimeInterval(5))
+            stop.tap()
+            XCTAssertTrue(stop.waitForNonExistence(timeout: 30), "Stop must save the local source without ending the call.")
+            XCTAssertTrue(leave.exists)
+        }
         tools.tap()
         XCTAssertFalse(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.exists)
         XCTAssertTrue(leave.isHittable, "Call controls must stay available with recording tools closed.")
 
         leave.tap()
         XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePostCallWorkspace"].firstMatch.waitForExistence(timeout: 15),
+            "Leaving should open useful post-call work, not send the person back through the recorder stack."
+        )
+        if recordSource {
+            let play = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CapturePostCallPlay_")).firstMatch
+            XCTAssertTrue(play.waitForExistence(timeout: 15), "The just-recorded local file must be playable from the post-call surface.")
+            play.tap()
+            XCTAssertTrue(play.label.contains("Pause"))
+            play.tap()
+            let edit = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CapturePostCallEdit_")).firstMatch
+            XCTAssertTrue(edit.waitForExistence(timeout: 120), "The verified uploaded source should become editable without leaving this screen.")
+            edit.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingEditScreen"].firstMatch.waitForExistence(timeout: 10))
+            attachRuntimeScreenshot(app, name: "Native call source in recording editor")
+            app.navigationBars.buttons.firstMatch.tap()
+        } else {
+            XCTAssertTrue(app.staticTexts["CapturePostCallNoLocalRecording"].exists,
+                          "A call without recording must not claim that an older session take was just saved.")
+        }
+        attachRuntimeScreenshot(app, name: "Native post-call workspace")
+        XCTAssertTrue(app.buttons["CapturePostCallNotes"].isHittable)
+        app.buttons["CapturePostCallConversation"].tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 8))
+        XCTAssertEqual(composer.value as? String, "Call workspace unsent draft",
+                       "The same conversation draft should survive the call ending.")
+        app.buttons["Done"].tap()
+        app.buttons["CapturePostCallSession"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCompletedSessionWork"].firstMatch.waitForExistence(timeout: 8))
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.buttons["CapturePostCallRejoin"].waitForExistence(timeout: 5))
+        app.buttons["CapturePostCallRejoin"].tap()
+        XCTAssertTrue(
             app.buttons["ProviderJoinRoomButton"].firstMatch.waitForExistence(timeout: 15),
-            "Leaving the provider room should return to an explicit rejoin state."
+            "Returning to the lobby should offer an explicit join without automatically reconnecting."
         )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists)
     }

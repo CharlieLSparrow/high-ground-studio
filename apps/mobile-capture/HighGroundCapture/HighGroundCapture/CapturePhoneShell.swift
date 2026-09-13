@@ -11495,6 +11495,7 @@ private struct CaptureRecorderView: View {
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
     @State private var isRunningRehearsalCheck = false
     @State private var isSafelyLeavingRoom = false
+    @State private var showsCompletedSessionWork = false
     #if DEBUG && !targetEnvironment(simulator)
     @State private var didRunPhysicalVoiceWritingAcceptance = false
     #endif
@@ -11523,6 +11524,23 @@ private struct CaptureRecorderView: View {
                     // SwiftUI's AttributeGraph at 100% CPU. Personal writing
                     // needs only its source, transcript, and recorder controls.
                     personalVoiceWritingWorkspace(session)
+                } else if let session = model.selectedSession, model.providerRoom.isConnected {
+                    liveCallWorkspace(session)
+                } else if let session = model.selectedSession,
+                          let completed = model.completedCall,
+                          completed.roomID == session.callRoomId,
+                          !model.providerRoom.isConnected,
+                          !captureIsActive {
+                    CapturePostCallWorkspace(
+                        model: model, session: session, completedCall: completed,
+                        onNotes: { sessionNotesSession = session },
+                        onConversation: { showsCallChat = true },
+                        onSession: { showsCompletedSessionWork = true },
+                        onLibrary: {
+                            requestedLibrarySection = .recordings
+                            visibleTab = .library
+                        }
+                    )
                 } else {
                     // This surface can project a full Episode workspace. Lazy
                     // layout remains a correctness boundary for collaborative
@@ -12283,7 +12301,8 @@ private struct CaptureRecorderView: View {
             // Keep the dock for collaborative sessions, where call controls
             // must remain reachable while people move through the workspace.
             if let session = model.selectedSession,
-               !session.isPersonalVoiceNote {
+               !session.isPersonalVoiceNote,
+               model.completedCall?.roomID != session.callRoomId || model.providerRoom.isConnected || captureIsActive {
                 if model.providerRoom.isConnected {
                     VStack(spacing: 0) {
                         callWorkspaceActions(session)
@@ -12388,8 +12407,69 @@ private struct CaptureRecorderView: View {
         // ScrollViewReader to resolve a target through the entire lazy Session
         // surface. The proxy-driven version could trap SwiftUI's AttributeGraph
         // in repeated placement work at accessibility text sizes.
-        .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")|\(localOnlyRecordingSessionID ?? "call")")
+        .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")|\(localOnlyRecordingSessionID ?? "call")|\(model.completedCall?.id.uuidString ?? "active")")
         .background(CaptureCanvas()))
+    }
+
+    @ViewBuilder
+    private func liveCallWorkspace(_ session: MobileCaptureSession) -> some View {
+        // A call is a bounded surface, not the full lazy session document.
+        // Scrolling the former mixed recorder/results tree while it received
+        // live updates could loop SwiftUI's lazy placement on iPad.
+        VStack(spacing: 16) {
+            if showsCallTools {
+                ConsentStrip(
+                    session: session, isBusy: model.isChangingConsent,
+                    isCaptureActive: captureIsActive,
+                    onGrant: { showsConsentConfirmation = true },
+                    onRevoke: { Task { await model.revokeConsent() } }
+                )
+                CaptureRecordingModePicker(
+                    selection: $recordingMode,
+                    isLocked: captureIsActive || model.isChangingCapture
+                )
+                if let message = recordingCoordinator.statusMessage {
+                    CaptureInlineMessage(text: message)
+                }
+                Button {
+                    focusedTool = .deviceSoundCheck
+                } label: {
+                    Label("Devices and sound check", systemImage: "slider.horizontal.3")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureDeviceSoundCheckOpen")
+                if recordingMode.recordsVideo {
+                    Button {
+                        Task { await model.switchVideoCamera(using: videoCapture) }
+                    } label: {
+                        Label("Flip camera", systemImage: "arrow.triangle.2.circlepath.camera")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!videoCapture.state.isActive)
+                }
+            } else {
+                ProviderRoomControls(
+                    model: model, session: session,
+                    inputRoute: audioCapture.inputRouteName,
+                    cameraPosition: $cameraPosition,
+                    videoQualityIntent: videoQualityIntent,
+                    localRecordingWorkspaceOpen: true,
+                    onToggleLocalRecordingWorkspace: {}
+                )
+                .captureCard()
+            }
+            if let notice = model.captureSafetyNotice {
+                CaptureInlineWarning(text: notice)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(maxWidth: 900)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureLiveCallWorkspace")
     }
 
     @ViewBuilder
@@ -13018,6 +13098,41 @@ private struct CaptureRecorderView: View {
             )
             .presentationDetents([.large])
         }
+        .navigationDestination(isPresented: $showsCompletedSessionWork) {
+            if let session = model.selectedSession {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        CaptureRecordingEditCard(session: session)
+                        CaptureSessionTranscriptReviewCard(
+                            session: session,
+                            sessionClient: model.sessionClient,
+                            previewOnly: model.usesPreviewData
+                        )
+                        CaptureSessionResultsCard(
+                            session: session,
+                            onOpenNotes: { sessionNotesSession = session },
+                            onOpenTask: { task in
+                                if let projectID = session.projectId {
+                                    model.requestWorkNavigation(kind: .task, entityID: task.id, title: task.title, projectID: projectID)
+                                }
+                                visibleTab = .work
+                            },
+                            onOpenGoal: { goal in
+                                if let projectID = session.projectId {
+                                    model.requestWorkNavigation(kind: .goal, entityID: goal.id, title: goal.title, projectID: projectID)
+                                }
+                                visibleTab = .work
+                            }
+                        )
+                    }
+                    .padding(18)
+                }
+                .background(CaptureCanvas())
+                .navigationTitle("Session workspace")
+                .navigationBarTitleDisplayMode(.inline)
+                .accessibilityIdentifier("CaptureCompletedSessionWork")
+            }
+        }
         .sheet(isPresented: $showsCallChat) {
             if let session = model.selectedSession {
                 sessionConversationSurface(session)
@@ -13515,7 +13630,7 @@ private struct CaptureRecorderView: View {
         await model.leaveRoom()
         guard !model.providerRoom.isConnected else { return }
         model.message = protectedLocalSource
-            ? "Call ended. Your recording is saved on \(CaptureDeviceVocabulary.thisDevice). Keep Quipsly open until this Session says Safe to close."
+            ? "Call ended. Your recording is saved on \(CaptureDeviceVocabulary.thisDevice). Upload and transcription continue in Quipsly."
             : "You left the call."
         if shouldMonitorRecordingExit {
             model.monitorSourceExitReadiness(roomID: session.callRoomId)

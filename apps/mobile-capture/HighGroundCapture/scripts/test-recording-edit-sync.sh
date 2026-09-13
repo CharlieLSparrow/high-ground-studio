@@ -8,3 +8,7 @@ xcrun swiftc -o "${capture_edit_test_dir}/recording-edit-sync" \
   "${capture_root}/HighGroundCapture/CaptureRecordingEditSync.swift" \
   "${capture_root}/Testing/CaptureRecordingEditSyncHarness.swift"
 "${capture_edit_test_dir}/recording-edit-sync"
+xcrun swiftc -o "${capture_edit_test_dir}/call-recording-scope" \
+  "${capture_root}/HighGroundCapture/CaptureCallRecordingScope.swift" \
+  "${capture_root}/Testing/CaptureCallRecordingScopeHarness.swift"
+"${capture_edit_test_dir}/call-recording-scope"

@@ -521,6 +521,8 @@ final class CaptureExperienceModel: ObservableObject {
     @Published private(set) var activeCoordinatedCaptureGroupID: UUID?
     @Published private(set) var isCoordinatingPodcastCapture = false
     @Published private(set) var activeRoomSession: MobileCaptureSession?
+    @Published private(set) var completedCall: CaptureCompletedCall?
+    private var callRecordingScope: CaptureCallRecordingScope?
     @Published private(set) var ownsRoomCameraPreview = false
     @Published private(set) var captureReceiptNotice: String?
     @Published private(set) var captureSafetyNotice: String?
@@ -2668,7 +2670,10 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Leave the active live room before recording a different session."
             return
         }
-        if providerRoom.isConnected, providerRoom.isMuted {
+        // A companion participates in room coordination without owning call
+        // audio. Its transport is intentionally muted; its independent local
+        // microphone must remain available for a source recording.
+        if providerRoom.isConnected, providerRoom.usesCallAudio, providerRoom.isMuted {
             errorMessage = "Unmute the live-room microphone before starting the local master. Quipsly records that same owned input pipeline so the call and file cannot disagree about the active microphone."
             return
         }
@@ -3081,6 +3086,13 @@ final class CaptureExperienceModel: ObservableObject {
         }
         activeRoomSession = session
         selectedSessionID = session.id
+        let recordingScope = callRecordingScope?.roomID == session.callRoomId
+            ? callRecordingScope!
+            : CaptureCallRecordingScope(
+                roomID: session.callRoomId,
+                existingRecordingIDs: Set(LocalRecordingLibrary.shared.recordings.map(\.id))
+                    .subtracting([activeAudioCapture?.activeLocalRecordingID, activeVideoCapture?.activeRecordingID].compactMap { $0 })
+            )
         let preparedJoin = await sessionClient.prepareRoomJoin(
             for: session,
             endpointRole: useCallAudio ? "primary" : "companion"
@@ -3125,6 +3137,8 @@ final class CaptureExperienceModel: ObservableObject {
         }
         errorMessage = providerRoom.lastError
         if providerRoom.isConnected {
+            callRecordingScope = recordingScope
+            completedCall = nil
             clearSessionEntryNotice(for: session.id)
         } else {
             activeRoomSession = nil
@@ -3138,6 +3152,7 @@ final class CaptureExperienceModel: ObservableObject {
         isChangingRoom = true
         defer { isChangingRoom = false }
         await providerRoom.disconnect()
+        if !providerRoom.isConnected { finishCallWorkspace() }
         activeRoomSession = nil
         preparedRoomJoin = nil
     }
@@ -3147,7 +3162,10 @@ final class CaptureExperienceModel: ObservableObject {
     /// STOP command: every participant owns an independent local master.
     private func protectLocalSourceForNativeCallEnd() async -> Bool {
         let sourceWasActive = localSourceIsActive
-        guard sourceWasActive else { return true }
+        guard sourceWasActive else {
+            finishCallWorkspace()
+            return true
+        }
 
         message = "The call ended. Protecting \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
         let session = activeRoomSession ?? selectedSession
@@ -3200,7 +3218,8 @@ final class CaptureExperienceModel: ObservableObject {
             }
         }
         if protected {
-            message = "Call ended. Your recording is protected on \(CaptureDeviceVocabulary.thisDevice). Keep Quipsly open until this Session says Safe to close."
+            finishCallWorkspace()
+            message = "Call ended. Your recording is saved on \(CaptureDeviceVocabulary.thisDevice). Upload and transcription continue in Quipsly."
             if let roomID = session?.callRoomId {
                 monitorSourceExitReadiness(roomID: roomID)
             }
@@ -3208,6 +3227,19 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "The call ended while \(CaptureDeviceVocabulary.thisDevice) was still closing its recording. Keep Quipsly open until Library shows the protected source."
         }
         return protected
+    }
+
+    private func finishCallWorkspace() {
+        guard let scope = callRecordingScope else { return }
+        completedCall = scope.complete(recordings: LocalRecordingLibrary.shared.recordings.map {
+            CaptureCallRecordingIdentity(id: $0.id, roomID: $0.callRoomId)
+        })
+        callRecordingScope = nil
+    }
+
+    func dismissCompletedCall() {
+        completedCall = nil
+        message = nil
     }
 
     func toggleRoomMute() async {
@@ -3690,6 +3722,8 @@ final class CaptureExperienceModel: ObservableObject {
         let ownerAccountID = normalizedOwnerAccountID(ownerAccountID)
         guard ownerAccountID != observedReceiptOwnerAccountID else { return }
         observedReceiptOwnerAccountID = ownerAccountID
+        completedCall = nil
+        callRecordingScope = nil
         // An unrecorded local writing shell has no protected media owner yet.
         // Never carry that navigation authority across an account boundary.
         localPersonalVoiceNoteSessions = []

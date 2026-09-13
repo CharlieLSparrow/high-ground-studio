@@ -347,6 +347,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  room-companion-recording)
+    TEST_CASE="testCompanionCallRecordsAndOpensSavedSource"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Room-companion-recording mode requires an exact Session and a coach account." >&2
+      exit 2
+    fi
+    ;;
   capture-recovery)
     TEST_CASE="testConsentedCapturePlaybackAndCrashRecovery"
     ;;
