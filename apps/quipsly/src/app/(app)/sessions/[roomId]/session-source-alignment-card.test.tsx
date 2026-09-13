@@ -73,6 +73,27 @@ describe("SessionSourceAlignmentCard", () => {
     expect(screen.getByRole("button", { name: /open sync details/i })).toBeInTheDocument();
   });
 
+  it("does not describe a strong but drifting match as ready to synchronize", async () => {
+    const reason = "The audio matches, but the timing changes across the recording. A start-time adjustment alone will not keep the whole recording aligned.";
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, suggestion: null, alignments: [{
+      jobId: "drifting-match", status: "completed", spineRecordingAssetId: "recording-coach", targetRecordingAssetId: "recording-client", clockAuthority: "capture-clock-proposal",
+      evidence: {opening: {measuredOffsetSeconds: 0.35, normalizedCorrelation: 0.97, peakMargin: 0.77}, later: {measuredOffsetSeconds: 1.85, normalizedCorrelation: 0.97, peakMargin: 0.77},
+        drift: {residualDriftMilliseconds: 1500, observedPartsPerMillion: 25000}, qualification: {minimumCorrelation: 0.78, minimumPeakMargin: 0.04, qualifiedForAuthorizedAgentReview: true, reason: "Strong peaks"}},
+      placementAssessment: {status: "drift-detected", reason, targetDurationSeconds: 80, estimatedMaximumOffsetErrorMilliseconds: 1750},
+      error: null, decision: null,
+    }]})});
+    render(<SessionSourceAlignmentCard roomId="room-1" evidence={evidence} canManage />);
+    expect(await screen.findByText("Timing drift detected")).toBeInTheDocument();
+    expect(screen.queryByText("Measured sync is ready")).not.toBeInTheDocument();
+    expect(screen.getByText(reason)).toBeInTheDocument();
+    await openSyncDetails();
+    expect(await screen.findByText("Strong audio match")).toBeInTheDocument();
+    expect(screen.getByText(/up to 1750.0 ms over 80.0 seconds/)).toBeInTheDocument();
+    // Inspection does not mutate the clock or require a confirmation form.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", {name: "Use measured placement"})).toBeEnabled();
+  });
+
   it("presents missing shared acoustic evidence as a healthy clock-sync fallback", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -156,7 +177,7 @@ describe("SessionSourceAlignmentCard", () => {
     );
     await openSyncDetails();
     expect(
-      await screen.findByText(/distinct peaks ready for protected review/i),
+      await screen.findByText(/strong audio match/i),
     ).toBeInTheDocument();
     expect(screen.getByText("+351.0 ms")).toBeInTheDocument();
     expect(screen.getByText("1.0 ms")).toBeInTheDocument();

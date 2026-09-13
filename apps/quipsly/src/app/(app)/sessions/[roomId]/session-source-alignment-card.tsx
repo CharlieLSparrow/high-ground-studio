@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import type { AudioAlignmentPlacementAssessment } from "@high-ground/quipsly-media-processing";
 
 type Alignment = {
   jobId: string;
@@ -51,6 +52,7 @@ type Alignment = {
     };
   };
   notice?: string | null;
+  placementAssessment?: AudioAlignmentPlacementAssessment | null;
   error: string | null;
   decision: null | {
     revision: number;
@@ -677,8 +679,9 @@ export function SessionSourceAlignmentCard({
     const qualifiedMeasurement = alignments.some(
       (alignment) =>
         alignment.status === "completed" &&
-        alignment.evidence?.qualification.qualifiedForAuthorizedAgentReview,
+        alignment.placementAssessment?.status === "offset-ready",
     );
+    const driftMeasurement = alignments.find(alignment => alignment.placementAssessment?.status === "drift-detected");
     return (
       <section
         className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm"
@@ -689,7 +692,9 @@ export function SessionSourceAlignmentCard({
           Audio sync
         </p>
         <h2 id="session-alignment-heading" className="mt-1 font-serif text-2xl font-black text-emerald-950">
-          {activeMeasuredPlacement
+          {driftMeasurement
+            ? "Timing drift detected"
+            : activeMeasuredPlacement
             ? "Measured sync is active"
             : pendingAlignment
               ? "Improving sync in the background"
@@ -698,7 +703,7 @@ export function SessionSourceAlignmentCard({
                 : "Recording timeline ready"}
         </h2>
         <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-emerald-900">
-          Quipsly places participant recordings automatically and keeps the originals unchanged. Advanced waveform evidence is available when you need to inspect or fine-tune an unusual recording.
+          {driftMeasurement?.placementAssessment?.reason ?? "Quipsly places participant recordings automatically and keeps the originals unchanged. Advanced waveform evidence is available when you need to inspect or fine-tune an unusual recording."}
         </p>
         <button
           type="button"
@@ -949,7 +954,7 @@ export function SessionSourceAlignmentCard({
                 aria-hidden="true"
               />
               {current.evidence.qualification.qualifiedForAuthorizedAgentReview
-                ? "Distinct peaks ready for protected review"
+                ? "Strong audio match"
                 : "Waveform match needs more evidence"}
             </p>
             <span className="rounded-full border border-slate-600 px-2.5 py-1 text-[9px] font-black uppercase text-slate-300">
@@ -977,6 +982,10 @@ export function SessionSourceAlignmentCard({
               value={`${current.evidence.drift.observedPartsPerMillion.toFixed(1)} ppm`}
             />
           </dl>
+          {current.placementAssessment ? <div role="status" className={`mt-4 rounded-xl border p-3 text-xs font-semibold leading-5 ${current.placementAssessment.status === "drift-detected" ? "border-amber-700 bg-amber-950/40 text-amber-100" : "border-slate-700 text-slate-200"}`}>
+            <p>{current.placementAssessment.reason}</p>
+            {current.placementAssessment.estimatedMaximumOffsetErrorMilliseconds !== null ? <p className="mt-1">Estimated timing difference with start-time adjustment only: up to {current.placementAssessment.estimatedMaximumOffsetErrorMilliseconds.toFixed(1)} ms over {current.placementAssessment.targetDurationSeconds?.toFixed(1)} seconds. Based on two measured moments; no speed correction has been applied.</p> : null}
+          </div> : null}
           {suggestion?.status === "ready" ? (
             <p className="mt-3 rounded-xl border border-sky-900 bg-sky-950/40 p-3 text-xs font-semibold leading-5 text-sky-100">
               The retained capture clocks estimated{" "}

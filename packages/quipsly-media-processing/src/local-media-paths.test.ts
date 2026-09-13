@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { mkdtemp, rm, symlink, realpath } from "node:fs/promises";
-import { dedicatedLocalMediaRoot, defaultLocalMediaRoot, prepareLocalMediaRoot } from "./local-media-paths.ts";
+import { dedicatedLocalMediaRoot, defaultLocalMediaRoot, prepareLocalMediaRoot } from "./local-media-paths.js";
 
 test("original media defaults to persistent application data", () => {
   const root = defaultLocalMediaRoot();

@@ -226,7 +226,7 @@ jobs:
       - name: Render and decode Session edits against canonical clocks
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.media_processor == 'true'
         timeout-minutes: 3
-        run: node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-mixed-clock-render.test.mjs apps/quipsly-media-processor/src/session-recording-share-ffmpeg.test.ts
+        run: node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-alignment-evidence.test.mjs scripts/quipsly-mixed-clock-render.test.mjs apps/quipsly-media-processor/src/session-recording-share-ffmpeg.test.ts
 
       - name: Build and fault-test Quipsly media verifier
         if: steps.changes.outputs.media_verifier == 'true'

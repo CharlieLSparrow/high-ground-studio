@@ -15,9 +15,64 @@ import {
   fitAudioAlignmentWindows,
   normalizedCrossCorrelation,
 } from "../apps/quipsly-media-processor/src/audio-alignment-ffmpeg.ts";
-import { parseAudioAlignmentEvidence } from "../packages/quipsly-media-processing/src/audio-alignment-evidence.ts";
+import { parseAudioAlignmentEvidence, assessAudioAlignmentPlacement } from "../packages/quipsly-media-processing/src/audio-alignment-evidence.ts";
 
 const run = promisify(execFile);
+
+function measuredEvidence({duration = 80, driftMs = 2, distinct = true} = {}) {
+  const moment = (target, offset) => ({targetStartSeconds: target, expectedSpineStartSeconds: target + 0.35,
+    measuredSpineStartSeconds: target + offset, measuredOffsetSeconds: offset,
+    normalizedCorrelation: distinct ? 0.97 : 0.5, secondBestCorrelation: 0.2, peakMargin: distinct ? 0.77 : 0.3});
+  const source = {provider: "local", locator: "/synthetic/source.wav", generation: "1", sha256: "a".repeat(64), sizeBytes: 1000, contentType: "audio/wav"};
+  return {kind: "quipsly-audio-alignment-evidence-v1", createdAt: "2026-09-13T12:00:00Z",
+    spine: {...source, assetId: "spine"}, target: {...source, assetId: "target"},
+    analyzer: {algorithm: "normalized-fft-cross-correlation-v1", sampleRate: 8000, windowSeconds: 6, searchRadiusSeconds: 1, ffmpegVersion: "fixture",
+      ...(duration === null ? {} : {windowFit: {policy: "fit-to-exact-decoded-overlap-v1", spineDecodedDurationSeconds: duration + 5, targetDecodedDurationSeconds: duration,
+        initialOffsetSeconds: 0.35, requestedOpeningTargetSeconds: 10, requestedLaterTargetSeconds: 70, analyzedOpeningTargetSeconds: 10,
+        analyzedLaterTargetSeconds: 70, windowSeconds: 6, adjustedToDecodedDuration: false}})},
+    opening: moment(10, 0.35), later: moment(70, 0.35 + driftMs / 1000),
+    drift: {observationIntervalSeconds: 60, residualDriftMilliseconds: driftMs, observedPartsPerMillion: Math.round(driftMs * 1000 / 60 * 1e6) / 1e6},
+    qualification: {minimumCorrelation: 0.78, minimumPeakMargin: 0.04, qualifiedForAuthorizedAgentReview: distinct, reason: "Measured synthetic windows"},
+    boundaries: {sampleAccurateClaimed: false, sourceBytesMutated: false, timelinePlacementApplied: false, personOrDelegatedApprovalStillRequired: true}};
+}
+
+test("drift metadata must agree with both measured windows, not merely with itself", () => {
+  const value = measuredEvidence();
+  assert.doesNotThrow(() => parseAudioAlignmentEvidence(value));
+  for (const drift of [
+    {observationIntervalSeconds: 60, residualDriftMilliseconds: 0, observedPartsPerMillion: 0},
+    {observationIntervalSeconds: 120, residualDriftMilliseconds: 2, observedPartsPerMillion: 16.666667},
+    {observationIntervalSeconds: 60, residualDriftMilliseconds: -2, observedPartsPerMillion: -33.333333},
+  ]) assert.throws(() => parseAudioAlignmentEvidence({...value, drift}), /integrity/);
+  for (const offset of [null, "0", false]) {
+    assert.throws(() => parseAudioAlignmentEvidence({...value, opening: {...value.opening, measuredOffsetSeconds: offset}}), /must be finite/);
+  }
+});
+
+test("offset assessment distinguishes duration coverage, long-tail drift, and an ambiguous match", () => {
+  assert.equal(assessAudioAlignmentPlacement(measuredEvidence()).status, "offset-ready");
+  assert.equal(assessAudioAlignmentPlacement(measuredEvidence({duration: null})).status, "insufficient-coverage");
+  assert.equal(assessAudioAlignmentPlacement(measuredEvidence({duration: 3600, driftMs: 0})).status, "insufficient-coverage");
+  assert.equal(assessAudioAlignmentPlacement(measuredEvidence({distinct: false})).status, "ambiguous-match");
+  const long = assessAudioAlignmentPlacement(measuredEvidence({duration: 3600}));
+  assert.equal(long.status, "drift-detected");
+  assert.ok(Math.abs(long.estimatedMaximumOffsetErrorMilliseconds - 119.666667) < 1e-6);
+  assert.equal(assessAudioAlignmentPlacement(measuredEvidence({driftMs: -1500})).status, "drift-detected");
+});
+
+test("the estimated affine clock passes through both measured moments without changing evidence", () => {
+  for (const driftMs of [-1500, -2, 0, 2, 1500]) {
+    const evidence = measuredEvidence({driftMs});
+    const original = structuredClone(evidence);
+    const assessment = assessAudioAlignmentPlacement(evidence);
+    for (const moment of [evidence.opening, evidence.later]) {
+      const projected = assessment.estimatedTargetOriginOnSpineSeconds + assessment.estimatedTargetToSpineRate * moment.targetStartSeconds;
+      assert.ok(Math.abs(projected - moment.measuredSpineStartSeconds) < 1e-9);
+    }
+    assert.equal(assessment.correctionApplied, false);
+    assert.deepEqual(evidence, original);
+  }
+});
 
 test("FFT correlation finds a distinct offset without mutating samples", () => {
   const reference = Float64Array.from({ length: 1_024 }, (_, index) => (
@@ -106,7 +161,7 @@ test("FFmpeg analysis binds two separated waveform peaks and measured drift to e
     options: {
       initialOffsetSeconds: -0.3,
       openingTargetSeconds: 2,
-      laterTargetSeconds: 9,
+      laterTargetSeconds: 10,
       windowSeconds: 2,
       searchRadiusSeconds: 0.5,
       sampleRate: 8_000,
@@ -119,6 +174,7 @@ test("FFmpeg analysis binds two separated waveform peaks and measured drift to e
   assert.ok(Math.abs(evidence.drift.residualDriftMilliseconds) <= 1);
   assert.equal(evidence.qualification.qualifiedForAuthorizedAgentReview, true);
   assert.equal(evidence.boundaries.timelinePlacementApplied, false);
+  assert.equal(assessAudioAlignmentPlacement(evidence).status, "offset-ready");
   assert.equal(parseAudioAlignmentEvidence(evidence).target.sha256, target.sha256);
   assert.throws(
     () => parseAudioAlignmentEvidence({ ...evidence, drift: { ...evidence.drift, observedPartsPerMillion: 99 } }),
