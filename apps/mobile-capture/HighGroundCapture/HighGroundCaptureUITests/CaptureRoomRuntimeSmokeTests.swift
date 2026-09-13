@@ -1019,15 +1019,23 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     private func openLocalRecorderIfNeeded(in app: XCUIApplication) {
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
         guard waitForRuntimeElement(localOnly, in: app, timeout: 4, swipeAttempts: 2),
-              localOnly.label == "Record without a call" else { return }
+              ["Record without a call", "Open recorder"].contains(localOnly.label) else { return }
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(localOnly, in: app))
         localOnly.tap()
+        // Let the destination transition finish before any lazy-list traversal.
+        // Immediately swiping can move the new recorder out of view while its
+        // subtree is replacing the lobby.
+        let consent = app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch
+        let recorderOpened = consent.waitForExistence(timeout: 8)
+        if !recorderOpened {
+            attachRuntimeScreenshot(app, name: "Local recorder destination missing")
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "Local recorder destination hierarchy"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+        }
         XCTAssertTrue(
-            waitForRuntimeElement(
-                app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch,
-                in: app,
-                timeout: 8,
-                swipeAttempts: 3
-            ),
+            recorderOpened,
             "The explicit local-only escape hatch should reveal the recording workspace without joining the provider room."
         )
     }
@@ -6302,6 +6310,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTFail("The visible Stop action disappeared while the take was active.")
             return
         }
+        let backToCall = app.buttons["CaptureReturnToCallButton"].firstMatch
+        XCTAssertTrue(waitForRuntimeElementAbove(backToCall, in: app, timeout: 8))
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(backToCall, in: app))
+        backToCall.tap()
+        XCTAssertTrue(waitForAnyRuntimeElement(recordingStopActions(in: app), timeout: 5),
+                      "Returning to call setup must not stop the source recording.")
+        openLocalRecorderIfNeeded(in: app)
+        XCTAssertTrue(waitForAnyRuntimeElement(recordingStopActions(in: app), timeout: 5),
+                      "Reopening the recorder must retain the active take and its Stop control.")
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
         let persistentPause = app.buttons[
             "CapturePersistentRecorderPauseResumeButton"

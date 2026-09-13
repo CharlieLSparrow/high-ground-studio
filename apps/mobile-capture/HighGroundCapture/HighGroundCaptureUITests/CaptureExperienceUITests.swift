@@ -2812,14 +2812,10 @@ final class CaptureExperienceUITests: XCTestCase {
 
         localOnly.tap()
         XCTAssertTrue(consent.waitForExistence(timeout: 5))
-        // Compare adjoining sections before scrolling to later tools. A lazy
-        // stack may release the lobby's accessibility node once it is far above
-        // the viewport; reading its frame then tests caching, not layout order.
-        XCTAssertLessThan(
-            call.frame.minY,
-            consent.frame.minY,
-            "The normal call path must come before recording administration and production tools."
-        )
+        XCTAssertFalse(join.exists, "Recording is a destination, not another section below the call lobby.")
+        let returnToCall = app.buttons["CaptureReturnToCallButton"]
+        XCTAssertTrue(returnToCall.isHittable, "The local recorder should expose a familiar way back to the call.")
+        XCTAssertTrue(consent.isHittable, "Entering recording must show its controls without scrolling past call setup.")
         let quickCapture = app.descendants(matching: .any)["CaptureQuickEntryBar"]
         reveal(
             quickCapture,
@@ -2833,6 +2829,14 @@ final class CaptureExperienceUITests: XCTestCase {
             "Consent and Record must stay contiguous with the call path instead of being interrupted by collaboration tools."
         )
         XCTAssertTrue(app.state == .runningForeground)
+        reveal(returnToCall, searchAboveFirst: true, requireHittable: true)
+        returnToCall.tap()
+        XCTAssertTrue(join.waitForExistence(timeout: 5))
+        XCTAssertTrue(join.isHittable, "Returning to the lobby must reset its scroll position to Join.")
+        XCTAssertFalse(consent.exists)
+        localOnly.tap()
+        XCTAssertTrue(consent.waitForExistence(timeout: 5))
+        XCTAssertTrue(consent.isHittable, "Repeated navigation must not inherit the previous tool-list scroll offset.")
     }
 
     func testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe() {

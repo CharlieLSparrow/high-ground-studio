@@ -11581,6 +11581,12 @@ private struct CaptureRecorderView: View {
                             )
                         }
                     } else {
+                    if localOnlyRecordingSessionID == session.id,
+                       !model.providerRoom.isConnected {
+                        CaptureLocalRecordingHeader {
+                            localOnlyRecordingSessionID = nil
+                        }
+                    } else {
                     ProviderRoomControls(
                         model: model,
                         session: session,
@@ -11596,15 +11602,11 @@ private struct CaptureRecorderView: View {
                             || model.activeVideoCaptureSession?.id == session.id
                             || session.providerCanJoin == false,
                         onToggleLocalRecordingWorkspace: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                localOnlyRecordingSessionID =
-                                    localOnlyRecordingSessionID == session.id
-                                    ? nil
-                                    : session.id
-                            }
+                            localOnlyRecordingSessionID = session.id
                         }
                     )
                     .captureCard()
+                    }
                     }
                     })
                     }
@@ -11623,30 +11625,6 @@ private struct CaptureRecorderView: View {
                     // tools. Opening a note or hiding the workspace never tears
                     // down the live call or its participant-local source.
                     if !model.providerRoom.isConnected || showsCallTools {
-                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
-                        Button {
-                            sessionClientSpace = engagement
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.2.circle.fill")
-                                    .foregroundStyle(CapturePalette.accent)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    Text("Shared notes, tasks, goals, and conversation")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .captureCard()
-                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
-                    }
                     AnyView(Group {
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
@@ -11963,6 +11941,31 @@ private struct CaptureRecorderView: View {
                         }
                     }
                     })
+
+                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
+                        Button {
+                            sessionClientSpace = engagement
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.circle.fill")
+                                    .foregroundStyle(CapturePalette.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text("Shared notes, tasks, goals, and conversation")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
+                    }
 
                     if model.providerRoom.isConnected
                         || localRecordingWorkspaceIsOpen(for: session) {
@@ -12364,12 +12367,14 @@ private struct CaptureRecorderView: View {
                 }
             }
         }
-        // Rebuild the scroll container when the selected Session changes. This
-        // naturally starts the new workspace at its entry point without asking
+        // A deliberate lobby/recorder transition starts at its entry point,
+        // rather than inserting controls beneath a retained scroll offset.
+        // Capture and call engines live outside this presentation identity.
+        // This also handles Session changes without asking
         // ScrollViewReader to resolve a target through the entire lazy Session
         // surface. The proxy-driven version could trap SwiftUI's AttributeGraph
         // in repeated placement work at accessibility text sizes.
-        .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")")
+        .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")|\(localOnlyRecordingSessionID ?? "call")")
         .background(CaptureCanvas()))
     }
 
@@ -21182,6 +21187,32 @@ private struct CaptureSystemAudioInputPicker: UIViewRepresentable {
     }
 }
 
+private struct CaptureLocalRecordingHeader: View {
+    let onReturnToCall: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onReturnToCall) {
+                Label("Back to call", systemImage: "chevron.left")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CapturePalette.accent)
+            .accessibilityIdentifier("CaptureReturnToCallButton")
+            Text("Record here")
+                .font(.title2.bold())
+            Text("Call not joined")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureLocalRecordingHeader")
+    }
+}
+
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
@@ -21519,7 +21550,7 @@ private struct ProviderRoomControls: View {
                 Button(action: onToggleLocalRecordingWorkspace) {
                     Text(
                         localRecordingWorkspaceOpen
-                            ? "Hide recording controls"
+                            ? "Open recorder"
                             : "Record without a call"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -21531,7 +21562,7 @@ private struct ProviderRoomControls: View {
                 .disabled(providerControlsLocked || model.isChangingRoom)
                 .accessibilityHint(
                     localRecordingWorkspaceOpen
-                        ? "Returns to the call lobby without changing any recording."
+                        ? "Opens this session's recording controls without changing the call or an active recording."
                         : "Shows recording controls for solo work or when the call is unavailable."
                 )
                 .accessibilityIdentifier("CaptureRecordWithoutJoiningButton")
