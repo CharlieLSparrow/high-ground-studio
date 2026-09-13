@@ -1,5 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { CallFollowThrough } from "./call-follow-through";
+import { useSessionAfterCall } from "@/hooks/use-session-after-call";
+
+jest.mock("@/hooks/use-session-after-call", () => ({ useSessionAfterCall: jest.fn() }));
+beforeEach(() => jest.mocked(useSessionAfterCall).mockReturnValue({ summary: null, error: null, retry: jest.fn() }));
 
 describe("call follow-through", () => {
   it("offers session work without claiming an unrecorded call was saved", () => {
@@ -40,5 +44,24 @@ describe("call follow-through", () => {
     expect(recover).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", {name: "Rejoin call"}));
     expect(rejoin).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds the other person's phone recording and transcript even when this browser never recorded", () => {
+    jest.mocked(useSessionAfterCall).mockReturnValue({ summary: { roomId: "room", recordings: { uploaded: 1, pending: 1, attention: 0 }, transcripts: { available: 1, processing: 0, attention: 0 }, transcriptSourceId: "phone" }, error: null, retry: jest.fn() });
+    render(<CallFollowThrough roomId="room" recording={null} onOpenRecording={jest.fn()} />);
+    expect(screen.getByLabelText("Session updates")).toHaveTextContent("1 uploaded recording available");
+    expect(screen.getByLabelText("Session updates")).toHaveTextContent("1 more uploading");
+    expect(screen.getByRole("link", { name: "Listen and edit recording" })).toHaveAttribute("href", "/sessions/room?mode=recordings");
+    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/room?mode=transcript&source=phone");
+    expect(screen.getByRole("link", { name: "Continue conversation" })).toHaveAttribute("href", "/sessions/room?mode=conversation");
+  });
+
+  it("keeps local upload recovery and existing shared recordings reachable together", () => {
+    jest.mocked(useSessionAfterCall).mockReturnValue({ summary: { roomId: "room", recordings: { uploaded: 1, pending: 1, attention: 1 }, transcripts: { available: 0, processing: 1, attention: 0 }, transcriptSourceId: null }, error: null, retry: jest.fn() });
+    render(<CallFollowThrough roomId="room" recording={{ phase: "uploading", recordingHref: null, transcriptHref: null }} onOpenRecording={jest.fn()} />);
+    expect(screen.getByRole("button", { name: "View upload progress" })).toBeEnabled();
+    expect(screen.getByRole("link", { name: "Open session recordings" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Check transcription" })).toBeVisible();
+    expect(screen.queryByText("Your recording is saved")).not.toBeInTheDocument();
   });
 });

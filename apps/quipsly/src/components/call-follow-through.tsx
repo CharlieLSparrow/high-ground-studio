@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, CircleAlert, FileText, ListTodo, LoaderCircle, PhoneOff, Play } from "lucide-react";
+import { CheckCircle2, CircleAlert, FileText, ListTodo, LoaderCircle, MessageSquareText, PhoneOff, Play } from "lucide-react";
 import type { BrowserRecordingHandoff } from "@/lib/browser-source-upload-recovery";
+import { useSessionAfterCall } from "@/hooks/use-session-after-call";
 
 export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenRecording, onRejoin }: {
   roomId: string;
@@ -14,6 +15,11 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenRecordi
   const base = `/sessions/${encodeURIComponent(roomId)}`;
   const pending = recording && recording.phase !== "ready";
   const attention = recording?.phase === "attention";
+  const { summary, error, retry } = useSessionAfterCall(roomId, recording?.phase);
+  const sharedRecordingAvailable = Boolean(summary?.recordings.uploaded);
+  const sharedTranscriptExists = summary && Object.values(summary.transcripts).some(count => count > 0);
+  const recordingHref = !pending && recording?.recordingHref ? recording.recordingHref : `${base}?mode=recordings`;
+  const transcriptHref = recording?.transcriptHref || `${base}?mode=transcript${summary?.transcriptSourceId ? `&source=${encodeURIComponent(summary.transcriptSourceId)}` : ""}`;
   return <section aria-label="After the call" className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center py-6 sm:py-10">
     <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-muted"><PhoneOff size={26} aria-hidden="true" /></div>
     <h3 className="text-3xl font-semibold">You’ve left the call</h3>
@@ -30,11 +36,26 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenRecordi
         {pending ? <button type="button" onClick={onOpenRecording} className="mt-2 min-h-11 text-sm font-semibold underline underline-offset-4">{attention ? "Open recording options" : "View upload progress"}</button> : null}
       </div>
     </div> : null}
+    {summary ? <div className="mt-5 rounded-2xl border border-border p-4" aria-label="Session updates" aria-live="polite">
+      <h4 className="text-sm font-semibold">In this session</h4>
+      <p className="mt-2 text-sm text-muted-foreground">{sharedRecordingAvailable
+        ? `${summary.recordings.uploaded} uploaded recording${summary.recordings.uploaded === 1 ? "" : "s"} available`
+        : summary.recordings.pending ? "Recordings are arriving from your devices."
+          : summary.recordings.attention ? "An upload needs attention."
+            : recording ? "Other device recordings appear here as they upload."
+              : "No recordings have arrived yet. Recordings saved on a phone appear here after upload."}</p>
+      {summary.recordings.pending > 0 && sharedRecordingAvailable ? <p className="mt-1 text-sm text-muted-foreground">{summary.recordings.pending} more uploading or being checked.</p> : null}
+      {summary.recordings.attention > 0 ? <Link href={`${base}?mode=recordings`} onClick={onOpenWork} className="mt-2 inline-flex min-h-11 items-center text-sm underline underline-offset-4">Check {summary.recordings.attention} recording{summary.recordings.attention === 1 ? "" : "s"} needing attention</Link> : null}
+      {summary.transcripts.available > 0 ? <p className="mt-2 text-sm">{summary.transcripts.available} transcript{summary.transcripts.available === 1 ? "" : "s"} available to open and edit.</p> : null}
+      {summary.transcripts.processing > 0 ? <p className="mt-2 text-sm text-muted-foreground">Transcribing {summary.transcripts.processing} recording{summary.transcripts.processing === 1 ? "" : "s"}… You can keep working here.</p> : null}
+      {summary.transcripts.attention > 0 ? <p className="mt-2 text-sm text-muted-foreground">Transcription couldn't finish for {summary.transcripts.attention} recording{summary.transcripts.attention === 1 ? "" : "s"}. Your recordings and other work are still available.</p> : null}
+    </div> : error ? <div className="mt-5 text-sm text-muted-foreground"><p>{error}</p><button type="button" onClick={retry} className="mt-1 min-h-11 underline underline-offset-4">Refresh session updates</button></div> : null}
     <nav aria-label="Continue session work" className="mt-6 grid gap-3 sm:grid-cols-2">
-      {!pending ? <Link onClick={onOpenWork} href={recording?.recordingHref || `${base}?mode=recordings`} className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground sm:col-span-2"><Play size={18} aria-hidden="true" />{recording?.recordingHref ? "Listen and edit recording" : "Open recordings"}</Link> : null}
-      {recording?.transcriptHref ? <Link onClick={onOpenWork} href={recording.transcriptHref} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold sm:col-span-2"><FileText size={18} aria-hidden="true" />Open transcript</Link> : null}
+      {!pending || sharedRecordingAvailable ? <Link onClick={onOpenWork} href={recordingHref} className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground sm:col-span-2"><Play size={18} aria-hidden="true" />{pending ? "Open session recordings" : recording?.recordingHref || sharedRecordingAvailable ? "Listen and edit recording" : "Open recordings"}</Link> : null}
+      {recording?.transcriptHref || sharedTranscriptExists ? <Link onClick={onOpenWork} href={transcriptHref} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold sm:col-span-2"><FileText size={18} aria-hidden="true" />{recording?.transcriptHref || summary?.transcripts.available ? "Open transcript" : "Check transcription"}</Link> : null}
       <Link onClick={onOpenWork} href={`${base}?mode=notes`} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold"><FileText size={18} aria-hidden="true" />Notes and recap</Link>
       <Link onClick={onOpenWork} href={`${base}?mode=work`} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold"><ListTodo size={18} aria-hidden="true" />Tasks and goals</Link>
+      <Link onClick={onOpenWork} href={`${base}?mode=conversation`} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold sm:col-span-2"><MessageSquareText size={18} aria-hidden="true" />Continue conversation</Link>
     </nav>
     {onRejoin ? <button type="button" onClick={onRejoin} className="mt-4 min-h-11 self-center px-4 text-sm underline underline-offset-4">Rejoin call</button> : null}
   </section>;
