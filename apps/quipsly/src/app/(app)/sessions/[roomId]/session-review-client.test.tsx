@@ -1472,10 +1472,10 @@ describe("Session review goal candidates", () => {
     />);
 
     expect(screen.getByRole("heading", { name: "Coaching Session" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue in this browser" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open call lobby" })).toBeInTheDocument();
     expect(screen.getByRole("link", {name: "Session workspace"})).toHaveAttribute("href", "/sessions/room-live-coaching?mode=overview");
     expect(screen.queryByTestId("session-consent-control")).not.toBeInTheDocument();
-    expect(screen.getByText(/choose whether to record after you join/i)).toBeInTheDocument();
+    expect(screen.getByText(/Check your microphone and camera, then join when you’re ready/i)).toBeInTheDocument();
     expect(screen.queryByText("Recording status")).not.toBeInTheDocument();
   });
 
