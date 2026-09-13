@@ -3,8 +3,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
-  reviewedTranscriptFileName,
-  reviewedTranscriptText,
   transcriptWordsForAudioEvidence,
   TranscriptCorrectionDesk,
 } from "./transcript-correction-desk";
@@ -120,41 +118,31 @@ async function markProtectedPlaybackReady() {
 }
 
 describe("TranscriptCorrectionDesk", () => {
-  it("exports effective text while preserving reviewed versus provider-only truth", () => {
-    const text = reviewedTranscriptText({
-      title: "Coaching Session 9",
-      transcriptJobId: "job-reviewed-123456789",
-      segments: [
-        { ...segment, speakerLabel: "Client", text: "I will bring the evidence.", acceptedVerification: { id: "verification-1" } },
-        { ...segment, startSeconds: 8, endSeconds: 10, speakerLabel: null, text: "What would make that repeatable?" },
-      ],
-    });
-
-    expect(reviewedTranscriptFileName("Coaching Session 9", "job-reviewed-123456789")).toBe(
-      "coaching-session-9-transcript-job-review.txt",
-    );
-    expect(text).toContain("Playback-reviewed turns: 1/2");
-    expect(text).toContain("Client (playback-reviewed)");
-    expect(text).toContain("Speaker not attributed (provider-only)");
-    expect(text).toContain("I will bring the evidence.");
-    expect(text).toContain("Provider evidence remains immutable");
+  it("keeps an unfinished correction intact while searching a different passage", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({...desk(true), segments: [segment,
+      {...segment, id: "segment-2", text: "Plan the next chapter.", startSeconds: 8, endSeconds: 10},
+    ]})}) as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getAllByRole("button", {name: "Edit transcript"})[0]);
+    const draft = screen.getByLabelText(/correct transcript words/i);
+    fireEvent.change(draft, {target: {value: "My unfinished correction."}});
+    fireEvent.change(screen.getByRole("searchbox", {name: "Find in transcript"}), {target: {value: "chapter"}});
+    expect(screen.getByText("1 matching passage")).toBeVisible();
+    expect(screen.getByLabelText(/correct transcript words/i)).toBe(draft);
+    expect(draft).toHaveValue("My unfinished correction.");
+    expect(screen.getByText("Welcome, everybody.")).toBeVisible();
   });
 
-  it("exports assembled turns on the Session clock instead of each source clock", () => {
-    const text = reviewedTranscriptText({
-      title: "Two-person coaching Session",
-      transcriptJobId: "job-coach",
-      segments: [{
-        ...segment,
-        startSeconds: 3,
-        endSeconds: 5,
-        programStartSeconds: 11.25,
-        programEndSeconds: 13.25,
-      }],
-    });
-
-    expect(text).toContain("[00:11-00:13]");
-    expect(text).not.toContain("[00:03-00:05]");
+  it("calls a usable fallback transcript available without inventing playback review", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({...desk(true),
+      segments: [{...segment, acceptedCorrection: {correctedText: segment.text, revisions: [], correctedSpeakerLabel: null}}],
+      sessionTranscript: {status: "held", sourceCount: 0, sources: [], reason: "Another source is unavailable.", programClock: null},
+    })}) as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    expect(await screen.findByText("Your available transcript")).toBeVisible();
+    expect(screen.queryByText("Transcript not ready yet")).not.toBeInTheDocument();
+    expect(screen.queryByText(/passages played|checked against audio/)).not.toBeInTheDocument();
   });
 
   it("keeps participant words on their exact source waveform", () => {

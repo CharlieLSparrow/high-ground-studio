@@ -1,11 +1,13 @@
 "use client";
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
 import { SessionTranscriptionProgress } from "@/components/session-transcription-progress";
+import { TranscriptExportDialog } from "@/components/transcript-export-dialog";
+import { TranscriptSearch, TranscriptSearchHighlight } from "@/components/transcript-search";
 import { transcriptionIsPending, type TranscriptionProgressSource } from "@/lib/transcription-progress";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AudioLines, Check, CircleAlert, Download, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Pause, Play, RefreshCw, Scissors, ShieldCheck, Share2, Sparkles, Target, TriangleAlert, X } from "lucide-react";
+import { AudioLines, Check, CircleAlert, Download, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Pause, Play, RefreshCw, Scissors, ShieldCheck, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
@@ -147,66 +149,10 @@ type Segment = {
   }>;
 };
 
-type TranscriptExportSegment = Pick<
-  Segment,
-  | "speakerLabel"
-  | "startSeconds"
-  | "endSeconds"
-  | "programStartSeconds"
-  | "programEndSeconds"
-  | "text"
-  | "acceptedCorrection"
-  | "acceptedVerification"
->;
-
 export type RecordingEditorFocus = {
   transcriptJobId: string;
   segmentId: string;
 };
-
-export function reviewedTranscriptFileName(title: string, transcriptJobId: string) {
-  const slug = title
-    .normalize("NFKD")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase()
-    .slice(0, 80) || "quipsly-session";
-  return `${slug}-transcript-${transcriptJobId.slice(0, 10)}.txt`;
-}
-
-export function reviewedTranscriptText(input: {
-  title: string;
-  transcriptJobId: string;
-  segments: TranscriptExportSegment[];
-}) {
-  const reviewed = input.segments.filter(
-    (segment) => segment.acceptedCorrection || segment.acceptedVerification,
-  ).length;
-  const lines = [
-    input.title.trim() || "Quipsly Session transcript",
-    `Transcript job: ${input.transcriptJobId}`,
-    `Playback-reviewed turns: ${reviewed}/${input.segments.length}`,
-    "",
-  ];
-  for (const segment of input.segments) {
-    const status = segment.acceptedCorrection || segment.acceptedVerification
-      ? "playback-reviewed"
-      : "provider-only";
-    const startSeconds = segment.programStartSeconds ?? segment.startSeconds;
-    const endSeconds = segment.programEndSeconds ?? segment.endSeconds;
-    lines.push(
-      `[${timestampForSeconds(startSeconds)}-${timestampForSeconds(endSeconds)}] ${segment.speakerLabel || "Speaker not attributed"} (${status})`,
-      segment.text.trim(),
-      "",
-    );
-  }
-  lines.push(
-    "---",
-    "This file uses Quipsly's effective transcript overlay. Provider evidence remains immutable; corrections and speaker attribution remain separately reviewable.",
-    "",
-  );
-  return lines.join("\n");
-}
 
 type Desk = {
   ok: boolean;
@@ -1212,6 +1158,7 @@ function CorrectionEditor({
   onPlayAt,
   onEditRecording,
   onSaved,
+  searchQuery,
 }: {
   roomId: string;
   transcriptJobId: string;
@@ -1228,6 +1175,7 @@ function CorrectionEditor({
   onPlayAt: (seconds: number) => Promise<void>;
   onEditRecording?: (segment: Segment) => void;
   onSaved: (message: string) => Promise<void>;
+  searchQuery: string;
 }) {
   const programStartSeconds = segment.programStartSeconds ?? segment.startSeconds;
   const programEndSeconds = segment.programEndSeconds ?? segment.endSeconds;
@@ -1506,11 +1454,11 @@ function CorrectionEditor({
       <div>
         <div>
           <p className="text-xs font-black uppercase tracking-wide text-sky-800">
-            {timestampForSeconds(programStartSeconds)}–{timestampForSeconds(programEndSeconds)} · {segment.speakerLabel || "Unlabelled speaker"}
+            {timestampForSeconds(programStartSeconds)}–{timestampForSeconds(programEndSeconds)} · <TranscriptSearchHighlight text={segment.speakerLabel || "Unlabelled speaker"} query={searchQuery} />
           </p>
           {segment.programStartSeconds !== undefined && segment.sourceStartSeconds !== undefined ? <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-sky-700">Session time · protected source {timestampForSeconds(segment.sourceStartSeconds)}</p> : null}
           <TranscriptSpeakerEvidenceBadge authority={segment.speakerAuthority} />
-          <p className="mt-2 text-[0.95rem] font-semibold leading-7 text-[#4f402f]">{segment.text}</p>
+          <p className="mt-2 text-[0.95rem] font-semibold leading-7 text-[#4f402f]"><TranscriptSearchHighlight text={segment.text} query={searchQuery} /></p>
           {segment.acceptedCorrection ? <p className="mt-1 text-xs text-[#765f40]">Edited</p> : null}
         </div>
       </div>
@@ -1788,10 +1736,6 @@ function TranscriptCorrectionDeskContent({
   const [mentorReportBusy, setMentorReportBusy] = useState(false);
   const [preparingPlayback, setPreparingPlayback] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [preparedTranscript, setPreparedTranscript] = useState<{
-    url: string;
-    filename: string;
-  } | null>(null);
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
   const [sourceReviewedSecondBins, setSourceReviewedSecondBins] = useState<Set<string>>(() => new Set());
   const [activePlayback, setActivePlayback] = useState<TranscriptPlayback | null>(null);
@@ -1807,6 +1751,7 @@ function TranscriptCorrectionDeskContent({
   const [showRecordingEditor, setShowRecordingEditor] = useState(false);
   const [recordingEditorFocus, setRecordingEditorFocus] = useState<RecordingEditorFocus | null>(null);
   const [transcriptView, setTranscriptView] = useState<"transcript" | "recording-transcript">("transcript");
+  const [searchQuery, setSearchQuery] = useState("");
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
   const pendingSourcePlaybackRef = useRef<{ sourceId: string; seconds: number } | null>(null);
@@ -1937,9 +1882,6 @@ function TranscriptCorrectionDeskContent({
     };
   }, [currentPlayback?.sourceId]);
 
-  useEffect(() => () => {
-    if (preparedTranscript?.url) URL.revokeObjectURL(preparedTranscript.url);
-  }, [preparedTranscript?.url]);
 
   useEffect(() => {
     setListenedSecondBins(new Set());
@@ -2227,45 +2169,6 @@ function TranscriptCorrectionDeskContent({
     }
   }
 
-  async function prepareTranscriptFile() {
-    if (!desk?.transcriptJobId || !desk.segments.length || !desk.gate.allowed) return;
-    if (preparedTranscript?.url) URL.revokeObjectURL(preparedTranscript.url);
-    const filename = reviewedTranscriptFileName(
-      sessionTitle,
-      desk.transcriptJobId,
-    );
-    const file = new File([
-      reviewedTranscriptText({
-        title: sessionTitle,
-        transcriptJobId: desk.transcriptJobId,
-        segments: desk.segments,
-      }),
-    ], filename, { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(file);
-    setPreparedTranscript({ url, filename });
-    const shareData = {
-      title: "Reviewed Quipsly transcript",
-      text: `${reviewedSegmentCount} of ${desk.segments.length} turns playback-reviewed`,
-      files: [file],
-    };
-    if (
-      typeof navigator.share === "function" &&
-      (typeof navigator.canShare !== "function" || navigator.canShare(shareData))
-    ) {
-      try {
-        await navigator.share(shareData);
-        setMessage("The system share sheet accepted the effective transcript file. Quipsly does not claim who received it.");
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          setMessage("Sharing was canceled. The prepared transcript remains available below.");
-          return;
-        }
-      }
-    }
-    setMessage("The transcript file is prepared below. This embedded browser did not open a system share sheet.");
-  }
-
   async function shareMentorTranscript() {
     if (mentorReportBusy || !desk?.gate.allowed || !desk.segments.length) return;
     setMentorReportBusy(true);
@@ -2361,12 +2264,12 @@ function TranscriptCorrectionDeskContent({
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Transcript</p>
             <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Edit the transcript</h2>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Correct any words or speaker names directly. Play a passage whenever hearing the source would help. Transcript corrections never cut the recording.</p>
-            {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{desk.segments.length} timed passage{desk.segments.length === 1 ? "" : "s"}{reviewedSegmentCount > 0 ? ` · ${reviewedSegmentCount} checked against audio` : ""}</p>}
+            {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{desk.segments.length} timed passage{desk.segments.length === 1 ? "" : "s"}{reviewedSegmentCount > 0 ? ` · ${reviewedSegmentCount} edited or marked correct` : ""}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             {canEditRecording ? recordingEditor ? <button type="button" aria-expanded={showRecordingEditor} aria-controls="inline-recording-editor" onClick={() => { setRecordingEditorFocus(null); setShowRecordingEditor((current) => !current); }} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />{showRecordingEditor ? "Close recording editor" : "Trim or cut recording"}</button> : <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim or cut recording</Link> : null}
             {desk.roomPurpose === "COACHING" ? <button type="button" onClick={() => void shareMentorTranscript()} disabled={busy || mentorReportBusy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-orange-300 bg-orange-50 px-4 py-2 text-xs font-black text-orange-950 disabled:opacity-50">{mentorReportBusy ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}Mentor report</button> : null}
-            <button type="button" onClick={() => void prepareTranscriptFile()} disabled={busy || !desk.gate.allowed || !desk.segments.length} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Share2 size={15} aria-hidden="true" />Share transcript</button>
+            <TranscriptExportDialog title={sessionTitle} segments={desk.segments} disabled={busy || !desk.gate.allowed} />
             <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh</button>
           </div>
         </div>
@@ -2376,14 +2279,13 @@ function TranscriptCorrectionDeskContent({
           <p className="font-semibold">{desk.sessionTranscript.status === "assembled"
             ? `${desk.sessionTranscript.sourceCount} participant recordings on one Session timeline`
             : desk.sessionTranscript.status === "single-source" ? "One participant recording ready"
-              : desk.sessionTranscript.sourceCount ? "Your available transcript" : desk.sessionTranscript.pendingSources?.length ? "Transcription progress" : "Transcript not ready yet"}</p>
+              : desk.segments.length ? "Your available transcript" : desk.sessionTranscript.pendingSources?.length ? "Transcription progress" : "Transcript not ready yet"}</p>
           <p className="mt-1 text-xs text-muted-foreground">{desk.sessionTranscript.reason}</p>
           {desk.sessionTranscript.status === "incomplete" || desk.sessionTranscript.status === "held" ?
             <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=recordings`} className="mt-2 inline-flex min-h-11 items-center font-semibold underline underline-offset-4">View recordings and progress</Link> : null}
           {desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs text-muted-foreground">Timing is estimated. Source audio and original timestamps are preserved.</p> : null}
         </div> : null}
         {desk.sessionTranscript?.pendingSources?.length ? <SessionTranscriptionProgress key={`${roomId}:${recordingAssetId ?? "session"}`} sources={desk.sessionTranscript.pendingSources} onUpdated={() => load(true)} /> : null}
-        {preparedTranscript ? <a href={preparedTranscript.url} download={preparedTranscript.filename} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Download size={15} aria-hidden="true" />Download prepared transcript</a> : null}
         {desk.processing && (
           <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">
             <div>
@@ -2478,6 +2380,7 @@ function TranscriptCorrectionDeskContent({
               <button type="button" aria-pressed={transcriptView === "recording-transcript"} onClick={() => setTranscriptView("recording-transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "recording-transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Recording + transcript</button>
             </div>
           </div>
+          <TranscriptSearch segments={desk.segments} onHighlight={setSearchQuery} />
           <div className={transcriptView === "recording-transcript" ? "grid min-w-0 gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.45fr)] xl:items-start" : "space-y-5"}>
             <div className={transcriptView === "recording-transcript" ? "xl:sticky xl:top-24" : ""}>
               {protectedPlaybackSurface}
@@ -2496,6 +2399,7 @@ function TranscriptCorrectionDeskContent({
                   roomId={roomId}
                   transcriptJobId={segment.transcriptJobId ?? desk.transcriptJobId!}
                   segment={segment}
+                  searchQuery={searchQuery}
                   canUseProjectTeamNotes={canUseProjectTeamNotes}
                   playbackReady={segmentCanPlay}
                   playbackReviewed={segmentReviewed}
@@ -2538,7 +2442,7 @@ function TranscriptCorrectionDeskContent({
           <span className={`rounded-full px-3 py-1.5 ${playbackReady ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{playbackReady ? "Recording ready" : "Recording needs attention"}</span>
           <span className={`rounded-full px-3 py-1.5 ${timingIntegrity?.disposition === "structurally-consistent" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{timingIntegrity ? `${timingIntegrity.editableSegmentCount}/${currentEvidence?.transcript.segmentCount ?? 0} timed passages` : "Timing not measured"}</span>
           {(desk.speakerGroups ?? []).length > 0 ? <span className={`rounded-full px-3 py-1.5 ${identifiedSpeakerCount === desk.speakerGroups.length ? "bg-emerald-100 text-emerald-900" : "bg-indigo-100 text-indigo-900"}`}>{identifiedSpeakerCount}/{desk.speakerGroups.length} voices identified</span> : null}
-          {desk.segments.length > 0 ? <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-900">{reviewedSegmentCount}/{desk.segments.length} passages played</span> : null}
+          {desk.segments.length > 0 ? <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-900">{reviewedSegmentCount}/{desk.segments.length} passages edited or marked correct</span> : null}
         </div>
 
         {showQualityDetails ? <div id="transcript-quality-details" className="mt-5 space-y-5">

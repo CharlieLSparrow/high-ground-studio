@@ -1000,6 +1000,19 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
     let packet: Packet?
 }
 
+enum CaptureTranscriptExportFormat: String, CaseIterable, Identifiable {
+    case txt, md, srt, vtt
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .txt: return "Plain text (.txt)"
+        case .md: return "Markdown (.md)"
+        case .srt: return "Subtitles (.srt)"
+        case .vtt: return "Web subtitles (.vtt)"
+        }
+    }
+}
+
 @MainActor
 final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var desk: CaptureTranscriptCorrectionDesk?
@@ -1008,6 +1021,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var isPreparingMentorReport = false
     @Published private(set) var mentorReportURL: URL?
+    @Published private(set) var isPreparingTranscriptExport = false
+    @Published private(set) var transcriptExportURL: URL?
     @Published private(set) var message: String?
     @Published private(set) var errorMessage: String?
     @Published private(set) var packetGoalCandidates: [CapturePacketGoalCandidate] = []
@@ -1201,6 +1216,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         let readScope = CaptureTranscriptReadScope(roomID: normalizedRoomID,
             recordingAssetID: normalizedRecordingAssetID, transcriptJobID: normalizedTranscriptJobID,
             ownerAccountID: AuthManager.currentStoredOwnerID())
+        removePreparedTranscriptExport()
         if activeRoomID != normalizedRoomID
             || activeRecordingAssetID != normalizedRecordingAssetID
             || activeTranscriptJobID != normalizedTranscriptJobID
@@ -1459,6 +1475,58 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func prepareTranscriptExport(roomID: String, format: CaptureTranscriptExportFormat,
+                                 timestamps: Bool = true, speakers: Bool = true) async {
+        guard !isPreparingTranscriptExport,
+              let scope = activeReadScope, scope.roomID == roomID,
+              scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()),
+              AuthManager.shared.networkActionsAllowed, !isUsingProtectedCache else { return }
+        guard let encodedRoomID = roomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              var components = URLComponents(string: "\(baseURL)/api/sessions/\(encodedRoomID)/transcript-export") else { return }
+        var query = [URLQueryItem(name: "format", value: format.rawValue),
+                     URLQueryItem(name: "timestamps", value: String(timestamps)),
+                     URLQueryItem(name: "speakers", value: String(speakers))]
+        if let recordingAssetID = scope.recordingAssetID { query.append(URLQueryItem(name: "recordingAssetId", value: recordingAssetID)) }
+        if let transcriptJobID = scope.transcriptJobID { query.append(URLQueryItem(name: "transcriptJobId", value: transcriptJobID)) }
+        components.queryItems = query
+        guard let url = components.url else { return }
+        isPreparingTranscriptExport = true
+        removePreparedTranscriptExport()
+        errorMessage = nil
+        defer { isPreparingTranscriptExport = false }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+            guard response.statusCode == 200 else {
+                throw captureTranscriptError(data: data, fallback: "The transcript could not be exported.")
+            }
+            guard let text = String(data: data, encoding: .utf8), !text.isEmpty,
+                  response.mimeType != "text/html", response.mimeType != "application/json" else {
+                throw captureTranscriptClientError("Quipsly did not return a transcript file. Try again.")
+            }
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("quipsly-transcript-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
+            let filename = "Transcript.\(format.rawValue)"
+            let file = folder.appendingPathComponent(filename)
+            try data.write(to: file, options: [.atomic, .completeFileProtection])
+            transcriptExportURL = file
+            message = "Transcript ready. Choose Share transcript to save it or send a copy."
+        } catch {
+            guard scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func removePreparedTranscriptExport() {
+        if let transcriptExportURL {
+            try? FileManager.default.removeItem(at: transcriptExportURL)
+            try? FileManager.default.removeItem(at: transcriptExportURL.deletingLastPathComponent())
+        }
+        transcriptExportURL = nil
     }
 
     private func removePreparedMentorReport() {
@@ -4803,6 +4871,36 @@ struct CaptureTranscriptReviewView: View {
             Label("Transcript ready", systemImage: "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CapturePalette.success)
+            if !previewOnly, client.desk?.gate.allowed == true, client.desk?.segments.isEmpty == false {
+                Menu {
+                    ForEach(CaptureTranscriptExportFormat.allCases) { format in
+                        Button(format.label) {
+                            Task { await client.prepareTranscriptExport(roomID: roomID, format: format) }
+                        }
+                    }
+                    Button("Plain text without timestamps or names") {
+                        Task { await client.prepareTranscriptExport(roomID: roomID, format: .txt, timestamps: false, speakers: false) }
+                    }
+                } label: {
+                    Label(client.isPreparingTranscriptExport ? "Preparing transcript…" : "Export transcript", systemImage: "doc.text")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(client.isPreparingTranscriptExport || client.isLoading || client.isUsingProtectedCache)
+                .accessibilityIdentifier("CaptureTranscriptExportMenu")
+                if let exportURL = client.transcriptExportURL {
+                    ShareLink(item: exportURL, subject: Text("\(sessionTitle) transcript")) {
+                        Label("Share transcript", systemImage: "square.and.arrow.up")
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("CaptureTranscriptShareExport")
+                    .accessibilityValue(exportURL.lastPathComponent)
+                    Text("Includes text corrections. Timestamps match this transcript’s recording timeline, not a trimmed export.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             if client.desk?.roomPurpose == "COACHING", !previewOnly {
                 if let reportURL = client.mentorReportURL {
                     ShareLink(

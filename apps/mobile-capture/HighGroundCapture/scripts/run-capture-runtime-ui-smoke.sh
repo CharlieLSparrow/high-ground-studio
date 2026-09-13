@@ -266,6 +266,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-export)
+    TEST_CASE="testTranscriptExportsStandardFilesFromTheSession"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Transcript export requires an exact accessible Session with timed transcript passages." >&2
+      exit 2
+    fi
+    ;;
   transcript-text-edit)
     TEST_CASE="testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* || -z "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" ]]; then

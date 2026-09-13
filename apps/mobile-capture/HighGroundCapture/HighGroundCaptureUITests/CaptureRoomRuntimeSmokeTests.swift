@@ -3528,6 +3528,36 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRecordingIdentity(titles[2], name: "Recovered transcript task for independent API readback")
     }
 
+    func testTranscriptExportsStandardFilesFromTheSession() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {
+            throw XCTSkip("Transcript export requires an exact accessible Session.")
+        }
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+        let transcript = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(transcript, in: app, timeout: 30, swipeAttempts: 12))
+        transcript.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+        for (label, filename) in [("Plain text (.txt)", "Transcript.txt"), ("Markdown (.md)", "Transcript.md"),
+                                  ("Subtitles (.srt)", "Transcript.srt"), ("Web subtitles (.vtt)", "Transcript.vtt"),
+                                  ("Plain text without timestamps or names", "Transcript.txt")] {
+            let menu = app.buttons["CaptureTranscriptExportMenu"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(menu, in: app, timeout: 30, swipeAttempts: 12))
+            menu.tap()
+            let format = app.buttons[label].firstMatch
+            XCTAssertTrue(format.waitForExistence(timeout: 10))
+            format.tap()
+            let share = app.buttons["CaptureTranscriptShareExport"].firstMatch
+            XCTAssertTrue(share.waitForExistence(timeout: 30))
+            expectation(for: NSPredicate(format: "value == %@", filename), evaluatedWith: share)
+            waitForExpectations(timeout: 15)
+            XCTAssertTrue(share.isEnabled)
+        }
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"].exists)
+        attachRuntimeScreenshot(app, name: "Native transcript exports ready for the standard share sheet")
+    }
+
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
