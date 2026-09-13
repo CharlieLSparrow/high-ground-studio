@@ -3028,7 +3028,7 @@ requireIncludes(capturePhoneShellText, "if microphonePermissionNeedsRecovery", "
 requireIncludes(capturePhoneShellText, "return !joinMuted && model.providerRoom.isMuted", "a connected participant sees microphone Settings recovery only when speaking was requested but the provider remained muted");
 requireIncludes(captureExperienceModelText, "if useCallAudio && !joinMuted", "a muted iPhone join defers microphone permission until the person chooses to speak");
 requireIncludes(captureExperienceModelText, "joinMuted: effectiveJoinMuted", "the native join carries the requested or permission-fallback microphone choice independently from call-audio routing");
-requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode does not subscribe to remote call media");
+requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode disables automatic audio subscription; video is subscribed selectively");
 requireIncludes(providerRoomText, "enabled: useCallAudio && !joinMuted", "native primary endpoints can subscribe to the conversation while joining with microphone publication off");
 requireIncludes(providerRoomText, 'prepareMicrophonePermission(action: "speak in the call")', "the first explicit Unmute action becomes the deferred microphone permission boundary");
 requireIncludes(providerRoomText, "func refreshPermissionReadinessSnapshot() async", "the shared call controller reconciles remembered microphone access whenever Quipsly returns from Settings");

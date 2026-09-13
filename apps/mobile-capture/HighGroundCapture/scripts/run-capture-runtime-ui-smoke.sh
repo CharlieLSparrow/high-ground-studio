@@ -347,6 +347,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  room-companion-gallery)
+    TEST_CASE="testCompanionVideoGalleryKeepsAudioOnOtherDevice"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Room-companion-gallery requires a Session with two local synthetic video peers." >&2
+      exit 2
+    fi
+    ;;
   room-companion-recording)
     TEST_CASE="testCompanionCallRecordsAndOpensSavedSource"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then

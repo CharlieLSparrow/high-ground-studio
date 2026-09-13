@@ -6176,7 +6176,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         try exerciseLiveCallWorkspace(primaryEndpoint: false, recordSource: true)
     }
 
-    private func exerciseLiveCallWorkspace(primaryEndpoint: Bool, recordSource: Bool = false) throws {
+    func testCompanionVideoGalleryKeepsAudioOnOtherDevice() throws {
+        try exerciseLiveCallWorkspace(primaryEndpoint: false, expectVideoGallery: true)
+    }
+
+    private func exerciseLiveCallWorkspace(primaryEndpoint: Bool, recordSource: Bool = false,
+                                          expectVideoGallery: Bool = false) throws {
         let credentials = try runtimeSmokeCredentials()
         guard credentials.sessionID?.isEmpty == false,
               credentials.sessionTitle?.isEmpty == false else {
@@ -6298,12 +6303,22 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertEqual(app.buttons["ProviderToggleSpeakerButton"].firstMatch.exists, primaryEndpoint)
 
-        XCTAssertTrue(app.descendants(matching: .any)["ProviderCallAudioStage"].firstMatch.exists)
-        let stage = app.descendants(matching: .any)["ProviderCallAudioStage"].firstMatch
+        let stage = app.descendants(matching: .any)[expectVideoGallery
+            ? "ProviderCallParticipantGallery" : "ProviderCallAudioStage"].firstMatch
+        XCTAssertTrue(stage.waitForExistence(timeout: 20))
+        if expectVideoGallery {
+            let remoteVideo = app.descendants(matching: .any).matching(NSPredicate(
+                format: "label BEGINSWITH %@", "Video from "
+            ))
+            XCTAssertGreaterThanOrEqual(remoteVideo.count, 2, "Both generated remote video tracks must reach the companion.")
+            XCTAssertFalse(app.buttons["ProviderToggleSpeakerButton"].exists,
+                "Receiving video on a companion must not activate call audio.")
+        }
         XCTAssertGreaterThan(stage.frame.height, 180)
         XCTAssertGreaterThanOrEqual(stage.frame.minX, app.frame.minX)
         XCTAssertLessThanOrEqual(stage.frame.maxX, app.frame.maxX + 1,
                                  "The call stage must not overflow sideways.")
+        assertParticipantTilesFit(in: app, stage: stage)
         if app.frame.width > 700 {
             XCTAssertGreaterThan(stage.frame.height, 350, "The iPad call should use its available stage, not a small document card.")
             XCUIDevice.shared.orientation = .landscapeLeft
@@ -6314,7 +6329,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(leave.isHittable, "Leave must remain reachable after rotating the live call.")
             XCTAssertTrue(app.buttons["CaptureCallOpenTasks"].isHittable)
             assertCallLayoutSettled(in: app)
+            assertParticipantTilesFit(in: app, stage: stage)
             attachRuntimeScreenshot(app, name: "Native call landscape stage and fixed controls")
+            let screenAttachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenAttachment.name = "Native call landscape full display"
+            screenAttachment.lifetime = .keepAlways
+            add(screenAttachment)
             XCUIDevice.shared.orientation = .portrait
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
                 predicate: NSPredicate { _, _ in app.frame.height > app.frame.width }, object: app
@@ -6333,6 +6353,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         if app.frame.width > 700 {
             XCTAssertTrue(stage.isHittable, "On iPad, chat belongs beside the participant stage.")
             XCTAssertTrue(leave.isHittable, "The call dock must stay available beside the conversation.")
+            assertParticipantTilesFit(in: app, stage: stage)
             attachRuntimeScreenshot(app, name: "iPad conversation beside live call")
         }
         XCTAssertEqual(app.buttons["CaptureWorkspaceToggleMicrophone"].exists, primaryEndpoint)
@@ -6519,6 +6540,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 returnToLobby.tap()
             }
             XCTAssertTrue(app.buttons["ProviderJoinRoomButton"].firstMatch.waitForExistence(timeout: 10))
+        }
+    }
+
+    private func assertParticipantTilesFit(in app: XCUIApplication, stage: XCUIElement) {
+        let tiles = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == %@ OR identifier BEGINSWITH %@",
+            "ProviderLocalParticipantTile", "ProviderParticipantTile-"
+        )).allElementsBoundByIndex
+        XCTAssertFalse(tiles.isEmpty, "A connected call must render real participant tiles.")
+        for tile in tiles {
+            XCTAssertGreaterThan(tile.frame.width, min(200, stage.frame.width - 1),
+                "Participant tiles use available stage width, not a device-size column guess.")
+            XCTAssertTrue(stage.frame.insetBy(dx: -1, dy: -1).contains(tile.frame),
+                "Participant tiles must remain inside their stage when a collaboration panel opens.")
         }
     }
 

@@ -21850,7 +21850,18 @@ private struct ProviderRoomControls: View {
             }
 
             if model.providerRoom.isConnected {
-                if model.providerRoom.hasRemoteVideo
+                if model.providerRoom.remoteParticipants.count > 1,
+                   model.providerRoom.hasRemoteVideo || model.providerRoom.isLocalVideoPublished {
+                    ProviderRoomParticipantGallery(providerRoom: model.providerRoom,
+                        videoCapture: videoCapture, minimumHeight: minimumStageHeight,
+                        canSwitchCamera: model.providerRoom.isLocalVideoPublished
+                            && !model.isChangingCapture && !model.providerRoom.isChangingLocalVideo
+                            && !model.providerRoom.isReconnecting,
+                        onSwitchCamera: {
+                            Task { await model.switchRoomCamera(using: videoCapture,
+                                qualityIntent: CaptureCallPreferences.videoQualityIntent) }
+                        })
+                } else if model.providerRoom.hasRemoteVideo
                     || model.providerRoom.isLocalVideoPublished {
                     ProviderRoomVideoStage(
                         providerRoom: model.providerRoom,
@@ -21888,6 +21899,17 @@ private struct ProviderRoomControls: View {
                             : Color.secondary
                     )
                     .accessibilityIdentifier("CaptureCallParticipantPresence")
+
+                    if let videoError = model.providerRoom.remoteVideoReceiveError {
+                        HStack {
+                            Text(videoError).font(.caption).foregroundStyle(.secondary)
+                            Button("Retry video") {
+                                Task { await model.providerRoom.receiveCompanionVideo() }
+                            }
+                            .font(.caption.weight(.semibold))
+                        }
+                        .accessibilityIdentifier("CaptureCallVideoRetry")
+                    }
 
                     if model.providerRoom.usesCallAudio,
                        model.providerRoom.callAudioHealth.needsVisibleGuidance {
@@ -22285,6 +22307,7 @@ private struct CaptureCallIdentityTile: View {
     let name: String
     let detail: String
     let systemImage: String
+    var isSpeaking = false
 
     private var initials: String {
         name.split(whereSeparator: \.isWhitespace).prefix(2)
@@ -22304,11 +22327,16 @@ private struct CaptureCallIdentityTile: View {
                 .multilineTextAlignment(.center)
             Label(detail, systemImage: systemImage)
                 .font(.caption)
+                .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(CapturePalette.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(isSpeaking ? CapturePalette.success : .clear, lineWidth: 2)
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -22316,21 +22344,13 @@ private struct CaptureCallIdentityTile: View {
 private struct ProviderRoomAudioStage: View {
     @ObservedObject var providerRoom: ProviderRoomController
     var minimumHeight: CGFloat = 190
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var columnCount: Int {
-        dynamicTypeSize.isAccessibilitySize ? 1
-            : min(providerRoom.remoteParticipantNames.count + 1, horizontalSizeClass == .regular ? 3 : 2)
-    }
-
-    private var tileHeight: CGFloat {
-        let rows = (providerRoom.remoteParticipantNames.count + columnCount) / columnCount
-        return max(190, (minimumHeight - CGFloat(rows - 1) * 12) / CGFloat(rows))
-    }
-
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columnCount), spacing: 12) {
+        CaptureParticipantGrid(minimumHeight: minimumHeight, accessibility: dynamicTypeSize.isAccessibilitySize) {
+            ForEach(providerRoom.remoteParticipants) { participant in
+                CaptureRemoteIdentityTile(participant: participant)
+            }
             CaptureCallIdentityTile(
                 name: "You",
                 detail: providerRoom.usesCallAudio
@@ -22339,13 +22359,72 @@ private struct ProviderRoomAudioStage: View {
                 systemImage: providerRoom.usesCallAudio && !providerRoom.isMuted
                     ? "mic.fill" : "mic.slash.fill"
             )
-            .frame(minHeight: tileHeight)
-            ForEach(Array(providerRoom.remoteParticipantNames.enumerated()), id: \.offset) { _, name in
-                CaptureCallIdentityTile(name: name, detail: "In call", systemImage: "person.fill")
-                    .frame(minHeight: tileHeight)
+            .accessibilityIdentifier("ProviderLocalParticipantTile")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ProviderCallAudioStage")
+    }
+}
+
+private struct CaptureRemoteIdentityTile: View {
+    let participant: ProviderCallParticipant
+
+    var body: some View {
+        CaptureCallIdentityTile(name: participant.name,
+            detail: participant.microphoneEnabled ? (participant.isSpeaking ? "Speaking" : "Microphone on") : "Microphone off",
+            systemImage: participant.microphoneEnabled ? "mic.fill" : "mic.slash.fill",
+            isSpeaking: participant.microphoneEnabled && participant.isSpeaking)
+            .accessibilityIdentifier("ProviderParticipantTile-\(participant.id)")
+    }
+}
+
+/// More than two people retain a place in the conversation even if only one
+/// camera is on. Turning cameras on/off changes a tile, not the whole roster.
+private struct ProviderRoomParticipantGallery: View {
+    @ObservedObject var providerRoom: ProviderRoomController
+    @ObservedObject var videoCapture: VideoCaptureController
+    let minimumHeight: CGFloat
+    let canSwitchCamera: Bool
+    let onSwitchCamera: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        CaptureParticipantGrid(minimumHeight: minimumHeight, accessibility: dynamicTypeSize.isAccessibilitySize) {
+            ForEach(providerRoom.remoteParticipants) { participant in
+                if participant.hasVideo {
+                    ProviderRemoteVideoSurface(controller: providerRoom, participantID: participant.id)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(participant.isSpeaking ? CapturePalette.success : .clear, lineWidth: 2)
+                        }
+                        .accessibilityIdentifier("ProviderParticipantTile-\(participant.id)")
+                } else {
+                    CaptureRemoteIdentityTile(participant: participant)
+                }
+            }
+            if providerRoom.isLocalVideoPublished {
+                CaptureVideoPreview(session: videoCapture.captureSession,
+                    cameraDeviceUniqueID: videoCapture.resolvedProfile?.cameraDeviceUniqueID)
+                    .overlay(alignment: .bottomLeading) {
+                        Text("You").font(.caption.weight(.semibold))
+                            .foregroundStyle(.white).padding(8)
+                            .background(.black.opacity(0.62), in: Capsule()).padding(10)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(alignment: .topTrailing) {
+                        CaptureCallCameraSwitchButton(enabled: canSwitchCamera, action: onSwitchCamera)
+                    }
+                    .accessibilityLabel("Your live camera preview")
+                    .accessibilityIdentifier("ProviderLocalParticipantTile")
+            } else {
+                CaptureCallIdentityTile(name: "You",
+                    detail: providerRoom.usesCallAudio ? (providerRoom.isMuted ? "Muted" : "Microphone on") : "Audio on another device",
+                    systemImage: providerRoom.usesCallAudio && !providerRoom.isMuted ? "mic.fill" : "mic.slash.fill")
+                    .accessibilityIdentifier("ProviderLocalParticipantTile")
             }
         }
-        .accessibilityIdentifier("ProviderCallAudioStage")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ProviderCallParticipantGallery")
     }
 }
 
@@ -22386,21 +22465,7 @@ private struct ProviderRoomVideoStage: View {
         .background(.black.opacity(0.88))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(alignment: .topTrailing) {
-            Button(action: onSwitchCamera) {
-                Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(.black.opacity(0.58), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSwitchCamera)
-            .padding(8)
-            .accessibilityLabel("Switch camera")
-            .accessibilityHint(
-                "Switches the live camera. During recording, Quipsly saves a new clip without losing your place."
-            )
-            .accessibilityIdentifier("ProviderSwitchCameraButton")
+            CaptureCallCameraSwitchButton(enabled: canSwitchCamera, action: onSwitchCamera)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ProviderCallVideoStage")
@@ -22424,6 +22489,24 @@ private struct ProviderRoomVideoStage: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityLabel("Your live camera preview")
         .accessibilityIdentifier("ProviderLocalVideoPreview")
+    }
+}
+
+private struct CaptureCallCameraSwitchButton: View {
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
+                .font(.headline).foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.58), in: Circle())
+        }
+        .buttonStyle(.plain).disabled(!enabled).padding(8)
+        .accessibilityLabel("Switch camera")
+        .accessibilityHint("Switches the live camera. During recording, Quipsly saves a new clip without losing your place.")
+        .accessibilityIdentifier("ProviderSwitchCameraButton")
     }
 }
 

@@ -42,6 +42,14 @@ private enum ProviderRoomRuntime {
     }
 }
 
+struct ProviderCallParticipant: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let microphoneEnabled: Bool
+    let isSpeaking: Bool
+    let hasVideo: Bool
+}
+
 @MainActor
 final class ProviderRoomController: NSObject, ObservableObject {
     /// CallKit represents one process-level calling endpoint. SwiftUI may
@@ -63,11 +71,12 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var nativeCallPresentationLabel = "CallKit ready"
     @Published var remoteParticipantCount = 0 {
         didSet {
-            if remoteParticipantCount == 0 { remoteParticipantNames = [] }
+            if remoteParticipantCount == 0 { remoteParticipants = [] }
         }
     }
-    @Published private(set) var remoteParticipantNames: [String] = []
+    @Published private(set) var remoteParticipants: [ProviderCallParticipant] = []
     @Published private(set) var hasRemoteVideo = false
+    @Published private(set) var remoteVideoReceiveError: String?
     @Published private(set) var remoteVideoParticipantLabel: String?
     @Published private(set) var isLocalVideoPublished = false
     @Published private(set) var isChangingLocalVideo = false
@@ -152,6 +161,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     #if canImport(LiveKit)
     private let room = Room()
     @Published fileprivate var remoteVideoTrack: VideoTrack?
+    fileprivate var remoteVideoTracks: [String: VideoTrack] = [:]
     private var localVideoTrack: LocalVideoTrack?
     private var localVideoPublication: LocalTrackPublication?
     private var localVideoFrameBridge: ProviderRoomVideoFrameBridge?
@@ -386,10 +396,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 await abortForAccountChange()
                 return
             }
-            // A companion endpoint neither publishes nor subscribes to call
-            // media. It stays in the room for presence, Session data, shared
-            // Watch, and synchronized local capture without claiming the
-            // microphone or creating speaker echo.
+            // A companion never sends or receives call audio. Selective video
+            // subscription below still lets it see the conversation without
+            // claiming the microphone or creating speaker echo.
             try await room.localParticipant.setMicrophone(
                 enabled: useCallAudio && !joinMuted
             )
@@ -414,6 +423,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
                     ? "Joined muted. Recording still starts separately."
                     : "Joined the call. Recording still starts separately."
                 : "Joined as a second device. Call audio stays on your other device."
+            // Keep all connection-state commits before this suspension point;
+            // signing out while a subscription is in flight must not revive UI
+            // state from the previous account when it returns.
+            await receiveCompanionVideo()
         } catch {
             stopCallAudioMeter()
             rejoinableCallRoomID = nil
@@ -846,37 +859,68 @@ final class ProviderRoomController: NSObject, ObservableObject {
     #endif
 
     #if canImport(LiveKit)
+    /// Keep the phone/iPad useful beside another call-audio device. Never
+    /// subscribe to audio here: received audio is played automatically by the
+    /// SDK and would create echo even with this device's microphone muted.
+    func receiveCompanionVideo() async {
+        guard !usesCallAudio, isConnected, let callID = activeCallRoomID,
+              let owner = activeOwnerSnapshot else { return }
+        remoteVideoReceiveError = nil
+        let publications = room.remoteParticipants.values.flatMap { $0.trackPublications.values }
+            .compactMap { $0 as? RemoteTrackPublication }
+            .filter { $0.kind == .video && !$0.isSubscribed }
+        for publication in publications {
+            guard !usesCallAudio, isConnected, activeCallRoomID == callID,
+                  AuthManager.shared.matchesStableOwnerSnapshot(owner) else { return }
+            do {
+                try await publication.set(subscribed: true)
+            } catch {
+                guard activeCallRoomID == callID, AuthManager.shared.matchesStableOwnerSnapshot(owner) else { return }
+                remoteVideoReceiveError = "Some live video couldn’t load."
+                lastTechnicalError = "Companion video subscription: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func refreshRemoteVideoTrack() {
         // Names come from the authenticated room participants, never from the
         // list of invitees: an invitation is not proof someone has joined.
-        remoteParticipantNames = room.remoteParticipants.values.map { participant in
+        var tracks: [String: VideoTrack] = [:]
+        let participants = room.remoteParticipants.values.compactMap { participant -> ProviderCallParticipant? in
+            guard let id = participant.identity?.stringValue ?? participant.sid?.stringValue else { return nil }
             let name = participant.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let name, !name.isEmpty { return name }
-            return "Participant"
-        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-        for participant in room.remoteParticipants.values {
-            if let track = participant.trackPublications.values
-                .compactMap({ $0.track as? VideoTrack })
-                .first {
-                remoteVideoTrack = track
-                let participantName = participant.name?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                remoteVideoParticipantLabel = participantName?.isEmpty == false
-                    ? participantName
-                    : "Participant"
-                hasRemoteVideo = true
-                return
-            }
+            let track = participant.trackPublications.values
+                .filter { !$0.isMuted }
+                .sorted { $0.sid.stringValue < $1.sid.stringValue }
+                .compactMap { $0.track as? VideoTrack }.first
+            tracks[id] = track
+            return ProviderCallParticipant(id: id, name: name.flatMap { $0.isEmpty ? nil : $0 } ?? "Participant",
+                microphoneEnabled: participant.isMicrophoneEnabled(), isSpeaking: participant.isSpeaking,
+                hasVideo: track != nil)
+        }.sorted { lhs, rhs in
+            let order = lhs.name.localizedStandardCompare(rhs.name)
+            return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
         }
-        clearRemoteVideoTrack()
+        // Track identity and tile identity survive speaking/mute updates. A
+        // dictionary's iteration order must never decide which person is seen.
+        remoteVideoTracks = tracks
+        if remoteParticipants != participants { remoteParticipants = participants }
+        let firstVideo = participants.first(where: \.hasVideo)
+        remoteVideoTrack = firstVideo.flatMap { tracks[$0.id] }
+        remoteVideoParticipantLabel = firstVideo?.name
+        hasRemoteVideo = firstVideo != nil
     }
 
     private func clearRemoteVideoTrack() {
+        remoteVideoReceiveError = nil
+        remoteVideoTracks = [:]
         remoteVideoTrack = nil
         remoteVideoParticipantLabel = nil
         hasRemoteVideo = false
     }
     #else
+    func receiveCompanionVideo() async {}
+
     private func clearRemoteVideoTrack() {
         remoteVideoParticipantLabel = nil
         hasRemoteVideo = false
@@ -1206,6 +1250,7 @@ extension ProviderRoomController: RoomDelegate {
                     self.statusText = "Reconnected."
                 }
                 self.refreshCallAudioMeterLifecycle()
+                await self.receiveCompanionVideo()
             case .reconnecting:
                 self.isConnecting = false
                 self.isConnected = true
@@ -1282,6 +1327,30 @@ extension ProviderRoomController: RoomDelegate {
         }
     }
 
+    nonisolated func room(_ room: Room, didUpdateSpeakingParticipants participants: [Participant]) {
+        Task { @MainActor in self.refreshRemoteVideoTrack() }
+    }
+
+    nonisolated func room(_ room: Room, participant: Participant, didUpdateName name: String) {
+        Task { @MainActor in self.refreshRemoteVideoTrack() }
+    }
+
+    nonisolated func room(_ room: Room, participant: Participant,
+                          trackPublication: TrackPublication, didUpdateIsMuted isMuted: Bool) {
+        Task { @MainActor in self.refreshRemoteVideoTrack() }
+    }
+
+    nonisolated func room(_ room: Room, participant: RemoteParticipant, didPublishTrack publication: RemoteTrackPublication) {
+        Task { @MainActor in
+            self.refreshRemoteVideoTrack()
+            await self.receiveCompanionVideo()
+        }
+    }
+
+    nonisolated func room(_ room: Room, participant: RemoteParticipant, didUnpublishTrack publication: RemoteTrackPublication) {
+        Task { @MainActor in self.refreshRemoteVideoTrack() }
+    }
+
     nonisolated func room(
         _ room: Room,
         participant: RemoteParticipant,
@@ -1334,15 +1403,27 @@ extension ProviderRoomController: RoomDelegate {
 
 struct ProviderRemoteVideoSurface: View {
     @ObservedObject var controller: ProviderRoomController
+    var participantID: String? = nil
+
+    private var participant: ProviderCallParticipant? {
+        if let participantID {
+            return controller.remoteParticipants.first { $0.id == participantID }
+        }
+        return controller.remoteParticipants.first(where: \.hasVideo)
+    }
+
+    private var name: String {
+        participant?.name ?? controller.remoteVideoParticipantLabel ?? "Participant"
+    }
 
     var body: some View {
         #if canImport(LiveKit)
-        if let track = controller.remoteVideoTrack {
+        if let track = participantID.flatMap({ controller.remoteVideoTracks[$0] }) ?? (participantID == nil ? controller.remoteVideoTrack : nil) {
             ZStack(alignment: .bottomLeading) {
-                SwiftUIVideoView(track, layoutMode: .fill)
+                SwiftUIVideoView(track, layoutMode: .fit)
                     .background(Color.black)
 
-                Text(controller.remoteVideoParticipantLabel ?? "Participant")
+                Label(name, systemImage: participant?.microphoneEnabled == true ? "mic.fill" : "mic.slash.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
@@ -1352,7 +1433,7 @@ struct ProviderRemoteVideoSurface: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Video from \(controller.remoteVideoParticipantLabel ?? "participant")")
+            .accessibilityLabel("Video from \(name)")
             .accessibilityIdentifier("CaptureRemoteCallVideo")
         }
         #else

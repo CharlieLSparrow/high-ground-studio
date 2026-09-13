@@ -59,7 +59,9 @@ check(
   "live-room audio observes LiveKit local PCM instead of opening a second microphone",
   providerAudio.includes("AudioManager.shared.add(localAudioRenderer: self)")
     && providerAudio.includes("AudioMixRecorder(")
-    && providerAudio.includes("source.render(pcmBuffer: pcmBuffer)")
+    && providerAudio.includes("ProviderAudioPrivacyBuffer.silence(matching: pcmBuffer)")
+    && providerAudio.includes("source.render(pcmBuffer: retainedBuffer)")
+    && providerAudio.includes("liveTranscriptPCMConsumer?(retainedBuffer)")
     && !providerAudio.includes("AVAudioRecorder(")
     && audio.includes("providerInputObservationAvailable"),
 );
