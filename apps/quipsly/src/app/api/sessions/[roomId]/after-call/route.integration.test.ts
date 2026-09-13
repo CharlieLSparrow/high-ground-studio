@@ -50,6 +50,23 @@ integration("shared after-call recording availability against PostgreSQL", () =>
     for (const account of [0, 1]) expect((await (await read(account)).json()).summary.recordings).toEqual({ uploaded: 1, pending: 0, attention: 0 });
     expect((await read(2)).status).toBe(404);
   });
+  it("keeps the original transcript available to both participants through running and failed retries", async () => {
+    await prisma.transcriptJob.create({ data: {
+      roomId, assetId: phoneId, status: "COMPLETED", createdAt: new Date(Date.now() - 60_000),
+      segments: { create: { startSeconds: 0, endSeconds: 2, text: "Retained test transcript" } },
+    } });
+    const retry = await prisma.transcriptJob.create({ data: { roomId, assetId: phoneId, status: "RUNNING" } });
+    for (const status of ["RUNNING", "FAILED"] as const) {
+      await prisma.transcriptJob.update({ where: { id: retry.id }, data: { status } });
+      for (const account of [0, 1]) {
+        const payload = await (await read(account)).json();
+        expect(payload.summary.transcripts).toEqual({ available: 1, processing: status === "RUNNING" ? 1 : 0, attention: status === "FAILED" ? 1 : 0 });
+        expect(payload.summary.transcriptSourceId).toBe(phoneId);
+        expect(JSON.stringify(payload)).not.toContain("Retained test transcript");
+      }
+    }
+    expect((await read(2)).status).toBe(404);
+  });
   it("removes visibility immediately when the participant's access is revoked", async () => {
     await prisma.callParticipant.updateMany({ where: { roomId, userId: users[1].id }, data: { accessStatus: "REMOVED" } });
     expect((await read(1)).status).toBe(404);

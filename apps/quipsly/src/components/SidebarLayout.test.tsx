@@ -97,7 +97,7 @@ describe("Quipsly workspace navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: /New note/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("We couldn't create your note");
     expect(push).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /New note/ })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /New note/ })).toBeEnabled());
   });
 
   it("dismisses popovers with Escape, outside interaction, and navigation", () => {

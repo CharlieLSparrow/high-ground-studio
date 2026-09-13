@@ -53,6 +53,8 @@ struct CapturePostCallWorkspace: View {
                 Text(error).font(.callout).foregroundStyle(CapturePalette.brass)
             }
 
+            CaptureSharedAfterCallCard(session: session, previewOnly: model.usesPreviewData)
+
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
                 Button(action: onNotes) {
                     Label("Notes", systemImage: "note.text")

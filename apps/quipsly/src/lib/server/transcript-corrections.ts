@@ -427,6 +427,7 @@ async function loadAccessibleRoom(
   recordingAssetId?: string | null,
   transcriptJobId?: string | null,
   segmentId?: string | null,
+  completedOnly = false,
 ) {
   const room = await prisma.callRoom.findFirst({
     where: accessibleRoomWhere(roomId, actor),
@@ -531,12 +532,13 @@ async function loadAccessibleRoom(
         },
       },
       transcriptJobs: {
-        ...((recordingAssetId || transcriptJobId || segmentId)
+        ...((recordingAssetId || transcriptJobId || segmentId || completedOnly)
           ? {
               where: {
                 ...(recordingAssetId ? { assetId: recordingAssetId } : {}),
                 ...(transcriptJobId ? { id: transcriptJobId } : {}),
                 ...(segmentId ? { segments: { some: { id: segmentId } } } : {}),
+                ...(completedOnly ? { status: "COMPLETED", segments: { some: {} } } : {}),
               },
             }
           : {}),
@@ -654,6 +656,18 @@ export async function readTranscriptCorrectionDesk(input: {
     input.segmentId,
   );
   let job = room.transcriptJobs[0] ?? null;
+  // Retrying does not remove an earlier usable transcript. Keep the same
+  // source and authorize the replacement read; explicit job/passage links
+  // retain their exact identity instead of silently switching revisions.
+  const fallbackAssetId = input.recordingAssetId || job?.asset?.id;
+  if (!input.transcriptJobId && !input.segmentId && fallbackAssetId && job
+      && (job.status !== "COMPLETED" || !job.segments?.length)) {
+    const prior = await loadAccessibleRoom(input.prisma, input.roomId, input.actor, fallbackAssetId, null, null, true);
+    if (prior.transcriptJobs[0]) {
+      room = prior;
+      job = prior.transcriptJobs[0];
+    }
+  }
   // A saved source is useful before a job exists. Authorize the room first,
   // then resolve only that room's source; never substitute its latest job.
   if (input.recordingAssetId && !input.transcriptJobId && !input.segmentId && !job) {

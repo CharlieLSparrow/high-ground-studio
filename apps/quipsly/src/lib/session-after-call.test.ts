@@ -18,6 +18,11 @@ describe("shared after-call availability", () => {
   });
   it("counts the latest attempt per source, keeping failures separate from processing and usable text", () => {
     const result = sessionAfterCall("room", [asset("a"), asset("b"), asset("c")], [job("a", "FAILED"), job("a"), job("b", "COMPLETED", 0), job("c", "QUEUED")]);
-    expect(result.transcripts).toEqual({ available: 0, processing: 1, attention: 2 });
+    expect(result.transcripts).toEqual({ available: 1, processing: 1, attention: 2 });
+    expect(result.transcriptSourceId).toBe("a");
+  });
+  it("keeps a completed transcript available while a retry runs without counting old attempts twice", () => {
+    const result = sessionAfterCall("room", [asset("a")], [job("a", "RUNNING"), job("a"), job("a"), job("a", "FAILED")]);
+    expect(result.transcripts).toEqual({ available: 1, processing: 1, attention: 0 });
   });
 });

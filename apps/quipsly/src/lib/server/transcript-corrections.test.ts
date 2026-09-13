@@ -509,6 +509,27 @@ describe("transcript correction desk", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it.each(["RUNNING", "FAILED"])("keeps the earlier source transcript readable when a retry is %s", async status => {
+    const usable = accessibleRoom();
+    const retry = accessibleRoom();
+    Object.assign(retry.transcriptJobs[0], { id: "retry-job", status, segments: [] });
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn().mockResolvedValueOnce(retry).mockResolvedValueOnce(usable),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", recordingAssetId: "asset-1", actor });
+    expect(result.transcriptJobId).toBe("job-1");
+    expect(prisma.callRoom.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ id: "room-1" }),
+      select: expect.objectContaining({ transcriptJobs: expect.objectContaining({
+        where: { assetId: "asset-1", status: "COMPLETED", segments: { some: {} } }, take: 1,
+      }) }),
+    }));
+  });
+
   it("selects only the requested RecordingAsset transcript inside the accessible Session", async () => {
     const prisma = {
       callRoom: {

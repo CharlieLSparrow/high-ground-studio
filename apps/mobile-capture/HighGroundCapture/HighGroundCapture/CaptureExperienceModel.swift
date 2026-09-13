@@ -987,6 +987,10 @@ final class CaptureExperienceModel: ObservableObject {
                 ?? requestedPreviewSessionID
                 ?? sessionClient.sessions.first?.id
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--capture-post-call-ui-preview"),
+               let selectedSession {
+                completedCall = CaptureCompletedCall(roomID: selectedSession.callRoomId, recordingIDs: [])
+            }
             if CaptureLaunchConfiguration.usesCallRejoinPreview,
                let selectedSession {
                 providerRoom.loadRejoinPreview(

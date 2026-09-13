@@ -105,6 +105,9 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         #endif
         app.launchArguments = ["--capture-ui-preview"]
+        if name.contains("testAfterCallOpensSharedRecordingsWithoutALocalRecording") {
+            app.launchArguments += ["--capture-post-call-ui-preview", "--capture-ui-preview-tab=record"]
+        }
         if name.contains("testBackgroundFollowThroughKeepsExistingWorkEditable") {
             app.launchArguments.append("--capture-follow-through-processing-preview")
         }
@@ -338,7 +341,9 @@ final class CaptureExperienceUITests: XCTestCase {
             launchesRecorderPreview = false
         }
         app.launch()
-        if name.contains(
+        if name.contains("testAfterCallOpensSharedRecordingsWithoutALocalRecording") {
+            XCTAssertTrue(app.descendants(matching: .any)["CapturePostCallWorkspace"].waitForExistence(timeout: 12))
+        } else if name.contains(
             "testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe"
         ) {
             XCTAssertTrue(
@@ -2731,6 +2736,20 @@ final class CaptureExperienceUITests: XCTestCase {
             evidence.label.localizedCaseInsensitiveContains("percent"),
             "A percentage without a physical unit must not stand in for audio level truth."
         )
+    }
+
+    func testAfterCallOpensSharedRecordingsWithoutALocalRecording() {
+        let workspace = app.descendants(matching: .any)["CapturePostCallWorkspace"]
+        XCTAssertTrue(workspace.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["You left the call"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePostCallNoLocalRecording"].exists)
+        let recordings = app.buttons["CapturePostCallSharedRecordings"]
+        reveal(recordings)
+        XCTAssertTrue(recordings.waitForExistence(timeout: 5))
+        recordings.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingEditScreen"].waitForExistence(timeout: 8),
+                      "Shared recordings must open the native editor even when this phone did not record the call.")
+        XCTAssertEqual(app.state, .runningForeground)
     }
 
     func testRecorderLeadsWithAStandardCallGreenRoom() {
