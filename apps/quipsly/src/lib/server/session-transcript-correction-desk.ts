@@ -1,4 +1,5 @@
 import "server-only";
+import type { TranscriptionProgressSource } from "../transcription-progress";
 import { readSessionRecordingAttempts } from "./session-recording-attempts";
 
 import {
@@ -25,6 +26,7 @@ export const SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA =
 type Candidate = SessionTranscriptSourceCandidate & {
   checksum: string | null;
   localManifestJson: unknown;
+  participant?: {displayName: string | null} | null;
 };
 
 function text(value: unknown) {
@@ -99,6 +101,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     select: {
       id: true,
       participantId: true,
+      participant: {select: {displayName: true}},
       kind: true,
       checksum: true,
       recordedStartedAt: true,
@@ -116,7 +119,19 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     rows,
     attempts: await readSessionRecordingAttempts(input.prisma, input.roomId, rows),
   }).filter((source): source is Candidate => Boolean(source));
-  const pendingCount = lanes.filter(source => !source.transcriptJobs[0]?.id).length;
+  const pendingLanes = lanes.filter(source => !source.transcriptJobs[0]?.id);
+  const pendingCount = pendingLanes.length;
+  const pendingJobs = pendingCount ? await input.prisma.transcriptJob.findMany({
+    where: {roomId: input.roomId, assetId: {in: pendingLanes.map(source => source.id)}},
+    orderBy: [{createdAt: "desc"}, {id: "desc"}],
+    distinct: ["assetId"],
+    select: {id: true, assetId: true, status: true, errorMessage: true},
+  }) : [];
+  const pendingSources: TranscriptionProgressSource[] = pendingLanes.map(source => {
+    const job = pendingJobs.find((job: any) => job.assetId === source.id);
+    return {recordingAssetId: source.id, participantLabel: text(source.participant?.displayName) || "Participant recording",
+      transcriptJobId: job?.id ?? null, status: job?.status ?? null, error: job?.errorMessage ?? null};
+  });
   const selected = lanes.filter(source => source.transcriptJobs[0]?.id);
   if (!selected.length) {
     if (pendingCount) return {
@@ -128,8 +143,8 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
         status: "incomplete" as const,
-        reason: "This recording’s transcript is not ready yet. Check its progress in Recordings; earlier recordings remain available there too.",
-        sourceCount: 0, pendingSourceCount: pendingCount, programClock: null, sources: [],
+        reason: "Transcription progress for this recording is shown below. Earlier recordings remain available in Recordings.",
+        sourceCount: 0, pendingSourceCount: pendingCount, pendingSources, programClock: null, sources: [],
       },
     };
     return anchor;
@@ -161,10 +176,11 @@ export async function readSessionTranscriptCorrectionDesk(input: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
         status: pendingCount ? "incomplete" as const : "single-source" as const,
         reason:
-          pendingCount ? "Some recording transcripts are not ready yet. You can work with the available transcript now; check progress in Recordings."
-            : "Only one participant-owned transcript source is ready in this Session take.",
+          pendingCount ? "You can work with the available transcript now. Progress for the remaining recordings is shown below."
+            : "Transcript from one participant recording.",
         sourceCount: 1,
         pendingSourceCount: pendingCount,
+        pendingSources,
         programClock: null,
         sources: [sourceSummary(visibleDesk, selected[0]!)],
       },
@@ -185,6 +201,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
             : "Another participant source is still held or changed identity. The exact current source remains reviewable.",
         sourceCount: validDesks.length,
         pendingSourceCount: pendingCount,
+        pendingSources,
         programClock: null,
         sources: desks.map((desk, index) =>
           sourceSummary(desk, selected[index]!),
@@ -250,9 +267,10 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
         status: pendingCount ? "incomplete" as const : "assembled" as const,
-        reason: pendingCount ? "Some recording transcripts are not ready yet. Available participant tracks are on the timeline now; check progress in Recordings." : programClock.reason,
+        reason: pendingCount ? "Available participant transcripts are on the timeline now. Progress for the remaining recordings is shown below." : programClock.reason,
         sourceCount: sources.length,
         pendingSourceCount: pendingCount,
+        pendingSources,
         programClock,
         sources,
       },
@@ -270,6 +288,8 @@ export async function readSessionTranscriptCorrectionDesk(input: {
         status: "held" as const,
         reason: error.message,
         sourceCount: desks.length,
+        pendingSourceCount: pendingCount,
+        pendingSources,
         programClock: null,
         sources: desks.map((desk, index) =>
           sourceSummary(desk, selected[index]!),

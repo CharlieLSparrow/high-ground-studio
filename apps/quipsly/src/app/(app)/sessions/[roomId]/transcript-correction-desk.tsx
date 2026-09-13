@@ -1,5 +1,7 @@
 "use client";
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
+import { SessionTranscriptionProgress } from "@/components/session-transcription-progress";
+import { transcriptionIsPending, type TranscriptionProgressSource } from "@/lib/transcription-progress";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -254,6 +256,7 @@ type Desk = {
     reason: string;
     sourceCount: number;
     pendingSourceCount?: number;
+    pendingSources?: TranscriptionProgressSource[];
     programClock: null | {
       authority: "single-source-origin" | "reviewed-waveform-placement" | "capture-clock-proposal" | "reported-wall-clock-fallback";
       waveformReviewRequired: boolean;
@@ -1905,6 +1908,17 @@ function TranscriptCorrectionDeskContent({
     };
   }, [load]);
 
+  const hasActiveTranscription = desk?.sessionTranscript?.pendingSources?.some(source =>
+    transcriptionIsPending(source.status) || source.status === "COMPLETED",
+  ) || ["QUEUED", "RUNNING", "PROCESSING"].includes(desk?.transcriptStatus ?? "");
+  useEffect(() => {
+    if (!hasActiveTranscription) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveTranscription, load]);
+
   useEffect(() => {
     const media = mediaRef.current;
     setIsPlaying(false);
@@ -1937,14 +1951,6 @@ function TranscriptCorrectionDeskContent({
     setActivePlayback(desk?.playback ?? null);
     setPlaybackState(desk?.playback ? ((mediaRef.current?.readyState ?? 0) >= 1 ? "ready" : "loading") : "absent");
   }, [desk?.playback?.sourceId, normalizedInitialPlaybackSeconds]);
-
-  useEffect(() => {
-    if (!["QUEUED", "RUNNING"].includes(desk?.transcriptStatus || "") && !desk?.sessionTranscript?.pendingSourceCount) return;
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== "hidden") void load(true);
-    }, 5_000);
-    return () => window.clearInterval(interval);
-  }, [desk?.transcriptStatus, desk?.sessionTranscript?.pendingSourceCount, load]);
 
   useEffect(() => {
     const revealLinkedAudioReview = () => {
@@ -2370,12 +2376,13 @@ function TranscriptCorrectionDeskContent({
           <p className="font-semibold">{desk.sessionTranscript.status === "assembled"
             ? `${desk.sessionTranscript.sourceCount} participant recordings on one Session timeline`
             : desk.sessionTranscript.status === "single-source" ? "One participant recording ready"
-              : desk.sessionTranscript.sourceCount ? "Your available transcript" : "Transcript not ready yet"}</p>
+              : desk.sessionTranscript.sourceCount ? "Your available transcript" : desk.sessionTranscript.pendingSources?.length ? "Transcription progress" : "Transcript not ready yet"}</p>
           <p className="mt-1 text-xs text-muted-foreground">{desk.sessionTranscript.reason}</p>
           {desk.sessionTranscript.status === "incomplete" || desk.sessionTranscript.status === "held" ?
             <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=recordings`} className="mt-2 inline-flex min-h-11 items-center font-semibold underline underline-offset-4">View recordings and progress</Link> : null}
           {desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs text-muted-foreground">Timing is estimated. Source audio and original timestamps are preserved.</p> : null}
         </div> : null}
+        {desk.sessionTranscript?.pendingSources?.length ? <SessionTranscriptionProgress key={`${roomId}:${recordingAssetId ?? "session"}`} sources={desk.sessionTranscript.pendingSources} onUpdated={() => load(true)} /> : null}
         {preparedTranscript ? <a href={preparedTranscript.url} download={preparedTranscript.filename} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"><Download size={15} aria-hidden="true" />Download prepared transcript</a> : null}
         {desk.processing && (
           <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">
@@ -2511,7 +2518,7 @@ function TranscriptCorrectionDeskContent({
             </ol>
           </div>
         </section>
-      ) : desk.gate.allowed ? <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No persisted transcript segments are available for this session.</div> : protectedPlaybackSurface}
+      ) : desk.gate.allowed ? <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No persisted transcript segments are available for this session.</div> : desk.sessionTranscript?.pendingSources?.length ? null : protectedPlaybackSurface}
 
       <section id="transcript-audio-review" tabIndex={-1} className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 shadow-sm" aria-labelledby="transcript-quality-heading">
         <button
@@ -2531,7 +2538,7 @@ function TranscriptCorrectionDeskContent({
           <span className={`rounded-full px-3 py-1.5 ${playbackReady ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{playbackReady ? "Recording ready" : "Recording needs attention"}</span>
           <span className={`rounded-full px-3 py-1.5 ${timingIntegrity?.disposition === "structurally-consistent" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{timingIntegrity ? `${timingIntegrity.editableSegmentCount}/${currentEvidence?.transcript.segmentCount ?? 0} timed passages` : "Timing not measured"}</span>
           {(desk.speakerGroups ?? []).length > 0 ? <span className={`rounded-full px-3 py-1.5 ${identifiedSpeakerCount === desk.speakerGroups.length ? "bg-emerald-100 text-emerald-900" : "bg-indigo-100 text-indigo-900"}`}>{identifiedSpeakerCount}/{desk.speakerGroups.length} voices identified</span> : null}
-          <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-900">{reviewedSegmentCount}/{desk.segments.length} passages played</span>
+          {desk.segments.length > 0 ? <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-900">{reviewedSegmentCount}/{desk.segments.length} passages played</span> : null}
         </div>
 
         {showQualityDetails ? <div id="transcript-quality-details" className="mt-5 space-y-5">

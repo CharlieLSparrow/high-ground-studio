@@ -537,8 +537,9 @@ describe("TranscriptCorrectionDesk", () => {
     const partial = { ...desk(true), transcriptStatus: "COMPLETED", sessionTranscript: {
       schema: "quipsly-session-transcript-correction-desk-v1", status: "incomplete", sourceCount: 1,
       pendingSourceCount: 1, reason: "Another participant transcript is not ready yet.", programClock: null, sources: [],
+      pendingSources: [{recordingAssetId: "asset-riley", participantLabel: "Riley", transcriptJobId: "job-riley", status: "RUNNING", error: null}],
     } };
-    const ready = { ...partial, sessionTranscript: { ...partial.sessionTranscript, status: "assembled", pendingSourceCount: 0, sourceCount: 2 } };
+    const ready = { ...partial, sessionTranscript: { ...partial.sessionTranscript, status: "assembled", pendingSourceCount: 0, pendingSources: [], sourceCount: 2 } };
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => partial })
       .mockResolvedValue({ ok: true, json: async () => ready });
@@ -553,6 +554,22 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText("2 participant recordings on one Session timeline")).toBeInTheDocument();
     await act(async () => { jest.advanceTimersByTime(15_000); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a failed source without polling forever or hiding the available transcript", async () => {
+    jest.useFakeTimers();
+    const partial = { ...desk(true), sessionTranscript: {
+      schema: "quipsly-session-transcript-correction-desk-v1", status: "incomplete", sourceCount: 1,
+      pendingSourceCount: 1, reason: "Another participant transcript is not ready yet.", programClock: null, sources: [],
+      pendingSources: [{recordingAssetId: "asset-riley", participantLabel: "Riley", transcriptJobId: "job-riley", status: "FAILED", error: "Temporary provider failure"}],
+    } };
+    const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => partial});
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await act(async () => { render(<TranscriptCorrectionDesk roomId="room-1" />); });
+    expect(screen.getByText("Welcome, everybody.")).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Retry transcription for Riley"})).toBeEnabled();
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not stack background reads or apply an old response over a manual refresh", async () => {
