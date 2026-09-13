@@ -20,7 +20,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const handoff = "scripts/hgo-quipsly-coaching-handoff-static-smoke.mjs";
 const lifecycle = "scripts/quipsly-coaching-lifecycle-static-smoke.mjs";
 
-for (const missingBoundary of [null, "booking authentication", "packet authentication"]) {
+for (const missingBoundary of [null, "booking authentication", "packet authentication", "canonical pricing"]) {
   test(`coaching source gates allow UI changes but detect ${missingBoundary || "intact application boundaries"}`, (t) => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-coaching-source-gates-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -37,22 +37,27 @@ for (const missingBoundary of [null, "booking authentication", "packet authentic
     const page = path.join(fixture, "apps/quipsly/src/app/(app)/coaching/page.tsx");
     mkdirSync(path.dirname(page), { recursive: true });
     writeFileSync(page, 'export default function Coaching() { return <main>Your work</main>; }\n');
+    const marketing = path.join(fixture, "apps/quipsly/src/app/(marketing)/coaches/page.tsx");
+    writeFileSync(marketing, `export default function Coaches() { return <main>New coaching copy${missingBoundary === "canonical pricing" ? "" : "<CoachPricing />"}</main>; }\n`);
     const packet = path.join(fixture, "apps/quipsly/src/app/api/mobile/capture/transcripts/packet/route-implementation.ts");
     writeFileSync(packet, readFileSync(packet, "utf8")
       .replaceAll("Sign in before reading a coaching packet.", "Please sign in.")
       .replaceAll("Prepare notes, tasks, and goals from the completed transcript.", "Your follow-up is ready to create."));
-    if (missingBoundary) {
+    if (["booking authentication", "packet authentication"].includes(missingBoundary)) {
       const target = missingBoundary === "booking authentication"
         ? path.join(fixture, "apps/quipsly/src/app/api/coaching/booking-requests/route.ts") : packet;
       writeFileSync(target, readFileSync(target, "utf8").replaceAll("getQuipslySessionFromRequest", "missingSessionBoundary"));
     }
     for (const script of [handoff, lifecycle]) {
       const result = spawnSync(process.execPath, [path.join(fixture, script)], { cwd: fixture, encoding: "utf8" });
-      const shouldFail = (script === handoff && missingBoundary === "booking authentication")
+      const shouldFail = (script === handoff && ["booking authentication", "canonical pricing"].includes(missingBoundary))
         || (script === lifecycle && missingBoundary === "packet authentication");
       assert.equal(result.status, shouldFail ? 1 : 0, result.stdout + result.stderr);
       const report = JSON.parse(result.status === 0 || script === lifecycle ? result.stdout : result.stderr);
       assert.equal(report.ok, !shouldFail);
+      if (script === handoff && missingBoundary === "canonical pricing") {
+        assert.deepEqual(report.failures.map(failure => failure.label), ["quipsly coaching pricing surface"]);
+      }
       if (script === lifecycle && shouldFail) {
         assert.deepEqual(report.checks.filter(check => check.status !== "pass").map(check => check.id),
           ["packetRouteReturnsOrdinaryEditableWork"]);
@@ -61,7 +66,24 @@ for (const missingBoundary of [null, "booking authentication", "packet authentic
   });
 }
 
-for (const missingBoundary of [null, "native scheduling command", "calendar update status", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication", "transcript task source binding", "task attention source"]) {
+const additionalCaptureBoundaries = {
+  "participant identity deduplication": ["apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomCallAudioEvidence.swift", "Set(personKeys).count", "personKeys.count", "nativeLiveCallMicrophoneConfidence"],
+  "session conversation scope": ["apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift", 'hint.threadKey == "session:\\(context.roomID)"', "true", "nativeSessionAndEpisodeThreadsRemainDistinct"],
+  "session work projection": ["apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-client.tsx", "entries={sessionQuickEntries}", "entries={[]}", "canonicalMobileQuickEntryOutbox"],
+};
+const captureFailureIds = {
+  "native scheduling command": "nativeCoachingSchedulingManagementParity",
+  "Nest task authorization": "nestProjectCanonicalFollowThrough",
+  "tag assignment eligibility": "canonicalWorkSessionProjectTags",
+  "search session access": "permissionFilteredCanonicalWorkspaceSearch",
+  "search goal access": "permissionFilteredCanonicalWorkspaceSearch",
+  "search authentication": "permissionFilteredCanonicalWorkspaceSearch",
+  "transcript task source binding": "transcriptDerivedTaskExplicitSourceBoundary",
+  "task attention source": "canonicalTaskAttentionProjection",
+  ...Object.fromEntries(Object.entries(additionalCaptureBoundaries).map(([boundary, detail]) => [boundary, detail[3]])),
+};
+
+for (const missingBoundary of [null, "calendar update status", ...Object.keys(captureFailureIds)]) {
   test(`scheduling source checks tolerate presentation changes and detect ${missingBoundary || "intact wiring"}`, t => {
     const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-scheduling-source-gates-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -118,16 +140,25 @@ for (const missingBoundary of [null, "native scheduling command", "calendar upda
       .replaceAll("The client space and its existing work stay available.", "Your shared work stays here.")
       .replaceAll("CaptureCoachingSaveReschedule", "RescheduleButtonRenamed")
       .replaceAll("performAction(command.body)", missingBoundary === "native scheduling command" ? "disconnectedCommand()" : "performAction(command.body)"));
+    const additionalBoundary = additionalCaptureBoundaries[missingBoundary];
+    if (additionalBoundary) {
+      const [relative, original, replacement] = additionalBoundary;
+      const target = path.join(fixture, relative);
+      const source = readFileSync(target, "utf8");
+      assert.ok(source.includes(original), `Fault injection must change ${relative}`);
+      writeFileSync(target, source.replaceAll(original, replacement));
+    }
     for (const script of [scheduling, capture]) {
       const result = spawnSync(process.execPath, [path.join(fixture, script), "--source-only", "--json"], {
         cwd: fixture, encoding: "utf8", timeout: 15_000,
       });
-      const expectedFailure = (script === scheduling && missingBoundary === "calendar update status")
-        || (script === capture && ["native scheduling command", "Nest task authorization", "tag assignment eligibility", "search session access", "search goal access", "search authentication", "transcript task source binding", "task attention source"].includes(missingBoundary));
+      const expectedFailureId = script === capture ? captureFailureIds[missingBoundary]
+        : missingBoundary === "calendar update status" ? "rescheduleAndCancelAreQuipslyFirst" : null;
+      const expectedFailure = Boolean(expectedFailureId);
       assert.equal(result.status, expectedFailure ? 1 : 0, result.stdout + result.stderr);
       const report = JSON.parse(result.stdout);
       assert.deepEqual(report.checks.filter(check => check.status === "fail").map(check => check.id ?? check.name),
-        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : missingBoundary === "transcript task source binding" ? "transcriptDerivedTaskExplicitSourceBoundary" : missingBoundary === "task attention source" ? "canonicalTaskAttentionProjection" : missingBoundary?.startsWith("search ") ? "permissionFilteredCanonicalWorkspaceSearch" : missingBoundary === "Nest task authorization" ? "nestProjectCanonicalFollowThrough" : missingBoundary === "tag assignment eligibility" ? "canonicalWorkSessionProjectTags" : "nativeCoachingSchedulingManagementParity"] : []);
+        expectedFailure ? [expectedFailureId] : []);
     }
   });
 }

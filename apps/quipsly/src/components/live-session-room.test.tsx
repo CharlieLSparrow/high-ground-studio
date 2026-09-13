@@ -1802,6 +1802,104 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("prejoin-microphone-activity")).toBeInTheDocument();
   });
 
+  it.each(["microphone", "camera"] as const)("keeps the working preview when a replacement %s fails", async (kind) => {
+    const audio = {kind: "audio", label: "Working mic", stop: jest.fn(), getSettings: () => ({deviceId: "mic"})};
+    const video = {kind: "video", label: "Working camera", stop: jest.fn(), getSettings: () => ({deviceId: "camera"})};
+    const tracks = [audio];
+    const preview = {getTracks: () => tracks, getAudioTracks: () => tracks.filter(t => t.kind === "audio"),
+      getVideoTracks: () => tracks.filter(t => t.kind === "video"), addTrack: (t: typeof audio) => tracks.push(t),
+      removeTrack: (t: typeof audio) => tracks.splice(tracks.indexOf(t), 1)};
+    const getUserMedia = jest.fn().mockResolvedValueOnce(preview)
+      .mockResolvedValueOnce({getTracks: () => [video], getVideoTracks: () => [video], getAudioTracks: () => []})
+      .mockRejectedValueOnce(new DOMException("Device unavailable", "NotFoundError"));
+    Object.defineProperty(navigator, "permissions", {configurable: true, value: {query: jest.fn().mockResolvedValue({state: "prompt"})}});
+    Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([
+        {kind: "audioinput", deviceId: "mic", label: "Working mic"}, {kind: "audioinput", deviceId: "other-mic", label: "Other mic"},
+        {kind: "videoinput", deviceId: "camera", label: "Working camera"}, {kind: "videoinput", deviceId: "other-camera", label: "Other camera"},
+      ]), getUserMedia, addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    await act(async () => {render(<LiveSessionRoom callRoomId="replacement-failure" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Device check" kind="coaching" />);});
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Test selected setup"}));});
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Camera off"}));});
+    expect(tracks).toEqual([audio, video]);
+    await act(async () => {fireEvent.change(screen.getByRole("combobox", {name: kind === "camera" ? "Camera" : "Microphone"}), {target: {value: kind === "camera" ? "other-camera" : "other-mic"}});});
+    expect(tracks).toEqual([audio, video]);
+    expect(audio.stop).not.toHaveBeenCalled();
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox", {name: "Microphone"})).toHaveValue("mic");
+    expect(screen.getByRole("combobox", {name: "Camera"})).toHaveValue("camera");
+    expect(screen.getByRole("button", {name: "Camera on"})).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(kind === "camera" ? "Your previous camera is still on" : "Your previous setup is still active");
+    expect(screen.getByRole("button", {name: "Join call"})).toBeEnabled();
+    expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+  });
+
+  it.each(["replace", "cancel"] as const)("owns a pending microphone switch through %s without touching the wrong inputs", async (operation) => {
+    const audio = {kind: "audio", label: "Working mic", stop: jest.fn(), getSettings: () => ({deviceId: "mic"})};
+    const replacement = {...audio, label: "Other mic", stop: jest.fn(), getSettings: () => ({deviceId: "other-mic"})};
+    const video = {...audio, kind: "video", label: "Camera", stop: jest.fn(), getSettings: () => ({deviceId: "camera"})};
+    const tracks = [audio];
+    const preview = {getTracks: () => tracks, getAudioTracks: () => tracks.filter(t => t.kind === "audio"),
+      getVideoTracks: () => tracks.filter(t => t.kind === "video"), addTrack: (t: typeof audio) => tracks.push(t),
+      removeTrack: (t: typeof audio) => tracks.splice(tracks.indexOf(t), 1)};
+    let resolveReplacement!: (stream: unknown) => void;
+    const getUserMedia = jest.fn().mockResolvedValueOnce(preview)
+      .mockResolvedValueOnce({getTracks: () => [video], getVideoTracks: () => [video], getAudioTracks: () => []})
+      .mockImplementationOnce(() => new Promise(resolve => {resolveReplacement = resolve;}));
+    Object.defineProperty(navigator, "permissions", {configurable: true, value: {query: jest.fn().mockResolvedValue({state: "prompt"})}});
+    Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([{kind: "audioinput", deviceId: "mic", label: "Working mic"},
+        {kind: "audioinput", deviceId: "other-mic", label: "Other mic"}, {kind: "videoinput", deviceId: "camera", label: "Camera"}]),
+      getUserMedia, addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    await act(async () => {render(<LiveSessionRoom callRoomId="microphone-switch" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Device check" kind="coaching" />);});
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Test selected setup"}));});
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Camera off"}));});
+    fireEvent.change(screen.getByRole("combobox", {name: "Microphone"}), {target: {value: "other-mic"}});
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(3));
+    expect(audio.stop).not.toHaveBeenCalled();
+    expect(video.stop).not.toHaveBeenCalled();
+    if (operation === "cancel") fireEvent.click(screen.getByRole("button", {name: "Cancel setup"}));
+    await act(async () => {resolveReplacement({getTracks: () => [replacement], getAudioTracks: () => [replacement], getVideoTracks: () => []});});
+    if (operation === "cancel") {
+      expect(replacement.stop).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("combobox", {name: "Microphone"})).toHaveValue("mic");
+      expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", null);
+      expect(screen.getByRole("button", {name: "Join call"})).toBeEnabled();
+      expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+      return;
+    }
+    expect(getUserMedia).toHaveBeenLastCalledWith(expect.objectContaining({video: false, audio: expect.objectContaining({deviceId: {exact: "other-mic"}})}));
+    expect(audio.stop).toHaveBeenCalledTimes(1);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(tracks).toEqual([video, replacement]);
+    expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", preview);
+    expect(screen.getByRole("combobox", {name: "Microphone"})).toHaveValue("other-mic");
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: /Audio on another device/}));});
+    expect(tracks).toEqual([video]);
+    expect(replacement.stop).toHaveBeenCalledTimes(1);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", preview);
+    expect(screen.getByRole("button", {name: "Camera on"})).toHaveAttribute("aria-pressed", "true");
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Camera on"}));});
+    expect(screen.queryByRole("button", {name: "Test selected setup"})).not.toBeInTheDocument();
+  });
+
+  it("shows permission recovery inside the device panel, not only behind it", async () => {
+    Object.defineProperty(navigator, "permissions", {configurable: true, value: {query: jest.fn().mockResolvedValue({state: "prompt"})}});
+    Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([]), getUserMedia: jest.fn().mockRejectedValue(new DOMException("Permission denied", "NotAllowedError")),
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    await act(async () => {render(<LiveSessionRoom callRoomId="permission-panel" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Device check" kind="coaching" stageLayout />);});
+    fireEvent.click(screen.getByRole("button", {name: "Devices"}));
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Allow microphone"}));});
+    expect(within(screen.getByTestId("call-device-settings")).getByRole("alert")).toHaveTextContent(/microphone and camera permissions/);
+    expect(screen.getByRole("button", {name: "Allow microphone"})).toBeEnabled();
+    expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+  });
+
   it("keeps a denied camera off and leaves joining available", async () => {
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
       enumerateDevices: jest.fn().mockResolvedValue([]),

@@ -385,19 +385,8 @@ requireNotIncludes(
 );
 
 for (const [label, needle] of [
-  ["quipsly coaching metadata title", "Quipsly for Coaches"],
-  ["quipsly coaching metadata promise", "Schedule coaching, invite clients, meet and record, edit the transcript"],
-  ["quipsly coaching paid-product hero", "From booking to breakthrough to follow-through."],
-  ["quipsly coaching schedule step", "title: \"Schedule\""],
-  ["quipsly coaching meet and record step", "title: \"Meet and record\""],
-  ["quipsly coaching basic editing step", "title: \"Edit\""],
-  ["quipsly coaching automatic follow-through step", "title: \"Follow through\""],
-  ["quipsly coaching device-flexible invitation", "One invitation, any familiar device"],
-  ["quipsly coaching participant source recovery", "Originals survive interruptions"],
-  ["quipsly coaching collaboration promise", "Collaboration lives beside the call"],
-  ["quipsly coaching editable automation", "Automation you can simply edit"],
-  ["quipsly coaching free trial CTA", "Start 14-day free trial"],
-  ["quipsly coaching client-free promise", "Clients join free"],
+  // Marketing copy and page layout are not an application contract. Keep the
+  // canonical pricing entry point covered without freezing the sales wording.
   ["quipsly coaching pricing surface", "<CoachPricing />"],
 ]) {
   requireIncludes(texts.quipslyMarketingCoaching, needle, label, files.quipslyMarketingCoaching);

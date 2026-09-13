@@ -610,8 +610,8 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes('accessibilityIdentifier: "ProviderToggleMuteButton"')
       && capturePhoneShellText.includes('accessibilityIdentifier: "ProviderLeaveRoomButton"')
       && capturePhoneShellText.includes('.safeAreaInset(edge: .bottom, spacing: 0)')
-      && providerRoomCallAudioEvidenceText.includes('"Waiting for others"')
-      && providerRoomCallAudioEvidenceText.includes('"2 people here"'),
+      && providerRoomCallAudioEvidenceText.includes("static func label(personKeys: [String])")
+      && providerRoomCallAudioEvidenceText.includes("Set(personKeys).count"),
     "nativeLiveCallMicrophoneConfidence",
     "Native Capture keeps participant presence plus persistent Mute and Leave controls conventional while projecting one plain-language live microphone state from transient exact-path PCM without creating a recording.",
   );
@@ -668,7 +668,7 @@ function checkMeetingSpineContractSources() {
       && sessionConversationText.includes('hint.threadKey == "session:\\(context.roomID)"')
       && sessionConversationText.includes('"clientRequestId": send.requestID.uuidString.lowercased()')
       && sessionConversationText.includes("QuipslyCapture/SessionConversation")
-      && sessionConversationText.includes("Messages stay with this Session.")
+      && sessionConversationText.includes('accessibilityIdentifier("CaptureSessionChatBoundary")')
       && capturePhoneShellText.includes("MobileSessionConversationThread")
       && capturePhoneShellText.includes("sessionConversation.receiveLiveHint")
       && sessionConversationServerText.includes("sessionConversationAccessWhere")
@@ -1818,10 +1818,11 @@ function checkTranscriptCorrectionContractSources() {
       && sessionNotesWorkspaceText.includes('payload.idempotentReplay ? "This note was already saved." : "Note saved."')
       && sessionNotesWorkspaceText.includes("noteAppearsInView(payload.note, activeView)")
       && sessionNotesWorkspaceText.includes("Audience")
-      && sessionReviewText.includes('scope="work"')
+      && sessionReviewText.includes('<SessionWorkWorkspace')
+      && sessionReviewText.includes('entries={sessionQuickEntries}')
+      && sessionReviewText.includes('assignmentContext={workAssignmentContext}')
       && sessionReviewText.includes("Session follow-through")
-      && includesNormalized(sessionReviewText, "ordinary editable items, not proposals waiting for approval")
-      && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),
+      && includesNormalized(sessionReviewText, "ordinary editable items, not proposals waiting for approval"),
     "canonicalMobileQuickEntryOutbox",
     "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session, Home Nest, and explicit writable-Nest work replay to canonical project records while private URL/text sources enter Inbox with exact readback and no external side effects.",
   );
