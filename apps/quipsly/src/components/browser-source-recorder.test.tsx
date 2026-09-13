@@ -186,7 +186,7 @@ describe("browser recorder before recording", () => {
     render(<BrowserSourceRecorder {...props} microphoneId="" onOpenDeviceSettings={onOpenDeviceSettings} />);
     await waitFor(() => expect(screen.getByTestId("recording-readiness-message")).toHaveTextContent("Choose a microphone."));
     expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Recording health · Needs attention/)).toBeInTheDocument();
+    expect(screen.getByText(/Recording health · Choose microphone/)).toBeInTheDocument();
     expect(screen.queryByText(/Recording health · Ready/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Choose devices" }));
     expect(onOpenDeviceSettings).toHaveBeenCalledTimes(1);
@@ -197,7 +197,7 @@ describe("browser recorder before recording", () => {
       recordingConsentId: "consent", recordingConsentCanRecordAudio: true,
       allRegisteredParticipantConsentGranted: true };
     const { rerender } = render(<BrowserSourceRecorder {...props} microphoneId="" onOpenDeviceSettings={jest.fn()} />);
-    await waitFor(() => expect(screen.getByText(/Recording health · Needs attention/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Recording health · Choose microphone/)).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Record" })).toBeDisabled();
     rerender(<BrowserSourceRecorder {...props} onOpenDeviceSettings={jest.fn()} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Record" })).toBeEnabled());
@@ -214,10 +214,118 @@ describe("browser recorder before recording", () => {
     expect(choice).not.toBeChecked();
     await act(async () => { await jest.advanceTimersByTimeAsync(2600); });
     expect(choice).not.toBeChecked();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Allow recording" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
     const submitted = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(submitted![1].body)).toMatchObject({ canTranscribe: false });
+  });
+
+  it("places the recording action before settings in the call panel", async () => {
+    session = { ...session, canControlRoom: true, recordingConsentStatus: "GRANTED", recordingConsentId: "consent",
+      recordingConsentCanRecordAudio: true, allRegisteredParticipantConsentGranted: true };
+    render(<BrowserSourceRecorder {...props} presentation="panel" />);
+    const record = await screen.findByRole("button", {name: "Record"});
+    await waitFor(() => expect(record).toBeEnabled());
+    const settings = screen.getByText(/Recording settings ·/);
+    expect(record.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("button", {name: /Update choices/i})).not.toBeInTheDocument();
+  });
+
+  it("saves a transcript toggle directly without changing previously granted video access", async () => {
+    session = { ...session, recordingConsentStatus: "GRANTED", recordingConsentId: "consent",
+      recordingConsentCanRecordAudio: true, recordingConsentCanRecordVideo: true, allRegisteredParticipantConsentGranted: true };
+    render(<BrowserSourceRecorder {...props} />);
+    fireEvent.click(screen.getByText(/Recording settings ·/));
+    const choice = await screen.findByRole("checkbox", {name: /Create a transcript/});
+    await waitFor(() => expect(choice).toBeEnabled());
+    expect(choice).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", {name: "Audio only"}));
+    fireEvent.click(choice);
+    await waitFor(() => expect(screen.getByText("Saved automatically")).toBeInTheDocument());
+    expect(choice).toBeChecked();
+    const writes = fetchMock.mock.calls.filter(([url, init]) => url.includes("/consent") && init?.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][1].body)).toMatchObject({canRecordAudio: true, canRecordVideo: true, canTranscribe: true});
+    expect(issueBrowserRecordingDirective).not.toHaveBeenCalled();
+    await act(async () => { await jest.advanceTimersByTimeAsync(2600); });
+    expect(choice).toBeChecked();
+  });
+
+  it("waits for a pending transcript save before starting a new recording", async () => {
+    session = { ...session, canControlRoom: true, recordingConsentStatus: "GRANTED", recordingConsentId: "consent",
+      recordingConsentCanRecordAudio: true, recordingConsentCanTranscribe: true, allRegisteredParticipantConsentGranted: true };
+    const normalFetch = fetchMock.getMockImplementation()!;
+    let finishSave!: () => void;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => init?.method === "POST" && url.includes("/consent")
+      ? new Promise(resolve => { finishSave = () => resolve(normalFetch(url, init)); }) : normalFetch(url, init));
+    render(<BrowserSourceRecorder {...props} />);
+    fireEvent.click(screen.getByText(/Recording settings ·/));
+    const record = await screen.findByRole("button", {name: "Record"});
+    await waitFor(() => expect(record).toBeEnabled());
+    const choice = screen.getByRole("checkbox", {name: /Create a transcript/});
+    fireEvent.click(choice);
+    expect(choice).not.toBeChecked();
+    expect(choice).toBeDisabled();
+    expect(screen.getByText("Saving…")).toBeInTheDocument();
+    expect(record).toBeDisabled();
+    fireEvent.click(record);
+    expect(issueBrowserRecordingDirective).not.toHaveBeenCalled();
+    await act(async () => { finishSave(); });
+    await waitFor(() => expect(record).toBeEnabled());
+    expect(choice).not.toBeChecked();
+    expect(choice).toBeEnabled();
+  });
+
+  it("keeps a failed transcript opt-out visible and retries the intended value", async () => {
+    session = { ...session, canControlRoom: true, recordingConsentStatus: "GRANTED", recordingConsentId: "consent",
+      recordingConsentCanRecordAudio: true, recordingConsentCanTranscribe: true, allRegisteredParticipantConsentGranted: true };
+    const normalFetch = fetchMock.getMockImplementation()!;
+    let failSave = true;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => failSave && init?.method === "POST" && url.includes("/consent")
+      ? Promise.resolve({ok: false, json: async () => ({error: "Connection interrupted. Please retry."})}) : normalFetch(url, init));
+    render(<BrowserSourceRecorder {...props} />);
+    fireEvent.click(screen.getByText(/Recording settings ·/));
+    const record = await screen.findByRole("button", {name: "Record"});
+    await waitFor(() => expect(record).toBeEnabled());
+    const choice = screen.getByRole("checkbox", {name: /Create a transcript/});
+    fireEvent.click(choice);
+    expect(await screen.findByRole("button", {name: "Retry saving"})).toBeEnabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Connection interrupted");
+    expect(record).toBeDisabled();
+    await act(async () => { await jest.advanceTimersByTimeAsync(2600); });
+    expect(choice).not.toBeChecked();
+    failSave = false;
+    fireEvent.click(screen.getByRole("button", {name: "Retry saving"}));
+    await waitFor(() => expect(record).toBeEnabled());
+    expect(choice).not.toBeChecked();
+    expect(screen.queryByRole("button", {name: "Retry saving"})).not.toBeInTheDocument();
+    const writes = fetchMock.mock.calls.filter(([url, init]) => url.includes("/consent") && init?.method === "POST");
+    expect(writes).toHaveLength(2);
+    for (const [,init] of writes) expect(JSON.parse(init.body)).toMatchObject({canTranscribe: false, canRecordVideo: false});
+  });
+
+  it("does not apply a delayed save from a previous session to the next session", async () => {
+    session = { ...session, canControlRoom: true, recordingConsentStatus: "GRANTED", recordingConsentId: "first-consent",
+      recordingConsentCanRecordAudio: true, recordingConsentCanTranscribe: true, allRegisteredParticipantConsentGranted: true };
+    const firstSession = {...session};
+    const normalFetch = fetchMock.getMockImplementation()!;
+    let finishOldSave!: () => void;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => init?.method === "POST" && url.includes("/consent")
+      ? new Promise(resolve => { finishOldSave = () => resolve({ok: true, json: async () => ({ok: true,
+          session: {...firstSession, recordingConsentCanTranscribe: false}})}); }) : normalFetch(url, init));
+    const view = render(<BrowserSourceRecorder {...props} />);
+    fireEvent.click(screen.getByText(/Recording settings ·/));
+    await waitFor(() => expect(screen.getByRole("button", {name: "Record"})).toBeEnabled());
+    fireEvent.click(screen.getByRole("checkbox", {name: /Create a transcript/}));
+    expect(screen.getByText("Saving…")).toBeInTheDocument();
+    session = {...firstSession, participantId: "second-participant", recordingConsentId: "second-consent"};
+    view.rerender(<BrowserSourceRecorder {...props} callRoomId="second-room" captureGroupId="second-take" />);
+    await waitFor(() => expect(screen.getByRole("checkbox", {name: /Create a transcript/})).toBeChecked());
+    await act(async () => { finishOldSave(); });
+    expect(screen.getByRole("checkbox", {name: /Create a transcript/})).toBeChecked();
+    expect(screen.getByRole("button", {name: "Record"})).toBeEnabled();
+    expect(screen.queryByRole("button", {name: "Retry saving"})).not.toBeInTheDocument();
   });
 
   it("shows processing when a real source from this take is present", async () => {

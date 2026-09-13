@@ -10,7 +10,6 @@ import {
   LoaderCircle,
   Mic2,
   RefreshCw,
-  ShieldCheck,
   Square,
   UploadCloud,
   Video,
@@ -296,6 +295,7 @@ export function BrowserSourceRecorder({
   onOpenDeviceSettings,
   consentContainer = null,
   onOpenRecordingSettings,
+  presentation = "card",
 }: {
   callRoomId: string;
   captureGroupId: string;
@@ -322,6 +322,7 @@ export function BrowserSourceRecorder({
   onOpenDeviceSettings?: () => void;
   consentContainer?: HTMLElement | null;
   onOpenRecordingSettings?: () => void;
+  presentation?: "card" | "panel";
 }) {
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
   const [message, setMessage] = useState("Getting recording ready…");
@@ -336,6 +337,10 @@ export function BrowserSourceRecorder({
     useState(false);
   const transcriptionAllowedRef = useRef(true);
   const transcriptionChoiceDirtyRef = useRef(false);
+  const consentSaveInFlightRef = useRef(false);
+  const consentSaveSequenceRef = useRef(0);
+  const [consentSaving, setConsentSaving] = useState(false);
+  const [transcriptionSaveError, setTranscriptionSaveError] = useState<string | null>(null);
   const transcriptionChoiceInputRef = useRef<HTMLInputElement>(null);
   const setTranscriptionChoice = useCallback((allowed: boolean) => {
     transcriptionAllowedRef.current = allowed;
@@ -416,8 +421,13 @@ export function BrowserSourceRecorder({
     setSourceType(preferredBrowserSourceType(sessionKind, preferences));
   }, [sessionKind]);
   useEffect(() => {
+    consentSaveSequenceRef.current += 1;
+    consentSaveInFlightRef.current = false;
+    setConsentSaving(false);
+    setTranscriptionSaveError(null);
     transcriptionChoiceDirtyRef.current = false;
     setTranscriptionChoiceDirty(false);
+    return () => { consentSaveSequenceRef.current += 1; };
   }, [callRoomId]);
   const protectedTransferActive =
     status === "uploading" ||
@@ -843,14 +853,17 @@ export function BrowserSourceRecorder({
   );
   const retainedReadiness = useMemo(
     () =>
-      preflightStorageIssue?.kind === "storage-critical"
+      transcriptionChoiceDirty && myConsentCoversSource
+        ? { ok: false, blocker: "transcript-setting" as const,
+            reason: consentSaving ? "Saving transcript setting…" : "Your transcript setting hasn’t saved. Try again below." }
+        : preflightStorageIssue?.kind === "storage-critical"
         ? {
             ok: false,
             blocker: "storage-critical" as const,
             reason: `${preflightStorageIssue.detail} Free local space before recording.`,
           }
         : readiness,
-    [preflightStorageIssue, readiness],
+    [consentSaving, myConsentCoversSource, preflightStorageIssue, readiness, transcriptionChoiceDirty],
   );
 
   const guardianEvidence = useMemo<BrowserRetainedSourceGuardianEvidence>(
@@ -887,14 +900,20 @@ export function BrowserSourceRecorder({
     onGuardianEvidenceChange?.(guardianEvidence);
   }, [guardianEvidence, onGuardianEvidenceChange]);
 
-  const grantConsent = useCallback(async () => {
+  const grantConsent = useCallback(async (options?: { transcriptionOnly?: boolean; transcriptionChoice?: boolean }) => {
+    if (consentSaveInFlightRef.current || sourceLocked) return;
     if (!policy) {
       setMessage("Recording choices are still loading. Try again in a moment.");
       return;
     }
+    consentSaveInFlightRef.current = true;
+    const saveSequence = ++consentSaveSequenceRef.current;
+    setConsentSaving(true);
+    setTranscriptionSaveError(null);
     setStatus("checking");
     const presentedAt = new Date().toISOString();
     const submittedTranscriptionChoice =
+      options?.transcriptionChoice ??
       transcriptionChoiceInputRef.current?.checked ??
       transcriptionAllowedRef.current;
     try {
@@ -904,8 +923,8 @@ export function BrowserSourceRecorder({
         body: JSON.stringify({
           callRoomId,
           consentAction: "GRANT",
-          canRecordAudio: true,
-          canRecordVideo: sourceType === "video",
+          canRecordAudio: options?.transcriptionOnly ? myAudioConsent : true,
+          canRecordVideo: options?.transcriptionOnly ? myVideoConsent : sourceType === "video",
           canTranscribe: submittedTranscriptionChoice,
           allAudibleParticipantsNotifiedAndAgreed: true,
           consentPolicyVersion: policy.version,
@@ -926,6 +945,7 @@ export function BrowserSourceRecorder({
         }),
       });
       const packet = await response.json().catch(() => ({}));
+      if (saveSequence !== consentSaveSequenceRef.current) return;
       if (!response.ok || !packet?.ok)
         throw new Error(packet?.error || "Consent could not be saved.");
       const session = packet.session ?? {};
@@ -954,10 +974,19 @@ export function BrowserSourceRecorder({
           : "Your choice is saved. Waiting for the other participant.",
       );
     } catch (error) {
+      if (saveSequence !== consentSaveSequenceRef.current) return;
       setStatus("error");
+      if (options?.transcriptionOnly) setTranscriptionSaveError(
+        error instanceof Error ? error.message : "Transcript setting couldn’t be saved.",
+      );
       setMessage(
         error instanceof Error ? error.message : "Consent could not be saved.",
       );
+    } finally {
+      if (saveSequence === consentSaveSequenceRef.current) {
+        consentSaveInFlightRef.current = false;
+        setConsentSaving(false);
+      }
     }
   }, [
     callRoomId,
@@ -965,6 +994,9 @@ export function BrowserSourceRecorder({
     policy,
     roomStatus,
     sourceType,
+    sourceLocked,
+    myAudioConsent,
+    myVideoConsent,
     setTranscriptionChoice,
   ]);
 
@@ -2831,6 +2863,8 @@ export function BrowserSourceRecorder({
     : status === "ready" && !activeLedger && !recoveryRows.length && !retainedReadiness.ok
       ? retainedReadiness.blocker === "my-consent" ? "Recording off"
         : retainedReadiness.blocker === "participant-consent" ? "Waiting for others"
+        : retainedReadiness.blocker === "microphone" ? "Choose microphone"
+        : retainedReadiness.blocker === "camera" ? "Choose camera"
         : "Needs attention"
       : browserRetainedRecorderStatusLabel({
         status,
@@ -2845,246 +2879,9 @@ export function BrowserSourceRecorder({
       ? "Needs attention"
       : recorderStatusLabel;
 
-  const consentChoice = !conversationEnded && vaultAvailable && !myConsentCoversSource ? (
-    <section className="rounded-xl border border-border bg-card p-3 text-card-foreground" aria-label="Recording consent needed">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">Allow {sourceType === "video" ? "video and audio" : "audio"} recording{transcriptionAllowed ? " and transcription" : ""}?</p>
-          <p className="mt-1 text-xs text-muted-foreground">Your choice is saved for this session. The host starts recording.</p>
-          {consentContainer && onOpenRecordingSettings ? <button type="button" onClick={onOpenRecordingSettings} className="mt-1 min-h-9 text-xs underline underline-offset-4">Recording settings</button> : null}
-        </div>
-        <button type="button" onClick={() => void grantConsent()} disabled={!policy || status === "checking" || status === "recording"}
-          className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">Allow recording</button>
-      </div>
-      {status === "error" ? <p role="alert" className="mt-2 text-sm text-destructive">{message}</p> : null}
-    </section>
-  ) : null;
-
-  return (
-    <section
-      className={`rounded-2xl border p-4 ${status === "recording" ? "border-rose-400 bg-rose-50 ring-4 ring-rose-100" : "border-[#d8c7a7] bg-white"}`}
-      aria-labelledby={`browser-source-${callRoomId}`}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800">
-            <HardDrive size={14} />{" "}
-            {conversationEnded
-              ? "Your recording"
-              : sessionKind === "coaching"
-                ? "High-quality local recording"
-                : "Retained local source"}
-          </p>
-          <h3
-            id={`browser-source-${callRoomId}`}
-            className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
-          >
-            {conversationEnded
-              ? exitSafety.label
-              : !canControlRoom
-                ? "Your recording"
-                : "Record session"}
-          </h3>
-          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-            {conversationEnded
-              ? exitSafety.detail
-              : !canControlRoom
-                ? `Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording. Once you allow it, this device saves and uploads your high-quality copy when recording starts.`
-                : "Joining never starts recording. Once everyone agrees, select Record to start the high-quality recordings."}
-          </p>
-          <details className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">
-            <summary className="cursor-pointer">
-              How source protection works
-            </summary>
-            <p className="mt-2">
-              Quipsly keeps the call and each participant-owned recording as
-              separate evidence, then aligns verified sources with the shared
-              Session clock without rewriting the originals.
-            </p>
-          </details>
-        </div>
-        <span
-          className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : recorderStatusLabel === "Needs attention" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
-        >
-          {recorderStatusLabel}
-        </span>
-      </div>
-
-      {consentContainer ? createPortal(consentChoice, consentContainer) : consentChoice ? <div className="mt-4">{consentChoice}</div> : null}
-
-      {!conversationEnded ? (
-        <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-            Recording settings · {myConsentCoversSource ? "Saved" : "Audio, video & transcript"}
-          </summary>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-              <div className="flex items-center justify-between gap-2">
-                <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-                  Source
-                </strong>
-                <span className="text-[10px] font-bold text-[#8a7354]">
-                  {microphoneLabel || "Choose a mic above"}
-                </span>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={status === "recording"}
-                  onClick={() => chooseSourceType("audio")}
-                  className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "audio" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
-                >
-                  <Mic2 size={15} className="mr-1 inline" /> Studio audio
-                </button>
-                <button
-                  type="button"
-                  disabled={status === "recording"}
-                  onClick={() => chooseSourceType("video")}
-                  className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "video" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
-                >
-                  <Video size={15} className="mr-1 inline" /> Camera + audio
-                </button>
-              </div>
-              {sourceType === "video" ? (
-                <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
-                  Camera: {cameraLabel || "Choose a camera above"}. USB webcam
-                  output may be lower quality than the camera's internal
-                  recording; Quipsly preserves the measured profile instead of
-                  calling it 4K.
-                </p>
-              ) : null}
-              <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
-                <input
-                  type="checkbox"
-                  checked={headphonesAttested}
-                  onChange={(event) =>
-                    chooseHeadphonesAttestation(event.target.checked)
-                  }
-                  className="mt-1 accent-violet-800"
-                />{" "}
-                I’m using headphones (recommended).
-              </label>
-              {!headphonesAttested ? (
-                <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
-                  You can still record without headphones. This choice is
-                  remembered on this device.
-                </p>
-              ) : (
-                <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
-                  Remembered on this device.
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-              <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-                Transcript
-              </strong>
-              <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-                Quipsly remembers this Session’s saved choice. Change it only
-                when you want a different source or transcript setting.
-              </p>
-              <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
-                <input
-                  ref={transcriptionChoiceInputRef}
-                  type="checkbox"
-                  checked={transcriptionAllowed}
-                  disabled={
-                    !policy || status === "checking" || status === "recording"
-                  }
-                  onChange={(event) =>
-                    chooseTranscriptionChoice(event.target.checked)
-                  }
-                  className="mt-1 accent-violet-800"
-                />{" "}
-                Create a transcript and suggested notes/tasks
-              </label>
-              <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-                Everyone chooses for themselves. If anyone else is nearby, let
-                them know before recording.
-              </p>
-              {myConsentCoversSource ? (
-                <button
-                  type="button"
-                  onClick={() => void grantConsent()}
-                  disabled={!policy || status === "recording"}
-                  className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
-                >
-                  <ShieldCheck size={14} className="mr-1 inline" /> Update
-                  choices
-                </button>
-              ) : null}
-              <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
-                {consentReady
-                  ? "Everyone has allowed recording."
-                  : consentId
-                    ? "Your choice is saved. Waiting for the other participant."
-                    : "Not agreed yet."}
-              </p>
-              {transcriptionAllowed ? (
-                <p
-                  className={`mt-1 text-[10px] font-bold leading-4 ${transcriptionChoiceDirty ? "text-amber-800" : allPartyTranscriptionReady ? "text-emerald-800" : "text-[#8a7354]"}`}
-                  data-testid="transcription-readiness-message"
-                >
-                  {transcriptionChoiceDirty
-                    ? "Choose Update choices to save this transcript setting."
-                    : allPartyTranscriptionReady
-                      ? "Everyone enabled the transcript and suggested follow-up."
-                      : consentId
-                        ? "Your choice is saved. The transcript starts after everyone allows it."
-                        : "The transcript will be enabled when you allow recording."}
-                </p>
-              ) : null}
-              <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-                <summary className="cursor-pointer">
-                  Recording and privacy details
-                </summary>
-                <p className="mt-2">{policy?.text || "Loading details…"}</p>
-              </details>
-            </div>
-          </div>
-        </details>
-      ) : null}
-
-      {!conversationConnected ? (
-        conversationEnded ? (
-          <section
-            className={`mt-4 rounded-xl border p-4 ${exitSafety.state === "safe" || exitSafety.state === "idle" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : exitSafety.state === "attention" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-violet-300 bg-violet-50 text-violet-950"}`}
-            aria-label="Recording close status"
-            aria-live="polite"
-          >
-            <p className="flex items-center gap-2 text-sm font-black">
-              {exitSafety.state === "safe" || exitSafety.state === "idle" ? (
-                <CheckCircle2 size={18} aria-hidden="true" />
-              ) : exitSafety.state === "attention" ? (
-                <AlertTriangle size={18} aria-hidden="true" />
-              ) : (
-                <LoaderCircle
-                  size={18}
-                  className="animate-spin"
-                  aria-hidden="true"
-                />
-              )}
-              {exitSafety.label}
-            </p>
-            <p className="mt-2 text-xs font-semibold leading-5">
-              {exitSafety.detail}
-            </p>
-          </section>
-        ) : !activeLedger && !recoveryRows.length ? (
-          <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
-            {canControlRoom
-              ? "Check your microphone and camera, then join the call. The Record button appears after you join."
-              : `Check your microphone and camera, then join the call. Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording once everyone agrees.`}
-          </p>
-        ) : null
-      ) : null}
-
-      <div
-        hidden={!conversationConnected && !conversationEnded && !activeLedger && !recoveryRows.length}
-      >
+  const recordingActions = (
         <div hidden={!conversationConnected}>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className={presentation === "panel" ? "mt-3 flex flex-col gap-2" : "mt-3 flex flex-wrap items-center gap-2"}>
           {["ENDED", "CANCELED", "FAILED"].includes(
             roomStatus?.toUpperCase() ?? "",
           ) ? (
@@ -3225,6 +3022,253 @@ export function BrowserSourceRecorder({
           </p>
         ) : null}
         </div>
+  );
+
+  const consentChoice = !conversationEnded && vaultAvailable && !myConsentCoversSource ? (
+    <section className="rounded-xl border border-border bg-card p-3 text-card-foreground" aria-label="Recording consent needed">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Allow {sourceType === "video" ? "video and audio" : "audio"} recording{transcriptionAllowed ? " and transcription" : ""}?</p>
+          <p className="mt-1 text-xs text-muted-foreground">Your choice is saved for this session. The host starts recording.</p>
+          {consentContainer && onOpenRecordingSettings ? <button type="button" onClick={onOpenRecordingSettings} className="mt-1 min-h-9 text-xs underline underline-offset-4">Recording settings</button> : null}
+        </div>
+        <button type="button" onClick={() => void grantConsent()} disabled={!policy || status === "checking" || status === "recording"}
+          className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">Allow recording</button>
+      </div>
+      {status === "error" ? <p role="alert" className="mt-2 text-sm text-destructive">{message}</p> : null}
+    </section>
+  ) : null;
+
+  return (
+    <section
+      className={presentation === "panel" ? "min-w-0 text-foreground" : `rounded-2xl border p-4 ${status === "recording" ? "border-rose-400 bg-rose-50 ring-4 ring-rose-100" : "border-[#d8c7a7] bg-white"}`}
+      aria-labelledby={`browser-source-${callRoomId}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className={presentation === "panel" ? "sr-only" : "flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800"}>
+            <HardDrive size={14} />{" "}
+            {conversationEnded
+              ? "Your recording"
+              : sessionKind === "coaching"
+                ? "High-quality local recording"
+                : "Retained local source"}
+          </p>
+          <h3
+            id={`browser-source-${callRoomId}`}
+            className={presentation === "panel" ? "sr-only" : "mt-1 font-serif text-2xl font-black text-[#3d3122]"}
+          >
+            {conversationEnded
+              ? exitSafety.label
+              : !canControlRoom
+                ? "Your recording"
+                : "Record session"}
+          </h3>
+          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
+            {conversationEnded
+              ? exitSafety.detail
+              : !canControlRoom
+                ? `Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording. Once you allow it, this device saves and uploads your high-quality copy when recording starts.`
+                : "Record everyone’s audio on their own device, then bring the tracks together here."}
+          </p>
+          <details className="mt-2 text-xs leading-5 text-muted-foreground">
+            <summary className="cursor-pointer">
+              How recordings are saved
+            </summary>
+            <p className="mt-2">
+              Each device saves its original recording locally and uploads it
+              to this session. Editing leaves those originals unchanged.
+            </p>
+          </details>
+        </div>
+        <span
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold ${status === "recording" ? "bg-rose-700 text-white" : recorderStatusLabel === "Needs attention" || status === "held" ? "bg-amber-100 text-amber-950" : !retainedReadiness.ok ? "bg-muted text-muted-foreground" : "bg-emerald-100 text-emerald-950"}`}
+        >
+          {recorderStatusLabel}
+        </span>
+      </div>
+
+      {consentContainer ? createPortal(consentChoice, consentContainer) : consentChoice ? <div className="mt-4">{consentChoice}</div> : null}
+      {recordingActions}
+
+      {!conversationEnded ? (
+        <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
+            Recording settings · {sourceType === "video" ? "Video + audio" : "Audio"} · {transcriptionAllowed ? "Transcript on" : "Transcript off"}
+          </summary>
+          <div className={`mt-3 grid gap-3 ${presentation === "panel" ? "" : "lg:grid-cols-2"}`}>
+            <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
+                  Source
+                </strong>
+                <span className="text-[10px] font-bold text-[#8a7354]">
+                  {microphoneLabel || "No microphone selected"}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2" role="group" aria-label="Recording format">
+                <button
+                  type="button"
+                  disabled={sourceLocked || consentSaving}
+                  aria-pressed={sourceType === "audio"}
+                  onClick={() => chooseSourceType("audio")}
+                  className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "audio" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
+                >
+                  <Mic2 size={15} className="mr-1 inline" /> Audio only
+                </button>
+                <button
+                  type="button"
+                  disabled={sourceLocked || consentSaving}
+                  aria-pressed={sourceType === "video"}
+                  onClick={() => chooseSourceType("video")}
+                  className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "video" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
+                >
+                  <Video size={15} className="mr-1 inline" /> Video + audio
+                </button>
+              </div>
+              {sourceType === "video" ? (
+                <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
+                  Camera: {cameraLabel || "Choose a camera above"}. USB webcam
+                  output may be lower quality than the camera's internal
+                  recording; Quipsly preserves the measured profile instead of
+                  calling it 4K.
+                </p>
+              ) : null}
+              <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
+                <input
+                  type="checkbox"
+                  checked={headphonesAttested}
+                  onChange={(event) =>
+                    chooseHeadphonesAttestation(event.target.checked)
+                  }
+                  className="mt-1 accent-violet-800"
+                />{" "}
+                I’m using headphones (recommended).
+              </label>
+              {!headphonesAttested ? (
+                <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
+                  You can still record without headphones. This choice is
+                  remembered on this device.
+                </p>
+              ) : (
+                <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
+                  Remembered on this device.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+              <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
+                Transcript
+              </strong>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
+                Quipsly remembers this Session’s saved choice. Change it only
+                when you want a different source or transcript setting.
+              </p>
+              <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
+                <input
+                  ref={transcriptionChoiceInputRef}
+                  type="checkbox"
+                  checked={transcriptionAllowed}
+                  disabled={
+                    !policy || consentSaving || sourceLocked || status === "checking"
+                  }
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    chooseTranscriptionChoice(next);
+                    if (myConsentCoversSource) void grantConsent({ transcriptionOnly: true, transcriptionChoice: next });
+                  }}
+                  className="mt-1 accent-violet-800"
+                />{" "}
+                Create a transcript and suggested notes/tasks
+              </label>
+              <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+                Everyone chooses for themselves. If anyone else is nearby, let
+                them know before recording.
+              </p>
+              {transcriptionSaveError ? (
+                <div role="alert" className="mt-2 text-sm text-destructive">
+                  <p>{transcriptionSaveError}</p>
+                <button
+                  type="button"
+                  onClick={() => void grantConsent({ transcriptionOnly: true })}
+                  disabled={!policy || consentSaving || sourceLocked}
+                  className="mt-2 min-h-11 rounded-xl border border-border px-3 text-sm font-semibold disabled:opacity-50"
+                >
+                  Retry saving
+                </button>
+                </div>
+              ) : null}
+              {myConsentCoversSource && !transcriptionSaveError ? <p role="status" className="mt-2 text-xs text-muted-foreground">{consentSaving ? "Saving…" : "Saved automatically"}</p> : null}
+              <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
+                {consentReady
+                  ? "Everyone has allowed recording."
+                  : consentId
+                    ? "Your choice is saved. Waiting for the other participant."
+                    : "Not agreed yet."}
+              </p>
+              {transcriptionAllowed ? (
+                <p
+                  className={`mt-1 text-[10px] font-bold leading-4 ${transcriptionChoiceDirty ? "text-amber-800" : allPartyTranscriptionReady ? "text-emerald-800" : "text-[#8a7354]"}`}
+                  data-testid="transcription-readiness-message"
+                >
+                  {transcriptionChoiceDirty
+                    ? consentSaving ? "Saving transcript setting…" : myConsentCoversSource ? "Transcript setting not saved yet." : "This setting will be saved when you allow recording."
+                    : allPartyTranscriptionReady
+                      ? "Everyone enabled the transcript and suggested follow-up."
+                      : consentId
+                        ? "Your choice is saved. The transcript starts after everyone allows it."
+                        : "The transcript will be enabled when you allow recording."}
+                </p>
+              ) : null}
+              <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+                <summary className="cursor-pointer">
+                  Recording and privacy details
+                </summary>
+                <p className="mt-2">{policy?.text || "Loading details…"}</p>
+              </details>
+            </div>
+          </div>
+        </details>
+      ) : null}
+
+      {!conversationConnected ? (
+        conversationEnded ? (
+          <section
+            className={`mt-4 rounded-xl border p-4 ${exitSafety.state === "safe" || exitSafety.state === "idle" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : exitSafety.state === "attention" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-violet-300 bg-violet-50 text-violet-950"}`}
+            aria-label="Recording close status"
+            aria-live="polite"
+          >
+            <p className="flex items-center gap-2 text-sm font-black">
+              {exitSafety.state === "safe" || exitSafety.state === "idle" ? (
+                <CheckCircle2 size={18} aria-hidden="true" />
+              ) : exitSafety.state === "attention" ? (
+                <AlertTriangle size={18} aria-hidden="true" />
+              ) : (
+                <LoaderCircle
+                  size={18}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              )}
+              {exitSafety.label}
+            </p>
+            <p className="mt-2 text-xs font-semibold leading-5">
+              {exitSafety.detail}
+            </p>
+          </section>
+        ) : !activeLedger && !recoveryRows.length ? (
+          <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
+            {canControlRoom
+              ? "Check your microphone and camera, then join the call. The Record button appears after you join."
+              : `Check your microphone and camera, then join the call. Your ${sessionKind === "coaching" ? "coach" : "host"} starts recording once everyone agrees.`}
+          </p>
+        ) : null
+      ) : null}
+
+      <div
+        hidden={!conversationConnected && !conversationEnded && !activeLedger && !recoveryRows.length}
+      >
         {pendingCoordinationReceiptCount > 0 || coordinationReceiptError ? (
           <p
             role="status"

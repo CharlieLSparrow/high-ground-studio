@@ -2339,6 +2339,7 @@ export function LiveSessionRoom({
       onGuardianEvidenceChange={reportRetainedGuardianEvidence}
       onRecordingConsentChange={handleRecordingConsentChange}
       consentContainer={stageLayout && connected && toolPanel !== "recording" ? consentContainer : null}
+      presentation={stageLayout ? "panel" : "card"}
       onOpenRecordingSettings={() => setToolPanel("recording")}
       onOpenDeviceSettings={() => {
         if (stageLayout) setToolPanel("devices");
