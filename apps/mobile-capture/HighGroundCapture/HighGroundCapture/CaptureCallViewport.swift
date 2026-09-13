@@ -1,5 +1,9 @@
 import SwiftUI
 
+enum CaptureCallPanel: String {
+    case chat, notes, tasks, tools
+}
+
 /// Calls occupy the available stage, unlike the session's scrolling document.
 /// Geometry is measured after the safe-area control dock, so participant tiles
 /// grow on iPad without pushing microphone, camera, or Leave off screen.

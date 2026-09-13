@@ -5,6 +5,7 @@ struct CaptureSessionWorkWorkspace: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject var client: MobileSessionWorkClient
+    var embedded = false
     let onDismiss: () -> Void
     @State private var filter = "ALL"
     @State private var search = ""
@@ -23,8 +24,22 @@ struct CaptureSessionWorkWorkspace: View {
     var body: some View {
         VStack(spacing: 0) {
             CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId, onReturn: onDismiss)
-            NavigationStack {
+            CaptureWorkspaceNavigation(title: "Tasks and goals", embedded: embedded, onDismiss: onDismiss, actions: {
+                if client.canCreate {
+                    Button { showsComposer = true } label: {
+                        Image(systemName: "plus").frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("Add task or goal")
+                    .accessibilityIdentifier("CaptureSessionWorkCreate")
+                }
+            }) {
                 List {
+                    if embedded {
+                        TextField("Search tasks and goals", text: $search)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityIdentifier("CaptureSessionWorkSearch")
+                    }
                     if let error = client.errorMessage {
                         Section {
                             Text(error).foregroundStyle(CapturePalette.brass)
@@ -58,17 +73,7 @@ struct CaptureSessionWorkWorkspace: View {
                 .captureFormSurface()
                 .refreshable { await client.load(session: session) }
                 .searchable(text: $search, prompt: "Search tasks and goals")
-                .navigationTitle("Tasks and goals")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        if client.canCreate {
-                            Button { showsComposer = true } label: { Label("Add task or goal", systemImage: "plus") }
-                                .accessibilityIdentifier("CaptureSessionWorkCreate")
-                        }
-                    }
-                    ToolbarItem(placement: .confirmationAction) { Button("Done", action: onDismiss) }
-                }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureSessionWorkWorkspace")
             }
         }

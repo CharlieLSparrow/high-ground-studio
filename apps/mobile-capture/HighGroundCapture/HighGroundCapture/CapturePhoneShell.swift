@@ -11498,7 +11498,8 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
-    @State private var showsCallTools = false
+    @State private var activeCallPanel: CaptureCallPanel?
+    private var showsCallTools: Bool { activeCallPanel == .tools }
     @State private var showsCallChat = false
     @State private var sessionWorkSession: MobileCaptureSession?
     @StateObject private var sessionWork = MobileSessionWorkClient()
@@ -12445,49 +12446,15 @@ private struct CaptureRecorderView: View {
         // Scrolling the former mixed recorder/results tree while it received
         // live updates could loop SwiftUI's lazy placement on iPad.
         VStack(spacing: 16) {
-            if showsCallTools {
-                ConsentStrip(
-                    session: session, isBusy: model.isChangingConsent,
-                    isCaptureActive: captureIsActive,
-                    onGrant: { showsConsentConfirmation = true },
-                    onRevoke: { Task { await model.revokeConsent() } }
-                )
-                CaptureRecordingModePicker(
-                    selection: $recordingMode,
-                    isLocked: captureIsActive || model.isChangingCapture
-                )
-                if let message = recordingCoordinator.statusMessage {
-                    CaptureInlineMessage(text: message)
-                }
-                Button {
-                    focusedTool = .deviceSoundCheck
-                } label: {
-                    Label("Devices and sound check", systemImage: "slider.horizontal.3")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("CaptureDeviceSoundCheckOpen")
-                if recordingMode.recordsVideo {
-                    Button {
-                        Task { await model.switchVideoCamera(using: videoCapture) }
-                    } label: {
-                        Label("Flip camera", systemImage: "arrow.triangle.2.circlepath.camera")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!videoCapture.state.isActive)
-                }
-            } else {
-                ProviderRoomControls(
-                    model: model, session: session,
-                    inputRoute: audioCapture.inputRouteName,
-                    cameraPosition: $cameraPosition,
-                    videoQualityIntent: videoQualityIntent,
-                    localRecordingWorkspaceOpen: true,
-                    onToggleLocalRecordingWorkspace: {},
-                    minimumStageHeight: minimumStageHeight
-                )
-            }
+            ProviderRoomControls(
+                model: model, session: session,
+                inputRoute: audioCapture.inputRouteName,
+                cameraPosition: $cameraPosition,
+                videoQualityIntent: videoQualityIntent,
+                localRecordingWorkspaceOpen: true,
+                onToggleLocalRecordingWorkspace: {},
+                minimumStageHeight: minimumStageHeight
+            )
             if let notice = model.captureSafetyNotice {
                 CaptureInlineWarning(text: notice)
             }
@@ -12497,6 +12464,106 @@ private struct CaptureRecorderView: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureLiveCallWorkspace")
+    }
+
+    private var callPanelIsPresented: Binding<Bool> {
+        Binding(get: { activeCallPanel != nil }, set: { if !$0 { activeCallPanel = nil } })
+    }
+
+    @ViewBuilder
+    private var consentConfirmationSurface: some View {
+        if let session = model.selectedSession {
+            CaptureConsentConfirmationSheet(
+                session: session, requiresStableOwner: !model.usesPreviewData
+            ) { audio, video, transcription, participantsAgreed, presentedAt in
+                await model.grantConsent(
+                    for: session.id, canRecordAudio: audio, canRecordVideo: video,
+                    canTranscribe: transcription,
+                    allAudibleParticipantsNotifiedAndAgreed: participantsAgreed,
+                    presentedAt: presentedAt
+                )
+            } onDecline: {
+                await model.declineConsent(for: session.id)
+            }
+        }
+    }
+
+    private func callPanel(_ session: MobileCaptureSession) -> AnyView {
+        AnyView(Group {
+            switch activeCallPanel {
+            case .chat:
+                VStack(spacing: 0) {
+                    CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId) { activeCallPanel = nil }
+                    sessionConversationSurface(session, onDismiss: { activeCallPanel = nil }, embedded: true)
+                }
+            case .notes:
+                CaptureSessionNotesWorkspace(session: session, model: model, embedded: true) { activeCallPanel = nil }
+            case .tasks:
+                CaptureSessionWorkWorkspace(session: session, model: model, client: sessionWork, embedded: true) { activeCallPanel = nil }
+            case .tools:
+                liveCallSettings(session)
+            case nil:
+                EmptyView()
+            }
+        }
+        .inspectorColumnWidth(min: 340, ideal: 400, max: 480)
+        .presentationDetents([.large]))
+    }
+
+    private func liveCallSettings(_ session: MobileCaptureSession) -> AnyView {
+        AnyView(
+            VStack(spacing: 0) {
+                CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId) {
+                    activeCallPanel = nil
+                }
+                CaptureWorkspaceNavigation(
+                    title: "Recording tools", embedded: true,
+                    onDismiss: { activeCallPanel = nil }, actions: { EmptyView() }
+                ) {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            ConsentStrip(
+                                session: session, isBusy: model.isChangingConsent,
+                                isCaptureActive: captureIsActive,
+                                onGrant: { showsConsentConfirmation = true },
+                                onRevoke: { Task { await model.revokeConsent() } }
+                            )
+                            CaptureRecordingModePicker(
+                                selection: $recordingMode,
+                                isLocked: captureIsActive || model.isChangingCapture
+                            )
+                            if let message = recordingCoordinator.statusMessage {
+                                CaptureInlineMessage(text: message)
+                            }
+                            Button {
+                                focusedTool = .deviceSoundCheck
+                            } label: {
+                                Label("Devices and sound check", systemImage: "slider.horizontal.3")
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CaptureDeviceSoundCheckOpen")
+                            if recordingMode.recordsVideo {
+                                Button {
+                                    Task { await model.switchVideoCamera(using: videoCapture) }
+                                } label: {
+                                    Label(
+                                        "Flip camera",
+                                        systemImage: "arrow.triangle.2.circlepath.camera"
+                                    )
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(!videoCapture.state.isActive)
+                            }
+                        }
+                        .padding(18)
+                    }
+                    .background(CaptureCanvas())
+                }
+            }
+            .sheet(isPresented: $showsConsentConfirmation) { consentConfirmationSurface }
+            .sheet(item: $focusedTool) { tool in focusedRecorderTool(tool, session: session) })
     }
 
     @ViewBuilder
@@ -12948,13 +13015,17 @@ private struct CaptureRecorderView: View {
     }
 
     private func sessionConversationSurface(
-        _ session: MobileCaptureSession
+        _ session: MobileCaptureSession,
+        onDismiss: (() -> Void)? = nil,
+        embedded: Bool = false
     ) -> AnyView {
         AnyView(
                 MobileSessionConversationThread(
                     client: sessionConversation,
                     session: session,
-                    previewOnly: model.usesPreviewData
+                    previewOnly: model.usesPreviewData,
+                    onDismiss: onDismiss,
+                    embedded: embedded
                 )
             .task(
                 id:
@@ -12992,23 +13063,23 @@ private struct CaptureRecorderView: View {
 
     private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {
         HStack(spacing: 6) {
-            Button { showsCallChat = true } label: {
+            Button { activeCallPanel = activeCallPanel == .chat ? nil : .chat } label: {
                 Label("Chat", systemImage: "bubble.left.and.bubble.right")
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
             .accessibilityIdentifier("CaptureCallOpenChat")
-            Button { sessionNotesSession = session } label: {
+            Button { activeCallPanel = activeCallPanel == .notes ? nil : .notes } label: {
                 Label("Notes", systemImage: "note.text")
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
             .accessibilityIdentifier("CaptureCallOpenNotes")
-            Button { sessionWorkSession = session } label: {
+            Button { activeCallPanel = activeCallPanel == .tasks ? nil : .tasks } label: {
                 Label("Tasks", systemImage: "checklist")
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
             .accessibilityIdentifier("CaptureCallOpenTasks")
             if model.providerRoom.isConnected {
-            Button { showsCallTools.toggle() } label: {
+            Button { activeCallPanel = showsCallTools ? nil : .tools } label: {
                 Label("Tools", systemImage: "slider.horizontal.3")
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
@@ -13023,8 +13094,11 @@ private struct CaptureRecorderView: View {
         .padding(.vertical, 8)
     }
 
-    var body: some View {
-        recorderScrollableSurface
+    private var recorderPresentationSurface: AnyView {
+        AnyView(recorderScrollableSurface
+        .inspector(isPresented: callPanelIsPresented) {
+            if let session = model.selectedSession { callPanel(session) }
+        }
         .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write"
             : model.providerRoom.isConnected ? (model.selectedSession?.displayTitle ?? "Call") : "Sessions")
         .navigationBarTitleDisplayMode(.inline)
@@ -13104,25 +13178,10 @@ private struct CaptureRecorderView: View {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
                 .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $showsConsentConfirmation) {
-            if let session = model.selectedSession {
-                CaptureConsentConfirmationSheet(
-                    session: session,
-                    requiresStableOwner: !model.usesPreviewData
-                ) { canRecordAudio, canRecordVideo, canTranscribe, allAudibleParticipantsNotifiedAndAgreed, presentedAt in
-                    await model.grantConsent(
-                        for: session.id,
-                        canRecordAudio: canRecordAudio,
-                        canRecordVideo: canRecordVideo,
-                        canTranscribe: canTranscribe,
-                        allAudibleParticipantsNotifiedAndAgreed: allAudibleParticipantsNotifiedAndAgreed,
-                        presentedAt: presentedAt
-                    )
-                } onDecline: {
-                    await model.declineConsent(for: session.id)
-                }
-            }
-        }
+        .sheet(isPresented: Binding(
+            get: { showsConsentConfirmation && !showsCallTools },
+            set: { showsConsentConfirmation = $0 }
+        )) { consentConfirmationSurface }
         .sheet(item: $quickEntryKind) { kind in
             CaptureQuickEntrySheet(kind: kind, session: model.selectedSession, model: model)
                 .presentationDetents([.large])
@@ -13140,7 +13199,11 @@ private struct CaptureRecorderView: View {
                 sessionWorkSession = nil
             }
             .presentationDetents([.large])
-        }
+        })
+    }
+
+    private var recorderWorkspaceDestinations: AnyView {
+        AnyView(recorderPresentationSurface
         .navigationDestination(isPresented: $showsCompletedSessionWork) {
             if let session = model.selectedSession {
                 ScrollView {
@@ -13187,7 +13250,10 @@ private struct CaptureRecorderView: View {
                 .presentationDetents([.large])
             }
         }
-        .sheet(item: $focusedTool) { tool in
+        .sheet(item: Binding<CaptureRecorderFocusedTool?>(
+            get: { showsCallTools ? nil : focusedTool },
+            set: { focusedTool = $0 }
+        )) { tool in
             if let session = model.selectedSession {
                 focusedRecorderTool(tool, session: session)
             }
@@ -13220,7 +13286,11 @@ private struct CaptureRecorderView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
-        .interactiveDismissDisabled(captureIsActive)
+        .interactiveDismissDisabled(captureIsActive))
+    }
+
+    var body: some View {
+        recorderWorkspaceDestinations
         .onAppear {
             guard !captureIsActive else { return }
             recordingMode = CaptureCallPreferences.recordingMode(
@@ -13229,7 +13299,7 @@ private struct CaptureRecorderView: View {
         }
         .onChange(of: model.selectedSession?.id) { oldSessionID, newSessionID in
             if oldSessionID != newSessionID {
-                showsCallTools = false
+                activeCallPanel = nil
                 showsCallChat = false
             }
             guard oldSessionID != newSessionID,
@@ -13238,6 +13308,9 @@ private struct CaptureRecorderView: View {
             recordingMode = CaptureCallPreferences.recordingMode(
                 for: model.selectedSession?.purpose
             )
+        }
+        .onChange(of: model.completedCall?.id) { _, completedID in
+            if completedID != nil { activeCallPanel = nil }
         }
         .onChange(of: recordingMode) { oldMode, newMode in
             guard oldMode != newMode else { return }
@@ -15435,6 +15508,7 @@ struct CaptureCallWorkspaceBar: View {
 private struct CaptureSessionNotesWorkspace: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
+    var embedded = false
     let onDismiss: () -> Void
     @State private var showsNewNote = false
     @State private var searchText = ""
@@ -15443,8 +15517,23 @@ private struct CaptureSessionNotesWorkspace: View {
     var body: some View {
         VStack(spacing: 0) {
             CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId, onReturn: onDismiss)
-        NavigationStack {
+        CaptureWorkspaceNavigation(title: "Notes", embedded: embedded, onDismiss: onDismiss, actions: {
+            Button { showsNewNote = true } label: {
+                Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("New note")
+            .accessibilityIdentifier("CaptureSessionNotesCreate")
+        }) {
             VStack(spacing: 0) {
+                if embedded {
+                    TextField("Search notes and tags", text: $searchText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("CaptureSessionNotesSearch")
+                }
                 Picker("Show notes", selection: $audience) {
                     Text("All").tag("all")
                     Text("Shared").tag("shared")
@@ -15468,19 +15557,6 @@ private struct CaptureSessionNotesWorkspace: View {
             }
             .captureFormSurface()
             .searchable(text: $searchText, prompt: "Search notes and tags")
-            .navigationTitle("Notes")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showsNewNote = true } label: {
-                        Label("New note", systemImage: "square.and.pencil")
-                    }
-                    .accessibilityIdentifier("CaptureSessionNotesCreate")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { onDismiss() }
-                }
-            }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureSessionNotesSheet")
         }

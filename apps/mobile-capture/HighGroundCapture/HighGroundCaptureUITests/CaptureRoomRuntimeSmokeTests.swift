@@ -6313,12 +6313,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(leave.waitForExistence(timeout: 5))
             XCTAssertTrue(leave.isHittable, "Leave must remain reachable after rotating the live call.")
             XCTAssertTrue(app.buttons["CaptureCallOpenTasks"].isHittable)
+            assertCallLayoutSettled(in: app)
             attachRuntimeScreenshot(app, name: "Native call landscape stage and fixed controls")
             XCUIDevice.shared.orientation = .portrait
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
                 predicate: NSPredicate { _, _ in app.frame.height > app.frame.width }, object: app
             )], timeout: 8), .completed)
             XCTAssertTrue(leave.waitForExistence(timeout: 5))
+            assertCallLayoutSettled(in: app)
         }
         attachRuntimeScreenshot(app, name: "Native call portrait stage and fixed controls")
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "different endpoint evidence")).firstMatch.exists,
@@ -6328,6 +6330,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertLessThan(chat.frame.height, 110, "Call tool labels must not wrap into tall columns of letters.")
         chat.tap()
         XCTAssertTrue(app.buttons["CaptureWorkspaceReturnToCall"].waitForExistence(timeout: 5))
+        if app.frame.width > 700 {
+            XCTAssertTrue(stage.isHittable, "On iPad, chat belongs beside the participant stage.")
+            XCTAssertTrue(leave.isHittable, "The call dock must stay available beside the conversation.")
+            attachRuntimeScreenshot(app, name: "iPad conversation beside live call")
+        }
         XCTAssertEqual(app.buttons["CaptureWorkspaceToggleMicrophone"].exists, primaryEndpoint)
         XCTAssertEqual(app.descendants(matching: .any)["CaptureWorkspaceCompanionAudio"].firstMatch.exists, !primaryEndpoint)
         let composer = app.textFields["CaptureSessionChatComposer"].firstMatch
@@ -6419,6 +6426,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let tools = app.buttons["CaptureCallToggleTools"].firstMatch
         tools.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.waitForExistence(timeout: 5))
+        if app.frame.width > 700 {
+            XCTAssertTrue(stage.isHittable, "Opening recording settings must not replace the iPad participant stage.")
+        }
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "different endpoint evidence")).firstMatch.exists)
         if recordSource {
             let audioMode = app.segmentedControls["CaptureRecordingModePicker"].buttons["Audio"]
@@ -6432,6 +6442,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 save.tap()
                 XCTAssertTrue(consentSheet.waitForNonExistence(timeout: 30))
             }
+        }
+        app.buttons["CaptureWorkspaceReturnToCall"].tap()
+        XCTAssertTrue(leave.waitForExistence(timeout: 5))
+        if recordSource {
             let start = recordingStartActions(in: app)[0]
             XCTAssertTrue(start.isEnabled, "The coach must be able to start a recording from the call dock.")
             start.tap()
@@ -6442,7 +6456,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             XCTAssertTrue(stop.waitForNonExistence(timeout: 30), "Stop must save the local source without ending the call.")
             XCTAssertTrue(leave.exists)
         }
-        tools.tap()
         XCTAssertFalse(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.exists)
         XCTAssertTrue(leave.isHittable, "Call controls must stay available with recording tools closed.")
 
@@ -6507,6 +6520,26 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
             XCTAssertTrue(app.buttons["ProviderJoinRoomButton"].firstMatch.waitForExistence(timeout: 10))
         }
+    }
+
+    private func assertCallLayoutSettled(in app: XCUIApplication) {
+        var lastFrames: [CGRect] = []
+        var stableSince = Date()
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let controls = ["CaptureCallOpenChat", "CaptureCallOpenTasks", "CaptureCallToggleTools", "ProviderLeaveRoomButton"]
+                .map { app.buttons[$0].firstMatch }
+            guard controls.allSatisfy({ $0.exists && $0.isHittable }) else { return false }
+            let frames = [app.frame] + controls.map(\.frame)
+            guard frames == lastFrames else {
+                lastFrames = frames
+                stableSince = Date()
+                return false
+            }
+            return Date().timeIntervalSince(stableSince) >= 0.75
+                && frames.dropFirst().allSatisfy { app.frame.contains($0) }
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed,
+                       "Capture evidence only after rotation finishes and every call control is inside the window.")
     }
 
     func testConsentedCapturePlaybackAndCrashRecovery() throws {

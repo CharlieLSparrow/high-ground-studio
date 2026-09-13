@@ -722,6 +722,8 @@ struct MobileSessionConversationThread: View {
     @ObservedObject var client: MobileSessionConversationClient
     let session: MobileCaptureSession
     let previewOnly: Bool
+    var onDismiss: (() -> Void)? = nil
+    var embedded = false
     @Environment(\.dismiss) private var dismiss
     @State private var replyTo: MobileSessionConversationMessage?
     @State private var editing: MobileSessionConversationMessage?
@@ -731,7 +733,19 @@ struct MobileSessionConversationThread: View {
     @State private var openTask: NestChatLinkedTask?
 
     var body: some View {
-        NavigationStack {
+        CaptureWorkspaceNavigation(title: "Chat", embedded: embedded, onDismiss: {
+            if let onDismiss { onDismiss() } else { dismiss() }
+        }, actions: {
+            Button {
+                Task { await client.load(session: session, forceRefresh: true) }
+            } label: {
+                if client.isLoading { ProgressView() }
+                else { Image(systemName: "arrow.clockwise").frame(minWidth: 44, minHeight: 44) }
+            }
+            .disabled(client.isLoading || previewOnly)
+            .accessibilityLabel("Refresh session conversation")
+            .accessibilityIdentifier("CaptureSessionChatRefreshButton")
+        }) {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -768,7 +782,6 @@ struct MobileSessionConversationThread: View {
                 composer
             }
             .background(MobileStudioBackground())
-            .navigationTitle(client.title)
             .sheet(item: $taskMessage) { message in
                 CaptureSessionConversationTaskEditor(client: client, session: session, message: message)
             }
@@ -776,23 +789,6 @@ struct MobileSessionConversationThread: View {
                 Task { await client.load(session: session, forceRefresh: true, quietly: true) }
             }) { task in
                 CaptureSessionConversationTaskDetail(client: client, session: session, linkedTask: task)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await client.load(session: session, forceRefresh: true) }
-                    } label: {
-                        if client.isLoading { ProgressView() }
-                        else { Image(systemName: "arrow.clockwise") }
-                    }
-                    .disabled(client.isLoading || previewOnly)
-                    .accessibilityLabel("Refresh session conversation")
-                    .accessibilityIdentifier("CaptureSessionChatRefreshButton")
-                }
             }
             .confirmationDialog(
                 "Remove this message?",
@@ -814,6 +810,7 @@ struct MobileSessionConversationThread: View {
                 Button("Keep message", role: .cancel) { removeCandidate = nil }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureSessionChatThread")
     }
 
