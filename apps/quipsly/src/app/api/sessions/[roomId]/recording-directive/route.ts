@@ -77,7 +77,7 @@ function participantRecordingState(action: string, receipts: any[]) {
     receipts.every((receipt) => receipt.state === "STOPPED")
   )
     return "STOPPED_SAFELY";
-  if (states.has("STOPPING") || states.has("STOPPED")) return "STOPPING";
+  if (states.has("STOPPING") || states.has("STOPPED") || states.has("STARTED") || states.has("OBSERVED")) return "STOPPING";
   return "WAITING";
 }
 
@@ -99,8 +99,9 @@ function directiveView(
     ) {
       continue;
     }
-    if (!latestByEndpoint.has(receipt.clientInstanceId))
-      latestByEndpoint.set(receipt.clientInstanceId, receipt);
+    const endpointKey = `${receipt.participantId}\0${receipt.clientInstanceId}`;
+    if (!latestByEndpoint.has(endpointKey))
+      latestByEndpoint.set(endpointKey, receipt);
   }
   const endpointReceipts = [...latestByEndpoint.values()];
   const participantStatuses = (options.expectedParticipants ?? []).map(
@@ -138,7 +139,8 @@ function directiveView(
       (participant) => participant.state === "NEEDS_ATTENTION",
     ).length,
     waitingParticipantCount: participantStatuses.filter((participant) =>
-      ["WAITING", "GETTING_READY", "STOPPING"].includes(participant.state),
+      ["WAITING", "GETTING_READY", "STOPPING"].includes(participant.state)
+      && (directive.action === "START" || participant.endpointCount > 0),
     ).length,
     allParticipantsRecording:
       participantStatuses.length > 0 &&
@@ -162,7 +164,7 @@ function directiveView(
     participantStatuses,
     recordingHealth,
     endpointReceipts: endpointReceipts.map((receipt) => ({
-      id: opaqueEndpointId(directive.roomId, receipt.clientInstanceId),
+      id: opaqueEndpointId(directive.roomId, `${receipt.participantId}\0${receipt.clientInstanceId}`),
       clientKind: receipt.clientKind,
       deviceLabel: receipt.deviceLabel,
       participantLabel:
@@ -177,6 +179,26 @@ function directiveView(
   };
 }
 
+// STOP is a new command, but it belongs to the preceding START attempt.
+// Retain endpoints that reported starting even if they disconnected before
+// acknowledging STOP. Conversely, an invite alone is not a recording to save.
+async function withRecordingAttemptReceipts(prisma: any, directive: any) {
+  if (!directive || directive.action !== "STOP") return directive;
+  const start = await prisma.callRecordingDirective.findFirst({
+    where: {
+      roomId: directive.roomId,
+      captureGroupId: directive.captureGroupId,
+      action: "START",
+      sequence: { lt: directive.sequence },
+    },
+    orderBy: { sequence: "desc" },
+    include: { receipts: { orderBy: { receivedAt: "desc" }, take: 500 } },
+  });
+  // A STOP receipt wins over a START receipt for the same installation,
+  // regardless of the order in which an offline outbox delivered them.
+  return { ...directive, receipts: [...(directive.receipts ?? []), ...(start?.receipts ?? [])] };
+}
+
 async function readLatest(prisma: any, roomId: string, actorUserId: string) {
   const directive = await prisma.callRecordingDirective.findFirst({
     where: { roomId },
@@ -185,7 +207,7 @@ async function readLatest(prisma: any, roomId: string, actorUserId: string) {
   });
   if (directive)
     directive.issuedByCurrentActor = directive.actorUserId === actorUserId;
-  return directive;
+  return withRecordingAttemptReceipts(prisma, directive);
 }
 
 export async function GET(
@@ -430,7 +452,7 @@ export async function POST(
           ok: false,
           code: "ALREADY_RECORDING",
           error: "This Session already has an active recording command.",
-          directive: directiveView(result.directive, {
+          directive: directiveView(await withRecordingAttemptReceipts(prisma, result.directive), {
             includeAllEndpoints: true,
             participantLabels,
             expectedParticipants,
@@ -444,7 +466,7 @@ export async function POST(
           ok: false,
           code: "NOT_RECORDING",
           error: "This Session is not currently under a recording command.",
-          directive: directiveView(result.directive, {
+          directive: directiveView(await withRecordingAttemptReceipts(prisma, result.directive), {
             includeAllEndpoints: true,
             participantLabels,
             expectedParticipants,
@@ -457,7 +479,7 @@ export async function POST(
       {
         ok: true,
         idempotentReplay: result.replay,
-        directive: directiveView(result.directive, {
+        directive: directiveView(await withRecordingAttemptReceipts(prisma, result.directive), {
           includeAllEndpoints: true,
           participantLabels,
           expectedParticipants,

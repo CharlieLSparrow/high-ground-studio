@@ -261,6 +261,22 @@ describe("browser recording directive client", () => {
     });
   });
 
+  it.each([false, true])("distinguishes unreported participants from recordings still saving (saved source: %s)", (hasSavedSource) => {
+    const directive = {
+      action: "STOP",
+      participantStatuses: [
+        {id: "absent", participantLabel: "Jordan", state: "WAITING", endpointCount: 0},
+        ...(hasSavedSource ? [{id: "coach", participantLabel: "Coach", state: "STOPPED_SAFELY", endpointCount: 1}] : []),
+      ],
+      recordingHealth: {attentionParticipantCount: 0, waitingParticipantCount: 0, allParticipantsStoppedSafely: false},
+    } as BrowserRecordingDirective;
+    expect(projectBrowserRecordingHealth(directive)).toMatchObject({
+      title: hasSavedSource ? "Available recordings saved locally" : "No recording reported",
+      participants: [expect.objectContaining({label: "No recording reported"}), ...(hasSavedSource ? [expect.anything()] : [])],
+    });
+    expect(projectBrowserRecordingHealth(directive).detail).toContain("offline");
+  });
+
   it("reads the latest private coordination intent", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

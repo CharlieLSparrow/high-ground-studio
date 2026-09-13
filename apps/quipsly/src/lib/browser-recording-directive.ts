@@ -98,6 +98,10 @@ export function projectBrowserRecordingHealth(
   const health = directive.recordingHealth;
   const attentionCount = health.attentionParticipantCount;
   const waitingCount = health.waitingParticipantCount;
+  const unreportedCount = directive.action === "STOP"
+    ? directive.participantStatuses.filter((participant) => participant.endpointCount === 0).length
+    : 0;
+  const savedCount = directive.participantStatuses.filter((participant) => participant.state === "STOPPED_SAFELY").length;
   const selfOnly =
     directive.participantStatuses.length === 1 &&
     directive.participantStatuses[0]?.participantLabel === "You";
@@ -130,6 +134,11 @@ export function projectBrowserRecordingHealth(
       ? "This browser confirmed that your protected local source stopped."
       : "Each expected recorder confirmed its local stop.";
     tone = "ready";
+  } else if (directive.action === "STOP" && waitingCount === 0 && unreportedCount > 0) {
+    title = savedCount > 0 ? "Available recordings saved locally" : "No recording reported";
+    detail = savedCount > 0
+      ? `${unreportedCount} ${unreportedCount === 1 ? "participant has" : "participants have"} no recording reported for this take. Any offline recording can still upload when that device reconnects.`
+      : "No device has reported a recording for this take. If you recorded offline, reopen Quipsly on that device to resume syncing.";
   } else if (waitingCount > 0) {
     title = selfOnly
       ? directive.action === "START"
@@ -166,7 +175,7 @@ export function projectBrowserRecordingHealth(
                   ? "Saved locally"
                   : directive.action === "START"
                     ? "Waiting for recorder"
-                    : "Waiting to save",
+                    : participant.endpointCount === 0 ? "No recording reported" : "Waiting to save",
     })),
   };
 }

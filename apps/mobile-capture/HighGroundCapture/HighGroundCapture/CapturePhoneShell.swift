@@ -11657,6 +11657,7 @@ private struct CaptureRecorderView: View {
                         CaptureRecordingCoordinationStatus(
                             message: coordinationMessage,
                             isRecording: captureIsActive,
+                            recordingRequested: recordingCoordinator.currentDirective?.shouldRecord ?? captureIsActive,
                             joinConfirmationRequired: recordingCoordinator.joinConfirmationRequired,
                             participantStatuses: recordingCoordinator.currentDirective?.participantStatuses ?? [],
                             recordingHealth: recordingCoordinator.currentDirective?.recordingHealth,
@@ -19206,6 +19207,7 @@ private struct CaptureRecordingModePicker: View {
 private struct CaptureRecordingCoordinationStatus: View {
     let message: String
     let isRecording: Bool
+    let recordingRequested: Bool
     let joinConfirmationRequired: Bool
     let participantStatuses: [CaptureRecordingParticipantStatus]
     let recordingHealth: CaptureRecordingHealth?
@@ -19242,7 +19244,8 @@ private struct CaptureRecordingCoordinationStatus: View {
                             .font(.caption)
                             .lineLimit(2)
                         Spacer()
-                        Text(participantLabel(participant.state))
+                        Text(participant.state == .waiting && !recordingRequested && participant.endpointCount == 0
+                            ? "No recording reported" : participantLabel(participant.state))
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(participantTint(participant.state))
                     }
@@ -19299,10 +19302,13 @@ private struct CaptureRecordingCoordinationStatus: View {
         if health.allParticipantsStoppedSafely {
             return selfOnly ? "Your recording is saved locally" : "Everyone’s recording is saved locally"
         }
-        if selfOnly {
-            return isRecording ? "Starting your recording" : "Saving your recording"
+        if !recordingRequested && health.waitingParticipantCount == 0 && unreportedCount > 0 {
+            return hasSavedRecording ? "Available recordings saved locally" : "No recording reported"
         }
-        if isRecording {
+        if selfOnly {
+            return recordingRequested ? "Starting your recording" : "Saving your recording"
+        }
+        if recordingRequested {
             return health.waitingParticipantCount == 1
                 ? "Waiting for 1 person"
                 : "Waiting for \(health.waitingParticipantCount) people"
@@ -19328,12 +19334,17 @@ private struct CaptureRecordingCoordinationStatus: View {
                 ? "\(CaptureDeviceVocabulary.thisDeviceCapitalized) confirmed that your local recording stopped."
                 : "Each expected recorder confirmed its local stop."
         }
+        if !recordingRequested && health.waitingParticipantCount == 0 && unreportedCount > 0 {
+            return hasSavedRecording
+                ? "\(unreportedCount) \(unreportedCount == 1 ? "participant has" : "participants have") no recording reported for this take. Any offline recording can still upload when that device reconnects."
+                : "No device has reported a recording for this take. If you recorded offline, reopen Quipsly on that device to resume syncing."
+        }
         if selfOnly {
-            return isRecording
+            return recordingRequested
                 ? "Keep this Session open while your recorder gets ready."
                 : "Keep this Session open while your recording finishes saving."
         }
-        return isRecording
+        return recordingRequested
             ? "The call can continue while Quipsly gets every recorder ready."
             : "Keep this Session open while the recordings finish saving."
     }
@@ -19341,6 +19352,14 @@ private struct CaptureRecordingCoordinationStatus: View {
     private var selfOnly: Bool {
         participantStatuses.count == 1
             && participantStatuses.first?.participantLabel == "You"
+    }
+
+    private var unreportedCount: Int {
+        participantStatuses.filter { $0.endpointCount == 0 }.count
+    }
+
+    private var hasSavedRecording: Bool {
+        participantStatuses.contains { $0.state == .stoppedSafely }
     }
 
     private func healthSymbol(_ health: CaptureRecordingHealth) -> String {
@@ -19364,7 +19383,7 @@ private struct CaptureRecordingCoordinationStatus: View {
         case .needsAttention: "Needs attention"
         case .stopping: "Saving recording"
         case .stoppedSafely: "Saved locally"
-        case .waiting: isRecording ? "Waiting for recorder" : "Waiting to save"
+        case .waiting: recordingRequested ? "Waiting for recorder" : "Waiting to save"
         }
     }
 

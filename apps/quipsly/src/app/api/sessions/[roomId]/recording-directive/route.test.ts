@@ -287,6 +287,67 @@ describe("Session recording directive route", () => {
     expect(JSON.stringify(packet)).not.toContain("participant-2");
   });
 
+  function stoppedAttempt(stopStates: Array<[string, string]>, startStates: Array<[string, string]>) {
+    const receipts = (states: Array<[string, string]>) => states.map(([participantId, state]) => ({
+      participantId, state, clientInstanceId: `device-${participantId}`, clientKind: "web",
+      deviceLabel: "Test browser", occurredAt: directive.issuedAt, receivedAt: directive.issuedAt,
+    }));
+    prisma.callRecordingDirective.findFirst
+      .mockResolvedValueOnce({...directive, action: "STOP", sequence: 2n, receipts: receipts(stopStates)})
+      .mockResolvedValueOnce({...directive, receipts: receipts(startStates)});
+  }
+
+  it("does not call an absent participant a recording still finishing", async () => {
+    stoppedAttempt([["participant-1", "STOPPED"]], [["participant-1", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses: [{state: "STOPPED_SAFELY", endpointCount: 1}, {state: "WAITING", endpointCount: 0}],
+      recordingHealth: {waitingParticipantCount: 0, allParticipantsStoppedSafely: false},
+    });
+    expect(prisma.callRecordingDirective.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: {roomId: "room-1", captureGroupId: room.captureGroupId, action: "START", sequence: {lt: 2n}},
+    }));
+  });
+
+  it("retains a disconnected recorder until it acknowledges STOP", async () => {
+    stoppedAttempt([["participant-1", "STOPPED"]], [["participant-1", "STARTED"], ["participant-2", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses: [{state: "STOPPED_SAFELY"}, {state: "STOPPING", endpointCount: 1}],
+      recordingHealth: {waitingParticipantCount: 1, allParticipantsStoppedSafely: false},
+    });
+  });
+
+  it("lets stop evidence supersede a prior start failure for the same endpoint", async () => {
+    stoppedAttempt([["participant-1", "STOPPED"], ["participant-2", "STOPPED"]], [["participant-1", "START_FAILED"], ["participant-2", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive.recordingHealth).toMatchObject({
+      waitingParticipantCount: 0, attentionParticipantCount: 0, allParticipantsStoppedSafely: true,
+    });
+  });
+
+  it("does not expose another participant's prior START receipts to a client", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "guest-2"}} as never);
+    prisma.callRoom.findFirst.mockResolvedValueOnce(room).mockResolvedValueOnce(null);
+    stoppedAttempt([], [["participant-1", "STARTED"], ["participant-2", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive.participantStatuses).toHaveLength(1);
+    expect(packet.directive.participantStatuses[0]).toMatchObject({participantLabel: "You", state: "STOPPING"});
+    expect(packet.directive.endpointReceipts).toHaveLength(1);
+    expect(packet.directive.endpointReceipts[0].participantLabel).toBe("You");
+    expect(JSON.stringify(packet)).not.toContain("Coach Taylor");
+  });
+
+  it("keeps participant evidence distinct when installation IDs coincide", async () => {
+    prisma.callRecordingDirective.findFirst.mockResolvedValue({...directive, receipts: room.participants.map(participant => ({
+      participantId: participant.id, clientInstanceId: "same-installation", state: "STARTED",
+      clientKind: "web", deviceLabel: "Browser", occurredAt: directive.issuedAt, receivedAt: directive.issuedAt,
+    }))});
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive.recordingHealth.allParticipantsRecording).toBe(true);
+    expect(new Set(packet.directive.endpointReceipts.map((item: {id: string}) => item.id)).size).toBe(2);
+  });
+
   it("keeps a non-controller scoped to their own endpoint state", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "guest-2", primaryEmail: "guest@example.test" },
