@@ -100,13 +100,19 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
   const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
-  const [mobilePanel, setMobilePanel] = useState<"call" | "chat">("call");
-  const [desktopChatOpen, setDesktopChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
+  const dockDialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    setMobilePanel("call");
-    setDesktopChatOpen(true);
+    const dialog = dockDialogRef.current;
+    if (!dialog) return;
+    if (isOpen && !dialog.open) dialog.showModal();
+    if (!isOpen && dialog.open) dialog.close();
+  }, [active?.callRoomId, isOpen]);
+
+  useEffect(() => {
+    setChatOpen(false);
   }, [active?.callRoomId]);
 
   const requestSession = useCallback((config: LiveSessionDockConfig, requestOpen: boolean) => {
@@ -184,13 +190,17 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !isOpen) return;
+      if (event.key !== "Escape" || event.defaultPrevented || !isOpen) return;
       event.preventDefault();
+      if (chatOpen) {
+        setChatOpen(false);
+        return;
+      }
       minimize();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, minimize]);
+  }, [chatOpen, isOpen, minimize]);
 
   const value = useMemo<LiveSessionDockContextValue>(() => ({
     activeCallRoomId: active?.callRoomId || null,
@@ -212,43 +222,41 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
         <div className="min-w-0">{children}</div>
 
         {active ? (
-          <aside
+          <dialog
+            ref={dockDialogRef}
             aria-label={`${active.sessionTitle} live call dock`}
+            onCancel={(event) => { event.preventDefault(); minimize(); }}
             aria-hidden={!isOpen}
             inert={!isOpen ? true : undefined}
             className={isOpen
-              ? "fixed inset-x-2 top-2 bottom-20 z-[70] flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] border border-[#cbb791] bg-[#fdf8ee] p-3 shadow-2xl shadow-black/30 md:inset-6"
+              ? "fixed inset-0 z-[70] m-0 flex h-dvh max-h-dvh w-full max-w-none min-h-0 flex-col overflow-hidden border-0 bg-background p-0 text-foreground"
               : "pointer-events-none fixed h-px w-px overflow-hidden opacity-0"
             }
           >
-            <header className="z-20 shrink-0 rounded-2xl border border-[#d8c7a7] bg-[#3d3122] p-3 text-white shadow-lg">
-              <div className="flex items-start justify-between gap-3">
+            <header className="z-20 shrink-0 border-b border-border px-4 py-3 sm:px-6">
+              <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
-                    <Radio size={13} aria-hidden="true" /> {liveSessionStatusLabel(status)}
-                  </p>
-                  <h2 className="mt-1 truncate font-serif text-lg font-black">{active.sessionTitle}</h2>
+                  <h2 className="truncate text-base font-semibold">{active.sessionTitle}</h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{liveSessionStatusLabel(status)}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" onClick={() => setDesktopChatOpen((open) => !open)} aria-expanded={desktopChatOpen} aria-controls="live-call-chat-panel" className="hidden min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-xs font-bold hover:bg-white/10 lg:inline-flex"><MessageSquareText size={16} />{desktopChatOpen ? "Hide chat" : "Show chat"}</button>
-                  <button type="button" onClick={minimize} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Minimize live call"><ChevronDown size={18} /></button>
-                  <button type="button" onClick={requestClose} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-rose-500/20" aria-label="Close live call"><X size={18} /></button>
+                  <button type="button" onClick={() => setChatOpen((open) => !open)} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span></button>
+                  <button type="button" onClick={minimize} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Minimize live call"><ChevronDown size={18} /></button>
+                  <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Close live call"><X size={18} /></button>
                 </div>
               </div>
-              <nav aria-label="Live Session work" className="mt-3 flex gap-2 overflow-x-auto pb-1 text-[10px] font-black uppercase tracking-wide">
-                <Link href={sessionHref} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Session workspace</Link>
+              <details className="group mt-1 text-xs text-muted-foreground">
+              <summary className="w-fit cursor-pointer py-1 hover:text-foreground">Session workspace</summary>
+              <nav aria-label="Live Session work" className="flex flex-wrap gap-2 py-2 text-xs font-medium">
+                <Link href={sessionHref} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Session workspace</Link>
                 {callIsActive(status) ? <>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=transcript")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Transcript</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=notes")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Notes</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Goals & tasks</Link></> : null}
-                {active.parentHref ? <Link href={active.parentHref} onClick={minimize} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/40 px-3 py-2 text-amber-100 hover:bg-white/10">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
+                <Link href={`${sessionHref.replace("mode=overview", "mode=transcript")}`} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Transcript</Link>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=notes")}`} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Notes</Link>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Goals & tasks</Link></> : null}
+                {active.parentHref ? <Link href={active.parentHref} onClick={minimize} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 hover:bg-muted">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
               </nav>
+              </details>
             </header>
-
-            <div className="mt-3 flex shrink-0 gap-2 lg:hidden" role="group" aria-label="Call workspace view">
-              <button type="button" aria-pressed={mobilePanel === "call"} aria-controls="live-call-stage-panel" onClick={() => setMobilePanel("call")} className={`min-h-11 flex-1 rounded-xl border px-3 text-sm font-bold ${mobilePanel === "call" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-card-foreground"}`}><Radio className="mr-2 inline" size={16} />Call</button>
-              <button type="button" aria-pressed={mobilePanel === "chat"} aria-controls="live-call-chat-panel" onClick={() => setMobilePanel("chat")} className={`min-h-11 flex-1 rounded-xl border px-3 text-sm font-bold ${mobilePanel === "chat" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-card-foreground"}`}><MessageSquareText className="mr-2 inline" size={16} />Chat</button>
-            </div>
 
             {pending ? (
               <section className="mt-3 max-h-[35dvh] shrink-0 overflow-y-auto rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-live="polite">
@@ -272,8 +280,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </section>
             ) : null}
 
-            <div data-testid="live-call-workspace" className={`mt-3 grid min-h-0 flex-1 gap-3 ${desktopChatOpen ? "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,23rem)]" : "lg:grid-cols-1"}`}>
-              <div id="live-call-stage-panel" className={`min-h-0 min-w-0 overflow-y-auto overscroll-contain ${mobilePanel === "call" ? "block" : "hidden"} lg:block`}>
+            <div data-testid="live-call-workspace" className={`relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6 ${chatOpen ? "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,23rem)]" : "lg:grid-cols-1"}`}>
+              <div id="live-call-stage-panel" className={`min-h-0 min-w-0 overflow-y-auto overscroll-contain ${chatOpen ? "hidden lg:block" : "block"}`}>
               <LiveSessionRoom
                 key={active.callRoomId}
                 callRoomId={active.callRoomId}
@@ -290,10 +298,13 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 compact
                 narrow
                 showSessionHeading={false}
+                stageLayout
+                onOpenSessionWork={minimize}
                 controlsContainer={controlsContainer}
               />
               </div>
-              <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${mobilePanel === "chat" ? "flex" : "hidden"} ${desktopChatOpen ? "lg:flex" : "lg:hidden"}`}>
+              <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>
+              <button type="button" onClick={() => setChatOpen(false)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted lg:hidden"><PanelRightClose size={16} />Back to call</button>
               {active.projectSlug ? (
                 <SessionThread
                   projectSlug={active.projectSlug}
@@ -313,8 +324,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               )}
               </div>
             </div>
-            <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="mt-3 shrink-0 rounded-2xl border border-border bg-card p-3 text-card-foreground empty:hidden" />
-          </aside>
+            <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-foreground empty:hidden" />
+          </dialog>
         ) : null}
       </div>
 

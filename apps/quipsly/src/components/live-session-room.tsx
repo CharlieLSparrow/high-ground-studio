@@ -14,6 +14,8 @@ import {
   PhoneOff,
   Radio,
   RefreshCw,
+  Settings2,
+  Ellipsis,
   Smartphone,
   Users,
   Video,
@@ -29,9 +31,11 @@ import {
   TrackPublication,
 } from "livekit-client";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
+import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
 import {
@@ -497,6 +501,8 @@ export function LiveSessionRoom({
   narrow = false,
   showSessionHeading = true,
   controlsContainer = null,
+  stageLayout = false,
+  onOpenSessionWork,
 }: {
   callRoomId: string;
   captureGroupId?: string | null;
@@ -515,8 +521,13 @@ export function LiveSessionRoom({
   narrow?: boolean;
   showSessionHeading?: boolean;
   controlsContainer?: HTMLElement | null;
+  stageLayout?: boolean;
+  onOpenSessionWork?: () => void;
 }) {
   const router = useRouter();
+  const [toolPanel, setToolPanel] = useState<"devices" | "recording" | "details" | null>(null);
+  const closeToolPanel = useCallback(() => setToolPanel(null), []);
+  const [consentContainer, setConsentContainer] = useState<HTMLDivElement | null>(null);
   const experience = useMemo(
     () => sessionExperienceForPurpose(purpose || (kind === "episode" ? "PODCAST" : "COACHING")),
     [kind, purpose],
@@ -2316,7 +2327,10 @@ export function LiveSessionRoom({
       stopRequestVersion={sourceStopRequestVersion}
       onGuardianEvidenceChange={reportRetainedGuardianEvidence}
       onRecordingConsentChange={handleRecordingConsentChange}
+      consentContainer={stageLayout && connected && toolPanel !== "recording" ? consentContainer : null}
+      onOpenRecordingSettings={() => setToolPanel("recording")}
       onOpenDeviceSettings={() => {
+        if (stageLayout) setToolPanel("devices");
         const settings = deviceSettingsRef.current;
         if (!settings) return;
         settings.open = true;
@@ -2335,7 +2349,7 @@ export function LiveSessionRoom({
   const callVideoStage = (
     <div
       data-testid="call-video-stage"
-      className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : "aspect-video"}`}
+      className={`relative overflow-hidden rounded-2xl bg-[#211a14] ${stageLayout ? connected ? "min-h-48 flex-1 max-h-[calc(100dvh-18rem)]" : "min-h-40 aspect-video max-h-[45dvh]" : !connected && !cameraWanted ? "h-28" : "aspect-video"}`}
       aria-label={remoteVideoTrackCount > 0 ? "Call video stage with your preview" : "Your camera preview"}
     >
       <div
@@ -2352,7 +2366,17 @@ export function LiveSessionRoom({
           ? `absolute bottom-3 right-3 z-10 aspect-video w-[32%] max-w-56 rounded-xl border-2 border-white/90 bg-black object-cover shadow-2xl ${cameraWanted && !cameraMuted ? "" : "invisible"}`
           : `absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`}
       />
-      {remoteVideoTrackCount === 0 && (!cameraWanted || cameraMuted) ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
+      {remoteVideoTrackCount === 0 && (!cameraWanted || cameraMuted) ? <div className="absolute inset-0 flex flex-wrap content-center items-center justify-center gap-6 overflow-y-auto p-5 text-center text-[#f5dfb9]">
+        {connected && participants.length > 0 ? participants.map((participant) => (
+          <div key={participant.identity} className="min-w-0 max-w-40">
+            <div className={`mx-auto grid size-16 place-items-center rounded-full bg-[#514b36] text-2xl font-medium sm:size-24 sm:text-3xl ${participant.speaking ? "ring-4 ring-[#b5c991] ring-offset-4 ring-offset-[#211a14]" : ""}`}>
+              {participant.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
+            </div>
+            <p className="mt-4 truncate text-sm font-medium">{participant.name}</p>
+            {participant.speaking ? <span className="sr-only">Speaking</span> : null}
+          </div>
+        )) : <div><CameraOff className="mx-auto size-8 opacity-70" aria-hidden="true" /><p className="mt-3 text-sm font-medium">Camera off</p></div>}
+      </div> : null}
       {!connected && remoteVideoTrackCount === 0 && cameraWanted && !cameraMuted && !previewTested ? (
         <div className="absolute inset-0 grid place-items-center bg-black/35 px-6 text-center text-white">
           <div>
@@ -2363,17 +2387,22 @@ export function LiveSessionRoom({
         </div>
       ) : null}
       {remoteVideoTrackCount > 0 && (!cameraWanted || cameraMuted) ? <div className="absolute bottom-3 right-3 z-10 inline-flex min-h-10 items-center gap-2 rounded-full bg-black/75 px-3 text-[10px] font-black uppercase tracking-wide text-white"><CameraOff size={14} aria-hidden="true" /> You · Camera off</div> : null}
-      {remoteVideoTrackCount === 0 ? <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div> : cameraWanted && !cameraMuted ? <div className="absolute bottom-5 right-5 z-20 rounded-full bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">You</div> : null}
+      {remoteVideoTrackCount === 0 && (!connected || cameraWanted && !cameraMuted) ? <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white">You</div> : cameraWanted && !cameraMuted ? <div className="absolute bottom-5 right-5 z-20 rounded-full bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">You</div> : null}
     </div>
   );
 
   const callControls = connected ? (
     <div className="flex flex-col gap-2" role="group" aria-label="Call controls">
-      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-center">
         {callAudioMode === "this-device" ? (
           <button type="button" onClick={() => void toggleMicrophone()} aria-pressed={microphoneMuted} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:cursor-not-allowed disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
         ) : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
         <button type="button" onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-black disabled:opacity-45 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{cameraToggleBusy ? <LoaderCircle size={16} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
+      {stageLayout ? <>
+        <button type="button" onClick={() => setToolPanel("recording")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><span className={`size-3 rounded-full ${retainedGuardianEvidence?.status === "recording" ? "animate-pulse bg-red-500" : "bg-current"}`} />{retainedGuardianEvidence?.status === "recording" ? "Recording" : "Record"}</button>
+        <button type="button" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Settings2 size={18} />Devices</button>
+        <button type="button" onClick={() => setToolPanel("details")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Ellipsis size={18} />More</button>
+      </> : null}
         <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-rose-800 px-2 py-2 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60 sm:flex-row sm:gap-2 sm:rounded-full sm:px-4"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
       </div>
       {callAudioMode === "this-device" ? <div><LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} compact={Boolean(controlsContainer)} /></div> : null}
@@ -2382,32 +2411,44 @@ export function LiveSessionRoom({
   ) : null;
 
   return (
-    <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
+    <section className={stageLayout ? "flex min-h-full min-w-0 flex-col text-foreground" : `overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className={showSessionHeading ? "max-w-3xl" : "sr-only"}>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Call · {experience.label}</p>
           <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{sessionTitle}</h2>
         </div>
-        <div className={showSessionHeading || connected ? "flex flex-wrap items-center gap-2" : "sr-only"}>
+        <div className={showSessionHeading || connected && !stageLayout ? "flex flex-wrap items-center gap-2" : "sr-only"}>
           {connected ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">{participants.length} in call</span> : null}
           <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
         </div>
       </div>
 
-      <div className={`${showSessionHeading ? "mt-5 " : ""}grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
-        <div className="space-y-4">
-          {!connected && callPermanentlyClosed ? (
+      <div className={stageLayout ? "flex min-h-0 flex-1 flex-col" : `${showSessionHeading ? "mt-5 " : ""}grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
+        <div className={stageLayout ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
+          {stageLayout && status === "ended" && callEndedByPerson ? (
+            <section aria-label="After the call" className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center py-8">
+              <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-muted"><PhoneOff size={26} /></div>
+              <h3 className="text-3xl font-semibold">You’ve left the call</h3>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">Continue with your session’s recordings, notes and next steps.</p>
+              <nav aria-label="Continue session work" className="mt-6 grid gap-3">
+                <Link onClick={onOpenSessionWork} href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`} className="rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold text-primary-foreground">Open recordings</Link>
+                <Link onClick={onOpenSessionWork} href={`/sessions/${encodeURIComponent(callRoomId)}?mode=notes`} className="rounded-xl border border-border px-4 py-3 text-center text-sm font-semibold">Notes and recap</Link>
+                <Link onClick={onOpenSessionWork} href={`/sessions/${encodeURIComponent(callRoomId)}?mode=work`} className="rounded-xl border border-border px-4 py-3 text-center text-sm font-semibold">Tasks and goals</Link>
+              </nav>
+              {!callPermanentlyClosed ? <button type="button" onClick={() => void join()} className="mt-4 min-h-11 self-center px-4 text-sm underline underline-offset-4">Rejoin call</button> : null}
+            </section>
+          ) : !connected && callPermanentlyClosed ? (
             <section className="rounded-2xl border border-slate-300 bg-slate-50 p-4" aria-label="Call closed">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Call ended</p>
               <h3 className="mt-1 font-serif text-2xl font-black text-slate-950">This Session is closed</h3>
               <p className="mt-2 text-xs font-bold leading-5 text-slate-800">Your retained recording is separate and remains available below to stop, save, upload, or recover.</p>
             </section>
           ) : !connected ? (
-            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 sm:p-5" aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <section className={stageLayout ? "mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center py-2 sm:py-6 lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)] lg:content-center lg:gap-x-8" : "rounded-2xl border border-violet-200 bg-violet-50/70 p-4 sm:p-5"} aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
+              <div className={`flex flex-wrap items-start justify-between gap-3 ${stageLayout ? "lg:col-start-2 lg:row-start-1" : ""}`}>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">{callRecoveryAvailable ? "Call disconnected" : "Call lobby"}</p>
-                  <h3 className="mt-1 font-serif text-2xl font-black text-violet-950">{callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}</h3>
+                  {!stageLayout ? <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">{callRecoveryAvailable ? "Call disconnected" : "Call lobby"}</p> : null}
+                  <h3 className="text-2xl font-semibold text-foreground">{callRecoveryAvailable ? "Ready to rejoin?" : "Ready to join?"}</h3>
                   <p className="mt-1 text-xs font-bold leading-5 text-violet-900">
                     {callAudioMode === "other-device"
                       ? "Call audio on your other device"
@@ -2417,8 +2458,8 @@ export function LiveSessionRoom({
                 </div>
                 {previewTested ? <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-950">Preview ready</span> : null}
               </div>
-              <div className="mt-4">{callVideoStage}</div>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className={stageLayout ? "mt-4 lg:col-start-1 lg:row-span-4 lg:row-start-1 lg:mt-0" : "mt-4"}>{callVideoStage}</div>
+              <div className={`mt-4 flex flex-wrap gap-2 ${stageLayout ? "justify-center lg:col-start-2" : ""}`}>
                 {callAudioMode === "this-device" ? <button
                   type="button"
                   onClick={() => {
@@ -2454,7 +2495,8 @@ export function LiveSessionRoom({
                 >
                   {cameraEnabledForNextJoin ? <Camera size={16} /> : <CameraOff size={16} />}{cameraEnabledForNextJoin ? "Camera on" : "Camera off"}
                 </button>
-                <button type="button" onClick={() => void join()} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50">
+                {stageLayout ? <button type="button" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-xs font-semibold"><Settings2 size={16} />Devices</button> : null}
+                <button type="button" autoFocus={stageLayout} onClick={() => void join()} disabled={status === "checking" || status === "joining"} className={stageLayout ? "mt-2 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground disabled:opacity-50" : "inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50"}>
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
                 </button>
               </div>
@@ -2464,32 +2506,42 @@ export function LiveSessionRoom({
                   muted={mutedForNextJoin}
                 />
               ) : null}
-              <p className="mt-3 text-[11px] font-bold leading-5 text-violet-900">
+              <p className={`mt-3 text-xs leading-5 text-muted-foreground ${stageLayout ? "text-center lg:col-start-2" : ""}`}>
                 {callAudioMode === "other-device"
                   ? "Quipsly keeps this device’s call microphone and speakers off to prevent echo."
                   : mutedForNextJoin
                     ? "This device will join muted."
-                    : "This device will handle the conversation audio."}
+                    : stageLayout ? "" : "This device will handle the conversation audio."}
                 {" "}Joining doesn’t start recording.
               </p>
             </section>
           ) : null}
 
           {connected ? callVideoStage : null}
+          {stageLayout ? <div ref={setConsentContainer} hidden={!connected} className="empty:hidden" data-testid="call-recording-choice-slot" /> : null}
+          {stageLayout && connected && retainedGuardianEvidence?.issue ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-card p-3 text-sm">
+            <p>Recording needs attention: {retainedGuardianEvidence.issue.detail}</p>
+            <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl border border-border px-3 font-semibold">Open recording</button>
+          </div> : null}
 
           {/* Keep transport and capture ownership here while the dock places
               these controls outside its independently scrolling/hidden panes. */}
           {controlsContainer ? createPortal(callControls, controlsContainer) : callControls}
 
+          {stageLayout && !connected && showRetainedSourceControls ? <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold">Recordings and saved uploads</button> : null}
+
           {/* One stable recorder owns capture/recovery across call transitions.
               Keep it mounted in the lobby so a reload resumes saved uploads
               without asking someone to join the conversation again. */}
+          <CallWorkspacePanel title="Recording" open={toolPanel === "recording"} onClose={closeToolPanel} inline={!stageLayout}>
           <div hidden={!showRetainedSourceControls} data-testid="session-recorder-surface">
             {retainedSourceControls}
           </div>
+          </CallWorkspacePanel>
 
-          <details ref={deviceSettingsRef} data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
+          <CallWorkspacePanel title="Audio and video settings" open={toolPanel === "devices"} onClose={closeToolPanel} inline={!stageLayout}>
+          <details ref={deviceSettingsRef} open={stageLayout || undefined} data-testid="call-device-settings" className={stageLayout ? "" : "rounded-2xl border border-[#d8c7a7] bg-white p-4"}>
+            <summary className={stageLayout ? "hidden" : "cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]"}>Audio and video settings</summary>
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
             <button
               type="button"
@@ -2581,13 +2633,15 @@ export function LiveSessionRoom({
             </div>
           </details>
           </details>
+          </CallWorkspacePanel>
 
           {showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status) ? (
-            <p data-testid="call-status-message" role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
+            <p data-testid="call-status-message" role="status" aria-live="polite" className={stageLayout && connected && message.startsWith("You’re connected.") ? "sr-only" : "rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6 text-card-foreground"}>{message}</p>
           ) : null}
 
         </div>
 
+        <CallWorkspacePanel title="Call details" open={toolPanel === "details"} onClose={closeToolPanel} inline={!stageLayout}>
         <aside className="space-y-3">
           <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={["recording", "needs-review"].includes(providerRecordingState)}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">More call and recording options</summary>
@@ -2646,6 +2700,11 @@ export function LiveSessionRoom({
             </div>
           </details>
         </aside>
+        <details className="mt-4 rounded-2xl border border-border p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Recording diagnostics</summary>
+          <div className="mt-4"><SessionGuardianCard projection={guardianProjection} /></div>
+        </details>
+        </CallWorkspacePanel>
       </div>
       <div className="mt-5 space-y-4">
         {!connected && localRecordingFallback ? (
@@ -2663,14 +2722,6 @@ export function LiveSessionRoom({
             </p>
           </section>
         ) : null}
-        <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-            Recording safety details
-          </summary>
-          <div className="mt-4">
-            <SessionGuardianCard projection={guardianProjection} />
-          </div>
-        </details>
       </div>
     </section>
   );

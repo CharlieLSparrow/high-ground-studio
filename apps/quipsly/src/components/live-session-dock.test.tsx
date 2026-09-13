@@ -95,19 +95,17 @@ describe("LiveSessionDockProvider", () => {
   it("switches call and chat views without remounting the room or discarding a draft", async () => {
     const user = userEvent.setup();
     render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
-    await user.click(screen.getByRole("button", { name: "Chat" }));
-    expect(screen.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "Show chat" }));
+    expect(screen.getByRole("button", { name: "Hide chat" })).toHaveAttribute("aria-expanded", "true");
     expect(document.getElementById("live-call-stage-panel")).toHaveClass("hidden", "lg:block");
     await user.type(screen.getByRole("textbox", { name: "Message" }), "A thought to come back to");
-    await user.click(screen.getByRole("button", { name: "Call" }));
-    expect(document.getElementById("live-call-chat-panel")).toHaveClass("hidden", "lg:flex");
-    await user.click(screen.getByRole("button", { name: "Hide chat" }));
+    await user.click(screen.getByRole("button", { name: "Back to call" }));
+    expect(document.getElementById("live-call-chat-panel")).toHaveClass("hidden");
     expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-expanded", "false");
-    expect(document.getElementById("live-call-chat-panel")).toHaveClass("lg:hidden");
     await user.click(screen.getByRole("button", { name: "Show chat" }));
     await user.click(screen.getByRole("button", { name: "Minimize live call" }));
     await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", { name: "Open live call" }));
-    await user.click(screen.getByRole("button", { name: "Chat" }));
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("A thought to come back to");
     expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
     expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();

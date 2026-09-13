@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { BrowserSourceRecorder } from "./browser-source-recorder";
 import type { BrowserCaptureStudioHandoff } from "@/lib/browser-capture-studio-handoff";
 import { issueBrowserRecordingDirective } from "@/lib/browser-recording-directive";
@@ -67,6 +67,27 @@ describe("browser recorder before recording", () => {
     expect(screen.queryByTestId("recording-readiness-message")).not.toBeInTheDocument();
     expect(screen.queryByText("Recording processing")).not.toBeInTheDocument();
     expect(screen.queryByText(/Allow recording above/)).not.toBeInTheDocument();
+  });
+
+  it("lets a client allow recording on the call stage while recorder details remain closed", async () => {
+    const stage = document.createElement("div");
+    document.body.appendChild(stage);
+    const onOpenRecordingSettings = jest.fn();
+    const view = render(<div hidden><BrowserSourceRecorder {...props} consentContainer={stage} onOpenRecordingSettings={onOpenRecordingSettings} /></div>);
+    try {
+      const allow = await within(stage).findByRole("button", { name: "Allow recording" });
+      await waitFor(() => expect(allow).toBeEnabled());
+      expect(allow).toBeVisible();
+      expect(within(stage).getByText(/Allow audio recording and transcription/)).toBeVisible();
+      fireEvent.click(within(stage).getByRole("button", { name: "Recording settings" }));
+      expect(onOpenRecordingSettings).toHaveBeenCalledTimes(1);
+      fireEvent.click(allow);
+      await waitFor(() => expect(within(stage).queryByRole("button", { name: "Allow recording" })).not.toBeInTheDocument());
+      const writes = fetchMock.mock.calls.filter(([url, init]) => url.includes("/consent") && init?.method === "POST");
+      expect(writes).toHaveLength(1);
+      expect(JSON.parse(writes[0][1].body)).toMatchObject({ callRoomId: "room", consentAction: "GRANT", canRecordAudio: true, canTranscribe: true });
+      expect(issueBrowserRecordingDirective).not.toHaveBeenCalled();
+    } finally { view.unmount(); stage.remove(); }
   });
 
   it("explains the client's role instead of promising a Record button they do not have", async () => {

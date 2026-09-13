@@ -16,6 +16,7 @@ import {
   Video,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   QUIPSLY_BROWSER_SOURCE_CAPTURE_KIND,
   browserSourceCanBegin,
@@ -293,6 +294,8 @@ export function BrowserSourceRecorder({
   onGuardianEvidenceChange,
   onRecordingConsentChange,
   onOpenDeviceSettings,
+  consentContainer = null,
+  onOpenRecordingSettings,
 }: {
   callRoomId: string;
   captureGroupId: string;
@@ -317,6 +320,8 @@ export function BrowserSourceRecorder({
     everyoneConsentGranted: boolean;
   }) => void;
   onOpenDeviceSettings?: () => void;
+  consentContainer?: HTMLElement | null;
+  onOpenRecordingSettings?: () => void;
 }) {
   const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
   const [message, setMessage] = useState("Getting recording ready…");
@@ -2840,6 +2845,21 @@ export function BrowserSourceRecorder({
       ? "Needs attention"
       : recorderStatusLabel;
 
+  const consentChoice = !conversationEnded && vaultAvailable && !myConsentCoversSource ? (
+    <section className="rounded-xl border border-border bg-card p-3 text-card-foreground" aria-label="Recording consent needed">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Allow {sourceType === "video" ? "video and audio" : "audio"} recording{transcriptionAllowed ? " and transcription" : ""}?</p>
+          <p className="mt-1 text-xs text-muted-foreground">Your choice is saved for this session. The host starts recording.</p>
+          {consentContainer && onOpenRecordingSettings ? <button type="button" onClick={onOpenRecordingSettings} className="mt-1 min-h-9 text-xs underline underline-offset-4">Recording settings</button> : null}
+        </div>
+        <button type="button" onClick={() => void grantConsent()} disabled={!policy || status === "checking" || status === "recording"}
+          className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">Allow recording</button>
+      </div>
+      {status === "error" ? <p role="alert" className="mt-2 text-sm text-destructive">{message}</p> : null}
+    </section>
+  ) : null;
+
   return (
     <section
       className={`rounded-2xl border p-4 ${status === "recording" ? "border-rose-400 bg-rose-50 ring-4 ring-rose-100" : "border-[#d8c7a7] bg-white"}`}
@@ -2890,34 +2910,7 @@ export function BrowserSourceRecorder({
         </span>
       </div>
 
-      {!conversationEnded && vaultAvailable && !myConsentCoversSource ? (
-        <section
-          className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950"
-          aria-label="Recording consent needed"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-black">
-                {sourceType === "video" ? "Camera and audio" : "Audio"} on this
-                device ·{" "}
-                {transcriptionAllowed ? "Transcript on" : "Transcript off"}
-              </p>
-              <p className="mt-1 text-[10px] font-semibold leading-4">
-                Quipsly remembers your choice for this Session. Recording starts
-                only when the coach or host presses Record.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void grantConsent()}
-              disabled={!policy || status === "checking" || status === "recording"}
-              className="min-h-11 rounded-full bg-emerald-800 px-5 text-xs font-black text-white disabled:opacity-50"
-            >
-              <ShieldCheck size={14} className="mr-1 inline" /> Allow recording
-            </button>
-          </div>
-        </section>
-      ) : null}
+      {consentContainer ? createPortal(consentChoice, consentContainer) : consentChoice ? <div className="mt-4">{consentChoice}</div> : null}
 
       {!conversationEnded ? (
         <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">

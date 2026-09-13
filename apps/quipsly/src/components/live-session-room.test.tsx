@@ -470,7 +470,7 @@ describe("LiveSessionRoom", () => {
     expect(document.getElementById("live-call-stage-panel")).not.toContainElement(slot);
     expect(document.getElementById("live-call-chat-panel")).not.toContainElement(slot);
 
-    fireEvent.click(screen.getByRole("button", {name: "Chat"}));
+    fireEvent.click(screen.getByRole("button", {name: "Show chat"}));
     expect(document.getElementById("live-call-stage-panel")).toHaveClass("hidden");
     fireEvent.click(within(slot).getByRole("button", {name: "Unmute"}));
     const mute = await within(slot).findByRole("button", {name: "Mute"});
@@ -483,14 +483,22 @@ describe("LiveSessionRoom", () => {
     expect(mockLiveKitRoom.connect).toHaveBeenCalledTimes(1);
     expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", {name: "Call"}));
+    fireEvent.click(screen.getByRole("button", {name: "Back to call"}));
+    fireEvent.click(within(slot).getByRole("button", {name: "Record"}));
     fireEvent.click(screen.getByRole("button", {name: "Simulate retained source start"}));
-    fireEvent.click(screen.getByRole("button", {name: "Chat"}));
+    fireEvent.click(screen.getByRole("button", {name: "Close recording"}));
+    fireEvent.click(screen.getByRole("button", {name: "Show chat"}));
     expect(within(slot).getByRole("button", {name: "Start camera"})).toBeDisabled();
     fireEvent.click(within(slot).getByRole("button", {name: "Stop recording & leave"}));
     await waitFor(() => expect(mockLiveKitRoom.disconnect).toHaveBeenCalledTimes(1));
     expect(slot).toBeEmptyDOMElement();
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
+    expect(screen.getByRole("region", {name: "After the call"})).toBeVisible();
+    expect(screen.queryByRole("region", {name: "Ready to join"})).not.toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Open recordings"})).toHaveAttribute("href", "/sessions/dock-controls-room?mode=recordings");
+    fireEvent.click(screen.getByRole("link", {name: "Notes and recap"}));
+    expect(screen.getByLabelText("Minimized live call")).toHaveTextContent("Call ended");
+    expect(mockLiveKitRoom.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("reopens a remembered setup automatically only when browser permission is already granted", async () => {
