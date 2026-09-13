@@ -319,6 +319,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  room-companion)
+    TEST_CASE="testCompanionCallKeepsChatAndToolsWithTheLiveTransport"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Room-companion mode requires an exact Session ID and title." >&2
+      exit 2
+    fi
+    ;;
   capture-recovery)
     TEST_CASE="testConsentedCapturePlaybackAndCrashRecovery"
     ;;

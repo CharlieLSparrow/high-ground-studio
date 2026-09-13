@@ -61,7 +61,12 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published private(set) var usesCallAudio = false
     @Published var isNativeCallPresentationActive = false
     @Published var nativeCallPresentationLabel = "CallKit ready"
-    @Published var remoteParticipantCount = 0
+    @Published var remoteParticipantCount = 0 {
+        didSet {
+            if remoteParticipantCount == 0 { remoteParticipantNames = [] }
+        }
+    }
+    @Published private(set) var remoteParticipantNames: [String] = []
     @Published private(set) var hasRemoteVideo = false
     @Published private(set) var remoteVideoParticipantLabel: String?
     @Published private(set) var isLocalVideoPublished = false
@@ -842,6 +847,13 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     #if canImport(LiveKit)
     private func refreshRemoteVideoTrack() {
+        // Names come from the authenticated room participants, never from the
+        // list of invitees: an invitation is not proof someone has joined.
+        remoteParticipantNames = room.remoteParticipants.values.map { participant in
+            let name = participant.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let name, !name.isEmpty { return name }
+            return "Participant"
+        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         for participant in room.remoteParticipants.values {
             if let track = participant.trackPublications.values
                 .compactMap({ $0.track as? VideoTrack })
@@ -1171,6 +1183,7 @@ extension ProviderRoomController: RoomDelegate {
         Task { @MainActor in
             self.connectionStateLabel = "\(connectionState)".capitalized
             self.remoteParticipantCount = room.remoteParticipants.count
+            self.refreshRemoteVideoTrack()
             self.activeRoomName = room.name ?? self.activeRoomName
 
             switch connectionState {

@@ -11471,6 +11471,8 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
+    @State private var showsCallTools = false
+    @State private var showsCallChat = false
     @State private var focusedTool: CaptureRecorderFocusedTool?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
@@ -11516,7 +11518,8 @@ private struct CaptureRecorderView: View {
                     // the smaller main-thread stack on physical iPhones.
                     LazyVStack(spacing: 16) {
                 AnyView(Group {
-                if model.selectedSession?.isPersonalVoiceNote != true {
+                if model.selectedSession?.isPersonalVoiceNote != true,
+                   !model.providerRoom.isConnected {
                     SessionChooserButton(session: model.selectedSession) {
                         showsSessionPicker = true
                     }
@@ -11559,32 +11562,7 @@ private struct CaptureRecorderView: View {
                 })
 
                 if let session = model.selectedSession {
-                    // The ongoing shared space belongs beside the Session entry,
-                    // not below recording, transcript, and recovery controls.
-                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
-                        Button {
-                            sessionClientSpace = engagement
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.2.circle.fill")
-                                    .foregroundStyle(CapturePalette.accent)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    Text("Shared notes, tasks, goals, and conversation")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .captureCard()
-                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
-                    }
+                    if !model.providerRoom.isConnected || !showsCallTools {
                     AnyView(Group {
                     if session.isPersonalVoiceNote {
                         CapturePersonalVoiceNoteHeader(
@@ -11629,7 +11607,42 @@ private struct CaptureRecorderView: View {
                     .captureCard()
                     }
                     })
+                    }
 
+                    if model.providerRoom.isConnected {
+                        if !showsCallTools, let notice = model.captureSafetyNotice {
+                            CaptureInlineWarning(text: notice)
+                        }
+                    }
+
+                    // Transport and recorders belong to the model, not these
+                    // tools. Opening a note or hiding the workspace never tears
+                    // down the live call or its participant-local source.
+                    if !model.providerRoom.isConnected || showsCallTools {
+                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
+                        Button {
+                            sessionClientSpace = engagement
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.circle.fill")
+                                    .foregroundStyle(CapturePalette.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text("Shared notes, tasks, goals, and conversation")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
+                    }
                     AnyView(Group {
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
@@ -11959,7 +11972,9 @@ private struct CaptureRecorderView: View {
                         AnyView(episodeChatTool(session))
                         AnyView(episodeWatchTool(session))
                         sessionQuickEntrySurface(session)
-                        sessionConversationSurface(session)
+                        if !model.providerRoom.isConnected {
+                            sessionConversationSurface(session)
+                        }
                     }
 
                     AnyView(Group {
@@ -12200,6 +12215,7 @@ private struct CaptureRecorderView: View {
                         SourceTruthFootnote(mode: recordingMode)
                     }
                     })
+                    }
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading capture sessions…")
                 } else {
@@ -12252,6 +12268,7 @@ private struct CaptureRecorderView: View {
                !session.isPersonalVoiceNote {
                 if model.providerRoom.isConnected {
                     VStack(spacing: 0) {
+                        callWorkspaceActions(session)
                         CapturePersistentRecorderDock(
                             session: session,
                             mode: recordingMode,
@@ -12804,14 +12821,25 @@ private struct CaptureRecorderView: View {
     }
 
     private func sessionConversationSurface(
-        _ session: MobileCaptureSession
+        _ session: MobileCaptureSession,
+        expanded: Bool = false
     ) -> AnyView {
         AnyView(
+            Group {
+            if expanded {
+                MobileSessionConversationThread(
+                    client: sessionConversation,
+                    session: session,
+                    previewOnly: model.usesPreviewData
+                )
+            } else {
             MobileSessionConversationCard(
                 client: sessionConversation,
                 session: session,
                 previewOnly: model.usesPreviewData
             )
+            }
+            }
             .task(
                 id:
                     "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
@@ -12846,12 +12874,34 @@ private struct CaptureRecorderView: View {
         )
     }
 
+    private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 12)], spacing: 12) {
+            Button { showsCallChat = true } label: {
+                Label("Chat", systemImage: "bubble.left.and.bubble.right")
+            }
+            .accessibilityIdentifier("CaptureCallOpenChat")
+            Button { sessionNotesSession = session } label: {
+                Label("Notes", systemImage: "note.text")
+            }
+            .accessibilityIdentifier("CaptureCallOpenNotes")
+            Button { showsCallTools.toggle() } label: {
+                Label(showsCallTools ? "Hide tools" : "Tools", systemImage: "slider.horizontal.3")
+            }
+            .accessibilityIdentifier("CaptureCallToggleTools")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+    }
+
     var body: some View {
         recorderScrollableSurface
-        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write" : "Sessions")
+        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write"
+            : model.providerRoom.isConnected ? (model.selectedSession?.displayTitle ?? "Call") : "Sessions")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(
-            model.selectedSession?.isPersonalVoiceNote == true ? .hidden : .visible,
+            model.selectedSession?.isPersonalVoiceNote == true || model.providerRoom.isConnected ? .hidden : .visible,
             for: .tabBar
         )
         .toolbar {
@@ -12957,6 +13007,12 @@ private struct CaptureRecorderView: View {
             )
             .presentationDetents([.large])
         }
+        .sheet(isPresented: $showsCallChat) {
+            if let session = model.selectedSession {
+                sessionConversationSurface(session, expanded: true)
+                    .presentationDetents([.large])
+            }
+        }
         .sheet(item: $focusedTool) { tool in
             if let session = model.selectedSession {
                 focusedRecorderTool(tool, session: session)
@@ -12998,6 +13054,10 @@ private struct CaptureRecorderView: View {
             )
         }
         .onChange(of: model.selectedSession?.id) { oldSessionID, newSessionID in
+            if oldSessionID != newSessionID {
+                showsCallTools = false
+                showsCallChat = false
+            }
             guard oldSessionID != newSessionID,
                   !captureIsActive,
                   !model.isChangingCapture else { return }
@@ -21140,6 +21200,7 @@ private struct ProviderRoomControls: View {
     @AppStorage("quipsly.call.join-muted.v1") private var callAudioOnAnotherDevice = false
     @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
     @AppStorage("quipsly.call.camera-off.v1") private var joinCameraOff = true
+    @State private var showsDevices = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -21184,6 +21245,15 @@ private struct ProviderRoomControls: View {
                 .accessibilityIdentifier("CaptureCallRejoinRecoveryStatus")
             }
 
+            Button { showsDevices = true } label: {
+                Label("Devices", systemImage: "slider.horizontal.3")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+            }
+            .accessibilityIdentifier("CaptureCallOpenDevices")
+            .sheet(isPresented: $showsDevices) {
+                NavigationStack {
+                    Form {
             if usesCallAudioForPresentation {
                 audioRouteLayout {
                     VStack(alignment: .leading, spacing: 3) {
@@ -21232,6 +21302,28 @@ private struct ProviderRoomControls: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureCallInputRoute")
             }
+                        Toggle("Use this device for call audio", isOn: Binding(
+                            get: { !callAudioOnAnotherDevice },
+                            set: { callAudioOnAnotherDevice = !$0 }
+                        ))
+                        .disabled(model.providerRoom.isConnected || providerControlsLocked || model.isChangingRoom)
+                        .accessibilityIdentifier("CaptureUseCallAudioToggle")
+                        if !model.providerRoom.isConnected {
+                            Text("Turn off when you’re listening and talking on another device.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .navigationTitle("Devices")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showsDevices = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium, .large])
+            }
 
             if model.providerRoom.isConnected {
                 if model.providerRoom.hasRemoteVideo
@@ -21253,6 +21345,8 @@ private struct ProviderRoomControls: View {
                             }
                         }
                     )
+                } else {
+                    ProviderRoomAudioStage(providerRoom: model.providerRoom)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -21270,7 +21364,8 @@ private struct ProviderRoomControls: View {
                     )
                     .accessibilityIdentifier("CaptureCallParticipantPresence")
 
-                    if model.providerRoom.usesCallAudio {
+                    if model.providerRoom.usesCallAudio,
+                       model.providerRoom.callAudioHealth.needsVisibleGuidance {
                         Label(
                             model.providerRoom.callAudioHealth.title,
                             systemImage: model.providerRoom.callAudioHealth.systemImage
@@ -21287,19 +21382,13 @@ private struct ProviderRoomControls: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("CaptureCallMicrophoneGuidance")
                         }
-                    } else {
+                    } else if !model.providerRoom.usesCallAudio {
                         Label("Second device · no call audio", systemImage: "speaker.slash.fill")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("CaptureCompanionModeStatus")
                     }
                 }
-            }
-
-            if providerControlsLocked {
-                Label("Your recording will be saved before you leave", systemImage: "checkmark.shield.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
 
             if model.providerRoom.isConnected {
@@ -21356,6 +21445,14 @@ private struct ProviderRoomControls: View {
                             .accessibilityLabel("Switch camera")
                             .accessibilityIdentifier("CaptureJoinSwitchCameraButton")
                         }
+                    } else {
+                        CaptureCallIdentityTile(
+                            name: "You",
+                            detail: "Camera off",
+                            systemImage: "video.slash.fill"
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 160)
+                        .accessibilityIdentifier("CaptureJoinAudioPreview")
                     }
 
                     Group {
@@ -21420,25 +21517,6 @@ private struct ProviderRoomControls: View {
                     .accessibilityHint(providerControlHint)
                     .accessibilityIdentifier("ProviderJoinRoomButton")
 
-                    DisclosureGroup("Using another device?") {
-                        Toggle(isOn: Binding(
-                            get: { !callAudioOnAnotherDevice },
-                            set: { callAudioOnAnotherDevice = !$0 }
-                        )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Use \(CaptureDeviceVocabulary.thisDevice) for call audio")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Turn this off when another device owns the call audio.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-                        .disabled(providerControlsLocked || model.isChangingRoom)
-                        .accessibilityIdentifier("CaptureUseCallAudioToggle")
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
                 }
 
                 Button(action: onToggleLocalRecordingWorkspace) {
@@ -21678,6 +21756,61 @@ private struct ProviderRoomControls: View {
 /// Familiar near/far call composition: the other person owns the stage and
 /// this device appears as a movable mental model in the corner. With nobody
 /// else publishing video, the local preview uses the full stage for framing.
+private struct CaptureCallIdentityTile: View {
+    let name: String
+    let detail: String
+    let systemImage: String
+
+    private var initials: String {
+        name.split(whereSeparator: \.isWhitespace).prefix(2)
+            .compactMap(\.first).map(String.init).joined().uppercased()
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(initials)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(CapturePalette.ink)
+                .frame(width: 64, height: 64)
+                .background(CapturePalette.accent.opacity(0.18), in: Circle())
+                .accessibilityHidden(true)
+            Text(name)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            Label(detail, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(CapturePalette.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ProviderRoomAudioStage: View {
+    @ObservedObject var providerRoom: ProviderRoomController
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+            CaptureCallIdentityTile(
+                name: "You",
+                detail: providerRoom.usesCallAudio
+                    ? (providerRoom.isMuted ? "Muted" : "Microphone on")
+                    : "Audio on another device",
+                systemImage: providerRoom.usesCallAudio && !providerRoom.isMuted
+                    ? "mic.fill" : "mic.slash.fill"
+            )
+            .frame(minHeight: 190)
+            ForEach(Array(providerRoom.remoteParticipantNames.enumerated()), id: \.offset) { _, name in
+                CaptureCallIdentityTile(name: name, detail: "In call", systemImage: "person.fill")
+                    .frame(minHeight: 190)
+            }
+        }
+        .accessibilityIdentifier("ProviderCallAudioStage")
+    }
+}
+
 private struct ProviderRoomVideoStage: View {
     @ObservedObject var providerRoom: ProviderRoomController
     @ObservedObject var videoCapture: VideoCaptureController
@@ -22161,6 +22294,7 @@ private struct CaptureReadyForHostIndicator: View {
 private struct ProviderRoomDock: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
     @AppStorage("quipsly.call.camera-off.v1") private var joinCameraOff = true
@@ -22171,8 +22305,10 @@ private struct ProviderRoomDock: View {
     let onLeave: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            Spacer(minLength: 0)
+        LazyVGrid(columns: Array(
+            repeating: GridItem(.flexible(), spacing: 10),
+            count: dynamicTypeSize.isAccessibilitySize ? 2 : (model.providerRoom.usesCallAudio ? 4 : 3)
+        ), spacing: 10) {
             if model.providerRoom.usesCallAudio {
                 dockButton(
                     title: model.providerRoom.isMuted ? "Unmute" : "Mute",
@@ -22207,7 +22343,8 @@ private struct ProviderRoomDock: View {
                 Label("Audio on other device", systemImage: "speaker.slash.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(minWidth: 96, minHeight: 48)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 48)
                     .accessibilityIdentifier("ProviderCompanionAudioStatus")
             }
 
@@ -22248,8 +22385,9 @@ private struct ProviderRoomDock: View {
                 accessibilityIdentifier: "ProviderLeaveRoomButton",
                 action: onLeave
             )
-            Spacer(minLength: 0)
         }
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.top, 9)
         .padding(.bottom, 7)
@@ -22277,7 +22415,7 @@ private struct ProviderRoomDock: View {
                     .lineLimit(1)
             }
             .foregroundStyle(tint)
-            .frame(minWidth: 72, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -24284,7 +24422,7 @@ private struct CaptureWorkLocationBar: View {
                 .layoutPriority(1)
                 Spacer(minLength: 8)
                 if !dynamicTypeSize.isAccessibilitySize {
-                    Text(switchDisabled ? "Recording" : "Switch")
+                    Text(switchDisabled ? "In session" : "Switch")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
                         .lineLimit(1)
@@ -24317,7 +24455,7 @@ private struct CaptureWorkLocationBar: View {
         .accessibilityValue("\(nestName), \(spaceName)")
         .accessibilityHint(
             switchDisabled
-                ? "Finish the active recording before switching Nests."
+                ? "Finish the current call or recording before switching Nests."
                 : "Choose a private, owned, or shared Nest."
         )
         .accessibilityIdentifier("CaptureGlobalWorkLocation")

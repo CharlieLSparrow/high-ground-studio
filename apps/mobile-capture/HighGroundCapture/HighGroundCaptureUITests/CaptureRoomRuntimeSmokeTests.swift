@@ -5247,7 +5247,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(
             waitForRuntimeElement(
-                app.buttons["Using another device?"].firstMatch,
+                app.buttons["CaptureCallOpenDevices"].firstMatch,
                 in: app,
                 timeout: 8,
                 swipeAttempts: 2
@@ -5984,6 +5984,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     }
 
     func testConsentedProviderRoomJoinsAndLeavesWithoutStartingRecording() throws {
+        try exerciseLiveCallWorkspace(primaryEndpoint: true)
+    }
+
+    func testCompanionCallKeepsChatAndToolsWithTheLiveTransport() throws {
+        try exerciseLiveCallWorkspace(primaryEndpoint: false)
+    }
+
+    private func exerciseLiveCallWorkspace(primaryEndpoint: Bool) throws {
         let credentials = try runtimeSmokeCredentials()
         guard credentials.sessionID?.isEmpty == false,
               credentials.sessionTitle?.isEmpty == false else {
@@ -6006,7 +6014,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A consented LiveKit-ready Session should expose an explicit Join room action."
         )
         XCTAssertTrue(join.isEnabled)
-        let deviceOptions = app.buttons["Using another device?"].firstMatch
+        let deviceOptions = app.buttons["CaptureCallOpenDevices"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(deviceOptions, in: app, timeout: 8, swipeAttempts: 2),
             "The real lobby should keep the second-device audio choice reachable."
@@ -6026,6 +6034,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].firstMatch.exists,
             "The real signed-in lobby should expose the standard system audio-route picker."
         )
+        if !primaryEndpoint { turnOff(useCallAudio, in: app) }
+        app.buttons["Done"].tap()
         let camera = app.descendants(matching: .any)["CaptureJoinCameraToggle"].firstMatch
         XCTAssertTrue(
             camera.exists,
@@ -6038,12 +6048,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             microphone.exists,
             "The real signed-in call lobby should expose the conventional microphone-on or microphone-off choice before joining."
         )
-        if microphone.label == "Microphone off" { microphone.tap() }
-        XCTAssertEqual(
-            microphone.label,
-            "Microphone on",
-            "This permission flight should deliberately exercise the microphone-on join path regardless of the person's saved preference."
-        )
+        if primaryEndpoint {
+            if microphone.label == "Microphone off" { microphone.tap() }
+            XCTAssertEqual(microphone.label, "Microphone on")
+        } else {
+            XCTAssertFalse(microphone.isEnabled)
+            XCTAssertEqual(microphone.label, "Microphone is on another device")
+        }
 
         let microphoneAlertHandler = addUIInterruptionMonitor(withDescription: "Provider microphone permission") { alert in
             for label in ["Allow", "OK"] where alert.buttons[label].exists {
@@ -6100,10 +6111,31 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.buttons["CaptureStopButton"].exists,
             "Provider-room audio must remain separate from the local source recorder."
         )
-        XCTAssertTrue(
-            app.buttons["ProviderToggleSpeakerButton"].firstMatch.exists,
-            "A connected primary endpoint should keep the conventional iPhone speaker control in the persistent call dock."
-        )
+        XCTAssertEqual(app.buttons["ProviderToggleSpeakerButton"].firstMatch.exists, primaryEndpoint)
+
+        XCTAssertTrue(app.descendants(matching: .any)["ProviderCallAudioStage"].firstMatch.exists)
+        let chat = app.buttons["CaptureCallOpenChat"].firstMatch
+        XCTAssertTrue(chat.isHittable, "Chat belongs beside the live call, not below recording diagnostics.")
+        chat.tap()
+        let composer = app.textFields["CaptureSessionChatComposer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 8), "Chat must open the thread itself, not another Open conversation card.")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: composer
+        )], timeout: 15), .completed, "The authenticated conversation must become writable before typing.")
+        composer.tap()
+        composer.typeText("Call workspace unsent draft")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(leave.waitForExistence(timeout: 5), "Closing chat must preserve the live transport.")
+        chat.tap()
+        XCTAssertEqual(composer.value as? String, "Call workspace unsent draft")
+        app.buttons["Done"].tap()
+
+        let tools = app.buttons["CaptureCallToggleTools"].firstMatch
+        tools.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.waitForExistence(timeout: 5))
+        tools.tap()
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch.exists)
+        XCTAssertTrue(leave.isHittable, "Call controls must stay available with recording tools closed.")
 
         leave.tap()
         XCTAssertTrue(

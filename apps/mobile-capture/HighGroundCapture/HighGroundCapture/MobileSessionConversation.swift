@@ -60,6 +60,9 @@ private struct MobileSessionConversationCache: Codable {
 
 @MainActor
 final class MobileSessionConversationClient: ObservableObject {
+    // A sheet is presentation, not ownership. Keep an unsent message while
+    // the person returns to the call, and clear it with the room/account.
+    @Published var composerDraft = ""
     @Published private(set) var messages: [MobileSessionConversationMessage] = []
     @Published private(set) var title = "Session conversation"
     @Published private(set) var canWrite = false
@@ -502,6 +505,7 @@ final class MobileSessionConversationClient: ObservableObject {
     }
 
     private func reset() {
+        composerDraft = ""
         stopPolling()
         loadGeneration += 1
         currentRoomID = nil
@@ -702,12 +706,11 @@ struct MobileSessionConversationCard: View {
     }
 }
 
-private struct MobileSessionConversationThread: View {
+struct MobileSessionConversationThread: View {
     @ObservedObject var client: MobileSessionConversationClient
     let session: MobileCaptureSession
     let previewOnly: Bool
     @Environment(\.dismiss) private var dismiss
-    @State private var draft = ""
     @State private var replyTo: MobileSessionConversationMessage?
     @State private var editing: MobileSessionConversationMessage?
     @State private var editDraft = ""
@@ -720,6 +723,15 @@ private struct MobileSessionConversationThread: View {
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             boundary
+                            if client.isLoading && client.messages.isEmpty {
+                                ProgressView("Loading messages…")
+                            }
+                            if let error = client.errorMessage {
+                                Text(error)
+                                    .font(.subheadline)
+                                    .foregroundStyle(CapturePalette.brass)
+                                    .accessibilityIdentifier("CaptureSessionChatError")
+                            }
                             ForEach(client.messages) { message in
                                 messageRow(message)
                                     .id(message.id)
@@ -937,8 +949,9 @@ private struct MobileSessionConversationThread: View {
                 }
                 HStack(alignment: .bottom, spacing: 8) {
                     TextField(
-                        client.canWrite ? "Message everyone in this Session" : "View-only conversation",
-                        text: $draft,
+                        client.isLoading && client.messages.isEmpty ? "Loading conversation…"
+                            : client.canWrite ? "Message everyone in this Session" : "View-only conversation",
+                        text: $client.composerDraft,
                         axis: .vertical
                     )
                     .lineLimit(2 ... 6)
@@ -946,7 +959,7 @@ private struct MobileSessionConversationThread: View {
                     .disabled(!client.canWrite || previewOnly)
                     .accessibilityIdentifier("CaptureSessionChatComposer")
                     Button {
-                        let body = draft
+                        let body = client.composerDraft
                         let replyID = replyTo?.id
                         Task {
                             if await client.send(
@@ -954,7 +967,7 @@ private struct MobileSessionConversationThread: View {
                                 body: body,
                                 replyToID: replyID
                             ) {
-                                draft = ""
+                                if client.composerDraft == body { client.composerDraft = "" }
                                 replyTo = nil
                             }
                         }
@@ -964,7 +977,7 @@ private struct MobileSessionConversationThread: View {
                     }
                     .captureProminentButton()
                     .disabled(
-                        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        client.composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || !client.canWrite
                             || client.isSending
                             || previewOnly

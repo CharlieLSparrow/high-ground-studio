@@ -2746,7 +2746,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let call = app.descendants(matching: .any)["CaptureProviderRoomControls"]
         let join = app.buttons["ProviderJoinRoomButton"]
-        let deviceOptions = app.buttons["Using another device?"]
+        let deviceOptions = app.buttons["CaptureCallOpenDevices"]
         let microphone = app.descendants(matching: .any)["CaptureJoinMicrophoneToggle"]
         let camera = app.descendants(matching: .any)["CaptureJoinCameraToggle"]
         let route = app.descendants(matching: .any)["CaptureCallInputRoute"]
@@ -2757,22 +2757,28 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertTrue(call.waitForExistence(timeout: 5))
         XCTAssertTrue(join.exists, "The green room should expose one obvious Join call action.")
+        XCTAssertTrue(join.isHittable, "Join must be visible without scrolling through shared work or recording setup.")
         XCTAssertTrue(deviceOptions.exists, "The ordinary lobby should keep the optional second-device path reachable without making it a primary setup step.")
         XCTAssertTrue(camera.exists, "The familiar pre-join surface should expose one ordinary camera choice.")
         if camera.label == "Camera on" { camera.tap() }
         XCTAssertEqual(camera.label, "Camera off", "A privacy-safe camera-off choice should remain obvious before Join.")
+        XCTAssertTrue(microphone.exists, "Using this iPhone for call audio should expose the standard pre-join microphone choice.")
         deviceOptions.tap()
         let useCallAudio = app.switches["CaptureUseCallAudioToggle"]
         XCTAssertTrue(useCallAudio.waitForExistence(timeout: 3))
         turnOn(useCallAudio)
-        XCTAssertTrue(outputRoute.exists, "The listening route should be visible separately from the microphone before joining.")
-        XCTAssertTrue(routePicker.exists, "The lobby should expose Apple's familiar system audio-route control.")
-        XCTAssertTrue(microphone.exists, "Using this iPhone for call audio should expose the standard pre-join microphone choice.")
+        XCTAssertTrue(outputRoute.exists, "Devices should show the actual listening route separately from the microphone.")
+        XCTAssertTrue(routePicker.exists, "Devices should expose Apple's familiar system audio-route control.")
+        XCTAssertTrue(route.exists)
+        app.buttons["Done"].tap()
         if microphone.label == "Microphone on" { microphone.tap() }
         XCTAssertEqual(microphone.label, "Microphone off", "Turning the pre-join microphone off should remain an ordinary mute choice, not companion mode.")
         microphone.tap()
         XCTAssertEqual(microphone.label, "Microphone on")
+        deviceOptions.tap()
         turnOff(useCallAudio)
+        XCTAssertFalse(routePicker.exists)
+        app.buttons["Done"].tap()
         XCTAssertEqual(
             app.descendants(matching: .any)["CaptureJoinMicrophoneToggle"].label,
             "Microphone is on another device",
@@ -2783,10 +2789,12 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].exists,
             "Second-device mode should not imply that this iPhone owns the call's listening route."
         )
+        deviceOptions.tap()
         turnOn(useCallAudio)
+        XCTAssertTrue(routePicker.exists)
+        app.buttons["Done"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureJoinMicrophoneToggle"].isEnabled)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].exists)
-        XCTAssertTrue(route.exists, "The current microphone route should be visible before joining.")
+        XCTAssertFalse(routePicker.exists, "Device administration belongs in its sheet, not between the person and Join.")
         XCTAssertTrue(localOnly.exists, "Local-only recording should remain one secondary escape hatch.")
         XCTAssertFalse(
             app.descendants(matching: .any)["CaptureOuterRoomNextStep"].exists,
@@ -2858,7 +2866,7 @@ final class CaptureExperienceUITests: XCTestCase {
     func testCallLobbyRemembersSafeDeviceChoicesAcrossRelaunch() {
         openSessionsWorkspace()
 
-        let deviceOptions = app.buttons["Using another device?"]
+        let deviceOptions = app.buttons["CaptureCallOpenDevices"]
         XCTAssertTrue(deviceOptions.waitForExistence(timeout: 5))
         deviceOptions.tap()
         let useCallAudio = app.switches["CaptureUseCallAudioToggle"]
@@ -2866,6 +2874,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let camera = app.descendants(matching: .any)["CaptureJoinCameraToggle"]
         XCTAssertTrue(useCallAudio.waitForExistence(timeout: 5))
         turnOn(useCallAudio)
+        app.buttons["Done"].tap()
         if microphone.label == "Microphone on" { microphone.tap() }
         if camera.label == "Camera on" { camera.tap() }
         XCTAssertEqual(microphone.label, "Microphone off")
@@ -2884,7 +2893,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(restoredMicrophone.waitForExistence(timeout: 8))
         XCTAssertEqual(restoredMicrophone.label, "Microphone off")
         XCTAssertEqual(restoredCamera.label, "Camera off")
-        let restoredDeviceOptions = app.buttons["Using another device?"]
+        let restoredDeviceOptions = app.buttons["CaptureCallOpenDevices"]
         XCTAssertTrue(restoredDeviceOptions.exists)
         restoredDeviceOptions.tap()
         let restoredCallAudio = app.switches["CaptureUseCallAudioToggle"]
