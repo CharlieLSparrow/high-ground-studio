@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, realpath, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,10 +9,25 @@ import { promisify } from "node:util";
 import { newSessionRecordingShareJob, type SessionRecordingShareResult } from "@high-ground/quipsly-media-processing";
 
 import { buildSessionRecordingShareFilterGraph, buildSessionRecordingShareVideoFilterGraph, FfmpegSessionRecordingShareRenderer } from "./session-recording-share-ffmpeg.js";
-import { runOneLocalSessionRecordingShareJob } from "./local-session-recording-share-worker.js";
+import { runOneLocalSessionRecordingShareJob, resolveSessionRecordingSource } from "./local-session-recording-share-worker.js";
 import { sha256File } from "./transcoder.js";
 
 const run = promisify(execFile);
+
+test("missing local recordings report recovery, while paths outside the vault remain rejected", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "quipsly-share-path-"));
+  const root = await realpath(directory);
+  try {
+    await assert.rejects(resolveSessionRecordingSource(root, path.join(root, "missing.wav")),
+      {code: "session-recording-share-source-missing"});
+    const source = path.join(root, "recording.wav");
+    await writeFile(source, "source fixture");
+    assert.equal(await resolveSessionRecordingSource(root, source), source);
+    await symlink(path.dirname(root), path.join(root, "outside"));
+    await assert.rejects(resolveSessionRecordingSource(root, path.join(root, "outside")),
+      {code: "session-recording-share-source-path-rejected"});
+  } finally { await rm(directory, {recursive: true, force: true}); }
+});
 
 test("Session recording share FFmpeg recipe aligns exact sources and trims one common window", () => {
     const base = {

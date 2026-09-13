@@ -6,7 +6,7 @@ import {
   parseSessionAudioAlignmentJob,
 } from "@high-ground/quipsly-media-processing";
 
-import { buildSessionReviewedPlacement } from "./session-source-alignment";
+import { buildSessionReviewedPlacement, sessionSourceAlignmentProcessorBinding } from "./session-source-alignment";
 import { sessionProtectedPlaybackBinding } from "./session-protected-playback";
 
 export type SessionReviewedSourcePlacement = ReturnType<
@@ -100,7 +100,7 @@ export async function readSessionReviewedSourcePlacements(input: {
       orderBy: [{ releasedAt: "desc" }, { createdAt: "desc" }],
     }),
   ]);
-  const bindingByAssetId = new Map<string, ReturnType<typeof sourceBinding>>();
+  const bindingByAssetId = new Map<string, ReturnType<typeof sessionSourceAlignmentProcessorBinding>>();
   for (const asset of assets) {
     const receipt = receipts.find(
       (row: any) => row.recordingAssetId === asset.id,
@@ -110,7 +110,9 @@ export async function readSessionReviewedSourcePlacements(input: {
       asset,
       receipt,
     });
-    if (binding) bindingByAssetId.set(asset.id, sourceBinding(binding));
+    if (binding) bindingByAssetId.set(asset.id, sessionSourceAlignmentProcessorBinding({
+      ...asset, durationSeconds: null, recordedStartedAt: null, playback: binding,
+    }));
   }
 
   const accepted: SessionReviewedSourcePlacement[] = [];
@@ -197,18 +199,6 @@ export function parsePlacement(value: unknown): SessionReviewedSourcePlacement {
   )
     throw new Error("Invalid reviewed Session source placement.");
   return placement as SessionReviewedSourcePlacement;
-}
-
-function sourceBinding(binding: any) {
-  return {
-    assetId: binding.recordingAssetId,
-    provider: "gcs" as const,
-    locator: `gcs://${binding.bucketName}/${binding.objectName}?generation=${binding.generation}`,
-    generation: binding.generation,
-    sha256: binding.sha256,
-    sizeBytes: binding.byteSize,
-    contentType: binding.contentType,
-  };
 }
 
 function sameBinding(left: any, right: any) {

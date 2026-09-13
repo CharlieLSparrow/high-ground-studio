@@ -18,11 +18,12 @@ import {
 const roomId = "room_session_12345678";
 const captureGroupId = "ddfbb57c-7b7e-4a38-83a7-46ab27b51d82";
 
-function fixture(operation: "APPROVE" | "REVOKE" = "APPROVE") {
+function fixture(operation: "APPROVE" | "REVOKE" = "APPROVE", local = false) {
+  const bucket = local ? "quipsly-local-development-vault" : "quipsly-media-test";
   const binding = (assetId: string, hash: string) => ({
     assetId,
-    provider: "gcs" as const,
-    locator: `gcs://quipsly-media-test/media-vault/${assetId}.m4a?generation=123`,
+    provider: local ? "local" as const : "gcs" as const,
+    locator: local ? `/tmp/quipsly-sync-fixture/${assetId}.m4a` : `gcs://${bucket}/media-vault/${assetId}.m4a?generation=123`,
     generation: "123",
     sha256: hash.repeat(64),
     sizeBytes: 10_000,
@@ -115,10 +116,10 @@ function fixture(operation: "APPROVE" | "REVOKE" = "APPROVE") {
     contentType: "audio/mp4",
     byteSize: BigInt(10_000),
     checksum: hash.repeat(64),
-    storageBucket: "quipsly-media-test",
+    storageBucket: bucket,
     storageObjectPath: `media-vault/${assetId}.m4a`,
     verifiedAt: new Date("2026-08-24T20:02:00.000Z"),
-    localManifestJson: { exactBytesVerified: true, storageGeneration: "123" },
+    localManifestJson: { exactBytesVerified: true, storageGeneration: "123", promotion: local ? {providerSourceId: `/tmp/quipsly-sync-fixture/${assetId}.m4a`} : {} },
   });
   const receipt = (recordingAssetId: string, hash: string) => ({
     uploadSessionId: "d3f46170-a5d4-46dc-b26c-eae19e88ce85",
@@ -130,7 +131,7 @@ function fixture(operation: "APPROVE" | "REVOKE" = "APPROVE") {
     metadataJson: {
       immutableUploadBinding: {
         roomId,
-        bucketName: "quipsly-media-test",
+        bucketName: bucket,
         objectName: `media-vault/${recordingAssetId}.m4a`,
         generation: "123",
         sha256: hash.repeat(64),
@@ -170,6 +171,17 @@ function fixture(operation: "APPROVE" | "REVOKE" = "APPROVE") {
 }
 
 describe("reviewed Session source placements", () => {
+  it("uses the same local processor binding that produced the measured result", async () => {
+    const data = fixture("APPROVE", true);
+    const prisma = {
+      sessionAudioAlignmentJob: {findMany: jest.fn().mockResolvedValue([data.row])},
+      recordingAsset: {findMany: jest.fn().mockResolvedValue(data.assets)},
+      mobileCaptureFinalizationReceipt: {findMany: jest.fn().mockResolvedValue(data.receipts)},
+    };
+    await expect(readSessionReviewedSourcePlacements({prisma, roomId, recordingAssetIds: data.assets.map(a => a.id)})).resolves.toEqual([data.placement]);
+    data.assets[0]!.localManifestJson.promotion = {providerSourceId: "/tmp/quipsly-sync-fixture/changed.m4a"};
+    await expect(readSessionReviewedSourcePlacements({prisma, roomId, recordingAssetIds: data.assets.map(a => a.id)})).rejects.toBeInstanceOf(SessionReviewedSourcePlacementError);
+  });
   it("loads an active approval only while result and current exact bytes agree", async () => {
     const data = fixture();
     const prisma = {

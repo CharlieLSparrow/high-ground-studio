@@ -1,8 +1,10 @@
 /** @jest-environment node */
 
 jest.mock("server-only", () => ({}));
+jest.mock("./session-reviewed-source-placement", () => ({ readSessionReviewedSourcePlacements: jest.fn(async () => []) }));
 
 import { createHash } from "node:crypto";
+import { readSessionReviewedSourcePlacements } from "./session-reviewed-source-placement";
 
 import {
   applyRecordingShareTranscriptReadiness,
@@ -87,6 +89,17 @@ describe("recording attempts within one Session", () => {
     expect(client.callRecordingEndpointReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: {roomId: "room", captureId: {in: sources.map((_, n) => captureId(n))}, state: "STARTED", directive: {roomId: "room", action: "START"}},
     }));
+  });
+
+  it("uses measured sync in the recording workspace rather than reverting to wall time", async () => {
+    jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValueOnce([
+      {alignmentJobId: "sync-1", captureGroupId: "same-session", spineRecordingAssetId: "source-0", targetRecordingAssetId: "source-1", signedOffsetSeconds: 0.35, residualDriftMilliseconds: 2, correctionApplied: false, sourceBytesMutated: false, sampleAccurateClaimed: false},
+      {alignmentJobId: "sync-2", captureGroupId: "same-session", spineRecordingAssetId: "source-0", targetRecordingAssetId: "source-2", signedOffsetSeconds: 1199.75, residualDriftMilliseconds: 2, correctionApplied: false, sourceBytesMutated: false, sampleAccurateClaimed: false},
+    ] as any);
+    const {result} = await read("start:first");
+    expect(result.available.timeline).toMatchObject({authority: "reviewed-waveform-placement", precision: "measured"});
+    expect(result.available.sources.map(source => source.programOffsetSeconds)).toEqual([0, 0.35, 1199.75]);
+    expect(readSessionReviewedSourcePlacements).toHaveBeenLastCalledWith(expect.objectContaining({roomId: "room", recordingAssetIds: ["source-0", "source-1", "source-2"]}));
   });
 
   it("lets the coach reopen earlier attempts including their reconnect segments", async () => {

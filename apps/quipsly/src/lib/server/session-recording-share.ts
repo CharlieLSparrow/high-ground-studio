@@ -30,7 +30,8 @@ import {
   buildSessionTranscriptReadiness,
   type SessionTranscriptReadiness,
 } from "@/lib/session-transcript-readiness";
-import { assembleSessionTranscriptProgramClock } from "./session-transcript-assembly";
+import { assembleSessionTranscriptProgramClock, type SessionTranscriptReviewedPlacement } from "./session-transcript-assembly";
+import { readSessionReviewedSourcePlacements } from "./session-reviewed-source-placement";
 import { projectEditedTranscript, type TimedTranscriptWord } from "@/lib/edited-transcript-export";
 
 export const SESSION_RECORDING_SHARE_SCHEMA =
@@ -574,7 +575,7 @@ async function exactCloudBindings(
   );
 }
 
-export function sessionRecordingShareProgramClock(rows: any[]) {
+export function sessionRecordingShareProgramClock(rows: any[], reviewedPlacements: SessionTranscriptReviewedPlacement[] = []) {
   if (!rows.length)
     return {
       authority: "single-source-origin" as const,
@@ -606,9 +607,12 @@ export function sessionRecordingShareProgramClock(rows: any[]) {
             : recordingSync.alignment,
       };
     }),
+    { reviewedPlacements },
   );
   const reason =
-    clock.authority === "capture-clock-proposal"
+    clock.authority === "reviewed-waveform-placement"
+      ? "Waveform sync places the recordings and transcript on the same timeline. The originals stay unchanged; sync can be reset."
+      : clock.authority === "capture-clock-proposal"
       ? "Device clock evidence placed the participant masters automatically. Waveform analysis can refine this provisional placement without changing the originals."
       : clock.authority === "reported-wall-clock-fallback"
         ? "Reported source times placed the participant masters automatically because complete device clock evidence was unavailable. The placement remains adjustable."
@@ -637,14 +641,14 @@ function recordingSourceDuration(source: {durationSeconds?: number | null; recor
     ? Math.max(0, (source.recordedStoppedAt.getTime() - source.recordedStartedAt.getTime()) / 1_000) : 0;
 }
 
-function sourceSummary(rows: any[]) {
+function sourceSummary(rows: any[], reviewedPlacements: SessionTranscriptReviewedPlacement[] = []) {
   if (!rows.length)
     return {
       programDurationSeconds: 0,
       timeline: sessionRecordingShareProgramClock(rows),
       sources: [] as any[],
     };
-  const timeline = sessionRecordingShareProgramClock(rows);
+  const timeline = sessionRecordingShareProgramClock(rows, reviewedPlacements);
   const timingBySourceId = new Map(
     timeline.sources.map((source) => [source.recordingAssetId, source]),
   );
@@ -1290,8 +1294,17 @@ async function reconcileRender(client: RestoreClient, output: any) {
   });
 }
 
-/** Autosave needs the same authorized take/source boundary, not transcript
- * words, media reconciliation, or rendering work on every keystroke. */
+/** Use the transcript's source-bound placement for preview, edits and renders.
+ * Saved outputs retain their own clock even if a later sync decision changes. */
+async function readSourceSummary(client: RestoreClient, roomId: string, sources: any[]) {
+  const placements = await readSessionReviewedSourcePlacements({
+    prisma: client, roomId, recordingAssetIds: sources.map(source => source.id),
+  });
+  return sourceSummary(sources, placements);
+}
+
+/** Autosave checks the same authorized source clock without loading transcript
+ * words, reconciling media or starting rendering work on every keystroke. */
 export async function readSessionRecordingEditSources(
   client: RestoreClient, input: {roomId: string; takeId: string; actor: SessionAccessActor},
 ) {
@@ -1302,7 +1315,7 @@ export async function readSessionRecordingEditSources(
   const attempts = await loadRecordingAttempts(client, room.id, rows);
   const take = attempts.find(attempt => attempt.id === input.takeId);
   if (!take) throw new SessionRecordingShareError(404, "RECORDING_ATTEMPT_NOT_FOUND", "This recording is no longer available.");
-  return {role: "COACH" as const, available: {...sourceSummary(take.sources), selectedTakeId: take.id}};
+  return {role: "COACH" as const, available: {...await readSourceSummary(client, room.id, take.sources), selectedTakeId: take.id}};
 }
 
 export async function readSessionRecordingShare(
@@ -1369,7 +1382,7 @@ export async function readSessionRecordingShare(
   );
   if (canPrepare && (input.takeId || requestedSourceId) && outputAttempt?.id !== selectedAttempt?.id) output = null;
   const sourceRows = selectedAttempt?.sources || [];
-  const available = sourceSummary(sourceRows);
+  const available = await readSourceSummary(client, room.id, sourceRows);
   const transcriptSegments = canPrepare
     ? await loadTranscriptEditSegments(
         client,
@@ -1484,7 +1497,7 @@ export async function prepareSessionRecordingShare(
       "Choose one exact verified camera recording for the private video preview.",
     );
   }
-  const summary = sourceSummary(selected);
+  const summary = await readSourceSummary(client, room.id, selected);
   const audioMixSourceIds = sessionRecordingShareAudioMixSourceIds(
     selected,
     primaryVideo?.id,

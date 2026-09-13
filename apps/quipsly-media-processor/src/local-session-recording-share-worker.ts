@@ -78,9 +78,16 @@ function inside(root: string, candidate: string) {
   );
 }
 
-async function authorizedSource(root: string, locator: string) {
-  const source = await realpath(locator).catch(() => "");
-  if (!source || !inside(root, source))
+export async function resolveSessionRecordingSource(root: string, locator: string) {
+  let source: string;
+  try {
+    source = await realpath(locator);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    throw Object.assign(new Error("A local source recording is missing. Restore or upload its original file, then retry the export."),
+      {code: "session-recording-share-source-missing"});
+  }
+  if (!inside(root, source))
     throw Object.assign(
       new Error(
         "Session share source escaped the authorized local media root.",
@@ -323,7 +330,7 @@ export async function runOneLocalSessionRecordingShareJob(
     const root = await realpath(options.localMediaRoot);
     const sources = await Promise.all(
       job.sources.map(async (source) => {
-        const locator = await authorizedSource(root, source.locator);
+        const locator = await resolveSessionRecordingSource(root, source.locator);
         await verifySource(source, locator);
         return { ...source, locator };
       }),
