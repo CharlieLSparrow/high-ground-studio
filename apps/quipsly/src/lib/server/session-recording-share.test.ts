@@ -107,6 +107,17 @@ describe("recording attempts within one Session", () => {
     await expect(read("start:another-room")).rejects.toMatchObject({status: 404, code: "RECORDING_ATTEMPT_NOT_FOUND"});
   });
 
+  it("opens a recording with measured participant sync and a clock-placed reconnect", async () => {
+    jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValueOnce([
+      {alignmentJobId: "sync-1", captureGroupId: "same-session", spineRecordingAssetId: "source-0", targetRecordingAssetId: "source-1", signedOffsetSeconds: 0.35, residualDriftMilliseconds: 2, correctionApplied: false, sourceBytesMutated: false, sampleAccurateClaimed: false},
+    ] as any);
+    const {result} = await read("start:first");
+    expect(result.available.timeline).toMatchObject({authority: "mixed-waveform-clock-placement", precision: "provisional"});
+    expect(result.available.sources.map(source => source.programOffsetSeconds)).toEqual([0, 0.35, 1200]);
+    expect(result.available.programDurationSeconds).toBeGreaterThan(1200);
+    expect(result.readiness.canPrepare).toBe(true);
+  });
+
   it("uses the actual media duration for trimming a paused source, not elapsed clock time", async () => {
     const {result} = await read(undefined, "coach", "source-3", sources.map(source => ({...source, durationSeconds: 8.466833})));
     expect(result.available.programDurationSeconds).toBe(8.466833);

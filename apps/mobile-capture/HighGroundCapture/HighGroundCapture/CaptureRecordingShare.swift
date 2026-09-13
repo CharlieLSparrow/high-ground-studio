@@ -173,6 +173,8 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
                     "Placed automatically from recording start times"
                 case "reviewed-waveform-placement":
                     "Synced from measured audio"
+                case "mixed-waveform-clock-placement":
+                    "Synced from audio and recording clocks"
                 default:
                     "Recording timeline ready"
                 }

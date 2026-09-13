@@ -6,6 +6,7 @@ import {
   CoachingTranscriptReportError,
   renderCoachingTranscriptReport,
 } from "./coaching-transcript-report";
+import { assembleSessionTranscriptProgramClock } from "./session-transcript-assembly";
 
 function input() {
   return {
@@ -51,6 +52,24 @@ function input() {
 }
 
 describe("coaching transcript mentor report", () => {
+  it("exports a partially measured conversation without changing its source timestamps", () => {
+    const clock = assembleSessionTranscriptProgramClock([
+      {recordingAssetId: "coach-source", transcriptJobId: "coach-job", captureGroupId: "take", recordedStartedAt: "2026-08-23T16:00:00Z"},
+      {recordingAssetId: "client-source", transcriptJobId: "client-job", captureGroupId: "take", recordedStartedAt: "2026-08-23T16:00:09Z"},
+      {recordingAssetId: "reconnect-source", transcriptJobId: "reconnect-job", captureGroupId: "take", recordedStartedAt: "2026-08-23T16:20:00Z"},
+    ], {reviewedPlacements: [{alignmentJobId: "sync", captureGroupId: "take", spineRecordingAssetId: "coach-source", targetRecordingAssetId: "client-source", signedOffsetSeconds: 0.35, residualDriftMilliseconds: 2, correctionApplied: false, sourceBytesMutated: false, sampleAccurateClaimed: false}]});
+    const report = buildCoachingTranscriptReport({
+      ...input(),
+      sources: clock.sources.map((source, index) => ({...source, sourceSha256: "a".repeat(64), participantId: index === 0 ? "participant-coach" : "participant-client"})),
+      segments: [
+        {...input().segments[0], transcriptJobId: "coach-job", recordingAssetId: "coach-source"},
+        {...input().segments[1], transcriptJobId: "client-job", recordingAssetId: "client-source"},
+        {...input().segments[1], id: "reconnected-turn", startSeconds: 2, endSeconds: 4, transcriptJobId: "reconnect-job", recordingAssetId: "reconnect-source"},
+      ],
+    });
+    expect(report.timelineTiming).toMatchObject({authority: "mixed-waveform-clock-placement", waveformReviewRequired: true, sampleAccurateClaimed: false});
+    expect(report.turns.map(turn => [turn.startSeconds, turn.sourceStartSeconds])).toEqual([[3.8, 3.8], [65.35, 65], [1202, 2]]);
+  });
   it("places reviewed coach and client turns into deterministic source-bound columns", () => {
     const report = buildCoachingTranscriptReport(input());
 

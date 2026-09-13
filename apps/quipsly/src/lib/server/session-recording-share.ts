@@ -612,6 +612,8 @@ export function sessionRecordingShareProgramClock(rows: any[], reviewedPlacement
   const reason =
     clock.authority === "reviewed-waveform-placement"
       ? "Waveform sync places the recordings and transcript on the same timeline. The originals stay unchanged; sync can be reset."
+      : clock.authority === "mixed-waveform-clock-placement"
+        ? clock.reason
       : clock.authority === "capture-clock-proposal"
       ? "Device clock evidence placed the participant masters automatically. Waveform analysis can refine this provisional placement without changing the originals."
       : clock.authority === "reported-wall-clock-fallback"

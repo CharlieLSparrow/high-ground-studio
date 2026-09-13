@@ -529,7 +529,7 @@ describe("Session transcript correction desk", () => {
     expect(result.segments).toEqual(coach.segments);
   });
 
-  it("projects an approved measured placement into conversation segment time", async () => {
+  it.each([false, true])("projects measured sync into conversation time with a clock-placed reconnect: %s", async (withReconnect) => {
     const coach = desk({
       participantId: "coach",
       recordingAssetId: "coach-source",
@@ -553,6 +553,10 @@ describe("Session transcript correction desk", () => {
       .mockResolvedValueOnce(coach as any)
       .mockResolvedValueOnce(coach as any)
       .mockResolvedValueOnce(client as any);
+    if (withReconnect) jest.mocked(readTranscriptCorrectionDesk).mockResolvedValueOnce(desk({
+      participantId: "client", recordingAssetId: "reconnect-source", transcriptJobId: "reconnect-job",
+      sha: "c".repeat(64), segmentId: "reconnect-turn", startSeconds: 2, text: "Back with my next step.",
+    }) as any);
     jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValueOnce([
       {
         alignmentJobId: "alignment-1",
@@ -587,6 +591,9 @@ describe("Session transcript correction desk", () => {
             localManifestJson: { captureGroupId: "take-1" },
             transcriptJobs: [{ id: "client-job", createdAt: new Date() }],
           },
+          ...(withReconnect ? [{id: "reconnect-source", participantId: "client", kind: "LOCAL_AUDIO", checksum: "c".repeat(64),
+            recordedStartedAt: new Date("2026-08-24T15:20:00.000Z"), localManifestJson: {captureGroupId: "take-1"},
+            transcriptJobs: [{id: "reconnect-job", createdAt: new Date()}]}] : []),
         ]),
       },
     };
@@ -598,8 +605,8 @@ describe("Session transcript correction desk", () => {
     })) as any;
 
     expect(result.sessionTranscript.programClock).toMatchObject({
-      authority: "reviewed-waveform-placement",
-      waveformReviewRequired: false,
+      authority: withReconnect ? "mixed-waveform-clock-placement" : "reviewed-waveform-placement",
+      waveformReviewRequired: withReconnect,
     });
     expect(
       result.segments.map((segment: any) => [
@@ -609,6 +616,7 @@ describe("Session transcript correction desk", () => {
     ).toEqual([
       ["coach-turn", 5],
       ["client-turn", 5.35],
+      ...(withReconnect ? [["reconnect-turn", 1202]] : []),
     ]);
   });
 });

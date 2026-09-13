@@ -97,6 +97,18 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
   });
 
+  it("keeps trimming and preview available with mixed measured and clock placement", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response({...snapshot, available: {...snapshot.available,
+      timeline: {...snapshot.available.timeline, authority: "mixed-waveform-clock-placement", reason: "Matched tracks stay together; recording clocks place the remaining groups.",
+        sources: [{...snapshot.available.timeline.sources[0], timingUncertaintyMilliseconds: null}]},
+    }}));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByText("Synced from audio and recording clocks")).toBeInTheDocument();
+    expect(screen.getByRole("slider", {name: "Recording start"})).toBeEnabled();
+    expect(screen.getByRole("button", {name: "Create private preview"})).toBeEnabled();
+    expect(screen.getByTestId("recording-timeline-status")).not.toHaveTextContent("estimated within");
+  });
+
   it("keeps an in-progress trim when reconnecting an initial autosave timeout", async () => {
     let offline = true;
     const writes: any[] = [];

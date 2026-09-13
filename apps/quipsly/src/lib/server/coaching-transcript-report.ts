@@ -17,6 +17,7 @@ import {
   VerticalAlign,
   WidthType,
 } from "docx";
+import type { SessionTranscriptTimingAuthority } from "./session-transcript-assembly";
 
 export const COACHING_TRANSCRIPT_REPORT_SCHEMA =
   "quipsly-coaching-transcript-report-v2";
@@ -69,11 +70,7 @@ export type CoachingTranscriptReportSource = {
   sourceSha256?: string | null;
   participantId?: string | null;
   programOffsetSeconds?: number;
-  timingAuthority?:
-    | "single-source-origin"
-    | "reviewed-waveform-placement"
-    | "capture-clock-proposal"
-    | "reported-wall-clock-fallback";
+  timingAuthority?: SessionTranscriptTimingAuthority;
   timingUncertaintyMilliseconds?: number | null;
   timingReviewRequired?: boolean;
   sampleAccurateClaimed?: false;
@@ -122,11 +119,7 @@ export type CoachingTranscriptReport = {
     sourceSha256: string | null;
     participantId: string | null;
     programOffsetSeconds: number;
-    timingAuthority:
-      | "single-source-origin"
-      | "reviewed-waveform-placement"
-      | "capture-clock-proposal"
-      | "reported-wall-clock-fallback";
+    timingAuthority: SessionTranscriptTimingAuthority;
     timingUncertaintyMilliseconds: number | null;
     timingReviewRequired: boolean;
     sampleAccurateClaimed: false;
@@ -140,12 +133,7 @@ export type CoachingTranscriptReport = {
     unreviewedTurns: number;
   };
   timelineTiming: {
-    authority:
-      | "single-source-origin"
-      | "reviewed-waveform-placement"
-      | "capture-clock-proposal"
-      | "reported-wall-clock-fallback"
-      | "mixed";
+    authority: SessionTranscriptTimingAuthority | "mixed";
     waveformReviewRequired: boolean;
     maximumUncertaintyMilliseconds: number | null;
     sampleAccurateClaimed: false;
@@ -212,6 +200,7 @@ export function buildCoachingTranscriptReport(
       : 0,
     timingAuthority:
       source.timingAuthority === "reviewed-waveform-placement" ||
+      source.timingAuthority === "mixed-waveform-clock-placement" ||
       source.timingAuthority === "capture-clock-proposal" ||
       source.timingAuthority === "reported-wall-clock-fallback" ||
       source.timingAuthority === "single-source-origin"

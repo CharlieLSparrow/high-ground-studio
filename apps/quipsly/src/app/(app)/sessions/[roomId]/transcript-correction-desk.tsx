@@ -204,7 +204,7 @@ type Desk = {
     pendingSourceCount?: number;
     pendingSources?: TranscriptionProgressSource[];
     programClock: null | {
-      authority: "single-source-origin" | "reviewed-waveform-placement" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+      authority: "single-source-origin" | "reviewed-waveform-placement" | "mixed-waveform-clock-placement" | "capture-clock-proposal" | "reported-wall-clock-fallback";
       waveformReviewRequired: boolean;
       sampleAccurateClaimed: false;
     };

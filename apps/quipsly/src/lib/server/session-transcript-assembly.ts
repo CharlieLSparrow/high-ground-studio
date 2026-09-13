@@ -4,6 +4,7 @@ export const SESSION_TRANSCRIPT_PROGRAM_CLOCK_SCHEMA =
 export type SessionTranscriptTimingAuthority =
   | "single-source-origin"
   | "reviewed-waveform-placement"
+  | "mixed-waveform-clock-placement"
   | "capture-clock-proposal"
   | "reported-wall-clock-fallback";
 
@@ -57,7 +58,6 @@ export class SessionTranscriptAssemblyError extends Error {
     readonly code:
       | "TRANSCRIPT_SOURCE_INVALID"
       | "TRANSCRIPT_SOURCE_TAKE_MISMATCH"
-      | "TRANSCRIPT_REVIEWED_PLACEMENT_INCOMPLETE"
       | "TRANSCRIPT_REVIEWED_PLACEMENT_CONFLICT",
   ) {
     super(message);
@@ -74,9 +74,9 @@ type ValidAlignment = {
 
 /**
  * Places independently source-bound transcripts on one provisional Session
- * clock. It never rewrites provider/source times and never promotes a clock
- * proposal into sample-accurate alignment. Waveform/drift review remains a
- * separate editor decision.
+ * clock. Measured relationships are retained within connected groups; device
+ * clocks place disconnected/reconnected groups. No provider/source times are
+ * rewritten and no placement implies drift correction or sample accuracy.
  */
 export function assembleSessionTranscriptProgramClock(
   input: SessionTranscriptTimingSource[],
@@ -163,7 +163,9 @@ export function assembleSessionTranscriptProgramClock(
   const authority: SessionTranscriptTimingAuthority = singleSource
     ? "single-source-origin"
     : reviewedClock
-      ? "reviewed-waveform-placement"
+      ? reviewedClock.componentCount === 1
+        ? "reviewed-waveform-placement"
+        : "mixed-waveform-clock-placement"
       : completeClockEvidence
         ? "capture-clock-proposal"
         : "reported-wall-clock-fallback";
@@ -213,7 +215,9 @@ export function assembleSessionTranscriptProgramClock(
     reason: singleSource
       ? "One transcript source defines its own zero point; no cross-device alignment is implied."
       : reviewedClock
-        ? "An approved, reversible waveform placement defines the Session program clock. Exact source bytes and provider transcript times remain immutable; drift correction has not been applied and sample-accurate sync is not claimed."
+        ? reviewedClock.componentCount === 1
+          ? "Measured audio places these tracks together. Originals and transcript source times stay unchanged. Drift correction has not been applied."
+          : "Measured audio keeps matched tracks together; device clocks or recording start times place the remaining groups. You can keep editing while sync is refined. Originals stay unchanged; drift correction has not been applied."
         : completeClockEvidence
           ? "Validated monotonic/server clock proposals place sources on a provisional Session clock. Waveform correlation and drift review remain required before sample-accurate editing."
           : "Complete capture-clock evidence is unavailable. Reported source start times provide a visible fallback estimate; waveform correlation and drift review remain required.",
@@ -276,47 +280,47 @@ function reviewedProgramClock(
     );
   }
 
-  const anchorId = sources[0]!.recordingAssetId;
-  const relativeSeconds = new Map([[anchorId, 0]]);
-  const queue = [anchorId];
-  while (queue.length) {
-    const currentId = queue.shift()!;
-    const currentOffset = relativeSeconds.get(currentId)!;
-    for (const edge of adjacency.get(currentId) ?? []) {
-      const proposed = rounded(currentOffset + edge.deltaSeconds);
-      const existing = relativeSeconds.get(edge.id);
-      if (existing !== undefined && Math.abs(existing - proposed) > 0.001) {
-        throw new SessionTranscriptAssemblyError(
-          "Reviewed waveform placements conflict by more than one millisecond.",
-          "TRANSCRIPT_REVIEWED_PLACEMENT_CONFLICT",
-        );
-      }
-      if (existing === undefined) {
-        relativeSeconds.set(edge.id, proposed);
-        queue.push(edge.id);
+  // Prefer a server-calibrated anchor, then the earliest source and a stable
+  // identity tie-breaker. Input/query order must not move a partial timeline.
+  const start = (source: (typeof sources)[number]) =>
+    source.alignment?.startedAtMilliseconds ?? source.recordedStartedAtMilliseconds;
+  const anchors = [...sources].sort((left, right) =>
+    Number(!left.alignment) - Number(!right.alignment) ||
+    start(left) - start(right) || left.recordingAssetId.localeCompare(right.recordingAssetId),
+  );
+  const startsById = new Map<string, number>();
+  let componentCount = 0;
+  for (const anchor of anchors) {
+    if (startsById.has(anchor.recordingAssetId)) continue;
+    componentCount += 1;
+    const relativeSeconds = new Map([[anchor.recordingAssetId, 0]]);
+    const queue = [anchor.recordingAssetId];
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const currentId = queue[cursor]!;
+      const currentOffset = relativeSeconds.get(currentId)!;
+      for (const edge of adjacency.get(currentId) ?? []) {
+        const proposed = rounded(currentOffset + edge.deltaSeconds);
+        const existing = relativeSeconds.get(edge.id);
+        if (existing !== undefined && Math.abs(existing - proposed) > 0.001) {
+          throw new SessionTranscriptAssemblyError(
+            "Reviewed waveform placements conflict by more than one millisecond.",
+            "TRANSCRIPT_REVIEWED_PLACEMENT_CONFLICT",
+          );
+        }
+        if (existing === undefined) {
+          relativeSeconds.set(edge.id, proposed);
+          queue.push(edge.id);
+        }
       }
     }
+    for (const [id, relative] of relativeSeconds) {
+      startsById.set(id, rounded(start(anchor) + relative * 1_000));
+    }
   }
-  if (relativeSeconds.size !== sources.length) {
-    throw new SessionTranscriptAssemblyError(
-      "Every participant source needs a connected reviewed placement before the measured Session clock can be used.",
-      "TRANSCRIPT_REVIEWED_PLACEMENT_INCOMPLETE",
-    );
-  }
-
-  const anchor = sources[0]!;
-  const anchorMilliseconds =
-    anchor.alignment?.startedAtMilliseconds ??
-    anchor.recordedStartedAtMilliseconds;
-  const startsMilliseconds = sources.map((source) =>
-    rounded(
-      anchorMilliseconds +
-        (relativeSeconds.get(source.recordingAssetId) ?? 0) * 1_000,
-    ),
-  );
   return {
     captureGroupId: [...placementGroups][0]!,
-    startsMilliseconds,
+    componentCount,
+    startsMilliseconds: sources.map(source => startsById.get(source.recordingAssetId)!),
   };
 }
 
