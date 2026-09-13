@@ -204,6 +204,12 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         reconcileAfterLeaseChange()
     }
 
+    func prepareCallKitStart() throws {
+        // Configuration is safe here; CallKit owns activation and the SDK
+        // engine remains gated until its didActivate callback.
+        try applySharedCategory()
+    }
+
     func callKitDidActivate(_ activatedSession: AVAudioSession) throws {
         try activatedSession.setCategory(
             .playAndRecord,

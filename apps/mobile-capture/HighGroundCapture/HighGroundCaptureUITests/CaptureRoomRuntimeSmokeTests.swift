@@ -6273,7 +6273,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         if primaryEndpoint && simulatorActivationFailure.waitForExistence(timeout: 12) {
             XCTAssertTrue(
                 app.buttons["ProviderJoinRoomButton"].firstMatch.exists,
-                "A simulator-only CallKit audio failure must return to an explicit retry state."
+                "A CallKit audio failure must return to an explicit retry state."
             )
             XCTAssertFalse(
                 app.otherElements["GlobalCaptureBanner"].exists,
@@ -6284,8 +6284,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "A failed simulator CallKit activation must not create recorder state."
             )
             throw XCTSkip(
-                "This Simulator runtime cannot activate CallKit's provider audio session. "
-                    + "The fail-closed boundary passed; real LiveKit media join/leave still requires a physical iPhone."
+                "Primary call audio did not start on this Simulator run. "
+                    + "The UI returned to retry without starting a recording, but this message alone does not identify the cause. "
+                    + "Inspect CallLifecycle logs and repeat on a physical device; this skipped run is not call qualification."
             )
         }
         #endif

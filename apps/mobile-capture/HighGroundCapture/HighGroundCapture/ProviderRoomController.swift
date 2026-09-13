@@ -2,6 +2,7 @@ import Combine
 import AVFoundation
 import CallKit
 import Foundation
+import OSLog
 import SwiftUI
 
 #if canImport(LiveKit)
@@ -62,6 +63,7 @@ struct ProviderCallPerson: Identifiable {
 
 @MainActor
 final class ProviderRoomController: NSObject, ObservableObject {
+    private static let callLog = Logger(subsystem: "com.highgroundodyssey.HighGroundCapture", category: "CallLifecycle")
     /// CallKit represents one process-level calling endpoint. SwiftUI may
     /// reconstruct view models while authenticated/offline roots transition;
     /// sharing this controller prevents disposable CXProvider registrations
@@ -408,11 +410,17 @@ final class ProviderRoomController: NSObject, ObservableObject {
             return
         }
         guard !useCallAudio || callAudioActivated else {
+            // A rejected start action or failed activation may already explain
+            // this result. Keep that cause instead of replacing it with a
+            // misleading timeout after teardown clears the active call.
+            let activationFailure = lastTechnicalError
+                ?? "CallKit did not activate the room audio session before timeout."
+            Self.callLog.error("Call audio did not become available; ending outgoing call")
             await endNativeCallPresentation(reason: .failed)
             try? audioSessionCoordinator.callKitDidDeactivate()
             audioSessionCoordinator.providerDidDisconnect()
             usesCallAudio = false
-            fail("Call audio couldn't start. Try again, or record without joining.", technical: "CallKit did not activate the room audio session before timeout.")
+            fail("Call audio couldn't start. Try again, or record without joining.", technical: activationFailure)
             return
         }
 
@@ -796,17 +804,28 @@ final class ProviderRoomController: NSObject, ObservableObject {
         action.isVideo = false
         let transaction = CXTransaction(action: action)
 
+        // CallKit may perform/activate the call before request completion is
+        // resumed. Reserve its identity first so that callback is not mistaken
+        // for stale audio and immediately deactivated.
+        activeCallUUID = uuid
+        activeCallUUIDString = uuid.uuidString
+        Self.callLog.info("Requesting outgoing call")
         do {
             try await requestCallKitTransaction(transaction)
-            activeCallUUID = uuid
-            activeCallUUIDString = uuid.uuidString
+            guard activeCallUUID == uuid else {
+                callKitProvider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+                return false
+            }
             isNativeCallPresentationActive = true
             nativeCallPresentationLabel = "CallKit connecting"
             callKitProvider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
+            Self.callLog.info("Outgoing call transaction accepted")
             return true
         } catch {
+            if activeCallUUID == uuid { clearNativeCallPresentation() }
             nativeCallPresentationLabel = "CallKit unavailable"
             lastTechnicalError = "Native call presentation failed: \(error.localizedDescription)"
+            Self.callLog.error("Outgoing call transaction rejected: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -1172,7 +1191,27 @@ extension ProviderRoomController: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        action.fulfill()
+        Task { @MainActor in
+            guard self.activeCallUUID == action.callUUID, self.usesCallAudio,
+                  let owner = self.activeOwnerSnapshot,
+                  AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
+                Self.callLog.notice("Ignoring superseded outgoing call action")
+                action.fail()
+                return
+            }
+            do {
+                // Configure immediately before fulfillment; only didActivate
+                // is allowed to start the provider audio engine.
+                try self.audioSessionCoordinator.prepareCallKitStart()
+                Self.callLog.info("Outgoing call configured; fulfilling start action")
+                action.fulfill()
+            } catch {
+                self.lastTechnicalError = "Call audio preparation failed: \(error.localizedDescription)"
+                self.clearNativeCallPresentation()
+                Self.callLog.error("Outgoing call configuration failed: \(error.localizedDescription, privacy: .public)")
+                action.fail()
+            }
+        }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
@@ -1223,6 +1262,7 @@ extension ProviderRoomController: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         Task { @MainActor in
+            Self.callLog.info("CallKit activated audio; active call exists: \(self.activeCallUUID != nil)")
             guard self.activeCallUUID != nil else {
                 try? self.audioSessionCoordinator.callKitDidDeactivate()
                 self.isCallAudioSessionActive = false
@@ -1244,6 +1284,7 @@ extension ProviderRoomController: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         Task { @MainActor in
+            Self.callLog.info("CallKit deactivated audio")
             do {
                 try self.audioSessionCoordinator.callKitDidDeactivate()
             } catch {

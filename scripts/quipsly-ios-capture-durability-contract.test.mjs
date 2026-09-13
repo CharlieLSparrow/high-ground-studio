@@ -464,5 +464,20 @@ check(
     && !phoneShell.includes('Button("Try again now")'),
 );
 
+const nativeStart = providerRoom.slice(providerRoom.indexOf("private func startNativeCallPresentation("), providerRoom.indexOf("private func reportNativeCallConnected("));
+check("CallKit identity exists before transaction callbacks can activate audio",
+  nativeStart.indexOf("activeCallUUID = uuid") < nativeStart.indexOf("try await requestCallKitTransaction(transaction)")
+    && nativeStart.includes("guard activeCallUUID == uuid else")
+    && nativeStart.includes("if activeCallUUID == uuid { clearNativeCallPresentation() }"));
+const startAction = providerRoom.slice(providerRoom.indexOf("perform action: CXStartCallAction"), providerRoom.indexOf("perform action: CXEndCallAction"));
+check("the current authenticated CallKit start configures audio before fulfillment",
+  startAction.includes("self.activeCallUUID == action.callUUID")
+    && startAction.includes("matchesStableOwnerSnapshot(owner)")
+    && startAction.indexOf("prepareCallKitStart()") < startAction.indexOf("action.fulfill()")
+    && startAction.includes("action.fail()"));
+check("call activation teardown preserves an earlier actionable failure",
+  providerRoom.includes("let activationFailure = lastTechnicalError")
+    && providerRoom.includes('technical: activationFailure)'));
+
 console.log(`quipsly iOS capture durability contract: ${checks.length}/${checks.length} checks passed`);
 for (const name of checks) console.log(`  ✓ ${name}`);
