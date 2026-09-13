@@ -40,11 +40,7 @@ import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
-import {
-  StudioSoundCheck,
-  type StudioSoundCheckDecision,
-  type StudioSoundCheckDecisionResult,
-} from "@/components/studio-sound-check";
+import { StudioSoundCheck } from "@/components/studio-sound-check";
 import { StudioSpeakerTest } from "@/components/studio-speaker-test";
 import {
   decodeEpisodeWatchLiveHint,
@@ -404,11 +400,14 @@ function PreJoinMicrophoneActivity({
   evidence: StudioAudioMeterEvidence | null;
   muted: boolean;
 }) {
-  const presentation = liveMicrophoneStatusPresentation({
+  const measured = liveMicrophoneStatusPresentation({
     evidence,
     muted,
     recoveryHeld: false,
   });
+  const presentation = !muted && evidence?.state === "no-signal"
+    ? { ...measured, label: "Listening for your voice", style: "border-border text-muted-foreground", dot: "bg-muted-foreground" }
+    : measured;
   const level = muted
     ? 0
     : studioAudioDbfsPercent(
@@ -417,11 +416,11 @@ function PreJoinMicrophoneActivity({
 
   return (
     <div
-      className={`mt-3 rounded-xl border bg-white/85 p-3 ${presentation.style}`}
+      className={`mt-3 rounded-xl border bg-card p-3 ${presentation.style}`}
       aria-label={`Pre-join microphone status: ${presentation.label}`}
       data-testid="prejoin-microphone-activity"
     >
-      <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wide">
+      <div className="flex items-center justify-between gap-3 text-xs font-semibold">
         <span className="flex items-center gap-2">
           <span
             className={`h-2.5 w-2.5 rounded-full ${presentation.dot}`}
@@ -867,67 +866,6 @@ export function LiveSessionRoom({
     }
   }, [stopAudioMeter]);
 
-  const saveSoundCheckDecision = useCallback(async (
-    decision: StudioSoundCheckDecision,
-  ): Promise<StudioSoundCheckDecisionResult> => {
-    const microphoneLabel = microphones.find((device) => device.deviceId === microphoneId)?.label || "";
-    const cameraLabel = cameraWanted
-      ? cameras.find((device) => device.deviceId === cameraId)?.label || ""
-      : "";
-    const outputLabel = outputs.find((device) => device.deviceId === outputId)?.label
-      || (supportsOutputSelection ? "System default" : "System output selected outside this browser");
-    try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(callRoomId)}/preflight`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          ...decision,
-          clientInstanceId: browserClientInstanceId(),
-          clientKind: "web",
-          deviceLabel: navigator.platform ? `Quipsly Web · ${navigator.platform}` : "Quipsly Web",
-          microphoneLabel,
-          cameraLabel,
-          outputLabel,
-          cameraWanted,
-          audioEvidence: meterEvidence,
-          cameraEvidence,
-          clientReportedAt: new Date().toISOString(),
-        }),
-      });
-      const packet = await response.json().catch(() => ({})) as {
-        ok?: boolean;
-        error?: string;
-        nextAction?: string;
-        preflight?: { status?: "READY" | "NEEDS_ATTENTION" };
-      };
-      if (!response.ok || !packet.ok) {
-        return {
-          ok: false,
-          message: packet.error || "Quipsly could not save the setup receipt. The private sample remains in this tab; retry the same decision.",
-        };
-      }
-      dispatchQuipslyProductEvent("preflight_completed", {
-        surface: "session_workspace",
-        workflow: kind === "coaching" ? "coaching" : "podcast",
-        client_kind: "browser",
-        result: packet.preflight?.status === "READY" ? "success" : "failed",
-        has_video: cameraWanted,
-      });
-      router.refresh();
-      return {
-        ok: true,
-        status: packet.preflight?.status,
-        message: `${packet.preflight?.status === "READY" ? "Setup receipt ready" : "Setup receipt needs attention"}. ${packet.nextAction || "Refresh Session readiness to share this endpoint result with collaborators."} No private audio was uploaded.`,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: `${error instanceof Error ? error.message : "The setup receipt response was lost."} The private sample remains in this tab; retry the same decision and Quipsly will use the same request ID.`,
-      };
-    }
-  }, [callRoomId, cameraEvidence, cameraId, cameraWanted, cameras, kind, meterEvidence, microphoneId, microphones, outputId, outputs, router, supportsOutputSelection]);
-
   const refreshProviderRecording = useCallback(async (announceFailure = false) => {
     try {
       const response = await fetch(
@@ -1335,11 +1273,8 @@ export function LiveSessionRoom({
   const startSelectedPreview = useCallback(async (audioOnly = false) => {
     if (!navigator.mediaDevices?.getUserMedia) return null;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
-    if (!audioOnly && cameraWanted && !cameraId) {
-      setStatus("error");
-      setMessage("Choose a camera or turn Camera off to preview your microphone.");
-      return;
-    }
+    const selectedMicrophoneId = microphoneIdRef.current;
+    const selectedCameraId = cameraIdRef.current;
     setStatus("checking");
     setMessage("Opening the selected studio devices…");
     clearPreflightPreview();
@@ -1347,13 +1282,13 @@ export function LiveSessionRoom({
     try {
       const stream = await getUserMediaWithTimeout({
         audio: useCallAudioHere ? {
-          ...(microphoneId ? { deviceId: { exact: microphoneId } } : {}),
+          ...(selectedMicrophoneId ? { deviceId: { exact: selectedMicrophoneId } } : {}),
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         } : false,
-        video: !audioOnly && cameraWanted && cameraId ? {
-          deviceId: { exact: cameraId },
+        video: !audioOnly && cameraWanted ? {
+          ...(selectedCameraId ? { deviceId: { exact: selectedCameraId } } : {}),
           width: { ideal: 1920 },
           height: { ideal: 1080 },
           frameRate: { ideal: 30 },
@@ -1398,6 +1333,17 @@ export function LiveSessionRoom({
       return null;
     }
   }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId, startAudioMeter]);
+
+  const allowAndPreviewDevices = useCallback(async () => {
+    const joinAttempt = joinAttemptGenerationRef.current;
+    const allowed = await refreshDevices(callAudioMode === "this-device"
+      ? (cameraWanted ? "media" : "microphone") : "camera");
+    // Permission may resolve after Join or Leave. Never reopen a lobby stream
+    // over the call that now owns the devices, or after its view was closed.
+    if (allowed && !connected && joinAttempt === joinAttemptGenerationRef.current) {
+      await startSelectedPreview();
+    }
+  }, [callAudioMode, cameraWanted, connected, refreshDevices, startSelectedPreview]);
 
   const previewLobbyCamera = useCallback(async (enabled: boolean) => {
     automaticPreviewAttemptedRef.current = true;
@@ -2180,7 +2126,7 @@ export function LiveSessionRoom({
       setMicrophoneRecoveryHeld(false);
       if (!connected) {
         clearPreflightPreview();
-        setStatus("preflight");
+        await startSelectedPreview();
       }
       const label = microphones.find((device) => device.deviceId === nextId)?.label || "selected microphone";
       setMessage(connected ? `Microphone switched to ${label}.` : `Microphone selected: ${label}.`);
@@ -2189,7 +2135,7 @@ export function LiveSessionRoom({
       microphoneIdRef.current = previousId;
       setMessage(error instanceof Error ? `Microphone switch failed: ${error.message}` : "Microphone switch failed.");
     }
-  }, [clearPreflightPreview, connected, microphoneId, microphoneMuted, microphones, sourceLocked, startAudioMeter]);
+  }, [clearPreflightPreview, connected, microphoneId, microphoneMuted, microphones, sourceLocked, startAudioMeter, startSelectedPreview]);
 
   const chooseCamera = useCallback(async (nextId: string) => {
     if (!nextId || nextId === cameraId || cameraToggleInFlightRef.current) return;
@@ -2549,75 +2495,75 @@ export function LiveSessionRoom({
           </CallWorkspacePanel>
 
           <CallWorkspacePanel title="Audio and video settings" open={toolPanel === "devices"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
-          <details ref={deviceSettingsRef} open={stageLayout || undefined} data-testid="call-device-settings" className={stageLayout ? "" : "rounded-2xl border border-[#d8c7a7] bg-white p-4"}>
-            <summary className={stageLayout ? "hidden" : "cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]"}>Audio and video settings</summary>
+          <details ref={deviceSettingsRef} open={stageLayout || undefined} data-testid="call-device-settings" className={stageLayout ? "" : "rounded-2xl border border-border bg-card p-4"}>
+            <summary className={stageLayout ? "hidden" : "cursor-pointer text-xs font-semibold text-foreground"}>Audio and video settings</summary>
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
             <button
               type="button"
               onClick={() => void chooseCallAudioMode("this-device")}
               disabled={callAudioModeBusy}
-              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "this-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
+              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-semibold ${callAudioMode === "this-device" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-muted text-foreground"}`}
               aria-pressed={callAudioMode === "this-device"}
             >
               <span className="flex items-center gap-2"><Headphones size={16} /> Audio on this device</span>
-              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "this-device" ? "text-violet-100" : "text-[#765f40]"}`}>Talk and listen here</span>
+              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "this-device" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>Talk and listen here</span>
             </button>
             <button
               type="button"
               onClick={() => void chooseCallAudioMode("other-device")}
               disabled={callAudioModeBusy}
-              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "other-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
+              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-semibold ${callAudioMode === "other-device" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-muted text-foreground"}`}
               aria-pressed={callAudioMode === "other-device"}
             >
               <span className="flex items-center gap-2"><Smartphone size={16} /> Audio on another device</span>
-              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "other-device" ? "text-violet-100" : "text-[#765f40]"}`}>Prevents echo when joining twice</span>
+              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "other-device" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>Prevents echo when joining twice</span>
             </button>
           </div>
           <div className={`mt-4 grid gap-3 ${toolPanelContainer ? "" : "md:grid-cols-2"}`} role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
-            {callAudioMode === "this-device" ? <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
-              <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
+            {callAudioMode === "this-device" ? <label className="text-xs font-semibold text-foreground">Microphone
+              <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a microphone</option>{microphones.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
               </select>
             </label> : <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs font-bold leading-5 text-sky-950">
               Call audio is off on this device. Use your other device to talk and listen.
             </div>}
-            <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Camera
-              <select value={cameraId} disabled={sourceLocked || cameraToggleBusy} onChange={(event) => void chooseCamera(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
+            <label className="text-xs font-semibold text-foreground">Camera
+              <select value={cameraId} disabled={sourceLocked || cameraToggleBusy} onChange={(event) => void chooseCamera(event.target.value)} className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a camera</option>{cameras.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
               </select>
             </label>
-            {callAudioMode === "this-device" ? <div className="text-xs font-black uppercase tracking-wide text-[#5b472f]">
+            {callAudioMode === "this-device" ? <div className="text-xs font-semibold text-foreground">
               <label>Headphones / output
-                <select value={outputId} disabled={!supportsOutputSelection} onChange={(event) => chooseOutput(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:opacity-50">
+                <select value={outputId} disabled={!supportsOutputSelection} onChange={(event) => chooseOutput(event.target.value)} className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:opacity-50">
                   <option value="">System default</option>{outputs.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                 </select>
               </label>
-              {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-[#8a7354]">This browser uses your system audio output. Choose your headphones in your device’s sound settings.</span> : null}
-              {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-black normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
+              {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-muted-foreground">This browser uses your system audio output. Choose your headphones in your device’s sound settings.</span> : null}
+              {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-semibold normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
               <StudioSpeakerTest
                 outputId={outputId}
                 outputLabel={outputs.find((device) => device.deviceId === outputId)?.label || "the system output"}
                 disabled={status === "checking" || status === "joining"}
               />
             </div> : null}
-            {!connected ? <div className="flex min-h-12 items-center rounded-xl border border-[#d8c7a7] bg-[#fffaf0] px-3 text-xs font-bold leading-5 text-[#765f40]">
-              Your choices above are remembered on this browser. If a device is unplugged, Quipsly safely falls back to an available one.
-            </div> : <div className={`flex min-h-12 items-center rounded-xl border px-3 text-xs font-black leading-5 ${sourceLocked ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
-              {sourceLocked ? "Device switching is locked until this retained take stops." : "You can switch call devices live. Retained recording still starts separately."}
+            {!connected ? <div className="flex min-h-12 items-center rounded-xl border border-border bg-muted px-3 text-xs font-bold leading-5 text-muted-foreground">
+              Your device choices are remembered.
+            </div> : <div className={`flex min-h-12 items-center rounded-xl border px-3 text-xs font-semibold leading-5 ${sourceLocked ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
+              {sourceLocked ? "Stop recording before changing its microphone or camera." : "Changes apply to this call."}
             </div>}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
             {!sourceLocked && ((callAudioMode === "this-device" && !microphoneId) || (!connected && cameraWanted && !cameraId)) ? <>
-              <button type="button" aria-label={callAudioMode === "this-device" ? `Allow microphone${cameraWanted ? " and camera" : ""}` : "Allow camera"} onClick={() => void refreshDevices(callAudioMode === "this-device" ? (cameraWanted ? "media" : "microphone") : "camera")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : callAudioMode === "this-device" ? <Mic size={15} /> : <Camera size={15} />} {callAudioMode === "this-device" ? `Use microphone${cameraWanted ? " and camera" : ""}` : "Use camera"}</button>
+              <button type="button" aria-label={callAudioMode === "this-device" ? `Allow microphone${cameraWanted ? " and camera" : ""}` : "Allow camera"} onClick={() => void allowAndPreviewDevices()} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : callAudioMode === "this-device" ? <Mic size={15} /> : <Camera size={15} />} {callAudioMode === "this-device" ? `Use microphone${cameraWanted ? " and camera" : ""}` : "Use camera"}</button>
             </> : null}
-            {!connected ? <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={(callAudioMode === "this-device" && !microphoneId) || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Preview</button> : null}
-            <button type="button" onClick={() => void refreshDevices("none", "manual")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} /> Refresh devices</button>
+            {!connected ? <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={(cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50"><Video size={15} /> Preview</button> : null}
+            <button type="button" onClick={() => void refreshDevices("none", "manual")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50"><RefreshCw size={15} /> Refresh devices</button>
           </div>
 
           {!connected && callAudioMode === "this-device" ? (
-            <details className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-3">
-              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-900">Optional sound check</summary>
+            <details className="mt-4">
+              <summary className="cursor-pointer text-[10px] font-semibold text-foreground">Test microphone</summary>
               <div className="mt-3">
               <StudioSoundCheck
                 getInputStream={currentPreflightStream}
@@ -2626,15 +2572,14 @@ export function LiveSessionRoom({
                 outputId={outputId}
                 evidence={meterEvidence}
                 setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
-                onDecision={saveSoundCheckDecision}
                 disabled={status === "checking" || status === "joining"}
               />
               </div>
             </details>
           ) : null}
 
-          <details data-testid="call-technical-device-details" className="mt-4 rounded-xl border border-[#e8dcc8] bg-[#fffaf0] p-3">
-            <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#765f40]">Technical device details</summary>
+          <details data-testid="call-technical-device-details" className="mt-4 rounded-xl border border-border bg-muted p-3">
+            <summary className="cursor-pointer text-[10px] font-semibold text-muted-foreground">Technical device details</summary>
             <div className="mt-3 space-y-3">
               {technicalMessage ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 font-mono text-[10px] font-semibold leading-4 text-amber-950" data-testid="call-technical-error">{technicalMessage}</p> : null}
               <StudioInputEvidenceMeter evidence={meterEvidence} />

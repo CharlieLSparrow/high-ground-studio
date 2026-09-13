@@ -243,9 +243,9 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("heading", { name: "Episode test" })).toBeInTheDocument();
     expect(screen.getByText(/This device will handle the conversation audio.*Joining doesn’t start recording/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Microphone test" })).toBeInTheDocument();
     expect(screen.getByTestId("call-technical-device-details")).not.toHaveAttribute("open");
-    expect(screen.getByRole("button", { name: "Record private sample" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Test microphone" })).toBeEnabled();
     expect(screen.getByText("Call-path input evidence")).toBeInTheDocument();
     expect(screen.getByText(/not LUFS, true peak, or proof of the retained source/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Join call/i })).toBeEnabled();
@@ -294,7 +294,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.queryByText(/Microphone not available yet|Camera not available yet/)).not.toBeInTheDocument();
     expect(screen.getByTestId("call-device-settings")).not.toHaveAttribute("open");
     expect(screen.queryByTestId("call-status-message")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Record private sample" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Test microphone" })).toBeEnabled();
     fireEvent.click(join);
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
@@ -1039,7 +1039,7 @@ describe("LiveSessionRoom", () => {
     expect(greenRoom).toHaveTextContent(/Joining doesn’t start recording/i);
     const join = screen.getByRole("button", { name: /Join call/i });
     const devices = screen.getByRole("group", { name: "Preflight studio devices" });
-    const soundCheck = screen.getByRole("region", { name: "Private studio sound check" });
+    const soundCheck = screen.getByRole("region", { name: "Microphone test" });
     const stage = screen.getByTestId("call-video-stage");
     const preview = stage.querySelector("video");
     expect(greenRoom).toContainElement(stage);

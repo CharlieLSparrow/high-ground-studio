@@ -1,6 +1,6 @@
 "use client";
 
-import { Headphones, Mic2, RotateCcw, Square, Volume2 } from "lucide-react";
+import { Mic2, RotateCcw, Square, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -10,19 +10,6 @@ import {
 } from "@/lib/studio-audio-meter";
 
 const SOUND_CHECK_SECONDS = 10;
-
-export type StudioSoundCheckDecision = {
-  requestId: string;
-  playbackDecision: "HEARD_CLEAR" | "NEEDS_ADJUSTMENT";
-  privateSampleDurationSeconds: number;
-  privateSamplePlaybackComplete: true;
-};
-
-export type StudioSoundCheckDecisionResult = {
-  ok: boolean;
-  status?: "READY" | "NEEDS_ATTENTION";
-  message: string;
-};
 
 function supportedAudioMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return "";
@@ -45,7 +32,6 @@ export function StudioSoundCheck({
   outputId,
   evidence,
   setupKey,
-  onDecision,
   disabled = false,
 }: {
   getInputStream: () => MediaStream | null;
@@ -54,16 +40,13 @@ export function StudioSoundCheck({
   outputId: string;
   evidence: StudioAudioMeterEvidence | null;
   setupKey?: string;
-  onDecision?: (decision: StudioSoundCheckDecision) => Promise<StudioSoundCheckDecisionResult>;
   disabled?: boolean;
 }) {
   const [phase, setPhase] = useState<"idle" | "recording" | "ready" | "error">("idle");
-  const [message, setMessage] = useState("Nothing is recorded, uploaded, or retained until you choose Record private sample.");
+  const [message, setMessage] = useState("");
   const [remainingSeconds, setRemainingSeconds] = useState(SOUND_CHECK_SECONDS);
   const [sampleUrl, setSampleUrl] = useState<string | null>(null);
   const [sampleDurationSeconds, setSampleDurationSeconds] = useState<number | null>(null);
-  const [playbackComplete, setPlaybackComplete] = useState(false);
-  const [reviewBusy, setReviewBusy] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
@@ -72,7 +55,8 @@ export function StudioSoundCheck({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sampleUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
-  const sampleRequestIdRef = useRef<string | null>(null);
+  const sampleGenerationRef = useRef(0);
+  const openingRef = useRef(false);
   const previousSetupKeyRef = useRef(setupKey || microphoneLabel);
   const guidance = studioSoundCheckGuidance(evidence);
   const spokenPrompt = studioSoundCheckPrompt(remainingSeconds);
@@ -84,16 +68,18 @@ export function StudioSoundCheck({
     intervalRef.current = null;
   }, []);
 
-  const clearSample = useCallback((nextMessage = "Private sample cleared. Run another whenever the setup changes.") => {
+  const clearSample = useCallback((nextMessage = "") => {
+    sampleGenerationRef.current += 1;
+    openingRef.current = false;
     clearTimers();
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    if (recorder?.state === "recording") recorder.stop();
     audioRef.current?.pause();
     revoke(sampleUrlRef.current);
     sampleUrlRef.current = null;
     setSampleUrl(null);
     setSampleDurationSeconds(null);
-    setPlaybackComplete(false);
-    setReviewBusy(false);
-    sampleRequestIdRef.current = null;
     setRemainingSeconds(SOUND_CHECK_SECONDS);
     setPhase("idle");
     setMessage(nextMessage);
@@ -106,12 +92,15 @@ export function StudioSoundCheck({
   }, [clearTimers]);
 
   const startRecording = useCallback(async () => {
-    if (disabled || phase === "recording") return;
+    if (disabled || openingRef.current || phase === "recording") return;
     if (typeof MediaRecorder === "undefined") {
       setPhase("error");
       setMessage("This browser cannot create a private sound-check sample. The live meter still works; try current Safari or Chrome for playback verification.");
       return;
     }
+    clearSample();
+    const generation = sampleGenerationRef.current;
+    openingRef.current = true;
     let stream = getInputStream();
     let audioTracks = stream?.getAudioTracks().filter((track) => track.readyState !== "ended") ?? [];
     if ((!stream || audioTracks.length === 0) && prepareInputStream) {
@@ -124,14 +113,14 @@ export function StudioSoundCheck({
         audioTracks = [];
       }
     }
+    if (!mountedRef.current || generation !== sampleGenerationRef.current) return;
+    openingRef.current = false;
     if (!stream || audioTracks.length === 0) {
       setPhase("error");
       setMessage("Quipsly could not open the selected microphone. Check browser access and try again.");
       return;
     }
 
-    clearSample("Preparing the private sample…");
-    sampleRequestIdRef.current = crypto.randomUUID();
     chunksRef.current = [];
     const mimeType = supportedAudioMimeType();
     try {
@@ -141,15 +130,16 @@ export function StudioSoundCheck({
       );
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+        if (generation === sampleGenerationRef.current && event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onerror = () => {
-        clearTimers();
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || generation !== sampleGenerationRef.current) return;
+        clearSample();
         setPhase("error");
-        setMessage("The browser could not finish the private sample. The selected setup remains open; try the sound check again.");
+        setMessage("The microphone test stopped unexpectedly. Try again.");
       };
       recorder.onstop = () => {
+        if (!mountedRef.current || generation !== sampleGenerationRef.current) return;
         clearTimers();
         recorderRef.current = null;
         if (!mountedRef.current) return;
@@ -171,7 +161,7 @@ export function StudioSoundCheck({
         setSampleDurationSeconds(Math.max(0.1, (performance.now() - startedAtRef.current) / 1_000));
         setRemainingSeconds(0);
         setPhase("ready");
-        setMessage("Private sample ready. Listen through headphones, then clear or repeat it. The bytes remain only in this browser tab.");
+        setMessage("Play it back to hear how you sound.");
       };
       startedAtRef.current = performance.now();
       setRemainingSeconds(SOUND_CHECK_SECONDS);
@@ -203,7 +193,7 @@ export function StudioSoundCheck({
     if (previousSetupKeyRef.current === currentSetupKey) return;
     previousSetupKeyRef.current = currentSetupKey;
     if (phase === "recording") stopRecording();
-    clearSample("The studio setup changed. Run the selected-device test and record a fresh private sample.");
+    clearSample("Devices changed. Test again whenever you like.");
   }, [clearSample, microphoneLabel, phase, setupKey, stopRecording]);
 
   useEffect(() => {
@@ -212,6 +202,8 @@ export function StudioSoundCheck({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      sampleGenerationRef.current += 1;
+      openingRef.current = false;
       clearTimers();
       const recorder = recorderRef.current;
       recorderRef.current = null;
@@ -226,100 +218,65 @@ export function StudioSoundCheck({
       ? "border-amber-300 bg-amber-50 text-amber-950"
       : guidance.tone === "ready"
         ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-        : "border-[#d8c7a7] bg-white text-[#5b472f]";
-
-  const decide = useCallback(async (playbackDecision: StudioSoundCheckDecision["playbackDecision"]) => {
-    if (!sampleRequestIdRef.current || !sampleDurationSeconds || !playbackComplete || reviewBusy) return;
-    setReviewBusy(true);
-    setMessage("Saving a device-and-evidence receipt only. The private audio remains in this tab.");
-    try {
-      const result = onDecision
-        ? await onDecision({
-            requestId: sampleRequestIdRef.current,
-            playbackDecision,
-            privateSampleDurationSeconds: sampleDurationSeconds,
-            privateSamplePlaybackComplete: true,
-          })
-        : {
-            ok: true,
-            status: playbackDecision === "HEARD_CLEAR" ? "READY" as const : "NEEDS_ATTENTION" as const,
-            message: playbackDecision === "HEARD_CLEAR"
-              ? "You confirmed the private playback locally. No shared setup receipt was requested."
-              : "You marked this local setup for adjustment. No shared setup receipt was requested.",
-          };
-      setMessage(result.message);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The setup receipt could not be saved. The private sample remains in this tab; retry the same decision.");
-    } finally {
-      setReviewBusy(false);
-    }
-  }, [onDecision, playbackComplete, reviewBusy, sampleDurationSeconds]);
+        : "border-border bg-card text-foreground";
 
   return (
-    <section className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4" aria-label="Private studio sound check">
+    <section className="rounded-2xl border border-border bg-card p-4 text-card-foreground" aria-label="Microphone test">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-800"><Headphones size={14} aria-hidden="true" /> Private playback check</p>
-          <h3 className="mt-1 font-serif text-xl font-black text-[#3d3122]">Hear what the call microphone hears</h3>
-          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Record up to ten seconds locally, then play it through the selected headphones. It is never uploaded, attached, or treated as a retained recording.</p>
+          <h3 className="text-sm font-semibold text-foreground">Hear yourself before joining</h3>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Record up to 10 seconds and listen back. Only you can hear it; nothing is uploaded.</p>
         </div>
-        <span className="rounded-full border border-violet-200 bg-white px-3 py-1 font-mono text-[9px] font-black uppercase tracking-wide text-violet-900">{phase === "recording" ? `${remainingSeconds}s left` : phase}</span>
+        {phase === "recording" ? <span className="text-sm font-semibold">{remainingSeconds}s</span> : null}
       </div>
 
-      <div className={`mt-3 rounded-xl border p-3 ${guidanceTone}`}>
-        <p className="text-xs font-black">{guidance.heading}</p>
+      {evidence && phase === "recording" ? <div className={`mt-3 rounded-xl border p-3 ${guidanceTone}`}>
+        <p className="text-xs font-semibold">{guidance.heading}</p>
         <p className="mt-1 text-[10px] font-bold leading-4 opacity-80">{guidance.detail}</p>
-      </div>
+      </div> : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
         {phase === "recording" ? (
-          <button type="button" onClick={stopRecording} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><Square size={14} fill="currentColor" aria-hidden="true" />Stop and listen</button>
+          <button type="button" onClick={stopRecording} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-semibold text-white"><Square size={14} fill="currentColor" aria-hidden="true" />Stop test</button>
         ) : (
-          <button type="button" onClick={() => void startRecording()} disabled={disabled} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45"><Mic2 size={15} aria-hidden="true" />Record private sample</button>
+          <button type="button" onClick={() => void startRecording()} disabled={disabled} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-45"><Mic2 size={15} aria-hidden="true" />Test microphone</button>
         )}
-        {sampleUrl ? <button type="button" onClick={() => clearSample()} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-violet-950"><RotateCcw size={14} aria-hidden="true" />Clear sample</button> : null}
+        {sampleUrl ? <button type="button" onClick={() => clearSample()} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground"><RotateCcw size={14} aria-hidden="true" />Clear test</button> : null}
       </div>
 
       {phase === "recording" ? (
-        <div className="mt-3 rounded-xl border border-violet-300 bg-white p-3" aria-live="polite">
-          <p className="text-sm font-black text-violet-950">{spokenPrompt.heading}</p>
-          <p className="mt-1 text-xs font-semibold leading-5 text-violet-950/75">{spokenPrompt.detail}</p>
+        <div className="mt-3 rounded-xl border border-border bg-card p-3" aria-live="polite">
+          <p className="text-sm font-semibold text-foreground">{spokenPrompt.heading}</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">{spokenPrompt.detail}</p>
         </div>
       ) : null}
 
       {sampleUrl ? (
-        <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900"><span className="flex items-center gap-2"><Volume2 size={14} aria-hidden="true" />Call-path sample</span><span>{sampleDurationSeconds?.toFixed(1)} seconds · tab only</span></div>
+        <div className="mt-3 rounded-xl border border-border bg-card p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold text-foreground"><span className="flex items-center gap-2"><Volume2 size={14} aria-hidden="true" />Your microphone test</span><span>{sampleDurationSeconds?.toFixed(1)} seconds</span></div>
           <audio
             ref={audioRef}
             src={sampleUrl}
             controls
             preload="metadata"
             className="mt-2 w-full"
-            aria-label="Private call-path sound-check sample"
-            onPlay={() => setPlaybackComplete(false)}
+            aria-label="Microphone test playback"
             onEnded={() => {
-              setPlaybackComplete(true);
-              setMessage("Full private sample played. Confirm whether you heard the intended microphone clearly through the intended headphones.");
+              setMessage("Test complete. You can join whenever you’re ready.");
             }}
           />
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => void decide("HEARD_CLEAR")} disabled={!playbackComplete || reviewBusy} className="min-h-11 rounded-full bg-emerald-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45">{reviewBusy ? "Saving check…" : "Sounds clear in headphones"}</button>
-            <button type="button" onClick={() => void decide("NEEDS_ADJUSTMENT")} disabled={!playbackComplete || reviewBusy} className="min-h-11 rounded-full border border-amber-300 bg-amber-50 px-4 text-xs font-black uppercase tracking-wide text-amber-950 disabled:cursor-not-allowed disabled:opacity-45">Needs adjustment</button>
-          </div>
-          {!playbackComplete ? <p className="mt-2 text-[10px] font-bold leading-4 text-violet-950/70">Play the sample from beginning to end before recording a setup result. The meter alone cannot certify mouth noise, room sound, delay, or output routing.</p> : null}
-          <details className="mt-3 rounded-lg border border-violet-100 bg-violet-50/60 p-3">
-            <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-900">If something sounds wrong</summary>
-            <ul className="mt-2 space-y-2 text-xs font-semibold leading-5 text-violet-950/80">
-              <li><span className="font-black text-violet-950">Clicks or popping B/P sounds:</span> move the microphone slightly farther away and 20–45° off axis; keep the pop filter between you and the mic.</li>
-              <li><span className="font-black text-violet-950">Hiss, hum, or room echo:</span> move closer before raising gain, quiet nearby fans or appliances, and keep headphones on.</li>
-              <li><span className="font-black text-violet-950">Delay, doubling, or the wrong voice:</span> confirm the chosen input and headphone output. Do not try to fix a routing problem with processing.</li>
+          <details className="mt-3 rounded-lg border border-border bg-muted p-3">
+            <summary className="cursor-pointer text-[10px] font-semibold text-foreground">Troubleshoot sound</summary>
+            <ul className="mt-2 space-y-2 text-xs font-semibold leading-5 text-muted-foreground">
+              <li><span className="font-semibold text-foreground">Clicks or popping B/P sounds:</span> move the microphone slightly farther away and 20–45° off axis; keep the pop filter between you and the mic.</li>
+              <li><span className="font-semibold text-foreground">Hiss, hum, or room echo:</span> move closer before raising gain, quiet nearby fans or appliances, and keep headphones on.</li>
+              <li><span className="font-semibold text-foreground">Delay, doubling, or the wrong voice:</span> confirm the chosen input and headphone output. Do not try to fix a routing problem with processing.</li>
             </ul>
           </details>
         </div>
       ) : null}
 
-      <p className="mt-3 text-[10px] font-bold leading-4 text-violet-950/70" role="status" aria-live="polite">{message}</p>
+      <p className="mt-3 text-[10px] font-bold leading-4 text-muted-foreground" role="status" aria-live="polite">{message}</p>
     </section>
   );
 }
