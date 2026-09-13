@@ -774,9 +774,10 @@ function checkMeetingSpineContractSources() {
     onDeviceTranscriptText.includes("recognitionDeadlineSeconds: Double")
       && onDeviceTranscriptText.includes("Task.sleep(for: .seconds(deadlineSeconds))")
       && onDeviceTranscriptText.includes("compatibleRecognitionWindows(")
-      && onDeviceTranscriptText.includes("url-final-time-indexed-on-device-windowed-v2")
+      && onDeviceTranscriptText.includes("url-final-time-indexed-on-device-windowed-v3")
+      && onDeviceTranscriptText.includes("url-final-time-indexed-apple-service-windowed-v3")
       && onDeviceTranscriptText.includes("window.owns(")
-      && onDeviceTranscriptText.includes("gate.storeTimeout(timeoutTask)")
+      && onDeviceTranscriptText.includes("gate.onFinish { timeoutTask.cancel() }")
       && !onDeviceTranscriptText.includes("Task.sleep(for: .seconds(45))"),
     "nativeLongFormTranscriptFallbackUsesSourceDeadline",
     "Legacy Apple speech stays below its request limit with overlap-owned source windows, preserves original time, and uses one cancellable source-duration deadline instead of killing long coaching transcription after a fixed timeout.",
