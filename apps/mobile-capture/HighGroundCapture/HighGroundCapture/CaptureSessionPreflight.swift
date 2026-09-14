@@ -527,7 +527,7 @@ final class CaptureSessionPreflightClient: ObservableObject {
     }
 
     private static func isoDate(_ value: String) -> Date? {
-        ISO8601DateFormatter().date(from: value)
+        CaptureDateCoding.date(from: value)
     }
 
     private enum DeliveryResult {

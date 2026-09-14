@@ -778,21 +778,11 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     var nextSession: MobileCaptureSession? {
-        let activeSessions = scheduledSessions.filter {
-            !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased())
-        }
-        return activeSessions.min { left, right in
-            switch (left.scheduledStart, right.scheduledStart) {
-            case let (leftDate?, rightDate?):
-                return leftDate < rightDate
-            case (_?, nil):
-                return true
-            case (nil, _?):
-                return false
-            case (nil, nil):
-                return left.id < right.id
-            }
-        } ?? scheduledSessions.first
+        let sessions = scheduledSessions
+        guard let id = CaptureSessionScheduling.nextID(in: sessions.map {
+            (id: $0.id, startsAt: $0.scheduledStart, status: $0.status)
+        }) else { return nil }
+        return sessions.first { $0.id == id }
     }
 
     var isProviderConnected: Bool {

@@ -26,6 +26,11 @@ struct CaptureDateCodingTests {
         precondition(wireTimestamp.contains(".123Z"))
         precondition(abs(CaptureDateCoding.date(from: wireTimestamp)!.timeIntervalSince(original.sent)) < 0.001)
         precondition(CaptureDateCoding.date(from: "2026-09-09T19:51:12Z") != nil)
+        let apiSchedule = CaptureDateCoding.date(from: "2026-09-09T20:30:26.000Z")
+        precondition(apiSchedule != nil, "Session schedules include fractional seconds from the web API")
+        precondition(apiSchedule == CaptureDateCoding.date(from: "2026-09-09T20:30:26Z"))
+        precondition(apiSchedule == CaptureDateCoding.date(from: "2026-09-09T14:30:26.000-06:00"),
+                     "Scheduling must preserve the instant across timezone offsets")
         precondition(CaptureDateCoding.date(from: "not a date") == nil)
         // Existing recordings must remain readable when their ledger predates
         // fractional timestamps. Loading them cannot invent lost precision.

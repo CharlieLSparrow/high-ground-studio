@@ -2037,7 +2037,7 @@ private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
             return "Coaching · Ready to plan"
         }
         guard let nextScheduledStart,
-              let date = ISO8601DateFormatter().date(from: nextScheduledStart) else {
+              let date = CaptureDateCoding.date(from: nextScheduledStart) else {
             return "\(kind.title) · \(count)"
         }
         let timing = Calendar.current.isDateInToday(date)
@@ -11545,7 +11545,11 @@ private struct CaptureRecorderView: View {
                 } else if let session = model.selectedSession,
                           !model.providerRoom.isConnected,
                           !localRecordingWorkspaceIsOpen(for: session) {
-                    prejoinWorkspace(session)
+                    if CaptureSessionScheduling.isClosed(status: session.status) {
+                        savedSessionWorkspace(session)
+                    } else {
+                        prejoinWorkspace(session)
+                    }
                 } else {
                     // This surface can project a full Episode workspace. Lazy
                     // layout remains a correctness boundary for collaborative
@@ -13076,6 +13080,38 @@ private struct CaptureRecorderView: View {
         )
     }
 
+    private func savedSessionWorkspace(_ session: MobileCaptureSession) -> AnyView {
+        AnyView(VStack(alignment: .leading, spacing: 16) {
+            SessionChooserButton(session: session) { showsSessionPicker = true }
+                .disabled(model.isSessionContextLocked)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(session.displayTitle).font(.title2.bold())
+                Text(session.captureScheduleLabel)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Text("Your session work, together in one place.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            callWorkspaceActions(session)
+            if sessionHasRecording(session) {
+                CaptureRecordingEditCard(session: session)
+            }
+            if sessionHasPostCallWork(session) {
+                Button { showsCompletedSessionWork = true } label: {
+                    Label("Recap and transcript", systemImage: "doc.text")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureOpenSessionWork")
+            } else {
+                Text("No recording was saved for this session. You can still work together in chat, notes, and tasks.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureSavedSessionWorkspace"))
+    }
+
     private func prejoinWorkspace(_ session: MobileCaptureSession) -> AnyView {
         // A lobby is a bounded destination, not a lazy projection of every
         // transcript, recording, and follow-through card. That projection can
@@ -13119,7 +13155,9 @@ private struct CaptureRecorderView: View {
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("CaptureSessionPreparationOpen")
             }
-        }.accessibilityIdentifier("CaptureCallLobbyWorkspace"))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCallLobbyWorkspace"))
     }
 
     private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {
@@ -13725,7 +13763,6 @@ private struct CaptureRecorderView: View {
             || videoCapture.activeSessionID == session.id
             || model.activeCaptureSession?.id == session.id
             || model.activeVideoCaptureSession?.id == session.id
-            || session.providerCanJoin == false
     }
 
     private func shouldCoordinateRecording(for session: MobileCaptureSession) -> Bool {
@@ -19265,7 +19302,7 @@ private struct NextCaptureCard: View {
 
     private var sessionIdentity: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("UP NEXT")
+            Text(CaptureSessionScheduling.heading(startsAt: session.scheduledStart, status: session.status))
                 .font(.caption2.weight(.bold))
                 .tracking(1.2)
                 .foregroundStyle(CapturePalette.accent)
@@ -25500,8 +25537,7 @@ private extension MobileCaptureSession {
         guard let scheduledStart, !scheduledStart.isEmpty else {
             return purpose?.replacingOccurrences(of: "_", with: " ").capitalized ?? "Capture session"
         }
-        let formatter = ISO8601DateFormatter()
-        guard let date = formatter.date(from: scheduledStart) else { return scheduledStart }
+        guard let date = CaptureDateCoding.date(from: scheduledStart) else { return "Scheduled time unavailable" }
         if Calendar.current.isDateInToday(date) {
             return "Today at \(date.formatted(date: .omitted, time: .shortened))"
         }
