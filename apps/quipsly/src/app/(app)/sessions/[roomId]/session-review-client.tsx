@@ -3593,13 +3593,11 @@ export function SessionReviewClient({
     episodeRoomHref(collaborationContext) ||
     coachingEngagementHref(collaborationContext) ||
     (liveProjectSlug ? `/nests/${encodeURIComponent(liveProjectSlug)}` : null);
-  const liveParentLabel = collaborationContext.episode
-    ? "Episode Room"
-    : collaborationContext.engagement
-      ? "Shared space"
-      : liveProjectSlug
-        ? "Nest"
-        : null;
+  const liveParentLabel = collaborationContext.episode?.title
+    || collaborationContext.engagement?.title
+    || collaborationContext.project?.name
+    || preparation?.project?.name
+    || (liveProjectSlug ? "Nest" : null);
   const parentWorkspaceHref = episodeRoomHref(collaborationContext)
     || coachingEngagementHref(collaborationContext)
     || (collaborationContext.project ? `/nests/${encodeURIComponent(collaborationContext.project.slug)}` : null);

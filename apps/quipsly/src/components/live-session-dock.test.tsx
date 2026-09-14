@@ -100,6 +100,23 @@ describe("LiveSessionDockProvider", () => {
     jest.mocked(useSessionChatActivity).mockReturnValue(0);
   });
 
+  it("shows the authenticated account and client context before joining without another confirmation", async () => {
+    mockRoomLifecycle.initialStatus = "ready";
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider currentUser={{name: "Casey Park", email: "casey@quipsly.test"}}><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    expect(screen.getByTestId("call-joining-identity")).toHaveTextContent("Joining as Casey Park (casey@quipsly.test)");
+    expect(screen.getByTestId("call-joining-identity")).toBeVisible();
+    expect(screen.getByText("Coaching engagement", {selector: "p"})).toBeVisible();
+    expect(screen.queryByRole("button", {name: /confirm.*identity/i})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Simulate connection"}));
+    expect(screen.queryByTestId("call-joining-identity")).not.toBeInTheDocument();
+    expect(screen.getByText("In call", {selector: "p"})).toBeVisible();
+  });
+
+  it("does not call a device-setup failure a connection failure", () => {
+    expect(liveSessionStatusLabel("error")).toBe("Needs attention");
+  });
+
   it("opens unread chat from the minimized call without reconnecting or losing the room", async () => {
     jest.mocked(useSessionChatActivity).mockReturnValue(3);
     const user = userEvent.setup();
@@ -158,7 +175,7 @@ describe("LiveSessionDockProvider", () => {
     }
     render(<LiveSessionDockProvider><Status /><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
     expect(screen.getByTestId("connection-status")).toHaveTextContent("ready");
-    expect(screen.getByText("Ready to join")).toBeInTheDocument();
+    expect(screen.getByText("Coaching engagement", {selector: "p"})).toBeVisible();
     expect(screen.queryByRole("link", { name: "Transcript" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Simulate connection" }));
     expect(screen.getByTestId("connection-status")).toHaveTextContent("connected");

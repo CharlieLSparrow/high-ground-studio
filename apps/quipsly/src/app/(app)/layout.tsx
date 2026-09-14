@@ -84,7 +84,7 @@ export default async function RootLayout({
           }
         >
           <Providers>
-            <LiveSessionDockProvider>
+            <LiveSessionDockProvider currentUser={{ name: session.user.name || null, email: actorEmail }}>
               {children}
             </LiveSessionDockProvider>
           </Providers>

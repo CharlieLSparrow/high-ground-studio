@@ -377,7 +377,7 @@ describe("LiveSessionRoom", () => {
     getUserMedia.mockRejectedValueOnce(new DOMException("Microphone denied", "NotAllowedError"));
     fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText(/Device access couldn't be completed/)).toBeInTheDocument();
+    expect(await screen.findByText(/Microphone access is blocked/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unmute" })).toBeEnabled();
     expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
     expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
@@ -820,7 +820,7 @@ describe("LiveSessionRoom", () => {
     const stop = jest.fn();
     await act(async () => { allow({ getTracks: () => [{ stop }] } as unknown as MediaStream); });
     expect(stop).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/Device access couldn't be completed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/access is blocked|couldn't start/)).not.toBeInTheDocument();
     expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
   });
 
@@ -1932,7 +1932,7 @@ describe("LiveSessionRoom", () => {
     await act(async () => {render(<LiveSessionRoom callRoomId="permission-panel" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Device check" kind="coaching" stageLayout />);});
     fireEvent.click(screen.getByRole("button", {name: "Devices"}));
     await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Allow microphone"}));});
-    expect(within(screen.getByTestId("call-device-settings")).getByRole("alert")).toHaveTextContent(/microphone and camera permissions/);
+    expect(within(screen.getByTestId("call-device-settings")).getByRole("alert")).toHaveTextContent(/Microphone access is blocked/);
     expect(screen.getByRole("button", {name: "Allow microphone"})).toBeEnabled();
     expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
   });

@@ -22,6 +22,8 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
   const headingId = useId();
   const [current, setCurrent] = useState(() => workEntries(entries));
   const [filter, setFilter] = useState<WorkFilter>("ALL");
+  const [query, setQuery] = useState("");
+  const [onlyMine, setOnlyMine] = useState(false);
   const [kind, setKind] = useState<WorkKind>("TASK");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -68,6 +70,7 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
       if (compact) setComposerOpen(false);
       attempt.current = null;
       setFilter("ALL");
+      setQuery(""); setOnlyMine(false);
       if (options.current) options.current.open = false;
       setNotice(`${kind === "TASK" ? "Task" : "Goal"} saved. ${submitted.visibility === "AUTHOR_PRIVATE" ? "Only you can see it." : submitted.visibility === "ENGAGEMENT_SHARED" ? "Shared with your client space." : "Shared with this session."}`);
       onChanged?.();
@@ -86,7 +89,14 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     }
   }
 
-  const filtered = current.filter(entry => filter === "ALL" || entry.kind === filter);
+  const searchTerms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const hasFilters = searchTerms.length > 0 || onlyMine || filter !== "ALL";
+  const filtered = current.filter(entry => {
+    if (filter !== "ALL" && entry.kind !== filter) return false;
+    if (onlyMine && entry.ownedByCurrentActor !== true) return false;
+    const text = [entry.title, entry.body, entry.ownerLabel, ...entry.tags.map(tag => tag.label)].filter(Boolean).join(" ").toLocaleLowerCase();
+    return searchTerms.every(term => text.includes(term));
+  });
   const unfinished = filtered.filter(entry => !isFinished(entry));
   const completed = filtered.filter(isFinished);
   const hasArchived = completed.some(entry => !["DONE", "ACHIEVED"].includes(entry.status));
@@ -169,15 +179,25 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     </div>
     {notice && <p role={failed ? "alert" : "status"} className={`mt-2 text-sm ${failed ? "text-destructive" : "text-muted-foreground"}`}>{notice}</p>}
     </>}
-    {current.length > 0 && <div role="group" aria-label="Filter session work" className="flex flex-wrap gap-2">
+    {current.length > 0 && <div className="space-y-2">
+      <div className="flex items-end gap-2">
+        <label className="min-w-0 flex-1 text-sm font-medium">Find a task or goal
+          <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search words, people or tags" className={inputClass} />
+        </label>
+        {query && <button type="button" onClick={() => setQuery("")} className="min-h-11 rounded-lg px-3 text-sm font-medium hover:bg-muted">Clear search</button>}
+      </div>
+      <div role="group" aria-label="Filter session work" className="flex flex-wrap gap-2">
       {(["ALL", "TASK", "GOAL"] as const).map(value => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}
         className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${filter === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}>{value === "ALL" ? "All" : value === "TASK" ? "Tasks" : "Goals"}</button>)}
+        <button type="button" aria-pressed={onlyMine} onClick={() => setOnlyMine(value => !value)} className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${onlyMine ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}>Assigned to me</button>
+      </div>
+      {hasFilters && <p role="status" className="text-xs text-muted-foreground">{filtered.length} of {current.length} items</p>}
     </div>}
     <div className="space-y-3" aria-label="Unfinished work">
       {unfinished.map(renderEntry)}
-      {!unfinished.length && <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{current.length ? "You're caught up here." : canCreate ? "Add a next step, or find the editable tasks and goals Quipsly creates from your transcript here." : "No tasks or goals yet."}</p>}
+      {!unfinished.length && <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{hasFilters ? filtered.length ? "No unfinished work matches these filters." : "No matching tasks or goals. Try another search or filter." : current.length ? "You're caught up here." : canCreate ? "Add a next step, or find the editable tasks and goals Quipsly creates from your transcript here." : "No tasks or goals yet."}</p>}
     </div>
-    {completed.length > 0 && <details className="rounded-xl border border-border p-3">
+    {completed.length > 0 && <details open={searchTerms.length > 0 || undefined} className="rounded-xl border border-border p-3">
       <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">{hasArchived ? "Completed and archived" : "Completed"} ({completed.length})</summary>
       <div className="mt-2 space-y-3">{completed.map(renderEntry)}</div>
     </details>}

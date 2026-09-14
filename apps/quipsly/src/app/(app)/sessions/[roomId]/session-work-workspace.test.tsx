@@ -16,6 +16,43 @@ describe("Session work workspace", () => {
   beforeEach(() => {jest.clearAllMocks();});
   afterEach(() => {global.fetch = originalFetch;});
 
+  it("finds work by words, person and tags while combining ownership and kind filters", async () => {
+    const user = userEvent.setup();
+    const fetchMock = jest.fn(); global.fetch = fetchMock;
+    render(<SessionWorkWorkspace roomId="room-1" compact entries={[
+      {...task, ownerLabel: "Casey", tags: [{id: "tag-1", label: "Writing", slug: "writing"}]},
+      {...task, id: "riley-task", title: "Draft reflection", ownerLabel: "Riley", ownedByCurrentActor: false, tags: [{id: "tag-1", label: "Writing", slug: "writing"}]},
+      {...task, id: "goal-1", kind: "GOAL", title: "Finish the chapter", ownerLabel: "Casey", body: "Writing practice"},
+    ]} />);
+    const search = screen.getByRole("searchbox", {name: "Find a task or goal"});
+    await user.type(search, "WRITING Casey");
+    expect(screen.getByRole("heading", {name: "Write one page"})).toBeVisible();
+    expect(screen.getByRole("heading", {name: "Finish the chapter"})).toBeVisible();
+    expect(screen.queryByRole("heading", {name: "Draft reflection"})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Tasks"}));
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 3 items");
+    await user.click(screen.getByRole("button", {name: "Clear search"}));
+    await user.click(screen.getByRole("button", {name: "Assigned to me"}));
+    expect(screen.getByRole("heading", {name: "Write one page"})).toBeVisible();
+    expect(screen.queryByRole("heading", {name: "Draft reflection"})).not.toBeInTheDocument();
+    await user.type(search, "missing");
+    expect(screen.getByText(/No matching tasks or goals/)).toBeVisible();
+    expect(screen.queryByText("You're caught up here.")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reveals a completed search result and keeps filters when canonical work refreshes", async () => {
+    const user = userEvent.setup();
+    const entries = [{...task, status: "DONE"}];
+    const {rerender} = render(<SessionWorkWorkspace roomId="room-1" compact entries={entries} />);
+    await user.type(screen.getByRole("searchbox", {name: "Find a task or goal"}), "one page");
+    expect(screen.getByRole("heading", {name: task.title!})).toBeVisible();
+    rerender(<SessionWorkWorkspace roomId="room-1" compact entries={[...entries, {...task, id: "new", title: "Another task"}]} />);
+    expect(screen.getByRole("searchbox", {name: "Find a task or goal"})).toHaveValue("one page");
+    expect(screen.queryByRole("heading", {name: "Another task"})).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 items");
+  });
+
   it("puts title and save before optional administration and creates canonical work", async () => {
     const user = userEvent.setup();
     const fetchMock = jest.fn().mockResolvedValue(response({ok: true, entry: task})); global.fetch = fetchMock;

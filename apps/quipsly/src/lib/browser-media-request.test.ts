@@ -1,5 +1,26 @@
 /** @jest-environment jsdom */
-import { requestBrowserMedia } from "./browser-media-request";
+import { browserMediaSetupMessage, requestBrowserMedia } from "./browser-media-request";
+
+describe("browser setup recovery", () => {
+  it.each([
+    ["NotAllowedError", "Microphone access is blocked"],
+    ["SecurityError", "Microphone access is blocked"],
+    ["NotFoundError", "No microphone was found"],
+    ["NotReadableError", "may be in use by another app"],
+    ["OverconstrainedError", "Refresh devices and choose it again"],
+    ["UnknownError", "Check its connection and browser access"],
+  ])("gives an actionable explanation for %s without leaking diagnostic text", (name, expected) => {
+    const message = browserMediaSetupMessage({ name, message: "private device diagnostic" }, "microphone");
+    expect(message).toContain(expected);
+    expect(message).not.toContain("private device diagnostic");
+    expect(message).not.toContain("camera");
+  });
+  it("identifies the requested input and does not invent an unknown error's cause", () => {
+    expect(browserMediaSetupMessage(new DOMException("Denied", "NotAllowedError"), "camera")).toMatch(/^Camera access is blocked/);
+    expect(browserMediaSetupMessage(null, "devices")).toMatch(/^Microphone or camera couldn't start/);
+    expect(browserMediaSetupMessage(new Error("Other"), "microphone and camera")).not.toContain("blocked");
+  });
+});
 
 describe("browser device permission lifecycle", () => {
   it("waits for a person's permission rather than failing after fifteen seconds", async () => {

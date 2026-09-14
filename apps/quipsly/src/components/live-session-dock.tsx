@@ -90,7 +90,7 @@ export function liveSessionStatusLabel(status: LiveSessionRoomStatus | null) {
     case "reconnecting": return "Reconnecting…";
     case "checking": return "Checking devices…";
     case "ended": return "Call ended";
-    case "error": return "Connection needs attention";
+    case "error": return "Needs attention";
     default: return "Ready to join";
   }
 }
@@ -103,7 +103,10 @@ export function useLiveSessionDock() {
   return useContext(LiveSessionDockContext);
 }
 
-export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
+export function LiveSessionDockProvider({ children, currentUser }: {
+  children: ReactNode;
+  currentUser?: { name: string | null; email: string | null };
+}) {
   const [active, setActive] = useState<LiveSessionDockConfig | null>(null);
   const [dismissedCallRoomId, setDismissedCallRoomId] = useState<string | null>(null);
   const [pending, setPending] = useState<LiveSessionDockConfig | null>(null);
@@ -245,6 +248,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const sessionHref = active
     ? `/sessions/${encodeURIComponent(active.callRoomId)}?mode=overview`
     : "#";
+  const inLobby = !callIsActive(status) && status !== "ended";
+  const joiningName = currentUser?.name?.trim() || currentUser?.email?.trim();
 
   return (
     <LiveSessionDockContext.Provider value={value}>
@@ -267,7 +272,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-semibold">{active.sessionTitle}</h2>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{liveSessionStatusLabel(status)}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{(status === "ready" || status === "preflight") && active.parentLabel ? active.parentLabel : liveSessionStatusLabel(status)}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-description={unreadChatCount > 0 ? `${unreadChatCount} unread messages` : undefined} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span>{unreadChatBadge}</button>
@@ -277,6 +282,10 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Close live call"><X size={18} /></button>
                 </div>
               </div>
+              {inLobby && joiningName ? <p data-testid="call-joining-identity" className="mt-2 text-xs leading-5 text-muted-foreground">
+                Joining as <strong className="font-medium text-foreground">{joiningName}</strong>
+                {currentUser?.name?.trim() && currentUser.email?.trim() ? <span className="break-all"> ({currentUser.email.trim()})</span> : null}
+              </p> : null}
               <details className="group mt-1 text-xs text-muted-foreground">
               <summary className="w-fit cursor-pointer py-1 hover:text-foreground">Session workspace</summary>
               <nav aria-label="Live Session work" className="flex flex-wrap gap-2 py-2 text-xs font-medium">

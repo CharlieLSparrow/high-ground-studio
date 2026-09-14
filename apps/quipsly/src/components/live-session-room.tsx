@@ -47,7 +47,7 @@ import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo
 import { callEndpointDetails, groupCallPeople } from "@/components/call-roster";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
-import { requestBrowserMedia } from "@/lib/browser-media-request";
+import { browserMediaSetupMessage, requestBrowserMedia } from "@/lib/browser-media-request";
 import { StudioSoundCheck } from "@/components/studio-sound-check";
 import callSurface from "./call-surface.module.css";
 import { StudioSpeakerTest } from "@/components/studio-speaker-test";
@@ -1282,7 +1282,7 @@ export function LiveSessionRoom({
       if (generation !== deviceRefreshGenerationRef.current || (error instanceof Error && error.name === "AbortError")) return false;
       if (!preserveLiveConnection) setStatus("error");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
-      setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
+      setMessage(browserMediaSetupMessage(error, permission === "media" ? "microphone and camera" : permission === "none" ? "devices" : permission));
       return false;
     } finally {
       if (ownsPermissionRefresh) {
@@ -1377,7 +1377,7 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a preview error.");
       setMessage(hasWorkingPreview
         ? "That device couldn't start. Your previous setup is still active. Check the connection or choose another device."
-        : "The selected setup couldn't start. Check the device connection and browser permissions, then try again.");
+        : browserMediaSetupMessage(error, useCallAudioHere ? !audioOnly && cameraWanted ? "microphone and camera" : "microphone" : "camera"));
       return null;
     }
   }, [acquireMedia, cameraId, cameraWanted, cameras, startAudioMeter]);
