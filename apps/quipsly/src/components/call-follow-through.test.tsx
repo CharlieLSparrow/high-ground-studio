@@ -6,6 +6,13 @@ jest.mock("@/hooks/use-session-after-call", () => ({ useSessionAfterCall: jest.f
 beforeEach(() => jest.mocked(useSessionAfterCall).mockReturnValue({ summary: null, error: null, retry: jest.fn() }));
 
 describe("call follow-through", () => {
+  it("opens the latest shared take explicitly instead of restoring an older editor draft", () => {
+    jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 2, pending: 0, attention: 0},
+      transcripts: {available: 0, processing: 1, attention: 0}, transcriptSourceId: null, recordingSourceId: "new-take-source", otherRecordingCount: 4}, error: null, retry: jest.fn()});
+    render(<CallFollowThrough roomId="room" recording={null} onOpenRecording={jest.fn()} />);
+    expect(screen.getByRole("link", {name: "Listen and edit recording"})).toHaveAttribute("href", "/sessions/room?mode=recordings&source=new-take-source");
+    expect(screen.getByRole("link", {name: "View all session recordings"})).toHaveAttribute("href", "/sessions/room?mode=recordings");
+  });
   it("labels the current take and keeps earlier recordings reachable without claiming their text is current", () => {
     jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 0, pending: 1, attention: 0},
       transcripts: {available: 0, processing: 0, attention: 0}, transcriptSourceId: null, otherRecordingCount: 4}, error: null, retry: jest.fn()});

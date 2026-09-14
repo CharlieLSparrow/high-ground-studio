@@ -37,7 +37,7 @@ func normalizedNestBaseURL(_ value: String) -> String { value }
         if wait { await withCheckedContinuation { continuation = $0 } }
         let json: [String: Any] = ["ok": status == 200, "summary": ["roomId": payloadRoom,
             "recordings": ["uploaded": uploaded, "pending": pending, "attention": 0],
-            "transcripts": ["available": 1, "processing": 0, "attention": 0], "transcriptSourceId": "phone-source", "otherRecordingCount": 4]]
+            "transcripts": ["available": 1, "processing": 0, "attention": 0], "transcriptSourceId": "phone-source", "recordingSourceId": "phone-source", "otherRecordingCount": 4]]
         return (try JSONSerialization.data(withJSONObject: json), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
 }
@@ -60,6 +60,7 @@ func normalizedNestBaseURL(_ value: String) -> String { value }
         assert(client.currentSummary(for: "room")?.recordings.uploaded == 2)
         assert(client.summary?.transcriptSourceId == "phone-source")
         assert(client.summary?.otherRecordingCount == 4)
+        assert(client.summary?.recordingSourceId == "phone-source")
         assert(client.summary?.isProcessing == true)
         assert(client.summary?.focusedTranscriptAssetID == nil, "Pending endpoints still belong to the session transcript")
         let single = CaptureSessionAfterCallSummary(roomId: "room", recordings: .init(uploaded: 1, pending: 0, attention: 0),

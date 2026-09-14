@@ -63,7 +63,10 @@ struct CaptureSharedAfterCallCard: View {
                     .font(.callout).foregroundStyle(CapturePalette.secondaryText)
             }
             NavigationLink {
-                CaptureRecordingEditScreen(roomID: session.callRoomId, sessionTitle: session.displayTitle)
+                CaptureRecordingEditScreen(roomID: session.callRoomId, sessionTitle: session.displayTitle,
+                    focus: client.currentSummary(for: session.callRoomId)?.recordingSourceId.map {
+                        CaptureRecordingEditorFocus(recordingAssetID: $0)
+                    })
             } label: {
                 Label("Session recordings", systemImage: "play.rectangle")
                     .frame(maxWidth: .infinity, minHeight: 44)

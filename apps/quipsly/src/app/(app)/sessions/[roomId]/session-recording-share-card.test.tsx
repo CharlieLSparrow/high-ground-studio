@@ -73,7 +73,7 @@ describe("SessionRecordingShareCard", () => {
     const takeChanged = jest.fn();
     render(<SessionRecordingShareCard roomId="session_room_0001" initialSourceId="recording_asset_0001" onTakeSourcesChange={takeChanged}
       renderOriginalRecordings={ids => <div data-testid="selected-take-player">{ids.join(",")}</div>} />);
-    const selector = await screen.findByRole("combobox", {name: /Recording attempt/});
+    const selector = await screen.findByRole("combobox", {name: /Choose recording/});
     expect(fetchMock).toHaveBeenCalledWith("/api/sessions/session_room_0001/recording-share?sourceId=recording_asset_0001", expect.anything());
     expect(selector).toHaveValue("start:latest");
     expect(screen.getByTestId("selected-take-player")).toHaveTextContent("recording_asset_0001");

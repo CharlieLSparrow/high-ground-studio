@@ -98,7 +98,8 @@ export function SessionRecordingHealthListeningNavigator({
       if (!durationSeconds) return [];
       return [{
         recordingAssetId: source.recordingAssetId,
-        label: source.label,
+        label: workspace && /^(?:Mobile|Browser) (?:audio|video) master\s*·\s*[a-f0-9-]+$/i.test(source.label)
+          ? (playback.kind === "video" ? "Camera recording" : "Microphone recording") : source.label,
         participantLabel: source.participantLabel,
         state: source.state,
         url: playback.url,
@@ -108,7 +109,7 @@ export function SessionRecordingHealthListeningNavigator({
         signal,
       }];
     });
-  }, [evidence.sources, health.sources]);
+  }, [evidence.sources, health.sources, workspace]);
   const initialId = sources.find(source => source.recordingAssetId === preferredSourceId)?.recordingAssetId
     ?? sources.find((source) => source.state === "READY")?.recordingAssetId ?? sources[0]?.recordingAssetId ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(initialId);
@@ -191,24 +192,24 @@ export function SessionRecordingHealthListeningNavigator({
     }
   }
 
-  if (!sources.length) return <section className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5" data-flight-deck-listening="unavailable" aria-labelledby="flight-deck-listening-heading">
-    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700"><AudioLines size={16} aria-hidden="true" />{workspace ? "Recordings" : "Source audition"}</p>
-    <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{workspace ? "No recording ready to play yet" : "Protected playback is not attached"}</h3>
-    <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{workspace ? "Your recordings will appear here once they finish uploading and processing." : "Health evidence remains inspectable, but Quipsly will not turn a private storage locator into browser playback. Promote or repair an authorized protected source first."}</p>
+  if (!sources.length) return <section className="rounded-2xl border border-dashed border-border bg-card p-5" data-flight-deck-listening="unavailable" aria-labelledby="flight-deck-listening-heading">
+    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground"><AudioLines size={16} aria-hidden="true" />{workspace ? "Recordings" : "Source audition"}</p>
+    <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-foreground">{workspace ? "No recording ready to play yet" : "Protected playback is not attached"}</h3>
+    <p className="mt-2 text-sm font-semibold leading-6 text-muted-foreground">{workspace ? "Your recordings will appear here once they finish uploading and processing." : "Health evidence remains inspectable, but Quipsly will not turn a private storage locator into browser playback. Promote or repair an authorized protected source first."}</p>
   </section>;
 
-  return <section className="min-w-0 rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5" data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
+  return <section className="min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-5" data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="max-w-3xl">
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#41624b]"><AudioLines size={16} aria-hidden="true" />{workspace ? "Your recordings" : "Source audition"}</p>
-        <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{workspace ? "Listen to your recording" : "Open the actual master"}</h3>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{workspace ? "Choose a track, listen, or jump to the same moment in the transcript." : "Choose an independently identified source, scrub its complete-decode clock, or run a bounded ten-second check. Playback navigation creates no proof-listen receipt and changes no media."}</p>
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-primary"><AudioLines size={16} aria-hidden="true" />{workspace ? "Your recordings" : "Source audition"}</p>
+        <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-foreground">{workspace ? "Listen to your recording" : "Open the actual master"}</h3>
+        <p className="mt-2 text-sm font-semibold leading-6 text-muted-foreground">{workspace ? "Choose a track, listen, or jump to the same moment in the transcript." : "Choose an independently identified source, scrub its complete-decode clock, or run a bounded ten-second check. Playback navigation creates no proof-listen receipt and changes no media."}</p>
       </div>
-      <span className="inline-flex items-center gap-2 rounded-full border border-[#ccd4bf] bg-[#f3f5eb] px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-[#41624b]"><ShieldCheck size={13} aria-hidden="true" />{workspace ? "Original recording" : "Protected route"}</span>
+      <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-primary"><ShieldCheck size={13} aria-hidden="true" />{workspace ? "Original recording" : "Protected route"}</span>
     </div>
 
     <ul className="mt-4 flex gap-2 overflow-x-auto pb-2" aria-label="Protected recording sources">
-      {sources.map((source) => <li key={source.recordingAssetId}><button type="button" aria-pressed={selected?.recordingAssetId === source.recordingAssetId} onClick={() => choose(source.recordingAssetId)} data-flight-deck-audition-source={source.recordingAssetId} className={`min-h-16 min-w-52 rounded-xl border px-3 py-2 text-left transition ${workspace ? "border-[#ddcdaf] bg-[#f6f0e4] text-[#3d3122]" : stateTone(source.state)} ${selected?.recordingAssetId === source.recordingAssetId ? "ring-2 ring-cyan-500 ring-offset-2" : ""}`}>
+      {sources.map((source) => <li key={source.recordingAssetId}><button type="button" aria-pressed={selected?.recordingAssetId === source.recordingAssetId} onClick={() => choose(source.recordingAssetId)} data-flight-deck-audition-source={source.recordingAssetId} className={`min-h-16 min-w-52 rounded-xl border px-3 py-2 text-left transition ${workspace ? "border-border bg-muted text-foreground" : stateTone(source.state)} ${selected?.recordingAssetId === source.recordingAssetId ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}>
         <span className="block text-[9px] font-black uppercase tracking-wide">{workspace ? source.participantLabel : `${source.state} · ${source.participantLabel}`}</span>
         <span className="mt-1 block max-w-64 truncate text-xs font-black">{source.label}</span>
         <span className="mt-1 block font-mono text-[9px] font-bold">{timestampForSeconds(source.durationSeconds)}</span>

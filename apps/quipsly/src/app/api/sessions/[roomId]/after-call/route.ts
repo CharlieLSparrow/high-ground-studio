@@ -46,6 +46,7 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
     const current = take.length ? take : originals;
     const jobs = take.length ? room.transcriptJobs.filter(job => job.assetId && lanes.has(job.assetId)) : room.transcriptJobs;
     const summary = sessionAfterCall(room.id, current, jobs);
+    summary.recordingSourceId = lanes.values().next().value ?? current[0]?.id ?? null;
     const other = originals.length - current.length;
     if (other > 0) summary.otherRecordingCount = other;
     return NextResponse.json({ ok: true, summary }, { headers });

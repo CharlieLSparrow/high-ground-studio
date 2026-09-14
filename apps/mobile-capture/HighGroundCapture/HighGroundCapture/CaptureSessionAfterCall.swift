@@ -17,12 +17,14 @@ struct CaptureSessionAfterCallSummary: Decodable, Equatable {
     let transcripts: Transcripts
     let transcriptSourceId: String?
     var otherRecordingCount: Int? = nil
+    var recordingSourceId: String? = nil
 
     func matches(roomID: String) -> Bool {
         roomId == roomID
             && [recordings.uploaded, recordings.pending, recordings.attention,
                 transcripts.available, transcripts.processing, transcripts.attention, otherRecordingCount ?? 0].allSatisfy { $0 >= 0 }
             && (transcriptSourceId == nil || !(transcriptSourceId?.isEmpty ?? true) && (transcriptSourceId?.count ?? 0) <= 240)
+            && (recordingSourceId == nil || !(recordingSourceId?.isEmpty ?? true) && (recordingSourceId?.count ?? 0) <= 240)
     }
     var isProcessing: Bool { recordings.pending > 0 || transcripts.processing > 0 }
     /// A multi-source session opens the assembled conversation. A single

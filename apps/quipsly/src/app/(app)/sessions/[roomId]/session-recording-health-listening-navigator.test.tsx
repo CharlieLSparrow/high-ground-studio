@@ -148,6 +148,15 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     fireEvent.seeked(audio);
     expect(screen.getByRole("link", { name: "Open in Transcript at 00:07" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=master&at=7.25");
   });
+  it("gives generated track names a readable workspace label without renaming user files or technical evidence", () => {
+    const generated = health();
+    generated.sources[1]!.label = "Mobile audio master · df145491";
+    const view = render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={generated} evidence={evidence()} presentation="workspace" />);
+    expect(screen.getByLabelText("Protected source Microphone recording")).toHaveAttribute("src", "/api/ingest/media/source-master");
+    expect(screen.getByText("Historical browser.wav")).toBeVisible();
+    view.rerender(<SessionRecordingHealthListeningNavigator roomId="room-1" health={generated} evidence={evidence()} presentation="technical" />);
+    expect(screen.getByLabelText("Protected source Mobile audio master · df145491")).toHaveAttribute("src", "/api/ingest/media/source-master");
+  });
   it("restores a source-local moment and reports explicit seek and participant changes", () => {
     const selected = jest.fn();
     render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace"

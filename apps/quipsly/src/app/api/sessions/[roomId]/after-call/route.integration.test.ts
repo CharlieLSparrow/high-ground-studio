@@ -77,14 +77,14 @@ integration("shared after-call recording availability against PostgreSQL", () =>
       localManifestJson: {captureGroupId: "latest-take"}}});
     for (const account of [0, 1]) expect((await (await read(account)).json()).summary).toMatchObject({
       recordings: {uploaded: 0, pending: 1, attention: 0}, transcripts: {available: 0, processing: 0, attention: 0},
-      transcriptSourceId: null, otherRecordingCount: 1});
+      transcriptSourceId: null, recordingSourceId: latest.id, otherRecordingCount: 1});
     await prisma.recordingAsset.update({where: {id: latest.id}, data: {status: "VERIFIED", verifiedAt: new Date(),
       localManifestJson: {exactBytesVerified: true, captureGroupId: "latest-take"}}});
     await prisma.transcriptJob.create({data: {roomId, assetId: latest.id, status: "COMPLETED",
       segments: {create: {startSeconds: 0, endSeconds: 2, text: "Latest take transcript"}}}});
     for (const account of [0, 1]) expect((await (await read(account)).json()).summary).toMatchObject({
       recordings: {uploaded: 1, pending: 0, attention: 0}, transcripts: {available: 1, processing: 0, attention: 0},
-      transcriptSourceId: latest.id, otherRecordingCount: 1});
+      transcriptSourceId: latest.id, recordingSourceId: latest.id, otherRecordingCount: 1});
     expect((await read(2)).status).toBe(404);
   });
 

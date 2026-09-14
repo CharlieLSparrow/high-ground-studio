@@ -7,6 +7,7 @@ function isSummary(value: unknown, roomId: string): value is SessionAfterCall {
   if (!value || typeof value !== "object") return false;
   const summary = value as SessionAfterCall;
   return summary.roomId === roomId && (summary.transcriptSourceId === null || typeof summary.transcriptSourceId === "string" && summary.transcriptSourceId.length > 0 && summary.transcriptSourceId.length <= 240)
+    && (summary.recordingSourceId == null || typeof summary.recordingSourceId === "string" && summary.recordingSourceId.length > 0 && summary.recordingSourceId.length <= 240)
     && [summary.recordings?.uploaded, summary.recordings?.pending,
     summary.recordings?.attention, summary.transcripts?.available, summary.transcripts?.processing,
     summary.transcripts?.attention, summary.otherRecordingCount ?? 0].every(count => Number.isSafeInteger(count) && count >= 0);

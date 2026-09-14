@@ -15,6 +15,15 @@ it("fetches shared availability and refreshes when this device finishes uploadin
   await waitFor(() => expect(view.result.current.summary?.recordings.uploaded).toBe(2));
   expect(fetch).toHaveBeenCalledWith("/api/sessions/room/after-call", expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }));
 });
+it.each(["", 42, "x".repeat(241)])("rejects an invalid recording destination %s", async recordingSourceId => {
+  const packet = response();
+  const body = await packet.json();
+  body.summary.recordingSourceId = recordingSourceId;
+  jest.mocked(fetch).mockResolvedValue({...packet, json: async () => body} as Response);
+  const view = renderHook(() => useSessionAfterCall("room"));
+  await waitFor(() => expect(view.result.current.error).toContain("Couldn't refresh"));
+  expect(view.result.current.summary).toBeNull();
+});
 
 it("polls for a phone upload arriving after the browser call ends", async () => {
   jest.useFakeTimers();

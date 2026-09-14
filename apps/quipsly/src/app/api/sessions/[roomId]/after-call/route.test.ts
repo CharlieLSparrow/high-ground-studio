@@ -34,7 +34,7 @@ it("returns only availability, never filenames, source manifests, transcript bod
   findFirst.mockResolvedValue({ id: "session", recordingAssets: [{ id: "phone", kind: "LOCAL_AUDIO", status: "VERIFIED", verifiedAt: new Date(),
     localManifestJson: { exactBytesVerified: true, privateMetadata: "secret" } }], transcriptJobs: [{ assetId: "phone", status: "COMPLETED", _count: { segments: 10 } }] });
   const response = await read();
-  expect(await response.json()).toEqual({ ok: true, summary: { roomId: "session", recordings: { uploaded: 1, pending: 0, attention: 0 }, transcripts: { available: 1, processing: 0, attention: 0 }, transcriptSourceId: "phone" } });
+  expect(await response.json()).toEqual({ ok: true, summary: { roomId: "session", recordings: { uploaded: 1, pending: 0, attention: 0 }, transcripts: { available: 1, processing: 0, attention: 0 }, transcriptSourceId: "phone", recordingSourceId: "phone" } });
 });
 it("reports a retryable failure without claiming that a database outage means no recordings", async () => {
   findFirst.mockRejectedValue(new Error("database credentials must not escape"));
@@ -54,7 +54,7 @@ it("summarizes the latest take without borrowing an earlier take's transcript or
     transcriptJobs: [{id: "old-job", createdAt: new Date(), assetId: "old", status: "COMPLETED", _count: {segments: 10}}]});
   expect((await (await read()).json()).summary).toEqual({roomId: "session",
     recordings: {uploaded: 1, pending: 1, attention: 0}, transcripts: {available: 0, processing: 0, attention: 0},
-    transcriptSourceId: null, otherRecordingCount: 1});
+    transcriptSourceId: null, recordingSourceId: "new", otherRecordingCount: 1});
 });
 it("rejects invalid identifiers without querying", async () => {
   expect((await read(" ")).status).toBe(400);

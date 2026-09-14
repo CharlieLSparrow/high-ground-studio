@@ -18,7 +18,8 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenRecordi
   const { summary, error, retry } = useSessionAfterCall(roomId, recording?.phase);
   const sharedRecordingAvailable = Boolean(summary?.recordings.uploaded);
   const sharedTranscriptExists = summary && Object.values(summary.transcripts).some(count => count > 0);
-  const recordingHref = !pending && recording?.recordingHref ? recording.recordingHref : `${base}?mode=recordings`;
+  const recordingHref = !pending && recording?.recordingHref ? recording.recordingHref
+    : `${base}?mode=recordings${summary?.recordingSourceId ? `&source=${encodeURIComponent(summary.recordingSourceId)}` : ""}`;
   const transcriptHref = summary && summary.recordings.uploaded + summary.recordings.pending + summary.recordings.attention > 1
     ? `${base}?mode=transcript`
     : recording?.transcriptHref || `${base}?mode=transcript${summary?.transcriptSourceId ? `&source=${encodeURIComponent(summary.transcriptSourceId)}` : ""}`;
