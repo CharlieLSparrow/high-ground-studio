@@ -748,29 +748,6 @@ struct CaptureRecordingShareEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "scissors")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(CapturePalette.plum)
-                    .frame(width: 38, height: 38)
-                    .background(CapturePalette.plum.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Edit recording")
-                        .font(.headline)
-                    Text("Trim or remove passages, listen, and share an edited copy.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    Task { await client.load(roomID: roomID, focus: client.snapshot == nil ? focus : nil) }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(client.busyAction != nil)
-                .accessibilityLabel("Refresh recording edit")
-            }
-
             if let notice = client.notice {
                 Text(notice)
                     .font(.caption.weight(.semibold))
@@ -817,15 +794,19 @@ struct CaptureRecordingShareEditor: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
-        .padding(16)
-        .background(CapturePalette.surfaceMuted)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
-        )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureRecordingShareEditor")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await client.load(roomID: roomID, focus: client.snapshot == nil ? focus : nil) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(client.busyAction != nil)
+                .accessibilityLabel("Refresh recording edit")
+            }
+        }
         .task {
             await client.load(roomID: roomID, focus: focus)
         }
@@ -1623,23 +1604,39 @@ struct CaptureRecordingShareEditor: View {
                     .disabled(sourcePlayback.isPreparing)
                     .accessibilityLabel(loaded && sourcePlayback.isPlaying ? "Pause recording" : "Play recording")
                     .accessibilityIdentifier("CaptureRecordingListenToggle")
-                    Slider(value: Binding(get: { loaded ? sourcePlayback.position : 0 }, set: { sourcePlayback.seek(to: $0) }),
-                           in: 0...max(loaded ? sourcePlayback.duration : 0, 0.1))
-                        .disabled(!loaded || sourcePlayback.duration <= 0)
-                        .accessibilityLabel("Recording position")
-                        .accessibilityIdentifier("CaptureRecordingListenPosition")
-                }
-                HStack {
                     Text(captureRecordingShareTime(loaded ? sourcePlayback.position : 0))
+                        .font(.subheadline.monospacedDigit())
                     Spacer()
                     Text(loaded ? captureRecordingShareTime(sourcePlayback.duration) : "–:––")
-                }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                CaptureRecordingWaveformView(
+                    waveform: loaded ? sourcePlayback.waveform : nil,
+                    isLoading: sourcePlayback.isLoadingWaveform,
+                    duration: loaded ? sourcePlayback.duration : 0,
+                    position: loaded ? sourcePlayback.position : 0,
+                    programOffset: source.programOffsetSeconds,
+                    keepStart: startSeconds, keepEnd: endSeconds,
+                    removedRanges: editableTranscript(snapshot).compactMap { segment in
+                        guard excludedSegmentIDs.contains(segment.id) else { return nil }
+                        let start = segment.cutStartSeconds ?? segment.startSeconds
+                        let end = segment.cutEndSeconds ?? segment.endSeconds
+                        return start.isFinite && end.isFinite && end > start ? start...end : nil
+                    },
+                    seek: { sourcePlayback.seek(to: $0) }
+                ).id(source.id)
                 ViewThatFits(in: .horizontal) {
                     HStack { recordingMarkButtons(source, snapshot: snapshot) }
                     VStack(alignment: .leading) { recordingMarkButtons(source, snapshot: snapshot) }
                 }
                 .buttonStyle(.bordered)
                 .disabled(!loaded || sourcePlayback.isPreparing || !selectedSourceIDs.contains(source.id) || client.busyAction != nil)
+                ViewThatFits(in: .horizontal) {
+                    HStack { recordingBoundaryChecks(source) }
+                    VStack(alignment: .leading) { recordingBoundaryChecks(source) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(!loaded || sourcePlayback.isPreparing || !selectedSourceIDs.contains(source.id))
                 Text("Keep \(captureRecordingShareTime(startSeconds))–\(captureRecordingShareTime(endSeconds)) of the session")
                     .font(.caption.monospacedDigit())
                     .accessibilityIdentifier("CaptureRecordingListenKeptRange")
@@ -1654,6 +1651,29 @@ struct CaptureRecordingShareEditor: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureRecordingListenAndTrim")
         }
+    }
+
+    @ViewBuilder
+    private func recordingBoundaryChecks(_ source: CaptureRecordingShareSource) -> some View {
+        Button("Check trim start") { checkListeningBoundary(start: true, source: source) }
+            .accessibilityIdentifier("CaptureRecordingCheckTrimStart")
+            .frame(minHeight: 44)
+        Button("Check trim end") { checkListeningBoundary(start: false, source: source) }
+            .accessibilityIdentifier("CaptureRecordingCheckTrimEnd")
+            .frame(minHeight: 44)
+    }
+
+    private func checkListeningBoundary(start: Bool, source: CaptureRecordingShareSource) {
+        let lower = max(0, startSeconds - source.programOffsetSeconds)
+        let upper = min(sourcePlayback.duration, endSeconds - source.programOffsetSeconds)
+        guard sourcePlayback.preparedSourceID == source.id, upper > lower else {
+            auditionNotice = "This track is outside the kept part of the session. Choose another track."
+            return
+        }
+        client.stopPreviewPlayback()
+        sourcePlayback.playRange(startSeconds: start ? lower : max(lower, upper - 5),
+                                 endSeconds: start ? min(upper, lower + 5) : upper)
+        auditionNotice = "Checking the original track at your trim \(start ? "start" : "end"). Play the edited preview to hear removed passages applied."
     }
 
     @ViewBuilder
@@ -1976,7 +1996,7 @@ struct CaptureRecordingShareEditor: View {
     }
 }
 
-private func captureRecordingShareTime(_ value: TimeInterval) -> String {
+func captureRecordingShareTime(_ value: TimeInterval) -> String {
     let seconds = max(0, Int(value.rounded()))
     let hours = seconds / 3_600
     let minutes = (seconds % 3_600) / 60

@@ -6270,6 +6270,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
 
         let join = app.buttons["ProviderJoinRoomButton"].firstMatch
+        XCTAssertFalse(app.descendants(matching: .any)["CapturePersistentRecorderDock"].firstMatch.exists,
+                       "An older saved recording must not add a recording bar over the prejoin room.")
         XCTAssertTrue(
             waitForRuntimeElement(join, in: app, timeout: 12, swipeAttempts: 4),
             "A consented LiveKit-ready Session should expose an explicit Join room action."
@@ -6313,8 +6315,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if microphone.label == "Microphone off" { microphone.tap() }
             XCTAssertEqual(microphone.label, "Microphone on")
         } else {
-            XCTAssertFalse(microphone.isEnabled)
+            XCTAssertTrue(microphone.isEnabled, "The other-device control should open Devices, not become a dead button.")
             XCTAssertEqual(microphone.label, "Microphone is on another device")
+            microphone.tap()
+            XCTAssertTrue(useCallAudio.waitForExistence(timeout: 5))
+            XCTAssertEqual(useCallAudio.value as? String, "0", "Opening audio settings must not silently enable this device's microphone.")
+            app.buttons["Done"].tap()
         }
 
         let microphoneAlertHandler = addUIInterruptionMonitor(withDescription: "Provider microphone permission") { alert in
@@ -6601,6 +6607,19 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             let playbackError = app.staticTexts["CaptureRecordingListenError"].firstMatch
             XCTAssertEqual(playbackReady, .completed, "The just-uploaded source must load in the inline editor player. \(playbackError.exists ? playbackError.label : "No playback error shown")")
             if listen.label == "Pause recording" { listen.tap() }
+            let waveform = app.descendants(matching: .any)["CaptureRecordingWaveform"].firstMatch
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value == %@", "Waveform ready"), object: waveform
+            )], timeout: 30), .completed, "The actual uploaded audio should produce an on-device waveform.")
+            let zoom = app.buttons["CaptureRecordingWaveformZoom"].firstMatch
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(zoom, in: app))
+            zoom.tap()
+            app.buttons["4×"].firstMatch.tap()
+            let showPlayhead = app.buttons["CaptureRecordingWaveformShowPlayhead"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(showPlayhead, in: app, timeout: 8, swipeAttempts: 4))
+            showPlayhead.tap()
+            zoom.tap()
+            app.buttons["1×"].firstMatch.tap()
             XCTAssertTrue(scrollRuntimeElementIntoHittableView(position, in: app))
             position.adjust(toNormalizedSliderPosition: 0.25)
             let markStart = app.buttons["CaptureRecordingMarkStart"].firstMatch
@@ -6609,6 +6628,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             let keptRange = app.staticTexts["CaptureRecordingListenKeptRange"].firstMatch
             XCTAssertFalse(keptRange.label.hasPrefix("Keep 0:00–"), "A source playhead mark must change the edit, not just playback.")
             let markedRange = keptRange.label
+            let checkStart = app.buttons["CaptureRecordingCheckTrimStart"].firstMatch
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(checkStart, in: app))
+            checkStart.tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "label == %@", "Pause recording"), object: listen
+            )], timeout: 8), .completed)
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "label == %@", "Play recording"), object: listen
+            )], timeout: 10), .completed, "Boundary checking stops without changing the trim.")
+            XCTAssertEqual(keptRange.label, markedRange)
             let undo = app.buttons["CaptureRecordingEditUndo"].firstMatch
             XCTAssertTrue(scrollRuntimeElementIntoHittableView(undo, in: app))
             XCTAssertTrue(undo.isEnabled)

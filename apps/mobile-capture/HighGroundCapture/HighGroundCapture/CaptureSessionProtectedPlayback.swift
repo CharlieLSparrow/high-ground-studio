@@ -48,6 +48,9 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var waveform: CaptureAudioWaveform?
+    @Published private(set) var isLoadingWaveform = false
+    private var waveformTask: Task<CaptureAudioWaveform, Error>?
 
     private struct SourceBinding {
         let recordingAssetID: String
@@ -393,6 +396,10 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     }
 
     func close() {
+        waveformTask?.cancel()
+        waveformTask = nil
+        waveform = nil
+        isLoadingWaveform = false
         preparationGeneration += 1
         isPreparing = false
         itemStatusObservation = nil
@@ -428,6 +435,20 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         let player = AVPlayer(url: fileURL)
         player.actionAtItemEnd = .pause
         self.player = player
+        if !binding.isVideo {
+            isLoadingWaveform = true
+            let decoding = Task.detached(priority: .utility) {
+                try CaptureAudioWaveform.read(url: fileURL)
+            }
+            waveformTask = decoding
+            Task { [weak self, weak player] in
+                let result = try? await decoding.value
+                guard let self, let player, self.player === player else { return }
+                self.waveform = result
+                self.isLoadingWaveform = false
+                self.waveformTask = nil
+            }
+        }
         duration = 0
         position = 0
         timeObserver = player.addPeriodicTimeObserver(

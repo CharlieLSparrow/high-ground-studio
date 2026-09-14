@@ -16,6 +16,10 @@ xcrun swiftc -o "${capture_edit_test_dir}/recording-trim-position" \
   "${capture_root}/HighGroundCapture/CaptureRecordingTrimPosition.swift" \
   "${capture_root}/Testing/CaptureRecordingTrimPositionHarness.swift"
 "${capture_edit_test_dir}/recording-trim-position"
+xcrun swiftc -parse-as-library -o "${capture_edit_test_dir}/recording-waveform" \
+  "${capture_root}/HighGroundCapture/CaptureAudioWaveform.swift" \
+  "${capture_root}/Testing/CaptureAudioWaveformTests.swift"
+"${capture_edit_test_dir}/recording-waveform"
 xcrun swiftc -o "${capture_edit_test_dir}/recording-playback-format" \
   "${capture_root}/HighGroundCapture/CaptureRecordingPlaybackFormat.swift" \
   "${capture_root}/Testing/CaptureRecordingPlaybackFormatHarness.swift"

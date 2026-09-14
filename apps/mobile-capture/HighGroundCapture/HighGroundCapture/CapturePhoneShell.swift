@@ -12342,9 +12342,9 @@ private struct CaptureRecorderView: View {
                         )
                     }
                     .background(.bar)
-                } else if localRecordingWorkspaceIsOpen(for: session)
-                    || hasSelectedSessionRecording
-                {
+                } else if localRecordingWorkspaceIsOpen(for: session) {
+                    // Historical recordings belong below the lobby. They must
+                    // not add a second recording dock over the Join control.
                     CapturePersistentRecorderDock(
                         session: session,
                         mode: recordingMode,
