@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
 import crypto from "node:crypto";
-import { unlink, writeFile } from "node:fs/promises";
+import { open, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import {readRetainedQAPassword, writeRetainedQAPassword} from "./lib/retained-qa-keychain.mjs";
+import {ensureLocalCaptureTestIdentity} from "./lib/local-capture-test-identity.mjs";
 
 const requireFromQuipsly = createRequire(new URL("../apps/quipsly/package.json", import.meta.url));
 const { initializeApp, getApps } = requireFromQuipsly("firebase-admin/app");
@@ -18,7 +21,7 @@ const UID = String(process.env.QUIPSLY_CAPTURE_UI_TEST_UID || "native-capture-va
 const DEFAULT_CREDENTIALS_PATH = path.join(os.tmpdir(), "quipsly-capture-runtime-ui-smoke-credentials.json");
 
 function loopbackHost(value) {
-  return value === "localhost" || value === "127.0.0.1" || value === "::1";
+  return value === "localhost" || value === "127.0.0.1" || value === "[::1]";
 }
 
 function requireLoopbackOrigin(value, label) {
@@ -81,20 +84,25 @@ async function prepare() {
   const goalID = String(process.env.QUIPSLY_CAPTURE_UI_TEST_GOAL_ID || "").trim();
   const planBlockID = String(process.env.QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID || "").trim();
   if (!sessionID || !sessionTitle) throw new Error("Exact Session ID and title are required for native capture dogfood.");
+  const credentialsPath = confinedCredentialsPath(process.env.QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE);
 
   if (!getApps().length) initializeApp({ projectId: PROJECT_ID });
   const auth = getAuth();
-  const prior = await auth.getUserByEmail(EMAIL).catch((error) => {
-    if (error?.code === "auth/user-not-found") return null;
-    throw error;
+  const service = process.env.QUIPSLY_CAPTURE_UI_TEST_KEYCHAIN_SERVICE || "com.quipsly.qa.local-capture";
+  const identity = await ensureLocalCaptureTestIdentity({auth, email: EMAIL, uid: UID,
+    readPassword: () => readRetainedQAPassword({service, account: EMAIL}),
+    writePassword: password => writeRetainedQAPassword({service, account: EMAIL, password}),
+    generatePassword: () => `Qp-${crypto.randomBytes(24).toString("base64url")}!26`,
   });
-  if (prior) await auth.deleteUser(prior.uid);
+  const password = identity.password;
+  const verification = await fetch(`${emulatorHost}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-test`, {
+    method: "POST", headers: {"content-type": "application/json"},
+    body: JSON.stringify({email: EMAIL, password, returnSecureToken: true}), signal: AbortSignal.timeout(15_000),
+  });
+  const verified = await verification.json();
+  if (!verification.ok || verified.localId !== UID) throw new Error("The retained credentials could not authenticate this test identity. The account was not reset.");
 
-  const password = `Qp-${crypto.randomBytes(24).toString("base64url")}!26`;
-  await auth.createUser({ uid: UID, email: EMAIL, password, emailVerified: true });
-
-  const credentialsPath = confinedCredentialsPath(process.env.QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE);
-  await writeFile(credentialsPath, JSON.stringify({
+  const packet = JSON.stringify({
     baseURL,
     email: EMAIL,
     password,
@@ -114,7 +122,10 @@ async function prepare() {
     ...(projectTagLabel ? { projectTagLabel } : {}),
     ...(goalID ? { goalID } : {}),
     ...(planBlockID ? { planBlockID } : {}),
-  }), { mode: 0o600 });
+  });
+  const file = await open(credentialsPath, constants.O_CREAT | constants.O_WRONLY | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+  try { await file.chmod(0o600); await file.writeFile(packet); }
+  finally { await file.close(); }
 
   return {
     ok: true,
@@ -122,6 +133,8 @@ async function prepare() {
     credentialsPath,
     email: EMAIL,
     uid: UID,
+    created: identity.created,
+    keychainService: service,
     sessionID,
     sessionTitle,
     secretsPrinted: false,
