@@ -128,13 +128,32 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   const actor = session.user;
   const actorEmail = String(actor.primaryEmail || actor.email || "").trim().toLowerCase();
   const prisma = getPrismaClient();
+  const params = new URL(request.url).searchParams;
+  const query = text(params.get("q"), 200);
+  const noteIds = [...new Set(params.getAll("includeNoteId").map(id => text(id, 240)).filter(Boolean))].slice(0, 100);
+  const before = params.get("before");
+  const afterId = text(params.get("afterId"), 240);
+  const beforeDate = before ? new Date(before) : null;
+  if ((before || afterId) && (!beforeDate || !Number.isFinite(beforeDate.getTime()) || !afterId)) {
+    return NextResponse.json({ ok: false, error: "This notes page is unavailable. Search again." }, { status: 400 });
+  }
+  const visibleWhere: Prisma.CoachingNoteWhereInput = {
+    kind: { in: [...SESSION_NOTE_VISIBLE_KINDS] },
+    ...mobileSessionNoteVisibilityWhere({ actorUserId: actor.id, actorEmail, isStaff: actor.isStaff === true }),
+  };
+  const audience = params.get("audience");
+  const filters: Prisma.CoachingNoteWhereInput[] = [];
+  if (query) filters.push({ OR: [{ title: { contains: query, mode: "insensitive" } }, { body: { contains: query, mode: "insensitive" } }] });
+  if (audience === "private") filters.push({ visibility: "AUTHOR_PRIVATE" });
+  if (audience === "shared") filters.push({ visibility: { not: "AUTHOR_PRIVATE" } });
+  if (beforeDate) filters.push({ OR: [{ updatedAt: { lt: beforeDate } }, { updatedAt: beforeDate, id: { gt: afterId } }] });
   const room = await prisma.callRoom.findFirst({
     where: sessionAccessWhere(roomId, actor),
     select: {
       id: true, projectId: true,
       project: { select: { accessGrants: { where: { email: actorEmail, status: "ACTIVE" }, take: 1, select: { role: true } } } },
       notes: {
-        where: { kind: { in: [...SESSION_NOTE_VISIBLE_KINDS] }, ...mobileSessionNoteVisibilityWhere({ actorUserId: actor.id, actorEmail, isStaff: actor.isStaff === true }) },
+        where: { AND: [visibleWhere, ...filters] },
         orderBy: [{ updatedAt: "desc" }, { id: "asc" }], take: 101, select: NOTE_SELECT,
       },
     },
@@ -142,12 +161,22 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   if (!room) return NextResponse.json({ ok: false, error: "This session is not available." }, { status: 404 });
   const canCreate = Boolean(await prisma.callRoom.findFirst({ where: sessionMutationAccessWhere(roomId, actor), select: { id: true } }));
   const projectTeam = canUseProjectTeamNotes(room.project?.accessGrants[0]?.role, actor.isStaff === true);
+  // An open/recovered draft can be older than the recent list. Re-authorize it
+  // through the same room and note audience predicates, not through a bare ID.
+  const included = noteIds.length ? await prisma.coachingNote.findMany({
+    where: { AND: [visibleWhere, { id: { in: noteIds }, room: { is: sessionAccessWhere(roomId, actor) } }] },
+    select: NOTE_SELECT,
+  }) : [];
+  const page = room.notes.slice(0, 100);
+  const last = page.at(-1);
+  const serialize = (note: typeof room.notes[number]) => ({
+    ...serializedNote(note, actor.id, actor.isStaff || room.project?.accessGrants.length ? room.projectId : null),
+    canEdit: canEditSessionNoteProjection({ actorUserId: actor.id, authorUserId: note.authorUserId, kind: note.kind, visibility: note.visibility, canMutateSession: canCreate, canUseProjectTeam: projectTeam }),
+  });
   return NextResponse.json({
-    ok: true, actorUserId: actor.id, canCreate, hasMore: room.notes.length > 100,
-    notes: room.notes.slice(0, 100).map(note => ({
-      ...serializedNote(note, actor.id, actor.isStaff || room.project?.accessGrants.length ? room.projectId : null),
-      canEdit: canEditSessionNoteProjection({ actorUserId: actor.id, authorUserId: note.authorUserId, kind: note.kind, visibility: note.visibility, canMutateSession: canCreate, canUseProjectTeam: projectTeam }),
-    })),
+    ok: true, actorUserId: actor.id, roomId, canCreate, hasMore: room.notes.length > 100,
+    nextCursor: room.notes.length > 100 && last ? { before: last.updatedAt.toISOString(), afterId: last.id } : null,
+    notes: page.map(serialize), includedNotes: included.map(serialize),
   }, { headers: { "Cache-Control": "private, no-store" } });
 }
 

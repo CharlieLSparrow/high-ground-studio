@@ -80,7 +80,7 @@ const NOTE_SELECT = {
   updatedAt: true,
   tagLinks: {
     orderBy: { createdAt: "asc" as const },
-    select: { tag: { select: { id: true, label: true, slug: true, hexColor: true } } },
+    select: { tag: { select: { id: true, label: true, slug: true, hexColor: true, projectId: true } } },
   },
   _count: { select: { revisions: true } },
 };
@@ -91,7 +91,7 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function serialized(row: any): SerializedEditedSessionNote {
+function serialized(row: any, visibleTagProjectId: string | null): SerializedEditedSessionNote {
   return {
     id: row.id,
     title: row.title,
@@ -100,7 +100,9 @@ function serialized(row: any): SerializedEditedSessionNote {
     visibility: String(row.visibility),
     updatedAt: row.updatedAt.toISOString(),
     revisionCount: row._count?.revisions ?? 0,
-    tags: (row.tagLinks || []).map((link: any) => link.tag),
+    tags: (row.tagLinks || []).map((link: any) => link.tag)
+      .filter((tag: any) => visibleTagProjectId && tag.projectId === visibleTagProjectId)
+      .map(({id, label, slug, hexColor}: any) => ({id, label, slug, hexColor})),
   };
 }
 
@@ -127,6 +129,7 @@ function replayMatches(snapshotJson: unknown, input: {
   kind: MutableSessionNoteKind;
   visibility: SessionNoteVisibility;
   tagIds: string[];
+  preserveTags?: boolean;
 }) {
   const snapshot = record(snapshotJson);
   return snapshot.clientRequestId === input.clientRequestId
@@ -136,7 +139,8 @@ function replayMatches(snapshotJson: unknown, input: {
     && snapshot.body === input.body
     && snapshot.kind === input.kind
     && snapshot.visibility === input.visibility
-    && JSON.stringify(stringArray(snapshot.tagIds)) === JSON.stringify([...input.tagIds].sort());
+    && Boolean(snapshot.preserveTags) === Boolean(input.preserveTags)
+    && (input.preserveTags || JSON.stringify(stringArray(snapshot.tagIds)) === JSON.stringify([...input.tagIds].sort()));
 }
 
 async function replayResult(input: {
@@ -144,6 +148,7 @@ async function replayResult(input: {
   actor: SessionActor;
   revisionId: string;
   note: any;
+  visibleTagProjectId: string | null;
   intent: {
     clientRequestId: string;
     noteId: string;
@@ -153,6 +158,7 @@ async function replayResult(input: {
     kind: MutableSessionNoteKind;
     visibility: SessionNoteVisibility;
     tagIds: string[];
+    preserveTags?: boolean;
   };
 }): Promise<EditSessionNoteResult | null> {
   const revision = await input.prisma.coachingNoteRevision.findUnique({
@@ -176,7 +182,7 @@ async function replayResult(input: {
   }
   return {
     ok: true,
-    note: serialized(current),
+    note: serialized(current, input.visibleTagProjectId),
     receiptId: input.revisionId,
     idempotentReplay: true,
     appliedRevision: revision.revision,
@@ -191,7 +197,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
     || !input.noteId
     || !input.body
     || !Number.isFinite(input.expectedUpdatedAt.getTime())
-    || (input.clientRequestId && (!input.kind || !input.visibility || input.tagIds === null))
+    || (input.clientRequestId && (!input.kind || !input.visibility))
   ) {
     return {
       ok: false,
@@ -230,6 +236,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
   if (!room) {
     return { ok: false, code: "NOT_FOUND", error: "You no longer have access to this note's Session." };
   }
+  const visibleTagProjectId = input.actor.isStaff || room.project?.accessGrants?.length ? room.projectId : null;
 
   const nextKind = input.kind ?? note.kind as MutableSessionNoteKind;
   if (nextKind !== note.kind && (isGeneratedSessionNoteKind(note.kind) || isGeneratedSessionNoteKind(nextKind))) {
@@ -282,9 +289,10 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
     kind: nextKind,
     visibility: nextVisibility,
     tagIds: nextTagIds,
+    preserveTags: input.tagIds === null,
   } : null;
   if (intent) {
-    const replay = await replayResult({ prisma, actor: input.actor, revisionId, note, intent });
+    const replay = await replayResult({ prisma, actor: input.actor, revisionId, note, intent, visibleTagProjectId });
     if (replay) return replay;
   }
 
@@ -293,7 +301,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
       ok: false,
       code: "CONFLICT",
       error: "This note changed elsewhere. Your draft has not replaced the newer version.",
-      current: serialized(note),
+      current: serialized(note, visibleTagProjectId),
     };
   }
   if (tagsChanged && addedTagIds.length && room.projectId) {
@@ -329,7 +337,8 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
       });
       if (!currentRoom) return { kind: "not-found" as const };
       if (intent) {
-        const replay = await replayResult({ prisma: tx, actor: input.actor, revisionId, note, intent });
+        const replay = await replayResult({ prisma: tx, actor: input.actor, revisionId, note, intent,
+          visibleTagProjectId: input.actor.isStaff || currentRoom.project?.accessGrants?.length ? currentRoom.projectId : null });
         if (replay) return { kind: "replay" as const, replay };
       }
       const stillCanUseProjectTeam = canUseProjectTeamNotes(
@@ -352,8 +361,9 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
       const currentTransactionTagIds: string[] = current.tagLinks
         .map((link: any) => String(link.tag.id))
         .sort();
-      const tagsChangedInTransaction = JSON.stringify(nextTagIds) !== JSON.stringify(currentTransactionTagIds);
-      const addedTagIdsInTransaction = nextTagIds.filter(
+      const transactionTagIds = input.tagIds === null ? currentTransactionTagIds : nextTagIds;
+      const tagsChangedInTransaction = JSON.stringify(transactionTagIds) !== JSON.stringify(currentTransactionTagIds);
+      const addedTagIdsInTransaction = transactionTagIds.filter(
         (tagId) => !currentTransactionTagIds.includes(tagId),
       );
       if (tagsChangedInTransaction && (!currentRoom.projectId || !stillCanUseProjectTeam)) {
@@ -387,7 +397,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
         changedAt: now.toISOString(),
         changedByUserId: input.actor.id,
         expectedUpdatedAt: input.expectedUpdatedAt.toISOString(),
-        tagIds: nextTagIds,
+        tagIds: transactionTagIds,
         previousContentRetainedInRevision: true,
         externalSideEffects: false,
       };
@@ -422,9 +432,9 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
 
       if (tagsChangedInTransaction) {
         await tx.coachingNoteTagLink.deleteMany({ where: { noteId: note.id } });
-        if (nextTagIds.length) {
+        if (transactionTagIds.length) {
           await tx.coachingNoteTagLink.createMany({
-            data: nextTagIds.map((tagId: string) => ({
+            data: transactionTagIds.map((tagId: string) => ({
               noteId: note.id,
               tagId,
               createdByUserId: input.actor.id,
@@ -454,7 +464,8 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
             body: input.body,
             kind: nextKind,
             visibility: nextVisibility,
-            tagIds: nextTagIds,
+            tagIds: transactionTagIds,
+            preserveTags: input.tagIds === null,
             previous: {
               title: current.title,
               body: current.body,
@@ -472,7 +483,8 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
         where: { id: note.id },
         select: NOTE_SELECT,
       });
-      return { kind: "saved" as const, saved, revision };
+      return { kind: "saved" as const, saved, revision,
+        visibleTagProjectId: input.actor.isStaff || currentRoom.project?.accessGrants?.length ? currentRoom.projectId : null };
     }, { isolationLevel: "Serializable" }));
 
     if (result.kind === "replay") return result.replay;
@@ -503,19 +515,19 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
         ok: false,
         code: "CONFLICT",
         error: "This note changed elsewhere. Your draft is still available.",
-        current: serialized(current),
+        current: serialized(current, visibleTagProjectId),
       };
     }
     return {
       ok: true,
-      note: serialized(result.saved),
+      note: serialized(result.saved, result.visibleTagProjectId),
       receiptId: revisionId,
       idempotentReplay: false,
       appliedRevision: result.revision,
     };
   } catch (error) {
     if (record(error).code !== "P2002" || !intent) throw error;
-    const replay = await replayResult({ prisma, actor: input.actor, revisionId, note, intent });
+    const replay = await replayResult({ prisma, actor: input.actor, revisionId, note, intent, visibleTagProjectId });
     return replay ?? {
       ok: false,
       code: "CONFLICT",

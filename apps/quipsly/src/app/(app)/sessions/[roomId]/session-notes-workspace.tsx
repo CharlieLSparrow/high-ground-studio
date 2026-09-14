@@ -183,7 +183,7 @@ export function SessionNotesWorkspace({
         title = retainedCommand.title; body = retainedCommand.body;
       }
       for (let rebases = 0; ; rebases++) {
-        const command = JSON.stringify({ title, body, kind, visibility, tagIds: base.tags.map(tag => tag.id), expectedUpdatedAt: base.updatedAt });
+        const command = JSON.stringify({ title, body, kind, visibility, expectedUpdatedAt: base.updatedAt });
         const retained = editAttempts.current.get(note.id);
         const attempt = retained?.payload === command && retained.submission === submission ? retained : { payload: command, requestId: crypto.randomUUID(), submission, base };
         editAttempts.current.set(note.id, attempt);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Check, LoaderCircle, LockKeyhole, Plus, Users } from "lucide-react";
 import type { SessionWorkspaceNote } from "@/app/(app)/sessions/[roomId]/session-notes-model";
 import { reconcileNoteText } from "@/lib/note-text-reconcile";
+import { CallNoteBrowser, CallNoteTags, type CallNoteCursor } from "./call-note-browser";
 
 type Draft = {
   key: string;
@@ -19,7 +20,7 @@ type Draft = {
   reconciled?: boolean;
   unavailable?: boolean;
 };
-type Attempt = { requestId: string; version: number; title: string; body: string; visibility: string; note: SessionWorkspaceNote | null };
+type Attempt = { requestId: string; version: number; title: string; body: string; visibility: string; note: SessionWorkspaceNote | null; preserveTags?: boolean };
 
 function draftFor(note: SessionWorkspaceNote): Draft {
   return { key: note.id, note, title: note.title || "", body: note.body, visibility: note.visibility === "AUTHOR_PRIVATE" ? "AUTHOR_PRIVATE" : "SESSION_SHARED", version: 0, savedVersion: 0, error: null, conflict: null };
@@ -34,6 +35,8 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
   const [notes, setNotes] = useState<SessionWorkspaceNote[]>([]);
   const [canCreate, setCanCreate] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [actorId, setActorId] = useState<string | null>(null);
+  const [noteCursor, setNoteCursor] = useState<CallNoteCursor | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"shared" | "private">("shared");
   const [selected, setSelected] = useState<string | null>(null);
@@ -77,13 +80,17 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
     attempts.current.clear(); rebaseAttempts.current.clear();
     savingRef.current = null;
     setSaving(null); setDrafts({}); setSelected(null); setNotes([]);
-    setCanCreate(false); setLoaded(false); setLoadError(message);
+    setCanCreate(false); setLoaded(false); setActorId(null); setNoteCursor(null); setLoadError(message);
   }, []);
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
     try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/notes`, { cache: "no-store" });
+      const params = new URLSearchParams();
+      const requestedIds = new Set(Object.values(draftsRef.current).flatMap(draft => draft.note ? [draft.note.id] : []));
+      if (noteToOpen) requestedIds.add(noteToOpen.id);
+      requestedIds.forEach(id => params.append("includeNoteId", id));
+      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/notes${params.size ? `?${params}` : ""}`, { cache: "no-store" });
       if (!alive.current || sequence !== refreshSequence.current) return;
       if ([401, 403, 404].includes(response.status)) {
         clearAccess(response.status === 401 ? "Sign in again to open your notes." : "This session is no longer available to this account.");
@@ -118,12 +125,16 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
           }
         } catch { setDraftStorageError(true); }
       }
-      setNotes(payload.notes);
+      const included = Array.isArray(payload.includedNotes) ? payload.includedNotes : [];
+      const authorizedNotes: SessionWorkspaceNote[] = [...new Map([...payload.notes, ...included].map((note: SessionWorkspaceNote) => [note.id, note])).values()] as SessionWorkspaceNote[];
+      setNotes(authorizedNotes);
+      setActorId(payload.actorUserId);
+      setNoteCursor(payload.nextCursor || null);
       setCanCreate(payload.canCreate === true);
       setLoaded(true);
       setLoadError(null);
       setDrafts(current => Object.fromEntries(Object.entries(current).map(([key, draft]) => {
-        const latest = payload.notes.find((note: SessionWorkspaceNote) => note.id === draft.note?.id);
+        const latest = authorizedNotes.find((note: SessionWorkspaceNote) => note.id === draft.note?.id);
         // Never replace typing, a failed request, or a pending save with a poll.
         if (latest && draft.version === draft.savedVersion && !attempts.current.has(key) && savingRef.current !== key) return [key, { ...draftFor(latest), key }];
         return [key, { ...draft, unavailable: draft.note ? !latest : payload.canCreate !== true,
@@ -132,7 +143,7 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
     } catch (error) {
       if (alive.current && sequence === refreshSequence.current) setLoadError(error instanceof Error ? error.message : "Notes couldn’t load.");
     }
-  }, [roomId, clearAccess]);
+  }, [roomId, clearAccess, noteToOpen]);
 
   useEffect(() => {
     if (!recoveryKey.current || !loaded) return;
@@ -165,7 +176,7 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
   const save = useCallback(async (key: string, retry = false) => {
     const draft = draftsRef.current[key];
     if (!draft || draft.unavailable || (draft.note && !draft.note.canEdit) || !recoveryKey.current || savingRef.current || draft.conflict || (!retry && draft.error) || !draft.body.trim() || draft.version === draft.savedVersion) return;
-    const attempt = attempts.current.get(key) ?? { requestId: crypto.randomUUID(), version: draft.version, title: draft.title, body: draft.body, visibility: draft.note?.visibility || draft.visibility, note: draft.note };
+    const attempt = attempts.current.get(key) ?? { requestId: crypto.randomUUID(), version: draft.version, title: draft.title, body: draft.body, visibility: draft.note?.visibility || draft.visibility, note: draft.note, preserveTags: true };
     const attemptActor = recoveryKey.current;
     const attemptEpoch = accessEpoch.current;
     attempts.current.set(key, attempt);
@@ -176,7 +187,9 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
         method: attempt.note ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientRequestId: attempt.requestId, title: attempt.title, body: attempt.body, visibility: attempt.visibility,
-          kind: attempt.note?.kind || "SESSION_NOTE", ...(attempt.note ? { expectedUpdatedAt: attempt.note.updatedAt, tagIds: attempt.note.tags.map(tag => tag.id), surface: "nest-session-notes" } : {}) }),
+          kind: attempt.note?.kind || "SESSION_NOTE", ...(attempt.note ? { expectedUpdatedAt: attempt.note.updatedAt, surface: "nest-session-notes",
+            // An uncertain pre-upgrade attempt must replay its original command.
+            ...(attempt.preserveTags ? {} : { tagIds: attempt.note.tags.map(tag => tag.id) }) } : {}) }),
       });
       if (!alive.current || recoveryKey.current !== attemptActor || accessEpoch.current !== attemptEpoch) return;
       if ([401, 403, 404].includes(response.status)) {
@@ -259,12 +272,14 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
     setSelected(key);
   }
   function openNote(note: SessionWorkspaceNote) {
+    // A list read begun before opening an older search result cannot revoke
+    // that result merely because it was outside the recent-items page.
+    refreshSequence.current++;
     const retained = Object.values(draftsRef.current).find(draft => draft.note?.id === note.id);
     if (retained) { setSelected(retained.key); return; }
     setDrafts(current => ({ ...current, [note.id]: draftFor(note) })); setSelected(note.id);
   }
   const draft = selected && !drafts[selected]?.unavailable ? drafts[selected] : null;
-  const visibleNotes = notes.filter(note => filter === "private" ? note.visibility === "AUTHOR_PRIVATE" : note.visibility !== "AUTHOR_PRIVATE");
   const readOnly = Boolean(draft?.note && !draft.note.canEdit);
   return <div className="flex min-h-0 flex-col gap-4">
     {draftStorageError ? <p role="alert" className="text-sm text-destructive">This browser couldn’t keep a recovery copy. Wait for “Saved” before closing.</p> : null}
@@ -278,6 +293,7 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
       <input id={`call-note-title-${roomId}`} value={draft.title} readOnly={readOnly} maxLength={500} placeholder="Untitled note" onChange={event => update(draft.key, { title: event.target.value })} className="min-h-11 w-full min-w-0 border-0 bg-transparent text-xl font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary" />
       <label className="sr-only" htmlFor={`call-note-body-${roomId}`}>Note text</label>
       <textarea id={`call-note-body-${roomId}`} value={draft.body} readOnly={readOnly} maxLength={20_000} placeholder="Write a thought, a question, or your next step…" onChange={event => update(draft.key, { body: event.target.value })} className="min-h-56 w-full resize-y rounded-xl border border-border bg-card p-3 text-base leading-7 outline-none focus-visible:ring-2 focus-visible:ring-primary" />
+      {draft.note && <CallNoteTags tags={draft.note.tags} />}
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground" role="status">
         {readOnly ? "Read-only note" : saving === draft.key ? <span className="inline-flex items-center gap-1"><LoaderCircle size={14} className="animate-spin" />Saving…</span> : draft.error ? "Not saved" : draft.conflict ? "Changed elsewhere" : draft.version === draft.savedVersion ? <span className="inline-flex items-center gap-1"><Check size={14} />{draft.note ? "Saved" : "Saves as you write"}</span> : draft.body.trim() ? "Saving soon…" : "Add note text to save"}
         {draft.note ? <span>{draft.note.author?.label}</span> : null}
@@ -293,7 +309,8 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
           <button type="button" onClick={() => setDrafts(current => ({ ...current, [draft.key]: { ...draft, note: { ...draft.note, ...draft.conflict } as SessionWorkspaceNote, conflict: null, error: null, version: draft.version + 1 } }))} className="min-h-11 rounded-xl border border-border px-3 font-semibold">Save my text to this note</button>
         </div>
       </section> : null}
-    </> : <>
+    </> : null}
+    <div hidden={Boolean(draft)} className="space-y-4">
       <div className="flex items-center gap-2">
         <div className="flex flex-1 rounded-xl bg-muted p-1" role="group" aria-label="Note audience">
           <button type="button" aria-pressed={filter === "shared"} onClick={() => setFilter("shared")} className={`min-h-10 flex-1 rounded-lg px-2 text-sm font-medium ${filter === "shared" ? "bg-card shadow-sm" : ""}`}>Shared</button>
@@ -303,11 +320,10 @@ export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, on
       </div>
       {!loaded && !loadError ? <p role="status" className="text-sm text-muted-foreground">Loading notes…</p> : null}
       {Object.values(drafts).filter(item => !item.unavailable && !item.note && (item.title || item.body)).map(item => <button key={item.key} type="button" onClick={() => setSelected(item.key)} className="rounded-xl border border-border p-3 text-left"><span className="block text-sm font-semibold">{item.title || "Untitled draft"}</span><span className="text-xs text-muted-foreground">{item.error ? "Retry needed" : "Draft"} · {item.visibility === "AUTHOR_PRIVATE" ? "Only you" : "Shared"}</span></button>)}
-      {loaded && !visibleNotes.length ? <div className="py-6 text-center"><p className="text-sm font-medium">{filter === "shared" ? "A place to think together" : "Your private notes"}</p><p className="mt-2 text-sm leading-6 text-muted-foreground">{filter === "shared" ? "Keep questions and next steps here during your conversation." : "Only you can see notes you create here."}</p>{canCreate ? <button type="button" onClick={newNote} className="mt-3 min-h-11 rounded-xl border border-border px-4 text-sm font-semibold">Write a note</button> : null}</div> : null}
-      {visibleNotes.map(note => <button key={note.id} type="button" onClick={() => openNote(note)} className="rounded-xl border border-border bg-card p-3 text-left hover:bg-muted">
-        <span className="block truncate text-sm font-semibold">{note.title || "Untitled note"}</span><span className="mt-1 line-clamp-2 block whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{note.body}</span><span className="mt-2 block text-xs text-muted-foreground">{note.author.label}{Object.values(drafts).some(item => item.note?.id === note.id && item.version !== item.savedVersion) ? " · Unsaved changes" : ""}</span>
-      </button>)}
-    </>}
+      {actorId && <CallNoteBrowser key={`${roomId}:${actorId}`} roomId={roomId} actorId={actorId} active={active && !draft}
+        audience={filter} notes={notes} cursor={noteCursor} onOpen={openNote} onAccessLost={clearAccess}
+        unsavedIds={new Set(Object.values(drafts).flatMap(item => item.note && item.version !== item.savedVersion ? [item.note.id] : []))} />}
+    </div>
     <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=notes`} onClick={onOpenWorkspace} className="mt-2 min-h-11 py-3 text-sm text-muted-foreground underline underline-offset-4">Open full notes workspace</Link>
   </div>;
 }

@@ -20,6 +20,29 @@ beforeEach(() => {
   global.fetch = fetchMock;
 });
 afterEach(() => { global.fetch = originalFetch; });
+it("opens an older linked note through the scoped included-note read and keeps it editable on refresh", async () => {
+  fetchMock.mockImplementation(() => Promise.resolve(reply({ok: true, actorUserId: "coach", canCreate: true, notes: [], includedNotes: [note]})));
+  const request = {id: note.id, request: 1};
+  const view = render(<CallNotesPanel roomId="room" active noteToOpen={request} onOpenWorkspace={() => {}} />);
+  expect(await screen.findByRole("textbox", {name: "Note text"})).toHaveValue(note.body);
+  expect(fetchMock.mock.calls[0][0]).toContain("includeNoteId=note-1");
+  view.rerender(<CallNotesPanel roomId="room" active={false} noteToOpen={request} onOpenWorkspace={() => {}} />);
+  view.rerender(<CallNotesPanel roomId="room" active noteToOpen={request} onOpenWorkspace={() => {}} />);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole("textbox", {name: "Note text"})).not.toHaveAttribute("readonly");
+});
+it("replays a pre-upgrade uncertain edit with its original explicit tag command", async () => {
+  rows = [note];
+  const attempt = { requestId: "e495b114-2867-4833-80a2-cd470bc4958c", version: 1, title: note.title, body: "Previously queued text", visibility: note.visibility, note };
+  sessionStorage.setItem("quipsly.call-note-drafts.v1:coach:room", JSON.stringify({ version: 1,
+    drafts: [{ key: note.id, note, title: attempt.title, body: attempt.body, visibility: note.visibility, version: 1, savedVersion: 0, error: "Offline", conflict: null }],
+    attempts: [[note.id, attempt]],
+  }));
+  render(<CallNotesPanel roomId="room" active noteToOpen={{id: note.id, request: 1}} onOpenWorkspace={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", {name: "Retry save"}));
+  await screen.findByText("Saved");
+  expect(JSON.parse(write.mock.calls[0][1].body)).toMatchObject({ clientRequestId: attempt.requestId, body: attempt.body, tagIds: [] });
+});
 it("opens the recap directly, retains an edited draft, and does not reopen it on every poll", async () => {
   rows = [{...note, kind: "SUMMARY"}];
   const request = {id: note.id, request: 1};
@@ -115,7 +138,8 @@ it("edits shared notes using their version and retains typing during an in-fligh
   finish(reply({ ok: true, note: { ...note, body: "First revision.", updatedAt: "2026-09-13T10:00:01.000Z" } }));
   await waitFor(() => expect(write).toHaveBeenCalledTimes(2), { timeout: 2500 });
   expect(write.mock.calls[1][0]).toBe("/api/notes/note-1");
-  expect(JSON.parse(write.mock.calls[1][1].body)).toMatchObject({ expectedUpdatedAt: "2026-09-13T10:00:01.000Z", body: "Second revision while saving.", tagIds: [], surface: "nest-session-notes" });
+  expect(JSON.parse(write.mock.calls[1][1].body)).toMatchObject({ expectedUpdatedAt: "2026-09-13T10:00:01.000Z", body: "Second revision while saving.", surface: "nest-session-notes" });
+  expect(JSON.parse(write.mock.calls[1][1].body)).not.toHaveProperty("tagIds");
   expect(screen.getByRole("textbox", { name: "Note text" })).toHaveValue("Second revision while saving.");
 });
 
@@ -182,8 +206,9 @@ it("reconciles independent shared edits and newer typing without a review step",
   expect(write).toHaveBeenCalledTimes(2);
   expect(JSON.parse(write.mock.calls[1][1].body)).toMatchObject({
     title: remote.title, body: "Start with the introduction. Then outline the next chapter. Keep it brief.",
-    expectedUpdatedAt: remote.updatedAt, tagIds: ["writing"],
+    expectedUpdatedAt: remote.updatedAt,
   });
+  expect(JSON.parse(write.mock.calls[1][1].body)).not.toHaveProperty("tagIds");
   expect(JSON.parse(write.mock.calls[1][1].body).clientRequestId).not.toBe(JSON.parse(write.mock.calls[0][1].body).clientRequestId);
   expect(screen.queryByRole("region", { name: "Note updated elsewhere" })).not.toBeInTheDocument();
   expect(screen.getByText("Includes your changes and the latest shared edits.")).toBeVisible();

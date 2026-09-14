@@ -75,11 +75,13 @@ describe("Session Notes workspace", () => {
     await screen.findByText("Note updated, including the latest shared edits.");
     const first = JSON.parse(fetchMock.mock.calls[0][1].body);
     const merged = JSON.parse(fetchMock.mock.calls[1][1].body);
-    expect(merged).toMatchObject({ title: "Our opening", body: remote.body, expectedUpdatedAt: remote.updatedAt, tagIds: ["writing"] });
+    expect(merged).toMatchObject({ title: "Our opening", body: remote.body, expectedUpdatedAt: remote.updatedAt });
+    expect(merged).not.toHaveProperty("tagIds");
     expect(merged.clientRequestId).not.toBe(first.clientRequestId);
     await user.click(screen.getByRole("button", { name: "Undo last edit" }));
     await screen.findByText("Previous version restored.");
-    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ title: initial.title, body: remote.body, expectedUpdatedAt: saved.updatedAt, tagIds: ["writing"] });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ title: initial.title, body: remote.body, expectedUpdatedAt: saved.updatedAt });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).not.toHaveProperty("tagIds");
   });
 
   it("retries an uncertain reconciled save with the same command and request identity", async () => {

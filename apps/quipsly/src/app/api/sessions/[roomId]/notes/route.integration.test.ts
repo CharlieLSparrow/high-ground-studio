@@ -94,6 +94,79 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
     } as any);
   }
 
+  it("lets an invited client edit note text without removing or revealing project tags, including on retry", async () => {
+    const guest = await prisma.user.create({ data: { primaryEmail: `note-guest-${nonce}@example.test`, name: "Invited client" } });
+    const participant = await prisma.callParticipant.create({ data: { roomId, userId: guest.id, role: "CLIENT", displayName: "Invited client" } });
+    const tag = await prisma.studioTag.create({ data: { projectId, slug: `private-context-${nonce}`, label: "Internal coaching context", category: "meaning", nodeType: "source_note", isActive: false } });
+    const taggedNote = await prisma.coachingNote.create({ data: { roomId, authorUserId: actorUserId, title: "Shared reflection", body: "An opening question.", kind: "SESSION_NOTE", visibility: "SESSION_SHARED" } });
+    await prisma.coachingNoteTagLink.create({ data: { noteId: taggedNote.id, tagId: tag.id, createdByUserId: actorUserId } });
+    const input = { clientRequestId: randomUUID(), title: "Shared reflection", body: "The client added a helpful thought.", kind: "SESSION_NOTE", visibility: "SESSION_SHARED", expectedUpdatedAt: taggedNote.updatedAt.toISOString(), surface: "nest-session-notes" };
+    const edit = (data: object) => PATCH(new Request(`http://localhost/api/notes/${taggedNote.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }), { params: Promise.resolve({ noteId: taggedNote.id }) });
+    try {
+      signedInAs(guest.id, guest.primaryEmail!);
+      const saved = await edit(input);
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toMatchObject({ ok: true, note: { body: input.body, tags: [] } });
+      expect(await prisma.coachingNoteTagLink.count({ where: { noteId: taggedNote.id, tagId: tag.id } })).toBe(1);
+      // A later project-only taxonomy edit does not change the original text
+      // command's identity or force its retry to submit unseen tag IDs.
+      await prisma.coachingNoteTagLink.deleteMany({ where: { noteId: taggedNote.id, tagId: tag.id } });
+      await prisma.coachingNote.update({ where: { id: taggedNote.id }, data: { updatedAt: new Date() } });
+      const replay = await edit(input);
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toMatchObject({ ok: true, idempotentReplay: true, note: { tags: [] } });
+      await prisma.coachingNoteTagLink.create({ data: { noteId: taggedNote.id, tagId: tag.id, createdByUserId: actorUserId } });
+      const conflict = await edit({ ...input, clientRequestId: randomUUID(), body: "A stale draft" });
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toMatchObject({ code: "CONFLICT", current: { tags: [] } });
+    } finally {
+      await prisma.coachingNote.delete({ where: { id: taggedNote.id } });
+      await prisma.studioTag.delete({ where: { id: tag.id } });
+      await prisma.callParticipant.delete({ where: { id: participant.id } });
+      await prisma.user.delete({ where: { id: guest.id } });
+    }
+  });
+
+  it("searches and pages older notes while preserving private and exact-room boundaries", async () => {
+    const keyword = `Finder ${randomUUID()}`;
+    const sharedIds = Array.from({ length: 105 }, () => `finder-${randomUUID()}`).sort();
+    const privateId = `finder-private-${randomUUID()}`;
+    const foreignId = `finder-foreign-${randomUUID()}`;
+    const foreignRoom = await prisma.callRoom.create({ data: { createdByUserId: actorUserId, projectId, title: "Separate session" } });
+    const when = new Date("2026-09-01T12:00:00.123Z");
+    try {
+      await prisma.coachingNote.createMany({ data: [
+        ...sharedIds.map((id, index) => ({ id, roomId, authorUserId: actorUserId, kind: "SESSION_NOTE" as const, visibility: "SESSION_SHARED" as const, title: `${keyword} ${index}`, body: "Searchable preparation", updatedAt: when })),
+        { id: privateId, roomId, authorUserId: actorUserId, kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE", title: keyword, body: "Private words", updatedAt: when },
+        { id: foreignId, roomId: foreignRoom.id, authorUserId: actorUserId, kind: "SESSION_NOTE", visibility: "SESSION_SHARED", title: keyword, body: "Another session", updatedAt: when },
+      ] });
+      const read = (params: URLSearchParams) => GET(new Request(`http://localhost/api/sessions/${roomId}/notes?${params}`), { params: Promise.resolve({ roomId }) });
+      signedInAs(participantUserId, participantEmail);
+      const first = await (await read(new URLSearchParams({ q: keyword.toUpperCase(), audience: "shared" }))).json();
+      expect(first.notes.map((row: { id: string }) => row.id)).toEqual(sharedIds.slice(0, 100));
+      expect(first.hasMore).toBe(true);
+      const second = await (await read(new URLSearchParams({ q: keyword, audience: "shared", ...first.nextCursor }))).json();
+      expect(second.notes.map((row: { id: string }) => row.id)).toEqual(sharedIds.slice(100));
+      expect(second.nextCursor).toBeNull();
+      const includedParams = new URLSearchParams({ q: "no matching text" });
+      [sharedIds[104], privateId, foreignId].forEach(id => includedParams.append("includeNoteId", id));
+      const included = await (await read(includedParams)).json();
+      expect(included.notes).toEqual([]);
+      expect(included.includedNotes.map((row: { id: string }) => row.id)).toEqual([sharedIds[104]]);
+      const privateResult = await (await read(new URLSearchParams({ q: keyword, audience: "private" }))).json();
+      expect(privateResult.notes).toEqual([]);
+      signedInAs(actorUserId, actorEmail);
+      const mine = await (await read(new URLSearchParams({ q: keyword, audience: "private" }))).json();
+      expect(mine.notes.map((row: { id: string }) => row.id)).toEqual([privateId]);
+      expect((await read(new URLSearchParams({ before: "invalid", afterId: sharedIds[0] }))).status).toBe(400);
+      signedInAs(`outsider-${nonce}`, `outsider-${nonce}@example.test`);
+      expect((await read(includedParams)).status).toBe(404);
+    } finally {
+      await prisma.coachingNote.deleteMany({ where: { id: { in: [...sharedIds, privateId, foreignId] } } });
+      await prisma.callRoom.delete({ where: { id: foreignRoom.id } });
+    }
+  });
+
   function post(input: {
     clientRequestId: string;
     title: string;

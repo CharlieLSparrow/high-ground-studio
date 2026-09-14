@@ -1310,6 +1310,7 @@ final class CaptureExperienceModel: ObservableObject {
                 noteVisibility: noteVisibility,
                 tagIDs: tagIDs,
                 expectedUpdatedAt: expectedUpdatedAt,
+                preserveTags: Set(tagIDs) == Set(note.tags.map(\.id)),
                 replacingHeld: replacingHeld
             )
             sessionNoteEditMessage = "Saved on \(CaptureDeviceVocabulary.thisDevice). Syncing changes…"

@@ -17,6 +17,9 @@ struct PendingSessionNoteEdit: Codable, Equatable, Identifiable {
     let noteKind: MobileSessionNoteKind
     let noteVisibility: MobileSessionNoteVisibility
     let tagIDs: [String]
+    /// Nil preserves the exact wire intent of edits queued before text-only
+    /// commands were introduced. New text edits explicitly set this to true.
+    var preserveTags: Bool? = nil
     let expectedUpdatedAt: String
     let capturedAt: Date
     var disposition: Disposition
@@ -332,6 +335,7 @@ final class SessionNoteEditOutbox: ObservableObject {
         noteVisibility: MobileSessionNoteVisibility,
         tagIDs: [String],
         expectedUpdatedAt: String,
+        preserveTags: Bool = false,
         replacingHeld: Bool = false,
         capturedAt: Date = Date()
     ) throws -> PendingSessionNoteEdit {
@@ -370,6 +374,7 @@ final class SessionNoteEditOutbox: ObservableObject {
             noteKind: noteKind,
             noteVisibility: noteVisibility,
             tagIDs: cleanTagIDs,
+            preserveTags: preserveTags,
             expectedUpdatedAt: expectedUpdatedAt,
             capturedAt: capturedAt,
             disposition: .pending,

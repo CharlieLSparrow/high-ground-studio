@@ -26,7 +26,9 @@ const enums = ["MobileSessionNoteKind", "MobileSessionNoteVisibility", "MobileQu
   if (matches.length !== 1) throw new Error(`Expected one canonical ${name}`);
   return matches[0][0];
 });
-fs.writeFileSync(process.argv[3], "import Foundation\n" + declarations[0][0] + "\n" + enums.join("\n"));
+const request = [...source.matchAll(/^struct MobileSessionNoteEditRequest:[\s\S]*?^}/gm)];
+if (request.length !== 1) throw new Error("Expected one canonical note edit request");
+fs.writeFileSync(process.argv[3], "import Foundation\n" + declarations[0][0] + "\n" + enums.join("\n") + "\n" + request[0][0]);
 NODE
 xcrun swiftc \
   -D DOCUMENT_NOTE_EDIT_HARNESS \

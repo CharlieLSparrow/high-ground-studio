@@ -245,6 +245,22 @@ private struct DocumentNoteEditOutboxHarness {
         afterOtherDiscard.remove(noteID: draftID)
         require(afterOtherDiscard.draft(for: draftID) == nil, "Explicit discard must clear the current draft.")
 
-        print("DocumentNoteEditOutboxHarness: PASS (document edits and Session composition recovery)")
+        var textEdit = PendingSessionNoteEdit(id: UUID(), ownerAccountID: ownerA,
+            roomID: "session-1", noteID: "shared-note", title: "A thought", body: "Our next step",
+            noteKind: .sessionNote, noteVisibility: .sessionShared, tagIDs: [], preserveTags: true,
+            expectedUpdatedAt: "2026-09-13T12:00:00.000Z", capturedAt: capturedAt,
+            disposition: .pending, attemptCount: 0, lastAttemptAt: nil, lastErrorCode: nil, lastErrorMessage: nil)
+        let textWire = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MobileSessionNoteEditRequest(edit: textEdit))) as! [String: Any]
+        require(textWire["tagIds"] == nil, "A text-only edit must not remove unseen or archived tags.")
+        let restoredText = try JSONDecoder().decode(PendingSessionNoteEdit.self, from: JSONEncoder().encode(textEdit))
+        require(restoredText.preserveTags == true, "Offline recovery must retain text-only intent.")
+        textEdit.preserveTags = nil
+        let legacyData = try JSONEncoder().encode(textEdit)
+        let legacy = try JSONDecoder().decode(PendingSessionNoteEdit.self, from: legacyData)
+        require(legacy.preserveTags == nil, "Existing queued edits must keep their original intent.")
+        let legacyWire = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MobileSessionNoteEditRequest(edit: legacy))) as! [String: Any]
+        require((legacyWire["tagIds"] as? [String]) == [], "A legacy request still explicitly submits its original tags.")
+
+        print("DocumentNoteEditOutboxHarness: PASS (document edits, Session recovery, and text-only tag preservation)")
     }
 }

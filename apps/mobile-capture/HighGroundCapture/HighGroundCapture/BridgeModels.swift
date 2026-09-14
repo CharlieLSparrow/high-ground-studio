@@ -484,13 +484,13 @@ struct MobileCaptureTodayTaskTranscriptEvidence: Codable, Hashable {
     var governance: MobileCaptureGovernedActionReference? = nil
 }
 
-private struct MobileSessionNoteEditRequest: Encodable {
+struct MobileSessionNoteEditRequest: Encodable {
     let clientRequestId: String
     let title: String?
     let body: String
     let kind: String
     let visibility: String
-    let tagIds: [String]
+    let tagIds: [String]?
     let expectedUpdatedAt: String
 
     init(edit: PendingSessionNoteEdit) {
@@ -499,7 +499,7 @@ private struct MobileSessionNoteEditRequest: Encodable {
         body = edit.body
         kind = edit.noteKind.rawValue
         visibility = edit.noteVisibility.rawValue
-        tagIds = edit.tagIDs
+        tagIds = edit.preserveTags == true ? nil : edit.tagIDs
         expectedUpdatedAt = edit.expectedUpdatedAt
     }
 }
@@ -9173,7 +9173,7 @@ final class CaptureSessionClient: ObservableObject {
                 && saved.body == edit.body
                 && saved.kind == edit.noteKind.rawValue
                 && saved.visibility == edit.noteVisibility.rawValue
-                && saved.tags.map(\.id).sorted() == edit.tagIDs
+                && (edit.preserveTags == true || saved.tags.map(\.id).sorted() == edit.tagIDs)
             guard saved.id == edit.noteID,
                   receiptMatches,
                   payload.idempotentReplay == true || intentMatchesCurrent else {
