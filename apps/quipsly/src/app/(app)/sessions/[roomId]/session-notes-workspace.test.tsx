@@ -21,6 +21,7 @@ function note(input: Partial<SessionWorkspaceNote> & Pick<SessionWorkspaceNote, 
     updatedAt: input.updatedAt ?? "2026-07-24T12:00:00.000Z",
     tags: input.tags ?? [],
     sourceAnchor: input.sourceAnchor ?? null,
+    sourceHref: input.sourceHref ?? null,
   };
 }
 
@@ -33,6 +34,29 @@ function jsonResponse(value: unknown, status = 200) {
 }
 
 describe("Session Notes workspace", () => {
+  it("finds useful notes by words, people and tags without mixing audience filters", async () => {
+    const user = userEvent.setup();
+    const notes = [note({id: "shared", title: "Chapter plan", body: "Write before revising", visibility: "SESSION_SHARED",
+      tags: [{id: "research", label: "Research", slug: "research"}]}),
+      note({id: "private", title: "Private research", body: "Personal reminder", visibility: "AUTHOR_PRIVATE"})];
+    render(<SessionNotesWorkspace roomId="room-1" initialNotes={notes} activeView="shared" taxonomy={null} canUseProjectTeamNotes={false} />);
+    const search = screen.getByRole("searchbox", {name: "Find a note"});
+    await user.type(search, "charlie research revising");
+    expect(screen.getByRole("heading", {name: "Chapter plan"})).toBeVisible();
+    expect(screen.queryByRole("heading", {name: "Private research"})).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("1 matching note");
+    await user.clear(search);
+    await user.type(search, "not present");
+    expect(screen.getByRole("heading", {name: "No matching notes"})).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Clear search"}));
+    expect(screen.getByRole("heading", {name: "Chapter plan"})).toBeVisible();
+  });
+
+  it("opens a generated key moment in its original take instead of the latest recording", () => {
+    render(<SessionNotesWorkspace roomId="room-1" activeView="all" taxonomy={null} canUseProjectTeamNotes={false}
+      initialNotes={[note({id: "highlight", kind: "HIGHLIGHT", sourceHref: "/sessions/room-1?mode=transcript&source=older-take&at=16.4"})]} />);
+    expect(screen.getByRole("link", {name: "Open source transcript"})).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=older-take&at=16.4");
+  });
   const originalFetch = global.fetch;
 
   afterEach(() => {
@@ -238,7 +262,7 @@ describe("Session Notes workspace", () => {
     expect(screen.getByLabelText(/Speaker reviewed\. A person matched this voice to a Session participant\./i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /return to 00:03–00:04/i })).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript#transcript-segment-segment-1",
+      "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1",
     );
   });
 

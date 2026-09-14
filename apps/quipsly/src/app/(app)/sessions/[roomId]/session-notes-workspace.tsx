@@ -1,5 +1,6 @@
 "use client";
 
+import { transcriptSourceHref } from "@/lib/session-work-source-link";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -83,6 +84,7 @@ export function SessionNotesWorkspace({
   const [draftKind, setDraftKind] = useState(creationDefaults.kind);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => setNotes(initialNotes), [initialNotes]);
   useEffect(() => {
@@ -97,7 +99,12 @@ export function SessionNotesWorkspace({
   }, [activeView, canUseProjectTeamNotes]);
 
   const counts = sessionNoteViewCounts(notes);
-  const visibleNotes = notes.filter((note) => noteAppearsInView(note, activeView));
+  const searchTerms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const visibleNotes = notes.filter((note) => {
+    if (!noteAppearsInView(note, activeView)) return false;
+    const text = [note.title, note.body, note.author.label, ...note.tags.map(tag => tag.label)].join(" ").toLocaleLowerCase();
+    return searchTerms.every(term => text.includes(term));
+  });
 
   function replaceNote(note: SessionWorkspaceNote) {
     setNotes((current) => [
@@ -288,7 +295,7 @@ export function SessionNotesWorkspace({
       <section className="rounded-2xl border border-border bg-card p-4 text-card-foreground" aria-labelledby="session-notes-heading">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="rounded-xl bg-white p-2 text-orange-700"><NotebookPen aria-hidden="true" /></span>
+            <span className="rounded-xl bg-card p-2 text-muted-foreground"><NotebookPen aria-hidden="true" /></span>
             <div>
               <h2 id="session-notes-heading" className="text-xl font-semibold">{notes.length} note{notes.length === 1 ? "" : "s"}</h2>
             </div>
@@ -303,14 +310,22 @@ export function SessionNotesWorkspace({
               aria-current={activeView === view.id ? "page" : undefined}
               className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 py-2 text-xs font-black ${
                 activeView === view.id
-                  ? "border-orange-700 bg-orange-800 text-white"
-                  : "border-orange-200 bg-white text-orange-950"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-foreground"
               }`}
             >
               {view.label}<span className="ml-2 rounded-full bg-black/10 px-1.5 py-0.5 text-[10px]">{counts[view.id]}</span>
             </Link>
           ))}
         </nav>
+        <div className="mt-3 flex items-end gap-2">
+          <label className="min-w-0 flex-1 text-sm font-medium">Find a note
+            <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search notes, people, or tags"
+              className="mt-1 min-h-11 w-full rounded-xl border border-border bg-background px-3 text-foreground" />
+          </label>
+          {search ? <button type="button" onClick={() => setSearch("")} className="min-h-11 rounded-xl border border-border px-3 text-sm">Clear search</button> : null}
+        </div>
+        {searchTerms.length > 0 ? <p role="status" className="mt-2 text-sm text-muted-foreground">{visibleNotes.length} matching note{visibleNotes.length === 1 ? "" : "s"}</p> : null}
 
         {notice ? <div role="status" className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground">
           <p>{notice}</p>
@@ -322,20 +337,20 @@ export function SessionNotesWorkspace({
           <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Add a note</summary>
         <form ref={createForm} onSubmit={event => { event.preventDefault(); void createNote(new FormData(event.currentTarget)); }} className="mt-3 grid gap-3" aria-label="New session note">
           <fieldset disabled={busyId === "create"} className="contents">
-          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Note<textarea name="body" required maxLength={20_000} rows={4} value={draftBody} onChange={event => setDraftBody(event.target.value)} placeholder="Write a note…" className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-          <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Title <span className="normal-case tracking-normal text-orange-700">(optional)</span><input name="title" maxLength={500} value={draftTitle} onChange={event => setDraftTitle(event.target.value)} placeholder="Add a title" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-          <details className="rounded-xl border border-orange-100 bg-orange-50/45 p-3">
-            <summary className="cursor-pointer text-xs font-black text-orange-950">Note type and sharing</summary>
+          <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Note<textarea name="body" required maxLength={20_000} rows={4} value={draftBody} onChange={event => setDraftBody(event.target.value)} placeholder="Write a note…" className="mt-1 block w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+          <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Title <span className="normal-case tracking-normal text-muted-foreground">(optional)</span><input name="title" maxLength={500} value={draftTitle} onChange={event => setDraftTitle(event.target.value)} placeholder="Add a title" className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+          <details className="rounded-xl border border-border bg-muted/45 p-3">
+            <summary className="cursor-pointer text-xs font-black text-foreground">Note type and sharing</summary>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
+              <label className="text-[10px] font-black uppercase tracking-wide text-foreground">
                 Note type
-                <select name="kind" value={draftKind} onChange={event => setDraftKind(event.target.value as EditableSessionNoteKind)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                <select name="kind" value={draftKind} onChange={event => setDraftKind(event.target.value as EditableSessionNoteKind)} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                   {editableKinds(canUseProjectTeamNotes).map((kind) => <option key={kind} value={kind}>{sessionNoteKindLabel(kind)}</option>)}
                 </select>
               </label>
-              <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
+              <label className="text-[10px] font-black uppercase tracking-wide text-foreground">
                 Who can read it
-                <select name="visibility" value={draftVisibility} onChange={event => setDraftVisibility(event.target.value as SessionNoteVisibility)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                <select name="visibility" value={draftVisibility} onChange={event => setDraftVisibility(event.target.value as SessionNoteVisibility)} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                   {editableVisibilities(canUseProjectTeamNotes).map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
                 </select>
               </label>
@@ -343,7 +358,7 @@ export function SessionNotesWorkspace({
           </details>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-semibold leading-5 text-muted-foreground" data-testid="new-note-audience">{audienceHelp(draftVisibility)}</p>
-            <button type="submit" disabled={busyId === "create"} className="min-h-11 rounded-full bg-orange-800 px-5 py-2 text-xs font-black text-white disabled:opacity-50">{busyId === "create" ? "Saving…" : "Save note"}</button>
+            <button type="submit" disabled={busyId === "create"} className="min-h-11 rounded-full bg-primary px-5 py-2 text-xs font-black text-primary-foreground disabled:opacity-50">{busyId === "create" ? "Saving…" : "Save note"}</button>
           </div>
           </fieldset>
         </form>
@@ -353,92 +368,95 @@ export function SessionNotesWorkspace({
       {visibleNotes.length ? (
         <div className="grid gap-4 lg:grid-cols-2">
           {visibleNotes.map((note) => (
-            <article id={`session-note-${note.id}`} key={note.id} tabIndex={-1} className="scroll-mt-24 rounded-2xl border border-orange-200 bg-white p-5 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-700">
+            <article id={`session-note-${note.id}`} key={note.id} tabIndex={-1} className="scroll-mt-24 rounded-2xl border border-border bg-card p-5 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{sessionNoteKindLabel(note.kind)} · {note.originLabel}</p>
-                  <h3 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{note.title || sessionNoteKindLabel(note.kind)}</h3>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">{sessionNoteKindLabel(note.kind)} · {note.originLabel}</p>
+                  <h3 className="mt-1 font-serif text-2xl font-black text-foreground">{note.title || sessionNoteKindLabel(note.kind)}</h3>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-black uppercase text-orange-950">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[10px] font-black uppercase text-foreground">
                   <NoteAudienceIcon visibility={note.visibility} />{sessionNoteVisibilityLabel(note.visibility)}
                 </span>
               </div>
-              <p className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#5f4d37]">{note.body}</p>
+              <p className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-6 text-foreground">{note.body}</p>
               {note.sourceAnchor ? (
-                <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Transcript source</p>
-                  <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-sky-950">{note.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.sourceAnchor.effectiveTextSnapshot}</p>
+                <div className="mt-4 rounded-xl border border-border bg-muted/70 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">Transcript source</p>
+                  <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-foreground">{note.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.sourceAnchor.effectiveTextSnapshot}</p>
                   <TranscriptSpeakerEvidenceBadge authority={note.sourceAnchor.speakerAuthority} />
-                  <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(note.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">
+                  <Link href={transcriptSourceHref(note.sourceAnchor)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-black text-foreground hover:underline">
                     <Play size={14} aria-hidden="true" />Return to {timestampForSeconds(note.sourceAnchor.startSeconds)}–{timestampForSeconds(note.sourceAnchor.endSeconds)}
                   </Link>
                 </div>
               ) : null}
+              {!note.sourceAnchor && note.sourceHref ? <Link href={note.sourceHref} className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm font-semibold underline underline-offset-4">
+                <Play size={14} aria-hidden="true" />Open source transcript
+              </Link> : null}
               {note.lastMergedSource ? (
-                <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-wide text-violet-800">Latest merged transcript source</p>
-                  <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-violet-950">{note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.lastMergedSource.sourceAnchor.effectiveTextSnapshot}</p>
+                <div className="mt-4 rounded-xl border border-border bg-muted/70 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">Latest merged transcript source</p>
+                  <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-foreground">{note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.lastMergedSource.sourceAnchor.effectiveTextSnapshot}</p>
                   <TranscriptSpeakerEvidenceBadge authority={note.lastMergedSource.sourceAnchor.speakerAuthority} />
-                  <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(note.lastMergedSource.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-900 hover:underline">
+                  <Link href={transcriptSourceHref(note.lastMergedSource.sourceAnchor)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-black text-foreground hover:underline">
                     <Play size={14} aria-hidden="true" />Return to merged source at {timestampForSeconds(note.lastMergedSource.sourceAnchor.startSeconds)}–{timestampForSeconds(note.lastMergedSource.sourceAnchor.endSeconds)}
                   </Link>
                 </div>
               ) : null}
               <TagSearchChips tags={note.tags} label={`${note.title || "Session note"} tags`} />
-              <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/45 p-3 text-xs font-semibold leading-5 text-orange-950">
+              <div className="mt-4 rounded-xl border border-border bg-muted/45 p-3 text-xs font-semibold leading-5 text-foreground">
                 <p>{note.author.isCurrentActor ? "By you" : `By ${note.author.label}`} · {audienceHelp(note.visibility)} · {note.revisionCount} version{note.revisionCount === 1 ? "" : "s"} · updated {new Date(note.updatedAt).toLocaleString()}</p>
               </div>
 
               {note.canEdit ? (
-                <details className="mt-4 rounded-xl border border-orange-100 bg-orange-50/35 p-3">
-                  <summary className="cursor-pointer text-xs font-black text-orange-950">Edit note, audience, and tags</summary>
+                <details className="mt-4 rounded-xl border border-border bg-muted/35 p-3">
+                  <summary className="cursor-pointer text-xs font-black text-foreground">Edit note, audience, and tags</summary>
                   <form key={`${note.id}-${note.updatedAt}`} onSubmit={event => { event.preventDefault(); void saveNote(note, new FormData(event.currentTarget)); }} className="mt-4 grid gap-3">
                     <div className="grid gap-3 md:grid-cols-2">
-                      <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
+                      <label className="text-[10px] font-black uppercase tracking-wide text-foreground">
                         Note type
                         {isGeneratedSessionNoteKind(note.kind) ? <>
                           <input type="hidden" name="kind" value={note.kind} />
                           <span className="mt-1 block py-3 text-sm font-semibold normal-case tracking-normal">{sessionNoteKindLabel(note.kind)}</span>
-                        </> : <select name="kind" defaultValue={note.kind} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                        </> : <select name="kind" defaultValue={note.kind} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                           {editableKinds(canUseProjectTeamNotes).map((kind) => <option key={kind} value={kind}>{sessionNoteKindLabel(kind)}</option>)}
                         </select>}
                       </label>
                       {note.canChangeVisibility !== false ? (
-                        <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
+                        <label className="text-[10px] font-black uppercase tracking-wide text-foreground">
                           Who can read it
-                          <select name="visibility" defaultValue={note.visibility} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                          <select name="visibility" defaultValue={note.visibility} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                             {editableVisibilities(canUseProjectTeamNotes).map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
                           </select>
                         </label>
                       ) : (
-                        <div className="text-[10px] font-black uppercase tracking-wide text-orange-900">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-foreground">
                           Shared with
                           <input type="hidden" name="visibility" value={note.visibility} />
-                          <p className="mt-1 flex min-h-11 items-center rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-orange-950">{sessionNoteVisibilityLabel(note.visibility)}</p>
+                          <p className="mt-1 flex min-h-11 items-center rounded-lg border border-border bg-muted px-3 py-2 text-sm font-semibold normal-case tracking-normal text-foreground">{sessionNoteVisibilityLabel(note.visibility)}</p>
                         </div>
                       )}
                     </div>
-                    <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Title<input name="title" maxLength={500} defaultValue={note.title ?? ""} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-                    <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Note<textarea name="body" required maxLength={20_000} defaultValue={note.body} rows={6} className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-                    <button type="submit" disabled={busyId === note.id} className="min-h-11 justify-self-start rounded-full bg-orange-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50">Save revision</button>
+                    <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Title<input name="title" maxLength={500} defaultValue={note.title ?? ""} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+                    <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Note<textarea name="body" required maxLength={20_000} defaultValue={note.body} rows={6} className="mt-1 block w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+                    <button type="submit" disabled={busyId === note.id} className="min-h-11 justify-self-start rounded-full bg-primary px-4 py-2 text-xs font-black text-primary-foreground disabled:opacity-50">Save revision</button>
                   </form>
 
                   {taxonomy?.canManageVocabulary ? (
-                    <div className="mt-5 border-t border-orange-100 pt-4">
+                    <div className="mt-5 border-t border-border pt-4">
                       <form onSubmit={event => { event.preventDefault(); void saveNoteTags(note, new FormData(event.currentTarget)); }}>
                         <fieldset className="grid gap-2 sm:grid-cols-2">
-                          <legend className="mb-2 text-[10px] font-black uppercase tracking-wide text-sky-900">Canonical {taxonomy.project.name} tags</legend>
+                          <legend className="mb-2 text-[10px] font-black uppercase tracking-wide text-foreground">Canonical {taxonomy.project.name} tags</legend>
                           {taxonomy.catalog.map((tag) => (
-                            <label key={tag.id} className="flex min-h-11 items-center gap-2 rounded-lg border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-sky-950">
+                            <label key={tag.id} className="flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-foreground">
                               <input name="noteTagId" value={tag.id} type="checkbox" defaultChecked={note.tags.some((selected) => selected.id === tag.id)} />#{tag.label}
                             </label>
                           ))}
                         </fieldset>
-                        <button type="submit" disabled={busyId === note.id} className="mt-3 min-h-11 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black text-sky-950 disabled:opacity-50">Save tags</button>
+                        <button type="submit" disabled={busyId === note.id} className="mt-3 min-h-11 rounded-full border border-border bg-card px-4 py-2 text-xs font-black text-foreground disabled:opacity-50">Save tags</button>
                       </form>
                       <form onSubmit={event => { event.preventDefault(); void createNoteTag(note, new FormData(event.currentTarget)); }} className="mt-3 flex flex-col gap-2 sm:flex-row">
-                        <label className="flex-1 text-[10px] font-black uppercase tracking-wide text-violet-900">New reusable tag<input name="label" required maxLength={80} placeholder="e.g. Opening craft" className="mt-1 block min-h-11 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-                        <button type="submit" disabled={busyId === note.id} className="min-h-11 self-end rounded-full border border-violet-300 bg-violet-50 px-4 py-2 text-xs font-black text-violet-950 disabled:opacity-50">Create and attach</button>
+                        <label className="flex-1 text-[10px] font-black uppercase tracking-wide text-foreground">New reusable tag<input name="label" required maxLength={80} placeholder="e.g. Opening craft" className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+                        <button type="submit" disabled={busyId === note.id} className="min-h-11 self-end rounded-full border border-border bg-muted px-4 py-2 text-xs font-black text-foreground disabled:opacity-50">Create and attach</button>
                       </form>
                     </div>
                   ) : null}
@@ -450,10 +468,10 @@ export function SessionNotesWorkspace({
           ))}
         </div>
       ) : (
-        <section className="rounded-2xl border border-dashed border-orange-200 bg-white/65 p-6 text-center" aria-label="No notes in this view">
-          <MessageSquarePlus className="mx-auto text-orange-600" aria-hidden="true" />
-          <h3 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">No notes in this view</h3>
-          <p className="mt-2 text-sm font-semibold text-[#765f40]">Add the first note for this Session.</p>
+        <section className="rounded-2xl border border-dashed border-border bg-card/65 p-6 text-center" aria-label="No notes in this view">
+          <MessageSquarePlus className="mx-auto text-muted-foreground" aria-hidden="true" />
+          <h3 className="mt-3 font-serif text-2xl font-black text-foreground">{searchTerms.length ? "No matching notes" : "No notes in this view"}</h3>
+          <p className="mt-2 text-sm font-semibold text-muted-foreground">{searchTerms.length ? "Try another word or clear the search." : "Add the first note for this Session."}</p>
         </section>
       )}
     </div>

@@ -335,19 +335,19 @@ describe("SessionClientFollowUpCard", () => {
       screen.getByRole("link", { name: "Return to exact source for Practice evidence at 01:03" }),
     ).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript#transcript-segment-note-segment",
+      "/sessions/room-1?mode=transcript&source=asset-1&at=63.4#transcript-segment-note-segment",
     );
     expect(
       screen.getByRole("link", { name: "Return to exact source for Run one protected rehearsal at 01:03" }),
     ).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript#transcript-segment-task-segment",
+      "/sessions/room-1?mode=transcript&source=asset-1&at=63.4#transcript-segment-task-segment",
     );
     expect(
       screen.getByRole("link", { name: "Return to exact source for Use a sustainable boundary at 01:03" }),
     ).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript#transcript-segment-goal-segment",
+      "/sessions/room-1?mode=transcript&source=asset-1&at=63.4#transcript-segment-goal-segment",
     );
     expect(screen.getAllByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toHaveLength(3);
     expect(

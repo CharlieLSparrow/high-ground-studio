@@ -1,5 +1,6 @@
 "use client";
 
+import { transcriptSourceHref } from "@/lib/session-work-source-link";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import {
@@ -161,7 +162,7 @@ export function PriorSessionContinuityCard({
                 <p className="text-xs font-black text-[#3d3122]">{taskTitle}</p>
                 <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-sky-950">{evidence.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${evidence.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{evidence.sourceAnchor.effectiveTextSnapshot}</p>
                 <TranscriptSpeakerEvidenceBadge authority={evidence.sourceAnchor.speakerAuthority} />
-                <Link href={`/sessions/${encodeURIComponent(evidence.sourceAnchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(evidence.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
+                <Link href={transcriptSourceHref(evidence.sourceAnchor)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
                   <Play size={14} aria-hidden="true" />Return to {formatMediaTime(evidence.sourceAnchor.startSeconds)}–{formatMediaTime(evidence.sourceAnchor.endSeconds)}
                 </Link>
                 <p className="mt-2 text-[10px] font-bold leading-4 text-sky-800">Append-only reviewed evidence · task identity and state remain canonical</p>
@@ -359,7 +360,7 @@ export function SessionContinuityCard({
                       <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Latest reviewed evidence added</p>
                       <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-sky-950">{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveTextSnapshot}</p>
                       <TranscriptSpeakerEvidenceBadge authority={task.lastMergedTranscriptEvidence.sourceAnchor.speakerAuthority} />
-                      <Link href={`/sessions/${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
+                      <Link href={transcriptSourceHref(task.lastMergedTranscriptEvidence.sourceAnchor)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
                         <Play size={14} aria-hidden="true" />Return to {formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.startSeconds)}–{formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.endSeconds)}
                       </Link>
                       <p className="mt-2 text-[10px] font-bold leading-4 text-sky-800">Evidence was appended without changing task definition, owner, state, dates, tags, goals, reminder, or recurrence.</p>

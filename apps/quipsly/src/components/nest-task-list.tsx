@@ -1,5 +1,6 @@
 "use client";
 
+import { transcriptSourceHref } from "@/lib/session-work-source-link";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +13,7 @@ export type NestTask = {
   dueAt: string | null; updatedAt: string; canEdit: boolean; recurring: boolean;
   tags: { id: string; label: string; hexColor: string | null; isActive: boolean }[];
   conversationSourceHref: string | null;
-  sourceAnchor: { roomId: string; segmentId: string; startSeconds: number; endSeconds: number } | null;
+  sourceAnchor: { roomId: string; recordingAssetId: string; segmentId: string; startSeconds: number; endSeconds: number } | null;
 };
 
 function mediaTime(value: number) {
@@ -90,7 +91,7 @@ function NestTaskCard({ task, onTag }: { task: NestTask; onTag: (tagId: string) 
       style={tagChipColors(tag.hexColor)} className="min-h-9 max-w-full rounded-full border border-border px-3 text-xs font-semibold [overflow-wrap:anywhere]">{tag.label}{!tag.isActive && " · archived"}</button>)}</div>}
     <div className="mt-2 flex flex-wrap gap-3 text-sm">
       {current.conversationSourceHref && <Link href={current.conversationSourceHref} className="inline-flex min-h-11 items-center underline">View conversation</Link>}
-      {current.sourceAnchor && <Link href={`/sessions/${encodeURIComponent(current.sourceAnchor.roomId)}#transcript-segment-${encodeURIComponent(current.sourceAnchor.segmentId)}`} className="inline-flex min-h-11 items-center underline">Return to {mediaTime(current.sourceAnchor.startSeconds)}–{mediaTime(current.sourceAnchor.endSeconds)}</Link>}
+      {current.sourceAnchor && <Link href={transcriptSourceHref(current.sourceAnchor)} className="inline-flex min-h-11 items-center underline">Return to {mediaTime(current.sourceAnchor.startSeconds)}–{mediaTime(current.sourceAnchor.endSeconds)}</Link>}
       {current.recurring && <Link href={`/work?task=${encodeURIComponent(current.id)}`} className="inline-flex min-h-11 items-center underline">Manage repeat</Link>}
     </div>
     <WorkTaskEditor task={{ ...current, canEdit: current.canEdit && !pending, recurrence: current.recurring }} onRefresh={() => router.refresh()} />

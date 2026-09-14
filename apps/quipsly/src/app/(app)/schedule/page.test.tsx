@@ -228,7 +228,7 @@ describe("Schedule page truth states", () => {
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute(
       "href",
-      "/sessions/room-1#transcript-segment-segment-1",
+      "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1",
     );
     expect(screen.getByRole("heading", { name: "Time for the work you actually chose." })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Real rooms, grouped by current status" })).not.toBeInTheDocument();

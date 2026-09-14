@@ -1,5 +1,6 @@
 "use client";
 
+import { transcriptSourceHref } from "@/lib/session-work-source-link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
@@ -264,7 +265,7 @@ function FollowUpSourceLink({ anchor, recordLabel }: { anchor: FollowUpSourceAnc
   return <div className="mt-2">
     <TranscriptSpeakerEvidenceBadge authority={anchor.speakerAuthority} />
     <a
-      href={`/sessions/${encodeURIComponent(anchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(anchor.segmentId)}`}
+      href={transcriptSourceHref(anchor)}
       className="mt-2 flex min-h-11 w-fit items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
       aria-label={`Return to exact source for ${recordLabel} at ${formatMediaTime(anchor.startSeconds)}`}
     >

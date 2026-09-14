@@ -272,6 +272,8 @@ describe("VoiceWritingEditor transcript correction", () => {
     render(<VoiceWritingEditor draftId={draftId} actorId="writer" />);
 
     const passage = await screen.findByRole("button", { name: "Play passage at 0:04–0:08" });
+    expect(screen.getByRole("link", {name: "Open full recording at 0:04–0:08"})).toHaveAttribute("href",
+      "/sessions/room-1?mode=transcript&source=recording-asset-1&at=4.2#transcript-segment-segment-1");
     const audio = screen.getByLabelText("Original recording 1") as HTMLAudioElement;
     expect(audio).toHaveAttribute(
       "src",

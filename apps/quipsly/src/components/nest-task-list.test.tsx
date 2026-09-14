@@ -11,6 +11,10 @@ const task: NestTask = { id: "task", title: "Opening ideas", detail: "Gather sou
   updatedAt: "2026-09-08T12:00:00.000Z", canEdit: true, recurring: false, tags: [research],
   conversationSourceHref: "/nests/book/workspace?message=message", sourceAnchor: null };
 beforeEach(() => { jest.clearAllMocks(); jest.mocked(useRouter).mockReturnValue({ refresh } as any); });
+test("returns to the task's recording and source-local passage", () => {
+  render(<NestTaskList projectId="book" tasks={[{...task, sourceAnchor: {roomId: "room-1", recordingAssetId: "older-take", segmentId: "passage-1", startSeconds: 14.2, endSeconds: 18}}]} />);
+  expect(screen.getByRole("link", {name: "Return to 0:14–0:18"})).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=older-take&at=14.2#transcript-segment-passage-1");
+});
 
 test("filters contextual work by status, text, and canonical colored tag", () => {
   render(<NestTaskList projectId="book" tasks={[task, { ...task, id: "two", title: "Draft chapter", detail: null, tags: [] },

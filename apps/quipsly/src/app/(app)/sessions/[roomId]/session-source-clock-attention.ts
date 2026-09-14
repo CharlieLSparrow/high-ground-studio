@@ -1,3 +1,5 @@
+import { sessionResultSourceHref } from "@/lib/session-work-source-link";
+
 export type SessionSourceClockAuthority =
   | "TRANSCRIPT_ATTEMPT"
   | "AUDIBLE_EVENT_DETECTOR"
@@ -194,7 +196,7 @@ function editorHref(item: RangeEvidence) {
 
 function transcriptHref(item: RangeEvidence & { segmentId?: string }) {
   return item.segmentId
-    ? `/sessions/${encodeURIComponent(item.source.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(item.segmentId)}`
+    ? sessionResultSourceHref(item.source.roomId, {recordingAssetId: item.source.recordingAssetId, startSeconds: item.startSeconds, segmentId: item.segmentId})
     : null;
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { sessionResultSourceHref } from "@/lib/session-work-source-link";
 import { Mark, mergeAttributes, type JSONContent } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -1066,7 +1067,7 @@ export function VoiceWritingEditor({ draftId, actorId }: { draftId: string; acto
               >{content}</button> : <div className="flex min-h-11 items-start gap-3">{content}</div>}
               {transcript.roomId ? <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-emerald-100 pt-2">
                 <button type="button" onClick={() => beginTranscriptEdit(transcript, segment)} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-emerald-900 hover:bg-emerald-100"><PencilLine className="h-3.5 w-3.5" aria-hidden="true" />Correct words</button>
-                <Link href={`/sessions/${encodeURIComponent(transcript.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(segment.id)}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-[#765f40] hover:bg-[#fff4df]" aria-label={`${transcript.mediaUrl ? "Open full recording" : "Hear recording"} at ${label}`}><Play className="h-3.5 w-3.5" aria-hidden="true" />{transcript.mediaUrl ? "Full recording" : "Hear in Session"}</Link>
+                <Link href={sessionResultSourceHref(transcript.roomId, {recordingAssetId: transcript.recordingAssetId, startSeconds: segment.startSeconds, segmentId: segment.id})} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-[#765f40] hover:bg-[#fff4df]" aria-label={`${transcript.mediaUrl ? "Open full recording" : "Hear recording"} at ${label}`}><Play className="h-3.5 w-3.5" aria-hidden="true" />{transcript.mediaUrl ? "Full recording" : "Hear in Session"}</Link>
               </div> : null}
             </div>}
           </li>;

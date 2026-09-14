@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CircleAlert, LockKeyhole } from "lucide-react";
 import { notFound, unstable_rethrow } from "next/navigation";
 import { readLastTranscriptMergedNoteSource, readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { reconcileAudioSignalProfile } from "@/lib/server/audio-signal-profile";
@@ -699,6 +700,7 @@ export default async function SessionReviewPage({
     };
     const sessionNotes = sessionNoteRows.map((row: any) => {
       const parsedSourceAnchor = readTranscriptDerivedNoteSource(row.sourceJson);
+      const sourceHref = sessionWorkSourceHref(room.id, row.sourceJson);
       return {
         id: row.id,
         title: row.title,
@@ -725,6 +727,7 @@ export default async function SessionReviewPage({
         updatedAt: row.updatedAt.toISOString(),
         tags: quickEntryTags(row),
         sourceAnchor: parsedSourceAnchor?.roomId === room.id ? parsedSourceAnchor : null,
+        sourceHref: sourceHref?.includes("&source=") ? sourceHref : null,
         lastMergedSource: readLastTranscriptMergedNoteSource(row.sourceJson),
       };
     });

@@ -56,6 +56,7 @@ export type SessionWorkspaceNote = {
   updatedAt: string;
   tags: Array<{ id: string; label: string; slug: string; hexColor?: string | null }>;
   sourceAnchor?: TranscriptDerivedNoteSourceAnchor | null;
+  sourceHref?: string | null;
   lastMergedSource?: TranscriptMergedNoteSource | null;
 };
 
