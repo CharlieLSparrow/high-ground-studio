@@ -8,6 +8,7 @@ export type SavedRecordingEdit = {
   outputMediaKind: "audio" | "video";
   primaryVideoSourceId: string;
   excludedTranscriptKeys: string[];
+  manualCuts?: import("./recording-manual-cuts").RecordingTimeRange[];
   editing: boolean;
   baseOutputId: string | null;
   baseOutputRevision: number | null;
@@ -22,7 +23,7 @@ export function serializeRecordingEdit(draft: RecordingEditDraft, editing: boole
 export function restoreRecordingEdit(state: SavedRecordingEdit): RecordingEditDraft {
   return {selected: new Set(state.selected), startSeconds: state.startSeconds, endSeconds: state.endSeconds,
     title: state.title, outputMediaKind: state.outputMediaKind, primaryVideoSourceId: state.primaryVideoSourceId,
-    excludedTranscriptKeys: new Set(state.excludedTranscriptKeys)};
+    excludedTranscriptKeys: new Set(state.excludedTranscriptKeys), manualCuts: state.manualCuts ?? []};
 }
 
 export function recordingEditMatchesOutput(state: SavedRecordingEdit, output?: {id: string; revision: number} | null) {

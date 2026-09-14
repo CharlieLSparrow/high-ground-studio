@@ -61,6 +61,7 @@ struct CaptureRecordingEditHistory {
         if a.outputMediaKind != b.outputMediaKind { fields.append("media") }
         if a.primaryVideoSourceId != b.primaryVideoSourceId { fields.append("camera") }
         if a.excludedTranscriptKeys != b.excludedTranscriptKeys { fields.append("passages") }
+        if (a.manualCuts ?? []) != (b.manualCuts ?? []) { fields.append("timeline-cuts") }
         return fields.joined(separator: ":")
     }
 }

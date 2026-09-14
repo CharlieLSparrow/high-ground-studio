@@ -23,6 +23,20 @@ function database() {
 }
 beforeEach(() => { read.mockReset(); read.mockResolvedValue(workspace); });
 
+it("persists timestamp cuts without requiring any transcript rows", async () => {
+  const db = database();
+  const manualCuts = [{startSeconds: 3, endSeconds: 8}];
+  await saveSessionRecordingEdit(db, {...input, state: {...input.state, excludedTranscriptKeys: [], manualCuts}});
+  expect(await readSessionRecordingEdit(db, input)).toMatchObject({revision: 1, state: {manualCuts}});
+  expect(db.transcriptSegment.findMany).not.toHaveBeenCalled();
+});
+
+it.each([null, [{startSeconds: 1, endSeconds: 31}], [{startSeconds: 5, endSeconds: 3}]])("rejects invalid manual cuts before saving %#", async manualCuts => {
+  const db = database();
+  await expect(saveSessionRecordingEdit(db, {...input, state: {...input.state, manualCuts}})).rejects.toMatchObject({status: 400});
+  expect(db.sessionRecordingEditDraft.create).not.toHaveBeenCalled();
+});
+
 it("saves a private take draft and reads the same editing intent", async () => {
   const db = database();
   const saved = await saveSessionRecordingEdit(db, input);

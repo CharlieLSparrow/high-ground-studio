@@ -80,6 +80,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
         primaryVideoSourceId: text(body.primaryVideoSourceId),
         startSeconds: Number(body.startSeconds),
         endSeconds: Number(body.endSeconds),
+        manualCuts: body.manualCuts,
         excludedTranscriptSegments: Array.isArray(body.excludedTranscriptSegments)
           ? body.excludedTranscriptSegments.map((value: unknown) => {
               const item = object(value);

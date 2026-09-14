@@ -2,6 +2,31 @@ import Combine
 import CryptoKit
 import Foundation
 
+struct CaptureRecordingManualCut: Codable, Equatable, Sendable {
+    let startSeconds: Double
+    let endSeconds: Double
+
+    static func keptDuration(start: Double, end: Double, cuts: [Self]) -> Double {
+        guard start.isFinite, end.isFinite, start >= 0, end > start else { return 0 }
+        let sorted = cuts.filter { $0.startSeconds.isFinite && $0.endSeconds.isFinite }
+            .map { Self(startSeconds: max(start, $0.startSeconds), endSeconds: min(end, $0.endSeconds)) }
+            .filter { $0.endSeconds > $0.startSeconds }.sorted { $0.startSeconds < $1.startSeconds }
+        var merged: [Self] = []
+        for cut in sorted {
+            if let last = merged.last, cut.startSeconds <= last.endSeconds + 0.02 {
+                merged[merged.count - 1] = Self(startSeconds: last.startSeconds, endSeconds: max(last.endSeconds, cut.endSeconds))
+            } else { merged.append(cut) }
+        }
+        var cursor = start, kept = 0.0
+        for cut in merged {
+            if cut.startSeconds - cursor >= 0.05 { kept += cut.startSeconds - cursor }
+            cursor = max(cursor, cut.endSeconds)
+        }
+        if end - cursor >= 0.05 { kept += end - cursor }
+        return kept
+    }
+}
+
 struct CaptureRecordingEditDraft: Codable, Equatable, Sendable {
     let selected: [String]
     let startSeconds: Double
@@ -13,6 +38,7 @@ struct CaptureRecordingEditDraft: Codable, Equatable, Sendable {
     let editing: Bool
     let baseOutputId: String?
     let baseOutputRevision: Int?
+    var manualCuts: [CaptureRecordingManualCut]? = nil
 
     // Web and native use explicit null for the absence of a rendered preview.
     func encode(to encoder: Encoder) throws {
@@ -27,6 +53,7 @@ struct CaptureRecordingEditDraft: Codable, Equatable, Sendable {
         try values.encode(editing, forKey: .editing)
         try values.encode(baseOutputId, forKey: .baseOutputId)
         try values.encode(baseOutputRevision, forKey: .baseOutputRevision)
+        try values.encodeIfPresent(manualCuts, forKey: .manualCuts)
     }
 }
 

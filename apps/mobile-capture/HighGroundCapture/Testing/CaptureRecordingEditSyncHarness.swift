@@ -48,6 +48,22 @@ final class RecordingEditTestServer {
 struct CaptureRecordingEditSyncHarness {
     @MainActor
     static func main() async throws {
+        let browserDraft = """
+        {"selected":["source"],"startSeconds":1,"endSeconds":20,"title":"Browser edit","outputMediaKind":"audio","primaryVideoSourceId":"","excludedTranscriptKeys":[],"editing":true,"baseOutputId":null,"baseOutputRevision":null,"manualCuts":[{"startSeconds":4,"endSeconds":9}]}
+        """
+        let webEdit = try JSONDecoder().decode(CaptureRecordingEditDraft.self, from: Data(browserDraft.utf8))
+        precondition(webEdit.manualCuts == [CaptureRecordingManualCut(startSeconds: 4, endSeconds: 9)])
+        let roundTrip = try JSONDecoder().decode(CaptureRecordingEditDraft.self, from: JSONEncoder().encode(webEdit))
+        precondition(roundTrip == webEdit)
+        var restoredCutDraft = webEdit
+        restoredCutDraft.manualCuts = []
+        var cutHistory = CaptureRecordingEditHistory(webEdit)
+        cutHistory.record(restoredCutDraft, at: 1)
+        precondition(cutHistory.undo() == webEdit)
+        precondition(cutHistory.redo() == restoredCutDraft)
+        precondition(CaptureRecordingManualCut.keptDuration(start: 2, end: 20, cuts: [
+            .init(startSeconds: 8, endSeconds: 11), .init(startSeconds: 10.2, endSeconds: 13.8), .init(startSeconds: 13.81, endSeconds: 15)
+        ]) == 11)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("quipsly-native-edit-tests-\(UUID().uuidString)", isDirectory: true)
         let server = RecordingEditTestServer()
         func sync() -> CaptureRecordingEditSync {

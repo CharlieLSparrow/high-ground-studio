@@ -45,6 +45,41 @@ function response(value: unknown) {
 }
 
 describe("SessionRecordingShareCard", () => {
+  it("removes sections without transcription, previews the cut and restores through undo", async () => {
+    const noWords = {...snapshot, available: {...snapshot.available, transcriptSegments: []}};
+    const requests: any[] = [];
+    global.fetch = jest.fn(async (_url, options) => { if (options?.method === "POST") requests.push(JSON.parse(String(options.body))); return response(noWords); }) as typeof fetch;
+    const originalPlayer = jest.fn(() => <div>Source player</div>);
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={originalPlayer} />);
+    const start = await screen.findByRole("spinbutton", {name: "Cut start (seconds)"});
+    const end = screen.getByRole("spinbutton", {name: "Cut end (seconds)"});
+    fireEvent.change(start, {target: {value: "4"}});
+    fireEvent.change(end, {target: {value: "9"}});
+    await userEvent.click(screen.getByRole("button", {name: /^Remove section$/}));
+    expect((originalPlayer.mock.calls.at(-1) as any)[1].removedRanges).toEqual([{startSeconds: 4, endSeconds: 9}]);
+    expect(screen.getByText("Edited recording: about 0:25. Original unchanged.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.queryByRole("button", {name: "Restore section 1"})).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Redo recording edit"}));
+    await userEvent.click(screen.getByRole("button", {name: "Create private preview"}));
+    expect(requests[0]).toMatchObject({manualCuts: [{startSeconds: 4, endSeconds: 9}], excludedTranscriptSegments: []});
+  });
+
+  it("marks cut times in the assembled clock and prevents removing the entire trim", async () => {
+    global.fetch = jest.fn(async () => response({...snapshot, available: {...snapshot.available, programDurationSeconds: 35, sources: [{...snapshot.available.sources[0], programOffsetSeconds: 5}]}})) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={(_ids, controls) => <>
+      <button onClick={() => controls.onCutBoundary?.("start", "recording_asset_0001", 2)}>Cut begins here</button>
+      <button onClick={() => controls.onCutBoundary?.("end", "recording_asset_0001", 4)}>Cut ends here</button>
+    </>} />);
+    await userEvent.click(await screen.findByRole("button", {name: "Cut begins here"}));
+    await userEvent.click(screen.getByRole("button", {name: "Cut ends here"}));
+    expect(screen.getByRole("spinbutton", {name: "Cut start (seconds)"})).toHaveValue(7);
+    expect(screen.getByRole("spinbutton", {name: "Cut end (seconds)"})).toHaveValue(9);
+    fireEvent.change(screen.getByRole("spinbutton", {name: "Cut start (seconds)"}), {target: {value: "0"}});
+    fireEvent.change(screen.getByRole("spinbutton", {name: "Cut end (seconds)"}), {target: {value: "35"}});
+    expect(screen.getByRole("button", {name: /^Remove section$/})).toBeDisabled();
+  });
+
   const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
   const scrollIntoView = jest.fn();
   beforeEach(() => {

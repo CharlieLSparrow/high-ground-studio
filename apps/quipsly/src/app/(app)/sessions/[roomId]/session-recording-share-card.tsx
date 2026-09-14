@@ -8,6 +8,7 @@ import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, Redo2, Re
 import { recordingEditHistory, reduceRecordingEditHistory, type RecordingEditDraft } from "@/lib/recording-edit-history";
 import { recordingEditMatchesOutput, restoreRecordingEdit, serializeRecordingEdit } from "@/lib/recording-edit-draft";
 import { RecordingEditSync, recordingEditKey } from "@/lib/recording-edit-sync";
+import { recordingKeptRanges, type RecordingTimeRange } from "@/lib/recording-manual-cuts";
 
 type Source = {
   id: string;
@@ -66,7 +67,7 @@ type Output = {
     reviewedAt: string | null;
     clientTrackedPlaybackIsNotProofOfAudibility: true;
   };
-  body: { edit?: { startSeconds?: number; endSeconds?: number; transcriptExclusions?: TranscriptSegment[] } };
+  body: { edit?: { startSeconds?: number; endSeconds?: number; transcriptExclusions?: TranscriptSegment[]; manualCuts?: RecordingTimeRange[] } };
   sourceManifest?: { sources?: Array<{ recordingAssetId?: string }> };
 };
 
@@ -211,6 +212,7 @@ function draftFromSnapshot(snapshot: Snapshot): RecordingEditDraft {
     startSeconds: Number(output?.body.edit?.startSeconds) || 0,
     endSeconds: Number(output?.body.edit?.endSeconds) || snapshot.available?.programDurationSeconds || 0,
     excludedTranscriptKeys: transcriptExclusionKeys(output),
+    manualCuts: output?.body.edit?.manualCuts ?? [],
     outputMediaKind: output?.render.mediaKind === "video" ? "video" : "audio",
     primaryVideoSourceId: output?.render.primaryVideoSourceId || "",
   };
@@ -220,26 +222,12 @@ function recordingCutElementId(key: string) {
   return `recording-cut-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
-function editDuration(startSeconds: number, endSeconds: number, exclusions: TranscriptSegment[]) {
-  const merged: Array<{ startSeconds: number; endSeconds: number }> = [];
-  for (const segment of exclusions
-    .map((item) => ({
-      startSeconds: Math.max(startSeconds, Number(item.cutStartSeconds ?? item.startSeconds)),
-      endSeconds: Math.min(endSeconds, Number(item.cutEndSeconds ?? item.endSeconds)),
-    }))
-    .filter((range) => range.endSeconds > range.startSeconds)
-    .sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds)) {
-    const previous = merged.at(-1);
-    if (previous && segment.startSeconds <= previous.endSeconds + 0.02) {
-      previous.endSeconds = Math.max(previous.endSeconds, segment.endSeconds);
-    } else {
-      merged.push({ ...segment });
-    }
-  }
-  const removedSeconds = merged.reduce((total, range) => total + range.endSeconds - range.startSeconds, 0);
+function editDuration(startSeconds: number, endSeconds: number, exclusions: Array<RecordingTimeRange & {cutStartSeconds?: number; cutEndSeconds?: number}>) {
+  const kept = recordingKeptRanges(startSeconds, endSeconds, exclusions.map(item => ({startSeconds: item.cutStartSeconds ?? item.startSeconds, endSeconds: item.cutEndSeconds ?? item.endSeconds})));
+  const previewSeconds = kept.reduce((total, range) => total + range.endSeconds - range.startSeconds, 0);
   return {
-    removedSeconds,
-    previewSeconds: Math.max(0, endSeconds - startSeconds - removedSeconds),
+    removedSeconds: Math.max(0, endSeconds - startSeconds - previewSeconds),
+    previewSeconds,
   };
 }
 
@@ -261,6 +249,7 @@ export function SessionRecordingShareCard({
     endSeconds: number;
     disabled: boolean;
     onTrimBoundary: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
+    onCutBoundary?: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
   }) => ReactNode;
   onTakeSourcesChange?: (sourceIds: string[]) => void;
 }) {
@@ -272,6 +261,14 @@ export function SessionRecordingShareCard({
     selected: new Set(), startSeconds: 0, endSeconds: 0, title: "", outputMediaKind: "audio", primaryVideoSourceId: "", excludedTranscriptKeys: new Set(),
   }));
   const {selected, startSeconds, endSeconds, title, outputMediaKind, primaryVideoSourceId, excludedTranscriptKeys} = editHistory.present;
+  const manualCuts = editHistory.present.manualCuts ?? [];
+  const [cutSelection, setCutSelection] = useState<{takeId: string | null; start: string; end: string}>({takeId: null, start: "", end: ""});
+  const currentTakeId = snapshot?.available?.selectedTakeId ?? null;
+  const cutStart = cutSelection.takeId === currentTakeId ? cutSelection.start : "";
+  const cutEnd = cutSelection.takeId === currentTakeId ? cutSelection.end : "";
+  function selectCut(boundary: "start" | "end", value: string) {
+    setCutSelection(previous => ({...(previous.takeId === currentTakeId ? previous : {start: "", end: ""}), takeId: currentTakeId, [boundary]: value}));
+  }
   function editField<K extends keyof RecordingEditDraft>(key: K, value: SetStateAction<RecordingEditDraft[K]>, group?: string) {
     editDispatch({type: "change", at: Date.now(), group, update: draft => ({[key]: typeof value === "function" ? (value as (old: RecordingEditDraft[K]) => RecordingEditDraft[K])(draft[key]) : value})});
   }
@@ -283,6 +280,16 @@ export function SessionRecordingShareCard({
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [transcriptView, setTranscriptView] = useState<"all" | "removed">("all");
   const [editing, setEditing] = useState(false);
+  const editSurfaceRef = useRef<HTMLFieldSetElement | null>(null);
+  const cutSurfaceRef = useRef<HTMLElement | null>(null);
+  const requestedEditFocus = useRef<"editor" | "cut" | null>(null);
+  useEffect(() => {
+    const target = requestedEditFocus.current === "cut" ? cutSurfaceRef.current : requestedEditFocus.current === "editor" ? editSurfaceRef.current : null;
+    if (!target) return;
+    requestedEditFocus.current = null;
+    target.scrollIntoView?.({block: "start"});
+    target.focus({preventScroll: true});
+  });
   const [audition, setAudition] = useState<PassageAudition | null>(null);
   const [auditionNotice, setAuditionNotice] = useState<string | null>(null);
   const auditionMediaRef = useRef<HTMLMediaElement | null>(null);
@@ -415,7 +422,7 @@ export function SessionRecordingShareCard({
   }, [load, snapshot?.output]);
 
   const duration = snapshot?.available?.programDurationSeconds || 0;
-  function markTrimBoundary(boundary: "start" | "end", sourceId: string, sourceSeconds: number) {
+  function markTrimBoundary(boundary: "start" | "end", sourceId: string, sourceSeconds: number, cut = false) {
     if (snapshot?.role !== "COACH" || busy) return;
     const source = snapshot.available?.sources.find(candidate => candidate.id === sourceId);
     if (!source || !selected.has(sourceId) || !Number.isFinite(sourceSeconds)
@@ -427,6 +434,13 @@ export function SessionRecordingShareCard({
     // The player clock belongs to one source; edit boundaries belong to the
     // assembled session. Never treat a late-joining participant's zero as zero.
     const position = Math.max(0, Math.min(duration, source.programOffsetSeconds + sourceSeconds));
+    if (cut) {
+      if (boundary === "end") requestedEditFocus.current = "cut";
+      selectCut(boundary, position.toFixed(3));
+      setEditing(true);
+      setNotice(`Cut ${boundary} set to ${time(position)}. Choose the other end, then remove the section below.`);
+      return;
+    }
     if (boundary === "start" ? position > endSeconds - MIN_TRIM_SECONDS : position < startSeconds + MIN_TRIM_SECONDS) {
       setNotice(boundary === "start" ? "Choose a start before the current end, or extend the end first." : "Choose an end after the current start, or move the start first.");
       return;
@@ -470,9 +484,15 @@ export function SessionRecordingShareCard({
     });
   }, [editableTranscript, excludedTranscriptKeys, transcriptQuery, transcriptView]);
   const durationEstimate = useMemo(
-    () => editDuration(startSeconds, endSeconds, excludedTranscriptSegments),
-    [endSeconds, excludedTranscriptSegments, startSeconds],
+    () => editDuration(startSeconds, endSeconds, [...excludedTranscriptSegments, ...manualCuts]),
+    [endSeconds, excludedTranscriptSegments, startSeconds, manualCuts],
   );
+  const removedRanges = [...excludedTranscriptSegments.map(segment => ({startSeconds: segment.cutStartSeconds ?? segment.startSeconds, endSeconds: segment.cutEndSeconds ?? segment.endSeconds})), ...manualCuts];
+  const candidateCut = {startSeconds: Number(cutStart), endSeconds: Number(cutEnd)};
+  const canCut = cutStart !== "" && cutEnd !== "" && Number.isFinite(candidateCut.startSeconds) && Number.isFinite(candidateCut.endSeconds)
+    && candidateCut.startSeconds >= startSeconds && candidateCut.endSeconds <= endSeconds
+    && candidateCut.endSeconds - candidateCut.startSeconds >= 0.05 && manualCuts.length < 500
+    && editDuration(startSeconds, endSeconds, [...removedRanges, candidateCut]).previewSeconds >= 0.05;
   const focusedTranscriptSegment = useMemo(() => (
     focusTranscriptKey
       ? (snapshot?.available?.transcriptSegments || []).find((segment) => (
@@ -565,6 +585,7 @@ export function SessionRecordingShareCard({
         primaryVideoSourceId: outputMediaKind === "video" ? primaryVideoSourceId : null,
         startSeconds,
         endSeconds,
+        manualCuts,
         excludedTranscriptSegments: excludedTranscriptSegments.map((segment) => ({
           transcriptJobId: segment.transcriptJobId,
           segmentId: segment.segmentId,
@@ -662,15 +683,16 @@ export function SessionRecordingShareCard({
 
       {coach && renderOriginalRecordings ? <div className="mt-4">{renderOriginalRecordings((snapshot.available?.sources || []).map(source => source.id), {
         selectedSourceIds: [...selected], startSeconds, endSeconds, disabled: Boolean(busy), onTrimBoundary: markTrimBoundary,
+        onCutBoundary: (boundary, sourceId, seconds) => markTrimBoundary(boundary, sourceId, seconds, true),
         sourceOffsets: Object.fromEntries((snapshot.available?.sources || []).map(source => [source.id, source.programOffsetSeconds])),
-        removedRanges: excludedTranscriptSegments.map(segment => ({startSeconds: segment.cutStartSeconds ?? segment.startSeconds, endSeconds: segment.cutEndSeconds ?? segment.endSeconds})),
+        removedRanges,
       })}</div> : null}
 
       {coach && chosen.length > 0 ? <RecordingEditListen
         sources={chosen.map(source => ({id: source.id, label: source.participantLabel, url: source.playbackUrl,
           offset: source.programOffsetSeconds, duration: sourceDuration(source), contentType: source.contentType}))}
         startSeconds={startSeconds} endSeconds={endSeconds}
-        cuts={excludedTranscriptSegments.map(segment => ({startSeconds: segment.cutStartSeconds ?? segment.startSeconds, endSeconds: segment.cutEndSeconds ?? segment.endSeconds}))}
+        cuts={removedRanges}
         disabled={Boolean(busy) || timeline?.precision === "unavailable"} /> : null}
 
       {coach && (!output || editing) ? (
@@ -685,7 +707,7 @@ export function SessionRecordingShareCard({
             draftTouched.current = true;
             editDispatch({type: key === "y" || event.shiftKey ? "redo" : "undo"});
           }}
-          aria-label="Recording edit" className="mt-5 min-w-0 space-y-5">
+          ref={editSurfaceRef} tabIndex={-1} aria-label="Recording edit" className="mt-5 min-w-0 scroll-mt-24 space-y-5 outline-none">
           <div className="flex flex-wrap items-center justify-between gap-3" role="group" aria-label="Recording edit history">
             <p className="text-xs text-foreground">Edit freely. Original recordings stay unchanged.</p>
             <div className="flex gap-2">
@@ -709,6 +731,27 @@ export function SessionRecordingShareCard({
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted px-3 py-2.5 text-xs font-bold text-foreground"><span>{time(startSeconds)} – {time(endSeconds)}</span><span>{time(endSeconds - startSeconds)} selected</span></div>
             <details className="mt-3 rounded-xl border border-border bg-muted/50 p-3"><summary className="cursor-pointer text-[11px] font-black uppercase tracking-wide text-foreground">Precise timing</summary><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-black text-foreground">Start (seconds)<input type="number" min={0} max={duration} step="0.1" value={startSeconds} onChange={(event) => setStartSeconds(trimStart(Number(event.target.value), endSeconds, duration))} className="mt-1 block w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground" /></label><label className="text-xs font-black text-foreground">End (seconds)<input type="number" min={0} max={duration} step="0.1" value={endSeconds} onChange={(event) => setEndSeconds(trimEnd(Number(event.target.value), startSeconds, duration))} className="mt-1 block w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground" /></label></div></details>
           </div>
+          <section ref={cutSurfaceRef} tabIndex={-1} aria-label="Remove a section" className="scroll-mt-24 rounded-2xl border border-border bg-card p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5">
+            <h3 className="text-sm font-black text-foreground">Remove a section</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mark its start and end while listening, or enter seconds below. All tracks stay together. No transcript needed.</p>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {(["start", "end"] as const).map(boundary => <label key={boundary} className="min-w-0 text-xs font-semibold text-foreground">Cut {boundary} (seconds)
+                <input type="number" min={startSeconds} max={endSeconds} step="0.01" value={boundary === "start" ? cutStart : cutEnd} onChange={event => selectCut(boundary, event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" />
+              </label>)}
+            </div>
+            <button type="button" disabled={!canCut} onClick={() => {
+              if (!canCut) return;
+              editDispatch({type: "change", at: Date.now(), update: {manualCuts: [...manualCuts, candidateCut]}});
+              setCutSelection({takeId: currentTakeId, start: "", end: ""});
+              setNotice("Section removed from the edit. Listen to edit to hear it, or Undo to restore it.");
+            }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-40"><Scissors size={15} />Remove section</button>
+            {cutStart !== "" && cutEnd !== "" && !canCut ? <p className="mt-2 text-xs text-muted-foreground">Choose a section inside your trim and leave some recording to keep.</p> : null}
+            {manualCuts.length ? <ul className="mt-3 space-y-2" aria-label="Removed sections">{manualCuts.map((cut, index) => <li key={`${index}:${cut.startSeconds}:${cut.endSeconds}`} className="flex items-center justify-between gap-2 rounded-xl bg-muted px-3 py-1 text-sm">
+              <span className="tabular-nums">{time(cut.startSeconds)} – {time(cut.endSeconds)}</span>
+              <button type="button" aria-label={`Restore section ${index + 1}`} onClick={() => editField("manualCuts", manualCuts.filter((_, item) => item !== index))} className="min-h-11 px-3 font-semibold text-foreground">Restore</button>
+            </li>)}</ul> : null}
+            <p className="mt-3 text-xs text-muted-foreground">Edited recording: about {time(durationEstimate.previewSeconds)}. Original unchanged.</p>
+          </section>
           {videoSources.length ? <fieldset className="rounded-2xl border border-border bg-card p-4">
             <legend className="text-sm font-black text-foreground">Preview format</legend>
             <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-muted p-1" role="radiogroup" aria-label="Preview format">
@@ -841,11 +884,12 @@ export function SessionRecordingShareCard({
               <p className="mt-3 text-xs font-bold text-muted-foreground">{excludedTranscriptSegments.length ? `${excludedTranscriptSegments.length} passage${excludedTranscriptSegments.length === 1 ? "" : "s"} removed · ${time(durationEstimate.removedSeconds)} cut · preview about ${time(durationEstimate.previewSeconds)}.` : "Everything in the selected range is included."}</p>
             </fieldset>
           ) : (
-            <div className="rounded-xl border border-border bg-card p-4"><p className="text-sm font-black text-foreground">Recording cuts appear when the transcript is ready</p><p className="mt-1 text-xs font-semibold text-muted-foreground">You can trim the beginning and end now.</p></div>
+            <p className="text-xs text-muted-foreground">When the transcript is ready, you can also remove passages by selecting their words.</p>
           )}
           {focusTranscriptKey && focusedTranscriptSegment && !focusedSegmentVisible ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">This passage is outside the current trim or source selection. Expand the start/end range or restore its participant track to edit it.</p> : null}
           <p className="text-xs font-bold text-muted-foreground"><Scissors className="mr-1 inline" size={14} />Prepared range {time(startSeconds)}–{time(endSeconds)} ({time(endSeconds - startSeconds)}) from {chosen.length} participant source{chosen.length === 1 ? "" : "s"}.</p>
-          <button type="button" aria-label="Create private preview" disabled={Boolean(busy) || !chosen.length || !rangeValid || !videoSelectionValid || !verifiedRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : `Create private ${outputMediaKind} preview`}</button>
+          {rangeValid && durationEstimate.previewSeconds < 0.05 ? <p className="text-sm text-muted-foreground">This trim contains only removed sections. Restore a section or widen the trim to keep some recording.</p> : null}
+          <button type="button" aria-label="Create private preview" disabled={Boolean(busy) || !chosen.length || !rangeValid || durationEstimate.previewSeconds < 0.05 || !videoSelectionValid || !verifiedRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : `Create private ${outputMediaKind} preview`}</button>
           {!verifiedRendererAvailable ? <p className="text-xs font-bold text-amber-800">Preview preparation is temporarily unavailable. Your trim and transcript choices stay here; try again shortly.</p> : null}
         </fieldset>
       ) : null}
@@ -879,7 +923,7 @@ export function SessionRecordingShareCard({
         </div> : null}
         {coach && output.status === "RELEASED" ? <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("REVOKE")} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-900"><Undo2 className="mr-1.5 inline" size={14} />Revoke client access</button> : null}
         {!coach && output.status === "RELEASED" ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />Your coach shared this private recording in your Session.</p> : null}
-        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { editDispatch({type: "reset", draft: draftFromSnapshot(snapshot)}); setEditing(true); }} className="rounded-xl border border-border bg-muted px-3 py-2 text-xs font-black text-foreground"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
+        {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { requestedEditFocus.current = "editor"; editDispatch({type: "reset", draft: draftFromSnapshot(snapshot)}); setEditing(true); }} className="rounded-xl border border-border bg-muted px-3 py-2 text-xs font-black text-foreground"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
       </div> : null}
 
       {coach ? <p className="mt-4 text-[11px] font-semibold leading-5 text-muted-foreground"><LockKeyhole className="mr-1 inline" size={13} />{output?.status === "RELEASED"

@@ -22,6 +22,7 @@ import {
   transitionSessionRecordingShare,
 } from "./session-recording-share";
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
+import { recordingListenPlan } from "@/lib/recording-listen-plan";
 
 describe("recording attempts within one Session", () => {
   const at = (seconds: number) => new Date(Date.parse("2026-09-09T12:00:00Z") + seconds * 1000);
@@ -429,6 +430,20 @@ describe("Session recording share take selection", () => {
 });
 
 describe("Session recording share text edits", () => {
+  it("cuts without a transcript and keeps outside-trim choices for later editing", () => {
+    const manualCuts = [{startSeconds: 5, endSeconds: 8}, {startSeconds: 7, endSeconds: 10}, {startSeconds: 25, endSeconds: 28}];
+    const edit = buildSessionRecordingShareEdit({startSeconds: 2, endSeconds: 20, programDurationSeconds: 30, manualCuts, transcriptSegments: [], excludedTranscriptSegments: []});
+    expect(edit.manualCuts).toEqual(manualCuts);
+    expect(edit.transcriptExclusions).toEqual([]);
+    expect(edit.keptRanges).toEqual([expect.objectContaining({startSeconds: 2, endSeconds: 5}), expect.objectContaining({startSeconds: 10, endSeconds: 20})]);
+  });
+
+  it("rejects cuts outside the source duration and edits removing the whole recording", () => {
+    const base = {startSeconds: 0, endSeconds: 20, transcriptSegments: [], excludedTranscriptSegments: []};
+    expect(() => buildSessionRecordingShareEdit({...base, manualCuts: [{startSeconds: 18, endSeconds: 25}]})).toThrow("within this recording");
+    expect(() => buildSessionRecordingShareEdit({...base, manualCuts: [{startSeconds: 0, endSeconds: 20}]})).toThrow("Keep at least one passage");
+  });
+
   const sourceSha256 = "f".repeat(64);
   const transcriptReadiness = (overrides: Record<string, unknown> = {}) => buildSessionTranscriptReadiness({
     id: "job-1",
@@ -462,6 +477,14 @@ describe("Session recording share text edits", () => {
     cutSafety: "safe" as const,
     cutSafetyReason: "Word timing is bound to this exact source recording.",
   };
+
+  it("uses identical keep boundaries for manual plus transcript cuts in listening and rendering", () => {
+    const manualCuts = [{startSeconds: 8, endSeconds: 11}, {startSeconds: 13.81, endSeconds: 15}];
+    const edit = buildSessionRecordingShareEdit({startSeconds: 2, endSeconds: 20, manualCuts, transcriptSegments: [transcriptSegment], excludedTranscriptSegments: [transcriptSegment]});
+    const listening = recordingListenPlan(2, 20, [...manualCuts, {startSeconds: transcriptSegment.cutStartSeconds, endSeconds: transcriptSegment.cutEndSeconds}]);
+    expect(edit.keptRanges.map(({startSeconds, endSeconds}) => ({startSeconds, endSeconds}))).toEqual(listening.map(({startSeconds, endSeconds}) => ({startSeconds, endSeconds})));
+    expect(edit.keptRanges).toEqual([expect.objectContaining({startSeconds: 2, endSeconds: 8}), expect.objectContaining({startSeconds: 15, endSeconds: 20})]);
+  });
 
   it("turns source-bound transcript exclusions into reversible kept ranges", () => {
     const edit = buildSessionRecordingShareEdit({

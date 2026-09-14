@@ -1,4 +1,5 @@
 import "server-only";
+import { parseRecordingManualCuts, recordingKeptRanges, type RecordingTimeRange } from "../recording-manual-cuts";
 
 import { createHash, randomUUID } from "node:crypto";
 import { readSessionRecordingAttempts as loadRecordingAttempts } from "./session-recording-attempts";
@@ -978,6 +979,8 @@ async function loadTranscriptEditSegments(
 export function buildSessionRecordingShareEdit(input: {
   startSeconds: number;
   endSeconds: number;
+  programDurationSeconds?: number;
+  manualCuts?: RecordingTimeRange[];
   transcriptSegments: RecordingShareTranscriptSegment[];
   excludedTranscriptSegments: Array<{
     transcriptJobId: string;
@@ -1042,30 +1045,10 @@ export function buildSessionRecordingShareEdit(input: {
     }
     return { ...segment, startSeconds, endSeconds };
   });
-  const merged: Array<{ startSeconds: number; endSeconds: number }> = [];
-  for (const exclusion of [...transcriptExclusions].sort(
-    (left, right) =>
-      left.startSeconds - right.startSeconds ||
-      left.endSeconds - right.endSeconds,
-  )) {
-    const current = merged.at(-1);
-    if (current && exclusion.startSeconds <= current.endSeconds + 0.02)
-      current.endSeconds = Math.max(current.endSeconds, exclusion.endSeconds);
-    else
-      merged.push({
-        startSeconds: exclusion.startSeconds,
-        endSeconds: exclusion.endSeconds,
-      });
-  }
-  const kept: Array<{ startSeconds: number; endSeconds: number }> = [];
-  let cursor = input.startSeconds;
-  for (const exclusion of merged) {
-    if (exclusion.startSeconds - cursor >= 0.05)
-      kept.push({ startSeconds: cursor, endSeconds: exclusion.startSeconds });
-    cursor = Math.max(cursor, exclusion.endSeconds);
-  }
-  if (input.endSeconds - cursor >= 0.05)
-    kept.push({ startSeconds: cursor, endSeconds: input.endSeconds });
+  let manualCuts: RecordingTimeRange[];
+  try { manualCuts = parseRecordingManualCuts(input.manualCuts, input.programDurationSeconds ?? input.endSeconds); }
+  catch (error) { throw new SessionRecordingShareError(400, "TIMELINE_CUT_INVALID", error instanceof Error ? error.message : "Choose valid cut times."); }
+  const kept = recordingKeptRanges(input.startSeconds, input.endSeconds, [...transcriptExclusions, ...manualCuts]);
   if (!kept.length) {
     throw new SessionRecordingShareError(
       400,
@@ -1080,6 +1063,7 @@ export function buildSessionRecordingShareEdit(input: {
   return {
     startSeconds: input.startSeconds,
     endSeconds: input.endSeconds,
+    manualCuts,
     keptRanges,
     transcriptExclusions: transcriptExclusions.map((segment) => ({
       transcriptJobId: segment.transcriptJobId,
@@ -1452,6 +1436,7 @@ export async function prepareSessionRecordingShare(
     startSeconds: number;
     endSeconds: number;
     title: string;
+    manualCuts?: RecordingTimeRange[];
     excludedTranscriptSegments: Array<{
       transcriptJobId: string;
       segmentId: string;
@@ -1532,6 +1517,8 @@ export async function prepareSessionRecordingShare(
     endSeconds: input.endSeconds,
     transcriptSegments,
     excludedTranscriptSegments: input.excludedTranscriptSegments,
+    manualCuts: input.manualCuts,
+    programDurationSeconds: summary.programDurationSeconds,
   });
   const outputId = `recording-share-${createHash("sha256").update(`${input.actor.id}|${room.id}|${input.clientRequestId}`).digest("hex").slice(0, 40)}`;
   const jobId = `session_share_${sha256({

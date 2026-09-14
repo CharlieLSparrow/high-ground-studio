@@ -4,7 +4,7 @@ export type EditSyncStatus = "saved" | "unsaved" | "saving" | "error" | "conflic
 export function recordingEditKey(state: SavedRecordingEdit) {
   return JSON.stringify([state.selected.slice().sort(), state.startSeconds, state.endSeconds, state.title,
     state.outputMediaKind, state.primaryVideoSourceId, state.excludedTranscriptKeys.slice().sort(), state.editing,
-    state.baseOutputId, state.baseOutputRevision]);
+    state.baseOutputId, state.baseOutputRevision, state.manualCuts ?? []]);
 }
 
 /** One serialized autosave stream per actor and take. Retrying an uncertain

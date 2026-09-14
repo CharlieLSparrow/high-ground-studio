@@ -1,23 +1,16 @@
+import {recordingKeptRanges} from "./recording-manual-cuts";
 export type ListenRange = { startSeconds: number; endSeconds: number };
 export type ListenSpan = ListenRange & { outputStart: number; outputEnd: number };
 export type ListenSource = { id: string; label: string; url: string; offset: number; duration: number };
 
 /** Projection of the canonical edit, never another saved timeline. */
 export function recordingListenPlan(start: number, end: number, cuts: ListenRange[]): ListenSpan[] {
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) return [];
-  const removed = cuts.filter(cut => Number.isFinite(cut.startSeconds) && Number.isFinite(cut.endSeconds) && cut.endSeconds > cut.startSeconds)
-    .map(cut => ({startSeconds: Math.max(start, cut.startSeconds), endSeconds: Math.min(end, cut.endSeconds)}))
-    .filter(cut => cut.endSeconds > cut.startSeconds).sort((a, b) => a.startSeconds - b.startSeconds);
-  const spans: ListenSpan[] = [];
-  let cursor = start, output = 0;
-  const append = (until: number) => {
-    if (until <= cursor) return;
-    spans.push({startSeconds: cursor, endSeconds: until, outputStart: output, outputEnd: output + until - cursor});
-    output += until - cursor;
-  };
-  for (const cut of removed) { append(cut.startSeconds); cursor = Math.max(cursor, cut.endSeconds); }
-  append(end);
-  return spans;
+  let output = 0;
+  return recordingKeptRanges(start, end, cuts).map(range => {
+    const outputStart = output;
+    output += range.endSeconds - range.startSeconds;
+    return {...range, outputStart, outputEnd: output};
+  });
 }
 
 export function listenProgramPosition(spans: ListenSpan[], seconds: number) {

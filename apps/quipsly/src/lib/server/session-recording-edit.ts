@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { SavedRecordingEdit } from "../recording-edit-draft";
+import { parseRecordingManualCuts } from "../recording-manual-cuts";
 import type { SessionAccessActor } from "./session-access";
 import { readSessionRecordingEditSources, SessionRecordingShareError, stableJson } from "./session-recording-share";
 
@@ -48,10 +49,13 @@ export async function saveSessionRecordingEdit(client: any, input: Context & {ex
   if (state.selected.some(id => !sourceIds.has(id)) || state.excludedTranscriptKeys.some(id => !segments.has(id)) ||
       (state.primaryVideoSourceId && !sourceIds.has(state.primaryVideoSourceId))) invalid("This edit contains a source or passage outside the selected recording.");
   // Persist only known editing fields, never arbitrary client metadata.
+  let manualCuts;
+  try { manualCuts = parseRecordingManualCuts(state.manualCuts, currentWorkspace.available.programDurationSeconds); }
+  catch (error) { invalid(error instanceof Error ? error.message : "Choose valid cut times."); }
   const stateJson: SavedRecordingEdit = {selected: [...new Set(state.selected)].sort(), startSeconds: state.startSeconds, endSeconds: state.endSeconds,
     title: state.title, outputMediaKind: state.outputMediaKind, primaryVideoSourceId: state.primaryVideoSourceId,
     excludedTranscriptKeys: [...new Set(state.excludedTranscriptKeys)].sort(), editing: state.editing,
-    baseOutputId: state.baseOutputId, baseOutputRevision: state.baseOutputRevision};
+    baseOutputId: state.baseOutputId, baseOutputRevision: state.baseOutputRevision, ...(state.manualCuts !== undefined ? {manualCuts} : {})};
   const where = key(input);
   const conflict = async (database = client) => {
     const latest = await database.sessionRecordingEditDraft.findUnique({where: {roomId_userId_takeId: where}});

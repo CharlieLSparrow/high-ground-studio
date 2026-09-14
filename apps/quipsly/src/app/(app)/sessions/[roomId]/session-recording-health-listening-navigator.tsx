@@ -80,6 +80,7 @@ export function SessionRecordingHealthListeningNavigator({
     endSeconds: number;
     disabled: boolean;
     onTrimBoundary: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
+    onCutBoundary?: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
   };
 }) {
   const workspace = presentation === "workspace";
@@ -256,6 +257,10 @@ export function SessionRecordingHealthListeningNavigator({
             className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">
             Set {boundary} here
           </button>) : null}
+          {trimControls?.onCutBoundary ? (["start", "end"] as const).map(boundary => <button key={`cut-${boundary}`} type="button"
+            disabled={trimControls.disabled || !trimControls.selectedSourceIds.includes(selected.recordingAssetId) || playbackState === "loading" || playbackState === "error"}
+            onClick={() => trimControls.onCutBoundary?.(boundary, selected.recordingAssetId, mediaRef.current?.currentTime ?? selectedSeconds)}
+            className="inline-flex min-h-11 items-center rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50">Mark cut {boundary}</button>) : null}
           {hasEditClock && keptEnd > keptStart ? <>
             <button type="button" disabled={playbackState === "loading" || playbackState === "error"}
               onClick={() => void play(Math.min(5, keptEnd - keptStart), keptStart)}

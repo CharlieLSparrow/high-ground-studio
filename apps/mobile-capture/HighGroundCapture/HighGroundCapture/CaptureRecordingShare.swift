@@ -91,6 +91,7 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
             let startSeconds: TimeInterval?
             let endSeconds: TimeInterval?
             let transcriptExclusions: [Exclusion]?
+            var manualCuts: [CaptureRecordingManualCut]? = nil
         }
 
         let edit: Edit?
@@ -312,7 +313,8 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         primaryVideoSourceID: String?,
         startSeconds: TimeInterval,
         endSeconds: TimeInterval,
-        exclusions: [CaptureRecordingShareTranscriptSegment]
+        exclusions: [CaptureRecordingShareTranscriptSegment],
+        manualCuts: [CaptureRecordingManualCut] = []
     ) async -> Bool {
         await mutate(
             roomID: roomID,
@@ -324,6 +326,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 "primaryVideoSourceId": primaryVideoSourceID ?? "",
                 "startSeconds": startSeconds,
                 "endSeconds": endSeconds,
+                "manualCuts": manualCuts.map { ["startSeconds": $0.startSeconds, "endSeconds": $0.endSeconds] },
                 "excludedTranscriptSegments": exclusions.map { exclusion in
                     var item: [String: Any] = [
                         "transcriptJobId": exclusion.transcriptJobId,
@@ -717,6 +720,9 @@ struct CaptureRecordingShareEditor: View {
     @StateObject private var sourcePlayback = CaptureSessionProtectedPlaybackController()
     @State private var selectedSourceIDs = Set<String>()
     @State private var excludedSegmentIDs = Set<String>()
+    @State private var manualCuts: [CaptureRecordingManualCut] = []
+    @State private var cutStart: Double = 0
+    @State private var cutEnd: Double = 0
     @State private var startSeconds: TimeInterval = 0
     @State private var endSeconds: TimeInterval = 0
     @State private var title = ""
@@ -1000,6 +1006,8 @@ struct CaptureRecordingShareEditor: View {
                 .padding(12)
                 .background(CapturePalette.plum.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
 
+                manualCutControls(snapshot: snapshot, duration: duration)
+
                 if !videoSources.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Format")
@@ -1209,6 +1217,11 @@ struct CaptureRecordingShareEditor: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
+                if CaptureRecordingManualCut.keptDuration(start: startSeconds, end: endSeconds, cuts: removedTimelineRanges(snapshot)) < 0.05 {
+                    Text("This trim contains only removed sections. Restore a section or widen the trim.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Button {
                     Task {
                         let success = await client.prepare(
@@ -1219,7 +1232,8 @@ struct CaptureRecordingShareEditor: View {
                             primaryVideoSourceID: outputMediaKind == "video" ? primaryVideoSourceID : nil,
                             startSeconds: startSeconds,
                             endSeconds: endSeconds,
-                            exclusions: transcript.filter { excludedSegmentIDs.contains($0.id) }
+                            exclusions: transcript.filter { excludedSegmentIDs.contains($0.id) },
+                            manualCuts: manualCuts
                         )
                         if success {
                             editing = false
@@ -1242,6 +1256,7 @@ struct CaptureRecordingShareEditor: View {
                         || startSeconds < 0
                         || endSeconds <= startSeconds
                         || endSeconds > duration + 0.05
+                        || CaptureRecordingManualCut.keptDuration(start: startSeconds, end: endSeconds, cuts: removedTimelineRanges(snapshot)) < 0.05
                         || snapshot.readiness?.verifiedRendererAvailable != true
                 )
                 .accessibilityIdentifier("CaptureRecordingSharePrepare")
@@ -1617,11 +1632,8 @@ struct CaptureRecordingShareEditor: View {
                     position: loaded ? sourcePlayback.position : 0,
                     programOffset: source.programOffsetSeconds,
                     keepStart: startSeconds, keepEnd: endSeconds,
-                    removedRanges: editableTranscript(snapshot).compactMap { segment in
-                        guard excludedSegmentIDs.contains(segment.id) else { return nil }
-                        let start = segment.cutStartSeconds ?? segment.startSeconds
-                        let end = segment.cutEndSeconds ?? segment.endSeconds
-                        return start.isFinite && end.isFinite && end > start ? start...end : nil
+                    removedRanges: removedTimelineRanges(snapshot).compactMap { range in
+                        range.startSeconds.isFinite && range.endSeconds.isFinite && range.endSeconds > range.startSeconds ? range.startSeconds...range.endSeconds : nil
                     },
                     seek: { sourcePlayback.seek(to: $0) }
                 ).id(source.id)
@@ -1684,6 +1696,62 @@ struct CaptureRecordingShareEditor: View {
         Button("Set end here") { markListeningBoundary(start: false, source: source, snapshot: snapshot) }
             .accessibilityIdentifier("CaptureRecordingMarkEnd")
             .frame(minHeight: 44)
+        Button("Mark cut start") { markListeningCut(start: true, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkCutStart").frame(minHeight: 44)
+        Button("Mark cut end") { markListeningCut(start: false, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkCutEnd").frame(minHeight: 44)
+    }
+
+    private func markListeningCut(start: Bool, source: CaptureRecordingShareSource, snapshot: CaptureRecordingShareSnapshot) {
+        guard sourcePlayback.preparedSourceID == source.id, selectedSourceIDs.contains(source.id),
+              let position = CaptureRecordingTrimPosition.programTime(sourceSeconds: sourcePlayback.position,
+                sourceDuration: sourcePlayback.duration, offset: source.programOffsetSeconds,
+                programDuration: snapshot.available?.programDurationSeconds ?? 0) else { return }
+        if start { cutStart = position } else { cutEnd = position }
+        editing = true
+        auditionNotice = "Cut \(start ? "start" : "end") marked. Choose both ends, then remove the section below."
+    }
+
+    private func removedTimelineRanges(_ snapshot: CaptureRecordingShareSnapshot) -> [CaptureRecordingManualCut] {
+        manualCuts + editableTranscript(snapshot).filter { excludedSegmentIDs.contains($0.id) }.map {
+            CaptureRecordingManualCut(startSeconds: $0.cutStartSeconds ?? $0.startSeconds, endSeconds: $0.cutEndSeconds ?? $0.endSeconds)
+        }
+    }
+
+    private func manualCutControls(snapshot: CaptureRecordingShareSnapshot, duration: Double) -> some View {
+        let candidate = CaptureRecordingManualCut(startSeconds: cutStart, endSeconds: cutEnd)
+        let canRemove = cutStart.isFinite && cutEnd.isFinite && cutStart >= startSeconds && cutEnd <= endSeconds
+            && cutEnd - cutStart >= 0.05 && manualCuts.count < 500
+            && CaptureRecordingManualCut.keptDuration(start: startSeconds, end: endSeconds, cuts: removedTimelineRanges(snapshot) + [candidate]) >= 0.05
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Remove a section").font(.subheadline.bold())
+            Text("Mark its start and end while listening, or enter seconds. All tracks stay together. No transcript needed.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                timeField("Cut start", value: $cutStart, maximum: duration)
+                timeField("Cut end", value: $cutEnd, maximum: duration)
+            }
+            Button("Remove section", systemImage: "scissors") {
+                manualCuts.append(candidate)
+                cutStart = 0
+                cutEnd = 0
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canRemove || client.busyAction != nil)
+            .accessibilityIdentifier("CaptureRecordingRemoveSection")
+            ForEach(Array(manualCuts.enumerated()), id: \.offset) { index, cut in
+                HStack {
+                    Text("\(captureRecordingShareTime(cut.startSeconds))–\(captureRecordingShareTime(cut.endSeconds))").monospacedDigit()
+                    Spacer()
+                    Button("Restore") { manualCuts.remove(at: index) }
+                        .accessibilityLabel("Restore section \(index + 1)")
+                        .accessibilityIdentifier("CaptureRecordingRestoreSection-\(index)")
+                }.font(.caption).frame(minHeight: 44)
+            }
+            Text("Original recordings stay unchanged.").font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(CapturePalette.plum.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func markListeningBoundary(start: Bool, source: CaptureRecordingShareSource, snapshot: CaptureRecordingShareSnapshot) {
@@ -1842,6 +1910,9 @@ struct CaptureRecordingShareEditor: View {
         outputMediaKind = snapshot.output?.render.mediaKind == "video" ? "video" : "audio"
         primaryVideoSourceID = snapshot.output?.render.primaryVideoSourceId ?? ""
         excludedSegmentIDs = Set(snapshot.output?.body.edit?.transcriptExclusions?.map(\.id) ?? [])
+        manualCuts = snapshot.output?.body.edit?.manualCuts ?? []
+        cutStart = 0
+        cutEnd = 0
         editing = false
         if let saved = editSync.state, editSync.loadedTakeID == available.selectedTakeId,
            saved.baseOutputId == snapshot.output?.id {
@@ -1864,12 +1935,13 @@ struct CaptureRecordingShareEditor: View {
         return CaptureRecordingEditDraft(selected: selectedSourceIDs.sorted(), startSeconds: startSeconds, endSeconds: endSeconds,
             title: title, outputMediaKind: outputMediaKind, primaryVideoSourceId: primaryVideoSourceID,
             excludedTranscriptKeys: excludedSegmentIDs.sorted(), editing: editing,
-            baseOutputId: client.snapshot?.output?.id, baseOutputRevision: client.snapshot?.output?.revision)
+            baseOutputId: client.snapshot?.output?.id, baseOutputRevision: client.snapshot?.output?.revision, manualCuts: manualCuts)
     }
 
     private func applyWorkingDraft(_ draft: CaptureRecordingEditDraft) {
         selectedSourceIDs = Set(draft.selected)
         excludedSegmentIDs = Set(draft.excludedTranscriptKeys)
+        manualCuts = draft.manualCuts ?? []
         startSeconds = draft.startSeconds
         endSeconds = draft.endSeconds
         title = draft.title
@@ -1888,6 +1960,7 @@ struct CaptureRecordingShareEditor: View {
         outputMediaKind = output.render.mediaKind == "video" ? "video" : "audio"
         primaryVideoSourceID = output.render.primaryVideoSourceId ?? ""
         excludedSegmentIDs = Set(output.body.edit?.transcriptExclusions?.map(\.id) ?? [])
+        manualCuts = output.body.edit?.manualCuts ?? []
         editing = true
     }
 

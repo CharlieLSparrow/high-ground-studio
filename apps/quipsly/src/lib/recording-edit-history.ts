@@ -6,6 +6,7 @@ export type RecordingEditDraft = {
   outputMediaKind: "audio" | "video";
   primaryVideoSourceId: string;
   excludedTranscriptKeys: Set<string>;
+  manualCuts?: import("./recording-manual-cuts").RecordingTimeRange[];
 };
 
 export type RecordingEditHistory = {

@@ -6,6 +6,19 @@ const state: SavedRecordingEdit = {selected: ["source"], startSeconds: 1, endSec
 const ok = (revision: number) => ({ok: true, json: async () => ({ok: true, actorUserId: "coach", edit: {revision}})});
 afterEach(() => { jest.useRealTimers(); });
 
+it("autosaves a cut-only change and its restoration", async () => {
+  const fetchMock = jest.fn().mockResolvedValueOnce(ok(3)).mockResolvedValueOnce(ok(4));
+  global.fetch = fetchMock;
+  const sync = new RecordingEditSync("/draft", "coach", {revision: 2, state, updatedAt: new Date().toISOString()});
+  sync.set({...state, manualCuts: [{startSeconds: 4, endSeconds: 9}]});
+  await sync.flush();
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({expectedRevision: 2, state: {manualCuts: [{startSeconds: 4, endSeconds: 9}]}});
+  sync.set({...state, manualCuts: []});
+  await sync.flush();
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({expectedRevision: 3, state: {manualCuts: []}});
+  expect(sync.status).toBe("saved");
+});
+
 it("serializes changes arriving during a save without losing the newest edit", async () => {
   let finish!: (value: unknown) => void;
   const fetchMock = jest.fn().mockImplementationOnce(() => new Promise(resolve => {finish = resolve;})).mockResolvedValue(ok(2));
