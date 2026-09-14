@@ -10,11 +10,29 @@ export function transcriptSourceHref(source: { roomId: string; recordingAssetId:
   return `/sessions/${encodeURIComponent(source.roomId)}?${query}#transcript-segment-${encodeURIComponent(source.segmentId)}`;
 }
 
+/** Session results already carry their canonical source; don't drop it in recap links. */
+export function sessionResultSourceHref(roomId: string, source: {
+  recordingAssetId?: string | null; sourceStartSeconds?: number | null;
+  startSeconds: number | null; segmentId: string | null;
+}) {
+  const query = new URLSearchParams({mode: "transcript"});
+  const at = source.sourceStartSeconds ?? source.startSeconds;
+  if (source.recordingAssetId?.trim()) {
+    query.set("source", source.recordingAssetId.trim());
+    if (typeof at === "number" && Number.isFinite(at) && at >= 0 && at <= 86_400) query.set("at", String(at));
+  }
+  return `/sessions/${encodeURIComponent(roomId)}?${query}#transcript-segment-${encodeURIComponent(source.segmentId || "")}`;
+}
+
 /** Project an existing source pointer, never a room inferred from free-form text. */
 export function sessionWorkSourceHref(roomId: string | null | undefined, sourceJson: unknown): string | null {
   if (!roomId || !sourceJson || typeof sourceJson !== "object" || Array.isArray(sourceJson)) return null;
   const source = sourceJson as Record<string, unknown>;
   if (source.roomId !== roomId) return null;
+  if (source.schema === "quipsly-session-work-entry-v1" && typeof source.sourceMessageId === "string" && source.sourceMessageId.trim()) {
+    const query = new URLSearchParams({mode: "conversation", message: source.sourceMessageId});
+    return `/sessions/${encodeURIComponent(roomId)}?${query}#conversation-message-${encodeURIComponent(source.sourceMessageId)}`;
+  }
 
   const anchor = readTranscriptDerivedNoteSource(source)
     ?? readTranscriptDerivedTaskSource(source)
@@ -26,10 +44,12 @@ export function sessionWorkSourceHref(roomId: string | null | undefined, sourceJ
   const at = typeof source.sourceStartSeconds === "number" ? source.sourceStartSeconds : source.startSeconds;
   const assetId = source.recordingAssetId;
   const query = new URLSearchParams({ mode: "transcript" });
-  if (typeof at === "number" && Number.isFinite(at) && at >= 0 && typeof assetId === "string" && assetId.trim()) {
-    query.set("source", assetId);
+  if (typeof assetId !== "string" || !assetId.trim()) return null;
+  query.set("source", assetId);
+  if (typeof at === "number" && Number.isFinite(at) && at >= 0) {
     query.set("at", String(at));
   }
-  // A whole-session recap has no single source moment. Open the combined transcript.
+  // A recap has no single moment, but still belongs to one recorded take. Its
+  // source anchors the transcript assembly so a later call cannot replace it.
   return `/sessions/${encodeURIComponent(roomId)}?${query}`;
 }

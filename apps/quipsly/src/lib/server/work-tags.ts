@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { normalizeTagColor } from "../tag-color";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
 import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
+import { personalOrSharedSessionTaskAccessWhere, nestMemberProjectWhere } from "./task-access";
+import { activeCoachingWorkWhere } from "./coaching-work-page";
+import { activeCoachingEngagementParticipantWhere, personalOrSharedCoachingGoalAccessWhere, sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
+import { coachingEngagementAccessWhere } from "./coaching-engagement";
 
 export { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
@@ -41,7 +46,7 @@ export type CreateAndAssignWorkTagResult =
     }
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED"; error: string };
 
-export type WorkTagTaxonomyOperation = "RENAME" | "ARCHIVE" | "RESTORE";
+export type WorkTagTaxonomyOperation = "RENAME" | "ARCHIVE" | "RESTORE" | "COLOR";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type CreateWorkTagTaxonomyResult =
@@ -52,6 +57,7 @@ export type CreateWorkTagTaxonomyResult =
         id: string;
         label: string;
         slug: string;
+        hexColor?: string | null;
         isActive: boolean;
         archivedAt: Date | null;
         updatedAt: Date;
@@ -103,6 +109,14 @@ function normalizedNewTagLabels(value: unknown) {
   const canonical = labels.map(canonicalTagLabel);
   if (new Set(canonical).size !== labels.length) return null;
   return labels;
+}
+
+export function parseWorkTagSelection(value: unknown) {
+  const selection = safeRecord(value);
+  const tagIds = normalizedTagIds(selection.tagIds);
+  const newTagLabels = normalizedNewTagLabels(selection.newTagLabels);
+  return tagIds && newTagLabels && tagIds.length + newTagLabels.length <= 24
+    ? { tagIds, newTagLabels } : null;
 }
 
 function canonicalTagLabel(label: string) {
@@ -243,6 +257,7 @@ export async function createWorkTagTaxonomy(input: {
   actorEmail: string;
   projectId: string;
   label: unknown;
+  hexColor?: unknown;
 }): Promise<CreateWorkTagTaxonomyResult> {
   const actorUserId = cleanId(input.actorUserId);
   const actorEmail = typeof input.actorEmail === "string"
@@ -250,11 +265,12 @@ export async function createWorkTagTaxonomy(input: {
     : "";
   const projectId = cleanId(input.projectId);
   const label = normalizeWorkTagLabel(input.label);
-  if (!actorUserId || !actorEmail || !projectId || !label) {
+  const hexColor = input.hexColor == null ? null : normalizeTagColor(input.hexColor);
+  if (!actorUserId || !actorEmail || !projectId || !label || hexColor === undefined) {
     return {
       ok: false,
       code: "INVALID_INPUT",
-      error: "Enter a reusable tag name of 80 characters or fewer.",
+      error: "Enter a tag name of 80 characters or fewer and a valid color.",
     };
   }
 
@@ -303,6 +319,9 @@ export async function createWorkTagTaxonomy(input: {
         let receiptId: string | null = null;
         let revision = 0;
         if (resolved.created) {
+          if (hexColor !== null) await tx.studioTag.update({
+            where: { id: resolved.tag.id }, data: { hexColor },
+          });
           receiptId = randomUUID();
           revision = 1;
           await tx.studioTagRevision.create({
@@ -319,6 +338,7 @@ export async function createWorkTagTaxonomy(input: {
                 after: {
                   label: resolved.tag.label,
                   slug: resolved.tag.slug,
+                  hexColor,
                   isActive: true,
                   archivedAt: null,
                 },
@@ -341,6 +361,7 @@ export async function createWorkTagTaxonomy(input: {
             id: true,
             label: true,
             slug: true,
+            hexColor: true,
             isActive: true,
             archivedAt: true,
             updatedAt: true,
@@ -399,14 +420,29 @@ function entityWhere(
   actorEmail = "",
 ) {
   return entityKind === "task"
-    ? { id: entityId, assignedUserId: actorUserId }
+    ? { id: entityId, AND: [
+        { OR: personalOrSharedSessionTaskAccessWhere(actorUserId, "write") },
+        activeCoachingWorkWhere(),
+        // Retained task ownership must not bypass removal from a client space.
+        { OR: [{ engagementId: null }, { engagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } }] },
+      ] }
     : entityKind === "goal"
-      ? { id: entityId, ownerUserId: actorUserId }
+      ? { id: entityId, OR: personalOrSharedCoachingGoalAccessWhere(actorUserId, "write") }
       : entityKind === "note"
         ? {
             id: entityId,
+            AND: [activeCoachingWorkWhere(), { OR: [
+              { engagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } },
+              { engagementId: null, room: { coachingEngagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } } },
+              { engagementId: null, OR: [{ roomId: null }, { room: { coachingEngagementId: null } }] },
+            ] }],
             OR: [
               { authorUserId: actorUserId },
+              { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] },
+                OR: [
+                  { engagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } },
+                  { engagementId: null, room: { coachingEngagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } } },
+                ] },
               ...(actorEmail ? [{
                 visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE", "PROJECT_TEAM"] },
                 room: {
@@ -435,6 +471,10 @@ function entityWhere(
         : { id: entityId, createdByUserId: actorUserId };
 }
 
+function noteProjectWhere(projectId: string) {
+  return { OR: [{ engagement: { projectId } }, { engagementId: null, room: { projectId } }] };
+}
+
 function entityModel(prisma: any, entityKind: WorkTagEntityKind) {
   return entityKind === "task"
     ? prisma.actionItem
@@ -456,8 +496,10 @@ function entitySourceField(entityKind: WorkTagEntityKind) {
 }
 
 function entityMutationLabel(entityKind: WorkTagEntityKind) {
+  if (entityKind === "task") return "task editor";
+  if (entityKind === "goal") return "goal editor";
   if (entityKind === "document") return "Nest editor";
-  if (entityKind === "note") return "note author or Nest editor";
+  if (entityKind === "note") return "note editor";
   return `${entityKind} owner`;
 }
 
@@ -477,12 +519,14 @@ async function findOwnedTagEntity(
     ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
   };
   if (entityKind === "note") {
-    if (expectedProjectId) where.room = { projectId: expectedProjectId };
     const note = await prisma.coachingNote.findFirst({
-      where,
-      select: { id: true, roomId: true, updatedAt: true, sourceJson: true, room: { select: { projectId: true } } },
+      where: expectedProjectId ? { AND: [where, noteProjectWhere(expectedProjectId)] } : where,
+      select: { id: true, roomId: true, engagementId: true, updatedAt: true, sourceJson: true,
+        engagement: { select: { projectId: true } },
+        room: { select: { projectId: true, coachingEngagementId: true } } },
     });
-    return note ? { ...note, projectId: note.room?.projectId ?? null } : null;
+    return note ? { ...note, projectId: note.engagement?.projectId ?? note.room?.projectId ?? null,
+      engagementId: note.engagementId ?? note.room?.coachingEngagementId ?? null } : null;
   }
   if (entityKind === "document") {
     return prisma.studioDocument.findFirst({
@@ -522,8 +566,207 @@ async function findOwnedTagEntity(
       ...where,
       ...(expectedProjectId ? { projectId: expectedProjectId } : {}),
     },
-    select: { id: true, projectId: true, updatedAt: true, [sourceField]: true },
+    select: { id: true, projectId: true, updatedAt: true, [sourceField]: true,
+      ...(["task", "goal"].includes(entityKind) ? {
+        engagementId: true, booking: { select: { engagementId: true } },
+        room: { select: { projectId: true, coachingEngagementId: true } },
+      } : {}),
+    },
   });
+}
+
+/** Space-only collaborators see reusable tags from shared work in that space,
+ * not the vocabulary of other clients who happen to share the same Nest. */
+function sharedWorkTagCatalogWhere(engagementId: string, entityKind: "task" | "goal" | "note", entityId: string): Prisma.StudioTagWhereInput {
+  const space = { OR: [{ engagementId }, { engagementId: null, booking: { is: { engagementId } } }] };
+  return { OR: [
+    { coachingNotes: { some: { note: { OR: [
+      ...(entityKind === "note" && entityId ? [{ id: entityId }] : []),
+      { AND: [
+        { OR: [{ engagementId }, { engagementId: null, room: { coachingEngagementId: engagementId } }] },
+        { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } }, activeCoachingWorkWhere(),
+      ] },
+    ] } } } },
+    { actionItems: { some: { actionItem: { OR: [
+      ...(entityKind === "task" && entityId ? [{ id: entityId }] : []),
+      { AND: [space, sharedCoachingWorkVisibilityWhere(), activeCoachingWorkWhere()] },
+    ] } } } },
+    { goals: { some: { goal: { OR: [
+      ...(entityKind === "goal" && entityId ? [{ id: entityId }] : []),
+      { AND: [space, sharedCoachingWorkVisibilityWhere()] },
+    ] } } } },
+  ] };
+}
+
+type TagSpaceEntity = { projectId: string | null; engagementId?: string | null; booking?: { engagementId: string | null } | null;
+  room?: { projectId: string | null; coachingEngagementId: string | null } | null };
+
+function tagSpaceId(entity: TagSpaceEntity) {
+  return entity.engagementId ?? entity.booking?.engagementId
+    ?? (entity.room?.projectId === entity.projectId ? entity.room?.coachingEngagementId : null);
+}
+
+async function writableTagSpace(
+  prisma: Pick<Prisma.TransactionClient, "coachingEngagement">,
+  entity: TagSpaceEntity,
+  actorUserId: string,
+): Promise<string | null> {
+  // Transcript-derived work may be anchored only to its Session. Resolve that
+  // canonical relationship without granting access to the rest of the Nest.
+  const engagementId = tagSpaceId(entity);
+  if (!engagementId || !entity.projectId) return null;
+  const space = await prisma.coachingEngagement.findFirst({
+    where: { id: engagementId, projectId: entity.projectId, ...activeCoachingEngagementParticipantWhere(actorUserId, "write") },
+    select: { id: true },
+  });
+  return space?.id ?? null;
+}
+
+/** A bounded mobile list projection, not a Nest vocabulary grant. It uses the
+ * same entity and client-space write rules as the tag editor and batches reads
+ * instead of loading one full tag context per Today card. */
+export async function readSharedWorkTagSummaries(input: {
+  prisma: PrismaClient; actorUserId: string; actorEmail: string; taskIds: string[]; goalIds: string[];
+}) {
+  type Tag = { id: string; projectId: string; label: string; slug: string; hexColor: string | null; isActive: boolean };
+  type Row = TagSpaceEntity & { id: string; tagLinks: Array<{ tag: Tag }> };
+  const select = {
+    id: true, projectId: true, engagementId: true,
+    booking: { select: { engagementId: true } },
+    room: { select: { projectId: true, coachingEngagementId: true } },
+    tagLinks: { orderBy: { createdAt: "asc" as const }, select: { tag: { select: {
+      id: true, projectId: true, label: true, slug: true, hexColor: true, isActive: true,
+    } } } },
+  };
+  const load = async (kind: "task" | "goal", ids: string[]) => {
+    if (!ids.length) return [];
+    if (ids.length > 40) throw new Error("Shared tag summaries require a bounded work page.");
+    const rows: Row[] = await entityModel(input.prisma, kind).findMany({
+      where: { ...entityWhere(kind, "", input.actorUserId, input.actorEmail), id: { in: ids } }, select,
+    });
+    return rows.map(row => ({ ...row, kind }));
+  };
+  const rows = (await Promise.all([load("task", input.taskIds), load("goal", input.goalIds)])).flat();
+  const scopes = rows.flatMap(row => {
+    const id = tagSpaceId(row);
+    return id && row.projectId ? [{ id, projectId: row.projectId }] : [];
+  });
+  const spaces = scopes.length ? await input.prisma.coachingEngagement.findMany({
+    where: { OR: scopes, ...activeCoachingEngagementParticipantWhere(input.actorUserId, "write") },
+    select: { id: true, projectId: true },
+  }) : [];
+  const allowed = new Map(spaces.map(space => [space.id, space.projectId]));
+  const result = new Map<string, { projectId: string; tags: Tag[] }>();
+  for (const row of rows) {
+    const spaceId = tagSpaceId(row);
+    if (!row.projectId || !spaceId || allowed.get(spaceId) !== row.projectId) continue;
+    result.set(`${row.kind}:${row.id}`, { projectId: row.projectId,
+      tags: row.tagLinks.map(link => link.tag).filter(tag => tag.projectId === row.projectId) });
+  }
+  return result;
+}
+
+/** Archiving retires a label from new work, not from records already using it.
+ * Query the actual link again in the write transaction rather than trusting
+ * the client's selected tags or an earlier snapshot. */
+function assignableOrRetainedTagWhere(entityKind: WorkTagEntityKind, entityId: string): Prisma.StudioTagWhereInput {
+  const linked: Prisma.StudioTagWhereInput = entityKind === "task"
+    ? { actionItems: { some: { actionItemId: entityId } } }
+    : entityKind === "goal"
+      ? { goals: { some: { goalId: entityId } } }
+      : entityKind === "note"
+        ? { coachingNotes: { some: { noteId: entityId } } }
+        : entityKind === "document"
+          ? { documents: { some: { documentId: entityId } } }
+          : { callRooms: { some: { roomId: entityId } } };
+  return { OR: [{ isActive: true }, linked] };
+}
+
+class WorkTagTransactionAbort extends Error {
+  constructor(readonly result: { kind: string; [key: string]: any }) {
+    super("Work tag transaction was not applied");
+  }
+}
+
+async function readWorkEntityTagContext(input: {
+  prisma: PrismaClient; actorUserId: string; actorEmail: string; entityId: string;
+}, entityKind: "task" | "goal" | "note") {
+  const entity = await findOwnedTagEntity(input.prisma, entityKind, input.entityId, input.actorUserId, input.actorEmail);
+  if (!entity?.projectId) return null;
+  const projects = await writableProjectIds(input.prisma, input.actorEmail);
+  const projectEditor = projects.has(entity.projectId);
+  const spaceId = projectEditor ? null : await writableTagSpace(input.prisma, entity, input.actorUserId);
+  if (!projectEditor && !spaceId) return null;
+  const [tags, links] = await Promise.all([
+    input.prisma.studioTag.findMany({
+      where: { projectId: entity.projectId, ...(projectEditor ? {} : sharedWorkTagCatalogWhere(spaceId!, entityKind, entity.id)) },
+      orderBy: [{ label: "asc" }, { id: "asc" }],
+      select: { id: true, label: true, hexColor: true, isActive: true },
+    }),
+    entityKind === "task"
+      ? input.prisma.actionItemTagLink.findMany({ where: { actionItemId: entity.id }, select: { tagId: true } })
+      : entityKind === "goal" ? input.prisma.goalTagLink.findMany({ where: { goalId: entity.id }, select: { tagId: true } })
+        : input.prisma.coachingNoteTagLink.findMany({ where: { noteId: entity.id }, select: { tagId: true } }),
+  ]);
+  return { entityId: entity.id, projectId: entity.projectId, updatedAt: entity.updatedAt.toISOString(),
+    selectedTagIds: links.map(link => link.tagId), tags, canCreateTags: projectEditor };
+}
+
+export function readTaskTagContext(input: Parameters<typeof readWorkEntityTagContext>[0]) {
+  return readWorkEntityTagContext(input, "task");
+}
+
+export function readGoalTagContext(input: Parameters<typeof readWorkEntityTagContext>[0]) {
+  return readWorkEntityTagContext(input, "goal");
+}
+
+export function readNoteTagContext(input: Parameters<typeof readWorkEntityTagContext>[0]) {
+  return readWorkEntityTagContext(input, "note");
+}
+
+export async function readDocumentTagContext(input: Parameters<typeof readWorkEntityTagContext>[0]) {
+  const entity = await findOwnedTagEntity(input.prisma, "document", input.entityId, input.actorUserId, input.actorEmail);
+  if (!entity?.projectId) return null;
+  const projects = await writableProjectIds(input.prisma, input.actorEmail);
+  if (!projects.has(entity.projectId)) return null;
+  const tags = await input.prisma.studioTag.findMany({
+    where: { projectId: entity.projectId },
+    orderBy: [{ label: "asc" }, { id: "asc" }],
+    select: { id: true, label: true, hexColor: true, isActive: true },
+  });
+  return { entityId: entity.id, projectId: entity.projectId, updatedAt: entity.updatedAt.toISOString(),
+    tagRevision: entity.tagRevision as number, selectedTagIds: entity.tagLinks.map((link: { tagId: string }) => link.tagId),
+    tags, canCreateTags: true };
+}
+
+export async function readNewCoachingTaskTagContext(input: {
+  prisma: PrismaClient; actorUserId: string; actorEmail: string; engagementId: string;
+}) {
+  const engagement = await input.prisma.coachingEngagement.findFirst({
+    where: coachingEngagementAccessWhere(input.engagementId, { id: input.actorUserId }, "write"),
+    select: { id: true, projectId: true },
+  });
+  if (!engagement) return null;
+  const projects = await writableProjectIds(input.prisma, input.actorEmail);
+  const tags = await input.prisma.studioTag.findMany({
+    where: { projectId: engagement.projectId, isActive: true,
+      ...(projects.has(engagement.projectId) ? {} : sharedWorkTagCatalogWhere(engagement.id, "task", "")) },
+    orderBy: [{ label: "asc" }, { id: "asc" }],
+    select: { id: true, label: true, hexColor: true, isActive: true },
+  });
+  return { projectId: engagement.projectId, selectedTagIds: [], tags, canCreateTags: projects.has(engagement.projectId) };
+}
+
+export async function readNewNestTaskTagContext(input: { prisma: PrismaClient; actorUserId: string; projectSlug: string }) {
+  const projects = await input.prisma.studioProject.findMany({ where: { slug: input.projectSlug }, take: 2, select: { id: true } });
+  if (projects.length !== 1) return null;
+  const project = await input.prisma.studioProject.findFirst({
+    where: { id: projects[0].id, ...nestMemberProjectWhere(input.actorUserId, "write") }, select: { id: true },
+  });
+  if (!project) return null;
+  const tags = await input.prisma.studioTag.findMany({ where: { projectId: project.id, isActive: true },
+    orderBy: [{ label: "asc" }, { id: "asc" }], select: { id: true, label: true, hexColor: true, isActive: true } });
+  return { projectId: project.id, selectedTagIds: [], tags, canCreateTags: true };
 }
 
 /**
@@ -683,8 +926,7 @@ export async function createAndAssignWorkEntityTag(input: {
 
     const update = await entityModel(tx, input.entityKind).updateMany({
       where: {
-        ...ownerWhere,
-        ...(input.entityKind === "note" ? { room: { projectId: entity.projectId } } : { projectId: entity.projectId }),
+        AND: [ownerWhere, input.entityKind === "note" ? noteProjectWhere(entity.projectId) : { projectId: entity.projectId }],
         updatedAt: input.expectedUpdatedAt,
       },
       data: { [sourceField!]: { ...safeRecord(currentEntity[sourceField!]), lastTagReceipt: receipt } },
@@ -736,6 +978,8 @@ export async function createAndAssignWorkEntityTag(input: {
  */
 export async function replaceWorkEntityTags(input: {
   prisma: PrismaClient;
+  /** Join an already-authorized work command. Its caller must abort on failure. */
+  transaction?: Prisma.TransactionClient;
   actorUserId: string;
   actorEmail: string;
   entityKind: WorkTagEntityKind;
@@ -763,8 +1007,15 @@ export async function replaceWorkEntityTags(input: {
     return { ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." };
   }
 
-  const writableProjects = await writableProjectIds(input.prisma, actorEmail);
-  const prisma = input.prisma as any;
+  // A joined command must not borrow another pool connection while holding its
+  // transaction. Use the same active grant required by the write below.
+  const writableProjects = input.transaction
+    ? new Set((await input.transaction.studioProjectAccessGrant.findMany({
+      where: { email: actorEmail, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
+      select: { projectId: true },
+    })).map(grant => grant.projectId))
+    : await writableProjectIds(input.prisma, actorEmail);
+  const prisma = (input.transaction ?? input.prisma) as any;
   const receiptId = clientRequestId ? `work-tags-${clientRequestId}` : randomUUID();
   const entity = await findOwnedTagEntity(
     prisma,
@@ -779,7 +1030,11 @@ export async function replaceWorkEntityTags(input: {
 
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only a ${entityMutationLabel(input.entityKind)} can change these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before adding its tags." };
-  if (!writableProjects.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to change tags." };
+  const projectEditor = writableProjects.has(entity.projectId);
+  const collaborativeKind = input.entityKind === "task" || input.entityKind === "goal" || input.entityKind === "note" ? input.entityKind : null;
+  const spaceId = !projectEditor && collaborativeKind ? await writableTagSpace(prisma, entity, actorUserId) : null;
+  if (!projectEditor && !spaceId) return { ok: false, code: "FORBIDDEN", error: "This work isn't available to tag." };
+  const scopedTags = projectEditor ? {} : sharedWorkTagCatalogWhere(spaceId!, collaborativeKind!, entity.id);
   const priorReceipt = input.entityKind === "document"
     ? safeRecord(entity.documentOperations[0]?.afterJson)
     : safeRecord(safeRecord(entity[entitySourceField(input.entityKind)!]).lastTagReceipt);
@@ -854,23 +1109,33 @@ export async function replaceWorkEntityTags(input: {
 
   if (requestedTagIds.length) {
     const validTags = await prisma.studioTag.findMany({
-      where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true },
+      where: { id: { in: requestedTagIds }, projectId: entity.projectId,
+        AND: [scopedTags, assignableOrRetainedTagWhere(input.entityKind, entityId)] },
       select: { id: true },
     });
     if (validTags.length !== requestedTagIds.length) {
-      return { ok: false, code: "FORBIDDEN", error: "Every tag must be active and belong to the record's Nest." };
+      return { ok: false, code: "FORBIDDEN", error: "Choose available tags from this Nest. Archived tags can stay only on work that already uses them." };
     }
   }
 
   const now = new Date();
-  const saved = await prisma.$transaction(async (tx: any) => {
+  const applyTagReplacement = async (tx: any) => {
     const activeGrant = await tx.studioProjectAccessGrant.findFirst({
       where: { projectId: entity.projectId, email: actorEmail, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
       select: { id: true },
     });
-    if (!activeGrant) return { kind: "forbidden" as const };
+    // Read membership again inside the write transaction. An earlier read or
+    // project grant cannot authorize a removed client-space collaborator.
+    const currentWork = collaborativeKind ? await findOwnedTagEntity(tx, collaborativeKind, entityId, actorUserId, actorEmail) : null;
+    if (collaborativeKind && !currentWork) return { kind: "forbidden" as const };
+    const currentSpaceId = !activeGrant && currentWork ? await writableTagSpace(tx, currentWork, actorUserId) : null;
+    if (!activeGrant && !currentSpaceId) return { kind: "forbidden" as const };
     if (requestedTagIds.length) {
-      const validTagCount = await tx.studioTag.count({ where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true } });
+      const validTagCount = await tx.studioTag.count({ where: {
+        id: { in: requestedTagIds }, projectId: entity.projectId,
+        AND: [activeGrant ? {} : sharedWorkTagCatalogWhere(currentSpaceId!, collaborativeKind!, entityId),
+          assignableOrRetainedTagWhere(input.entityKind, entityId)],
+      } });
       if (validTagCount !== requestedTagIds.length) return { kind: "forbidden" as const };
     }
     const resolvedTags: Array<{ id: string; requestedLabel: string; label: string; slug: string; created: boolean }> = [];
@@ -881,11 +1146,22 @@ export async function replaceWorkEntityTags(input: {
         label,
       });
       if (!resolved.ok) {
+        if (!activeGrant) return { kind: "forbidden" as const };
         if (resolved.code === "ARCHIVED") return { kind: "archived" as const };
         if (resolved.code === "SLUG_CONFLICT") {
           return { kind: "slug-conflict" as const, label, existingLabel: resolved.existingLabel };
         }
         return { kind: "invalid" as const };
+      }
+      // New labels can be created with shared work. Reusing an existing label
+      // by name must have the same scope as choosing its ID from the palette.
+      if (!activeGrant && !resolved.created) {
+        const available = await tx.studioTag.count({ where: {
+          id: resolved.tag.id, projectId: entity.projectId,
+          AND: [sharedWorkTagCatalogWhere(currentSpaceId!, collaborativeKind!, entityId),
+            assignableOrRetainedTagWhere(input.entityKind, entityId)],
+        } });
+        if (available !== 1) return { kind: "forbidden" as const };
       }
       resolvedTags.push({
         id: resolved.tag.id,
@@ -993,11 +1269,11 @@ export async function replaceWorkEntityTags(input: {
       };
     }
     const update = input.entityKind === "task"
-      ? await tx.actionItem.updateMany({ where: { id: entityId, assignedUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+      ? await tx.actionItem.updateMany({ where: { ...entityWhere("task", entityId, actorUserId, actorEmail), projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
       : input.entityKind === "goal"
-        ? await tx.goal.updateMany({ where: { id: entityId, ownerUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+        ? await tx.goal.updateMany({ where: { ...entityWhere("goal", entityId, actorUserId, actorEmail), projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
         : input.entityKind === "note"
-          ? await tx.coachingNote.updateMany({ where: { ...entityWhere("note", entityId, actorUserId, actorEmail), room: { projectId: entity.projectId }, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+          ? await tx.coachingNote.updateMany({ where: { AND: [entityWhere("note", entityId, actorUserId, actorEmail), noteProjectWhere(entity.projectId)], updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
           : await tx.callRoom.updateMany({ where: { id: entityId, createdByUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { metadataJson: { ...safeRecord(entity.metadataJson), lastTagReceipt: receipt } } });
     if (update.count !== 1) return { kind: "conflict" as const };
 
@@ -1040,9 +1316,22 @@ export async function replaceWorkEntityTags(input: {
       tagIds,
       resolvedTags,
     };
+  };
+  const applyOrAbort = async (tx: any) => {
+    const result = await applyTagReplacement(tx);
+    // A rejected second label or stale entity must roll back tags resolved
+    // earlier in this same command, not leave orphaned vocabulary behind.
+    if (result.kind !== "saved") throw new WorkTagTransactionAbort(result);
+    return result;
+  };
+  const saved = await (input.transaction
+    ? applyOrAbort(input.transaction)
+    : prisma.$transaction(applyOrAbort)).catch((error: unknown) => {
+    if (error instanceof WorkTagTransactionAbort) return error.result;
+    throw error;
   });
 
-  if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access and active same-Nest tags are required." };
+  if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Access or available tags changed. Refresh and try again." };
   if (saved.kind === "archived") return { ok: false, code: "FORBIDDEN", error: "That tag is archived. Restore or rename it in the Nest vocabulary before using it." };
   if (saved.kind === "slug-conflict") return { ok: false, code: "CONFLICT", error: `“${saved.label}” conflicts with the existing “${saved.existingLabel}” tag. Choose a more distinct name.` };
   if (saved.kind === "invalid") return { ok: false, code: "INVALID_INPUT", error: "Choose no more than 24 canonical tags and valid new names." };
@@ -1075,6 +1364,7 @@ export async function mutateWorkTagTaxonomy(input: {
   tagId: string;
   operation: WorkTagTaxonomyOperation;
   label?: string;
+  hexColor?: string | null;
   expectedUpdatedAt: Date;
 }): Promise<MutateWorkTagTaxonomyResult> {
   const actorUserId = cleanId(input.actorUserId);
@@ -1082,7 +1372,9 @@ export async function mutateWorkTagTaxonomy(input: {
   const tagId = cleanId(input.tagId);
   const operation = input.operation;
   const label = operation === "RENAME" ? normalizeWorkTagLabel(input.label) : "";
-  if (!actorUserId || !actorEmail || !tagId || !["RENAME", "ARCHIVE", "RESTORE"].includes(operation)
+  const hexColor = input.hexColor === null ? null : normalizeTagColor(input.hexColor);
+  if (!actorUserId || !actorEmail || !tagId || !["RENAME", "ARCHIVE", "RESTORE", "COLOR"].includes(operation)
+    || (operation === "COLOR" && hexColor === undefined)
     || (operation === "RENAME" && !label) || !Number.isFinite(input.expectedUpdatedAt?.getTime())) {
     return { ok: false, code: "INVALID_INPUT", error: "The vocabulary change is incomplete or invalid." };
   }
@@ -1090,7 +1382,7 @@ export async function mutateWorkTagTaxonomy(input: {
   const prisma = input.prisma as any;
   const current = await prisma.studioTag.findUnique({
     where: { id: tagId },
-    select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
+    select: { id: true, projectId: true, label: true, slug: true, hexColor: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
   });
   if (!current) return { ok: false, code: "NOT_FOUND", error: "That tag no longer exists." };
   const writableProjects = await writableProjectIds(input.prisma, actorEmail);
@@ -1111,7 +1403,7 @@ export async function mutateWorkTagTaxonomy(input: {
     if (!activeGrant) return { kind: "forbidden" as const };
     const fresh = await tx.studioTag.findFirst({
       where: { id: tagId, projectId: current.projectId, updatedAt: input.expectedUpdatedAt },
-      select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
+      select: { id: true, projectId: true, label: true, slug: true, hexColor: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
     });
     if (!fresh) return { kind: "conflict" as const };
 
@@ -1135,12 +1427,13 @@ export async function mutateWorkTagTaxonomy(input: {
     const nextActive = operation === "ARCHIVE" ? false : operation === "RESTORE" ? true : fresh.isActive;
     const nextArchivedAt = operation === "ARCHIVE" ? now : operation === "RESTORE" ? null : fresh.archivedAt;
     const nextLabel = operation === "RENAME" ? label : fresh.label;
-    const before = { label: fresh.label, slug: fresh.slug, isActive: fresh.isActive, archivedAt: fresh.archivedAt?.toISOString() ?? null };
-    const after = { label: nextLabel, slug: nextSlug, isActive: nextActive, archivedAt: nextArchivedAt?.toISOString() ?? null };
+    const nextColor = operation === "COLOR" ? hexColor : fresh.hexColor;
+    const before = { label: fresh.label, slug: fresh.slug, hexColor: fresh.hexColor ?? null, isActive: fresh.isActive, archivedAt: fresh.archivedAt?.toISOString() ?? null };
+    const after = { label: nextLabel, slug: nextSlug, hexColor: nextColor ?? null, isActive: nextActive, archivedAt: nextArchivedAt?.toISOString() ?? null };
 
     const update = await tx.studioTag.updateMany({
       where: { id: tagId, projectId: current.projectId, updatedAt: input.expectedUpdatedAt },
-      data: { label: nextLabel, slug: nextSlug, isActive: nextActive, archivedAt: nextArchivedAt },
+      data: { label: nextLabel, slug: nextSlug, hexColor: nextColor, isActive: nextActive, archivedAt: nextArchivedAt },
     });
     if (update.count !== 1) return { kind: "conflict" as const };
 
@@ -1170,7 +1463,7 @@ export async function mutateWorkTagTaxonomy(input: {
     const saved = await tx.studioTag.findUnique({
       where: { id: tagId },
       select: {
-        id: true, label: true, slug: true, isActive: true, archivedAt: true, updatedAt: true,
+        id: true, label: true, slug: true, hexColor: true, isActive: true, archivedAt: true, updatedAt: true,
         aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
       },
     });

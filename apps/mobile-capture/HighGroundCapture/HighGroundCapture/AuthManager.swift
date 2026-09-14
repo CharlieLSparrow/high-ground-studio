@@ -272,6 +272,10 @@ final class AuthManager: ObservableObject {
     }
 
     private init() {
+        if CaptureLaunchConfiguration.usesSignedOutShareExtensionUITest {
+            ShareCaptureBridge.publishOwner(nil)
+            return
+        }
         if let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
             // The singleton is constructed from a SwiftUI StateObject factory.
             // Initialize wrapper storage directly so launch state does not emit
@@ -289,33 +293,17 @@ final class AuthManager: ObservableObject {
         checkExistingSession()
     }
 
-    /// Installs or removes only a marker-bound simulator credential partition.
-    /// Release and physical-device builds contain no such path. This lets UI
-    /// tests prove the system Share Sheet handoff while network actions remain
-    /// disabled and no real Quipsly identity is required.
+    /// Publishes only the launch-scoped simulator owner to the Share Extension.
+    /// Never replace a saved account's Keychain credentials with a fixture.
+    /// Release and physical-device builds contain no such path; simulator
+    /// network actions remain disabled by the preview authentication snapshot.
     nonisolated static func configureShareExtensionUITestOwnerIfRequested() {
         #if DEBUG && targetEnvironment(simulator)
-        let prefix = "--capture-share-owner-ui-preview="
-        guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }) else { return }
-        let rawValue = String(argument.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        let markerAccount = "shareExtensionUITestOwnerInstalled"
-
-        if rawValue == "none" {
-            if getKeychainItem(account: markerAccount) == "1" {
-                for account in ["refreshToken", "accountOwnerID", "verifiedIdentityAtEpochSeconds", markerAccount] {
-                    deleteKeychainItemForUITest(account: account)
-                }
-            }
+        if CaptureLaunchConfiguration.usesSignedOutShareExtensionUITest {
             ShareCaptureBridge.publishOwner(nil)
-            return
+        } else if let owner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
+            ShareCaptureBridge.publishOwner(owner)
         }
-
-        guard !rawValue.isEmpty, rawValue.count <= 256 else { return }
-        saveKeychainItemForUITest(account: "refreshToken", value: "simulator-share-extension-ui-test")
-        saveKeychainItemForUITest(account: "accountOwnerID", value: rawValue)
-        saveKeychainItemForUITest(account: "verifiedIdentityAtEpochSeconds", value: String(Int64(Date().timeIntervalSince1970)))
-        saveKeychainItemForUITest(account: markerAccount, value: "1")
-        ShareCaptureBridge.publishOwner(rawValue)
         #endif
     }
 
@@ -862,8 +850,8 @@ final class AuthManager: ObservableObject {
         // A reachable Nest endpoint can fail independently (for example, media
         // upload storage may be unavailable while sessions and notes are fine).
         // Preserve the authenticated shell and let the owning feature handle
-        // every non-authentication HTTP status. Only transport failures prove
-        // that protected offline access is necessary.
+        // every non-authentication HTTP status. Only explicit connectivity
+        // unavailability, not an endpoint timeout, enters offline access.
         guard firstResult.1.statusCode == 401 else {
             return firstResult
         }
@@ -1248,10 +1236,13 @@ final class AuthManager: ObservableObject {
     /// account partition without deleting a source file.
     nonisolated static func currentStoredOwnerID() -> String? {
         #if DEBUG && targetEnvironment(simulator)
+        if CaptureLaunchConfiguration.usesSignedOutShareExtensionUITest {
+            return nil
+        }
         // The deterministic UI-test identity is deliberately launch-scoped and
         // has no network authority. Keep every protected store on the same
-        // explicit owner even when an unsigned simulator build cannot persist
-        // the marker credential in Keychain. Release and physical-device builds
+        // explicit owner without borrowing or replacing saved Keychain
+        // credentials. Release and physical-device builds
         // can never enter this path.
         if let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
             return normalizedOwnerID(previewOwner)
@@ -1847,29 +1838,7 @@ final class AuthManager: ObservableObject {
 
     private func isNetworkAvailabilityError(_ error: Error) -> Bool {
         guard !isRequestCancellation(error) else { return false }
-        let nsError = error as NSError
-        guard nsError.domain == NSURLErrorDomain else { return false }
-        let codes: Set<Int> = [
-            URLError.notConnectedToInternet.rawValue,
-            URLError.networkConnectionLost.rawValue,
-            URLError.cannotConnectToHost.rawValue,
-            URLError.cannotFindHost.rawValue,
-            URLError.dnsLookupFailed.rawValue,
-            URLError.timedOut.rawValue,
-            URLError.internationalRoamingOff.rawValue,
-            URLError.dataNotAllowed.rawValue,
-            URLError.secureConnectionFailed.rawValue,
-            URLError.serverCertificateHasBadDate.rawValue,
-            URLError.serverCertificateUntrusted.rawValue,
-            URLError.serverCertificateHasUnknownRoot.rawValue,
-            URLError.serverCertificateNotYetValid.rawValue,
-            URLError.clientCertificateRejected.rawValue,
-            URLError.clientCertificateRequired.rawValue,
-            URLError.cannotLoadFromNetwork.rawValue,
-            URLError.resourceUnavailable.rawValue,
-            URLError.badServerResponse.rawValue,
-        ]
-        return codes.contains(nsError.code)
+        return AuthRequestConnectivity.requiresOfflineAccess(for: error)
     }
 
     private func isRequestCancellation(_ error: Error) -> Bool {

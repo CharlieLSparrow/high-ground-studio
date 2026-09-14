@@ -1,6 +1,6 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -188,7 +188,13 @@ export function newLocalAudioPairCorrelationRuntime(input: { pool: InstanceType<
   return { store: new PostgresLocalAudioPairCorrelationStore(input.pool), analyzer: new FfmpegAudioPairCorrelationAnalyzer(), options: { executionId: randomUUID(), buildId: input.buildId, imageDigest: null, leaseMs: input.leaseMs, localMediaRoot: input.localMediaRoot, now: () => new Date() } satisfies LocalAudioPairCorrelationWorkerOptions };
 }
 
-async function authorizedRoot(configuredRoot: string) { const temporaryRoot = await realpath(tmpdir()); const resolved = path.resolve(configuredRoot); await mkdir(resolved, { recursive: true, mode: 0o700 }); const root = await realpath(resolved); if (root === temporaryRoot || !pathIsInside(temporaryRoot, root)) throw new TerminalAudioPairCorrelationError("audio-pair-root-rejected", "Local pair root must be a dedicated directory below the operating-system temporary directory."); return root; }
+async function authorizedRoot(configuredRoot: string) {
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new TerminalAudioPairCorrelationError("audio-pair-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
+  }
+}
 async function authorizedSource(root: string, locator: string) { const source = await realpath(locator).catch(() => ""); if (!source || !pathIsInside(root, source)) throw new TerminalAudioPairCorrelationError("audio-pair-source-path-rejected", "Local pair source escaped the authorized media root."); return source; }
 async function inspectSource(sourcePath: string) { const file = await stat(sourcePath); if (!file.isFile() || file.size <= 0) throw new TerminalAudioPairCorrelationError("audio-pair-source-unavailable", "A retained pair source is empty or unavailable."); return { sizeBytes: file.size, sha256: await sha256File(sourcePath) }; }
 function assertSource(source: AudioPairCorrelationJob["reference"]["source"], evidence: { sizeBytes: number; sha256: string }) { if (source.sizeBytes !== evidence.sizeBytes || source.sha256 !== evidence.sha256 || source.generation !== `sha256:${evidence.sha256}`) throw new TerminalAudioPairCorrelationError("audio-pair-source-byte-mismatch", "A local pair source no longer matches its queued immutable byte receipt."); }

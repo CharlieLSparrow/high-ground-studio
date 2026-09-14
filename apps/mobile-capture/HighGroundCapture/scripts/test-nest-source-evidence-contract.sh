@@ -14,3 +14,18 @@ xcrun swiftc \
   -o "$temporary_root/CaptureNestSourceEvidenceContractTests"
 
 "$temporary_root/CaptureNestSourceEvidenceContractTests"
+
+xcrun swiftc \
+  "$capture_root/HighGroundCapture/CaptureDateCoding.swift" \
+  "$capture_root/Testing/CaptureDateCodingTests.swift" \
+  -o "$temporary_root/CaptureDateCodingTests"
+
+"$temporary_root/CaptureDateCodingTests"
+
+xcrun swiftc \
+  "$capture_root/HighGroundCapture/CaptureDateCoding.swift" \
+  "$capture_root/HighGroundCapture/CaptureSessionScheduling.swift" \
+  "$capture_root/Testing/CaptureSessionSchedulingTests.swift" \
+  -o "$temporary_root/CaptureSessionSchedulingTests"
+
+"$temporary_root/CaptureSessionSchedulingTests"

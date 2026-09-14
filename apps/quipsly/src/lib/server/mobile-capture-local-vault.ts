@@ -4,7 +4,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { createReadStream } from "node:fs";
 import { chmod, copyFile, mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
-import os from "node:os";
+import { defaultLocalMediaRoot, dedicatedLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import { isSafeMobileCaptureUploadSessionId } from "@/lib/server/mobile-capture-security";
@@ -38,7 +38,7 @@ export function getMobileCaptureLocalVaultConfig() {
     && localDatabaseConfigured();
   const configuredRoot = process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT?.trim()
     || (developmentLoopbackDefault
-      ? path.join(os.tmpdir(), "quipsly-media-ingest", "capture-vault")
+      ? path.join(defaultLocalMediaRoot(), "capture-vault")
       : "");
   const configuredPort = /^\d{2,5}$/.test(process.env.PORT?.trim() || "")
     ? process.env.PORT!.trim()
@@ -52,12 +52,7 @@ export function getMobileCaptureLocalVaultConfig() {
   if (!configuredRoot || !configuredOrigin || !localDatabaseConfigured()) {
     throw new Error("Local Capture vault requires an explicit root, loopback HTTP origin, and loopback PostgreSQL database.");
   }
-  const root = path.resolve(/* turbopackIgnore: true */ configuredRoot);
-  const temporaryRoot = path.resolve(/* turbopackIgnore: true */ os.tmpdir());
-  const relativeToTemporaryRoot = path.relative(temporaryRoot, root);
-  if (!relativeToTemporaryRoot || relativeToTemporaryRoot.startsWith("..") || path.isAbsolute(relativeToTemporaryRoot)) {
-    throw new Error("Local Capture vault root must be a dedicated directory below the operating-system temporary directory.");
-  }
+  const root = dedicatedLocalMediaRoot(configuredRoot);
   const origin = new URL(configuredOrigin);
   if (
     origin.protocol !== "http:"

@@ -2,6 +2,7 @@ import "server-only";
 
 import { StoryEntityType, type PrismaClient } from "@prisma/client";
 import { getPrismaClient } from "../prisma";
+import { ensureInvitedStudioUserByEmail } from "../server/studio-user-identity";
 import {
   canManagePrivateFictionNest,
   normalizePrivateFictionEmail,
@@ -102,6 +103,7 @@ export async function importPrivateFictionSeedToQuipsly({
     },
   });
 
+  const owner = await ensureInvitedStudioUserByEmail({ email: normalizedOwnerEmail, prisma });
   await prisma.studioProjectAccessGrant.upsert({
     where: {
       projectId_email: {
@@ -110,6 +112,7 @@ export async function importPrivateFictionSeedToQuipsly({
       },
     },
     update: {
+      memberUserId: owner.id,
       role: "OWNER",
       status: "ACTIVE",
       note: "Private fiction Nest owner",
@@ -117,6 +120,7 @@ export async function importPrivateFictionSeedToQuipsly({
     create: {
       projectId: project.id,
       email: normalizedOwnerEmail,
+      memberUserId: owner.id,
       role: "OWNER",
       status: "ACTIVE",
       createdByEmail: normalizedOwnerEmail,

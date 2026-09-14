@@ -41,6 +41,11 @@ assert(
 );
 
 process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
+const emulatorOrigin = new URL(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`);
+assert(["127.0.0.1", "localhost", "[::1]"].includes(emulatorOrigin.hostname)
+  && !emulatorOrigin.username && !emulatorOrigin.password && emulatorOrigin.pathname === "/"
+  && !emulatorOrigin.search && !emulatorOrigin.hash,
+  "Phone-first acceptance refuses a non-loopback Firebase Auth emulator.");
 const firebaseProjectId =
   process.env.QUIPSLY_LOCAL_FIREBASE_PROJECT ||
   process.env.FIREBASE_PROJECT_ID ||
@@ -121,11 +126,7 @@ async function ensureFirebaseIdentity(identity) {
     throw error;
   });
   if (existing) {
-    return auth.updateUser(existing.uid, {
-      password: identity.password,
-      emailVerified: true,
-      displayName: identity.displayName,
-    });
+    throw new Error("The fresh test identity already exists. Run again for a new reserved identity; no existing user was changed.");
   }
   return auth.createUser({
     email: identity.email,
@@ -164,11 +165,7 @@ async function authenticatedJSON(pathname, token) {
 
 const sourceSha = await run("git", ["rev-parse", "HEAD"], { capture: true });
 const initialStatus = await run("git", ["status", "--porcelain"], { capture: true });
-assert.equal(
-  initialStatus,
-  "",
-  "Commit or intentionally isolate source changes before claiming an exact-source phone-first flight.",
-);
+const cleanSourceAtStart = initialStatus === "";
 
 const firebaseUser = await auth.createUser({
   email: coach.email,
@@ -182,6 +179,7 @@ writeRetainedQAPassword({
   account: coach.email,
   password: coach.password,
 });
+writeRetainedQAPassword({service: keychainService, account: client.email, password: client.password});
 
 const artifactDirectory = path.join(
   repoRoot,
@@ -309,6 +307,7 @@ assert(
 );
 
 await ensureFirebaseIdentity(outsider);
+writeRetainedQAPassword({service: keychainService, account: outsider.email, password: outsider.password});
 const clientToken = await bearerToken(client);
 const outsiderToken = await bearerToken(outsider);
 const clientConversation = await authenticatedJSON(
@@ -374,7 +373,8 @@ const receipt = {
   createdAt: new Date().toISOString(),
   source: {
     sha: sourceSha,
-    trackedWorktreeCleanAtStart: true,
+    trackedWorktreeCleanAtStart: cleanSourceAtStart,
+    workingTreeStatusAtStart: initialStatus,
   },
   lane: {
     name: "fresh-phone-product-automation",

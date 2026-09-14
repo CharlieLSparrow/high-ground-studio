@@ -1,4 +1,8 @@
 import "server-only";
+import type { TranscriptionProgressSource } from "../transcription-progress";
+import { isOriginalSessionRecordingAsset } from "../session-recording-sources";
+import { readSessionRecordingAttempts } from "./session-recording-attempts";
+import { transcriptFailurePresentation } from "./transcript-failure-presentation";
 
 import {
   readTranscriptCorrectionDesk,
@@ -13,7 +17,7 @@ import {
   SessionReviewedSourcePlacementError,
 } from "./session-reviewed-source-placement";
 import {
-  selectSessionTranscriptSources,
+  selectSessionTranscriptRecordingLanes,
   transcriptSourceCaptureGroupId,
   type SessionTranscriptSourceCandidate,
 } from "./session-transcript-source-selection";
@@ -22,8 +26,10 @@ export const SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA =
   "quipsly-session-transcript-correction-desk-v1" as const;
 
 type Candidate = SessionTranscriptSourceCandidate & {
+  status: string;
   checksum: string | null;
   localManifestJson: unknown;
+  participant?: {displayName: string | null} | null;
 };
 
 function text(value: unknown) {
@@ -84,39 +90,97 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     return anchor;
   }
 
-  const rows = (await input.prisma.recordingAsset.findMany({
+  const assets = (await input.prisma.recordingAsset.findMany({
     where: {
       roomId: input.roomId,
-      status: "VERIFIED",
       kind: { in: ["LOCAL_AUDIO", "LOCAL_VIDEO"] },
       participantId: { not: null },
-      checksum: { not: null },
       recordedStartedAt: { not: null },
-      recordedStoppedAt: { not: null },
-      transcriptJobs: { some: { status: "COMPLETED" } },
     },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      status: true,
       participantId: true,
+      participant: {select: {displayName: true}},
       kind: true,
       checksum: true,
       recordedStartedAt: true,
       recordedStoppedAt: true,
       localManifestJson: true,
       transcriptJobs: {
-        where: { status: "COMPLETED" },
+        where: { status: "COMPLETED", segments: { some: {} } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: { id: true, createdAt: true },
       },
     },
   })) as Candidate[];
-  const selected = selectSessionTranscriptSources({
+  // Select the current take before deciding which sources are readable. An
+  // unfinished upload must not disappear or expose an earlier take's words.
+  // The canonical desk below still verifies source identity and readable bytes.
+  const rows = assets.filter(isOriginalSessionRecordingAsset).map(source => ({
+    ...source,
+    transcriptJobs: source.status === "VERIFIED" ? source.transcriptJobs : [],
+  }));
+  const lanes = selectSessionTranscriptRecordingLanes({
     rows,
-    anchorRecordingAssetId: anchor.recording?.id ?? null,
+    attempts: await readSessionRecordingAttempts(input.prisma, input.roomId, rows),
   }).filter((source): source is Candidate => Boolean(source));
+  const pendingLanes = lanes.filter(source => !source.transcriptJobs[0]?.id);
+  const pendingCount = pendingLanes.length;
+  const pendingJobs = pendingCount ? await input.prisma.transcriptJob.findMany({
+    where: {roomId: input.roomId, assetId: {in: pendingLanes.map(source => source.id)}},
+    orderBy: [{createdAt: "desc"}, {id: "desc"}],
+    distinct: ["assetId"],
+    select: {id: true, assetId: true, status: true, provider: true, errorMessage: true, _count: {select: {segments: true, words: true}}},
+  }) : [];
+  const pendingSources: TranscriptionProgressSource[] = pendingLanes.map(source => {
+    if (source.status !== "VERIFIED") {
+      const attention = ["HELD", "FAILED", "CORRUPTED", "QUARANTINED"].includes(source.status);
+      return {recordingAssetId: source.id, participantLabel: text(source.participant?.displayName) || "Participant recording",
+        transcriptJobId: null, status: attention ? "UPLOAD_ATTENTION" : "WAITING_FOR_UPLOAD",
+        error: attention ? "Open Recordings to check this upload. Its transcript will appear here when the recording is available."
+          : "Keep Quipsly open on the recording device until its upload finishes. The transcript will update here.",
+        retryable: false};
+    }
+    const job = pendingJobs.find((job: any) => job.assetId === source.id);
+    const failure = transcriptFailurePresentation(job);
+    return {recordingAssetId: source.id, participantLabel: text(source.participant?.displayName) || "Participant recording",
+      transcriptJobId: job?.id ?? null, status: job?.status ?? null, error: failure.errorMessage,
+      failureCode: failure.failureCode, retryable: failure.failureCode ? failure.retryable : undefined};
+  });
+  const selected = lanes.filter(source => source.transcriptJobs[0]?.id);
   if (!selected.length) {
+    if (pendingCount) {
+      // Transcription readiness does not determine media availability. Resolve
+      // only this take's verified sources through the same authorized desk;
+      // the anchor may belong to an older take and must never fill this slot.
+      const pendingDesks = await Promise.all(pendingLanes.filter(source => source.status === "VERIFIED").map(async source => {
+        const desk = await readTranscriptCorrectionDesk({...input, recordingAssetId: source.id});
+        if (desk.recording?.id !== source.id || desk.recording?.participantId !== source.participantId
+          || !text(source.checksum) || text(desk.recording.sourceSha256).toLowerCase() !== text(source.checksum).toLowerCase()) return null;
+        return {desk: {...desk, sourceSha256: desk.recording.sourceSha256}, source};
+      }));
+      const currentDesks = pendingDesks.filter((value): value is NonNullable<typeof value> => Boolean(value));
+      const current = currentDesks.find(value => value.desk.gate?.allowed && value.desk.playback) ?? currentDesks.at(0);
+      return {
+        ...(current?.desk ?? {
+          ...anchor,
+          transcriptJobId: null, recording: null, playback: null, spectralContext: null,
+          transcriptStatus: null, processing: null, evidence: null, sourceSha256: null,
+          gate: { allowed: false, error: "This recording is not ready to play yet. Check its upload in Recordings." },
+        }),
+        segments: [], speakerGroups: [],
+        sessionTranscript: {
+          schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
+          status: "incomplete" as const,
+          reason: "Transcription progress for this recording is shown below. Earlier recordings remain available in Recordings.",
+          sourceCount: 0, pendingSourceCount: pendingCount, pendingSources, programClock: null,
+          sources: currentDesks.map(value => sourceSummary(value.desk, value.source)),
+        },
+      };
+    }
     return anchor;
   }
 
@@ -144,10 +208,13 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       ...visibleDesk,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
-        status: "single-source" as const,
+        status: pendingCount ? "incomplete" as const : "single-source" as const,
         reason:
-          "Only one participant-owned transcript source is ready in this Session take.",
+          pendingCount ? "You can work with the available transcript now. Progress for the remaining recordings is shown below."
+            : "Transcript from one participant recording.",
         sourceCount: 1,
+        pendingSourceCount: pendingCount,
+        pendingSources,
         programClock: null,
         sources: [sourceSummary(visibleDesk, selected[0]!)],
       },
@@ -167,6 +234,8 @@ export async function readSessionTranscriptCorrectionDesk(input: {
             ? "The participant-owned transcript is still held or changed identity. The current accessible transcript remains reviewable."
             : "Another participant source is still held or changed identity. The exact current source remains reviewable.",
         sourceCount: validDesks.length,
+        pendingSourceCount: pendingCount,
+        pendingSources,
         programClock: null,
         sources: desks.map((desk, index) =>
           sourceSummary(desk, selected[index]!),
@@ -231,9 +300,11 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       segments,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
-        status: "assembled" as const,
-        reason: programClock.reason,
+        status: pendingCount ? "incomplete" as const : "assembled" as const,
+        reason: pendingCount ? "Available participant transcripts are on the timeline now. Progress for the remaining recordings is shown below." : programClock.reason,
         sourceCount: sources.length,
+        pendingSourceCount: pendingCount,
+        pendingSources,
         programClock,
         sources,
       },
@@ -251,6 +322,8 @@ export async function readSessionTranscriptCorrectionDesk(input: {
         status: "held" as const,
         reason: error.message,
         sourceCount: desks.length,
+        pendingSourceCount: pendingCount,
+        pendingSources,
         programClock: null,
         sources: desks.map((desk, index) =>
           sourceSummary(desk, selected[index]!),

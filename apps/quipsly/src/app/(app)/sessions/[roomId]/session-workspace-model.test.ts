@@ -38,11 +38,19 @@ describe("Session workspace modes", () => {
       eyebrow: "Share and continue",
     });
   });
+  it("preserves an exact recording and bounded playback time without treating the ID as access", () => {
+    expect(sessionWorkspaceHref("room", "transcript", {sourceId: "source&at=999", seconds: 8.125}))
+      .toBe("/sessions/room?mode=transcript&source=source%26at%3D999&at=8.125");
+    expect(sessionWorkspaceHref("room", "recordings", {sourceId: null, seconds: 8}))
+      .toBe("/sessions/room?mode=recordings");
+    expect(sessionWorkspaceHref("room", "transcript", {sourceId: "source", seconds: -1}))
+      .toBe("/sessions/room?mode=transcript&source=source");
+  });
 });
 
 describe("purpose-aware Session workspace language", () => {
   it.each([
-    ["COACHING", "Coaching room", "Conversation", "Goals & commitments", "Follow-up"],
+    ["COACHING", "Coaching room", "Conversation", "Tasks and goals", "Follow-up"],
     ["PODCAST", "Recording room", "Take conversation", "Episode work", "Editor & publish"],
     ["RESEARCH_INTERVIEW", "Interview room", "Conversation", "Findings & tasks", "Writing uses"],
     ["INTERNAL_MEETING", "Team room", "Conversation", "Decisions & tasks", "Handoffs"],

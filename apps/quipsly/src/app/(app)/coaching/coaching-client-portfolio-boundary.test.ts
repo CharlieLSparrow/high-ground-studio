@@ -23,16 +23,12 @@ describe("coaching client portfolio boundaries", () => {
     expect(source).toContain("{ authorUserId: session.user.id }");
   });
 
-  it("keeps draft follow-up actions coach-only and client creation actions role-bound", () => {
+  it("keeps draft follow-up actions scoped to the viewer's relationship role", () => {
     const portfolio = fs.readFileSync(
       path.resolve(
         process.cwd(),
         "src/app/(app)/coaching/engagements/page.tsx",
       ),
-      "utf8",
-    );
-    const layout = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/(app)/coaching/layout.tsx"),
       "utf8",
     );
 
@@ -51,8 +47,6 @@ describe("coaching client portfolio boundaries", () => {
       "followUpCount: coachView ? followUpRooms.length : 0",
     );
     expect(portfolio).toContain("const canSchedule = Boolean(");
-    expect(layout).toContain("<CoachingSuiteNav canSchedule={canSchedule} />");
-    expect(layout).toContain('role: "COACH"');
   });
 
   it("serves the same deterministic priority contract to Capture", () => {

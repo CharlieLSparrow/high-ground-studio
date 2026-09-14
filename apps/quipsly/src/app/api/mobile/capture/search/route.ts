@@ -99,6 +99,7 @@ export async function GET(request: Request) {
   }));
   const search = await searchWorkspace(prisma, {
     actorUserId: session.user.id,
+    actorEmail,
     query,
     visibleProjects,
   });

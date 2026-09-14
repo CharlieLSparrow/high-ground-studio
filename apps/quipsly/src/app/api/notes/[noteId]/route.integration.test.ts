@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadLibrary } from "@/app/(app)/library/library-page";
+import { generatedPacketNoteCanRefresh } from "@/lib/server/coaching-packets";
 
 import { PATCH } from "./route";
 
@@ -117,6 +118,105 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       body: JSON.stringify({ title, body, expectedUpdatedAt: expectedUpdatedAt.toISOString(), ...options }),
     }), { params: Promise.resolve({ noteId }) });
   }
+
+  it("handles simultaneous saves as a saved revision and a recoverable conflict, then saves the rebased edit once", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const shared = await prisma.coachingNote.create({ data: {
+      roomId, authorUserId: actorUserId, kind: "SESSION_NOTE", visibility: "SESSION_SHARED",
+      title: "Concurrent session notes", body: "Opening question.\nNext step.",
+    } });
+    const edit = (expectedUpdatedAt: Date, title: string, body: string, clientRequestId: string) => PATCH(new Request(`http://localhost/api/notes/${shared.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedUpdatedAt: expectedUpdatedAt.toISOString(), title, body, clientRequestId,
+        kind: "SESSION_NOTE", visibility: "SESSION_SHARED", tagIds: [] }),
+    }), { params: Promise.resolve({ noteId: shared.id }) });
+    const responses = await Promise.all([
+      edit(shared.updatedAt, "A clearer title", shared.body, randomUUID()),
+      edit(shared.updatedAt, shared.title!, "Opening question.\nNext step: one reflection.", randomUUID()),
+    ]);
+    expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
+    const conflict = await responses.find(response => response.status === 409)!.json();
+    expect(conflict).toMatchObject({ ok: false, code: "CONFLICT", current: { id: shared.id } });
+    expect(await prisma.coachingNoteRevision.count({ where: { noteId: shared.id } })).toBe(1);
+    const requestId = randomUUID();
+    const retry = () => edit(new Date(conflict.current.updatedAt), "A clearer title", "Opening question.\nNext step: one reflection.", requestId);
+    expect((await retry()).status).toBe(200);
+    expect(await (await retry()).json()).toMatchObject({ ok: true, idempotentReplay: true });
+    expect(await prisma.coachingNoteRevision.count({ where: { noteId: shared.id } })).toBe(2);
+  });
+
+  it("retries an aborted write conflict without duplicating the note revision", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const before = await prisma.coachingNote.create({ data: {
+      roomId, authorUserId: actorUserId, kind: "SESSION_NOTE", visibility: "SESSION_SHARED",
+      title: "Aborted transaction", body: "Keep this revision once.",
+    } });
+    const transaction = jest.spyOn(prisma, "$transaction").mockRejectedValueOnce({ code: "P2034" });
+    try {
+      const response = await PATCH(new Request(`http://localhost/api/notes/${before.id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expectedUpdatedAt: before.updatedAt.toISOString(), title: before.title, body: before.body }),
+      }), { params: Promise.resolve({ noteId: before.id }) });
+      expect(response.status).toBe(200);
+      expect(transaction).toHaveBeenCalledTimes(2);
+      expect(await prisma.coachingNoteRevision.count({ where: { noteId: before.id } })).toBe(1);
+    } finally { transaction.mockRestore(); }
+  });
+
+  it("does not return newly private note content in a conflict readback", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const shared = await prisma.coachingNote.create({ data: {
+      roomId, authorUserId: otherUserId, kind: "SESSION_NOTE", visibility: "SESSION_SHARED",
+      title: "Initially shared", body: "Shared opening.",
+    } });
+    const transaction = jest.spyOn(prisma, "$transaction").mockImplementationOnce(async () => {
+      await prisma.coachingNote.update({ where: { id: shared.id }, data: { visibility: "AUTHOR_PRIVATE", body: "Now private." } });
+      return { kind: "conflict" };
+    });
+    try {
+      const response = await PATCH(new Request(`http://localhost/api/notes/${shared.id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expectedUpdatedAt: shared.updatedAt.toISOString(), title: shared.title, body: "My edit." }),
+      }), { params: Promise.resolve({ noteId: shared.id }) });
+      expect(response.status).toBe(404);
+      expect(await response.json()).not.toHaveProperty("current");
+    } finally { transaction.mockRestore(); }
+  });
+
+  it.each(["SUMMARY", "HIGHLIGHT"] as const)("lets collaborators edit generated %s notes with source retention, retries, and isolation", async (kind) => {
+    const generated = await prisma.coachingNote.create({ data: {
+      roomId, authorUserId: actorUserId, kind, visibility: "SESSION_SHARED",
+      title: "Generated session work", body: "The original generated wording.",
+      sourceJson: { origin: "quipsly-session-follow-through", automaticallyCreated: true,
+        packetBuildId: "packet-test", transcriptJobId: "source-transcript",
+        generatedNoteSnapshot: { schema: "quipsly-generated-packet-note-snapshot-v1",
+          title: "Generated session work", body: "The original generated wording." } },
+    } });
+    expect(generatedPacketNoteCanRefresh(generated)).toBe(true);
+    const requestId = randomUUID();
+    const edit = (overrides = {}) => PATCH(new Request(`http://localhost/api/notes/${generated.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Our session recap", body: "We agreed to practice the opening question.",
+        kind, visibility: "SESSION_SHARED", tagIds: [], expectedUpdatedAt: generated.updatedAt.toISOString(),
+        clientRequestId: requestId, ...overrides }),
+    }), { params: Promise.resolve({ noteId: generated.id }) });
+    signedInAs(outsiderUserId, outsiderEmail);
+    expect((await edit()).status).toBe(404);
+    signedInAs(otherUserId, otherEmail);
+    const response = await edit();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, note: { id: generated.id, kind, body: "We agreed to practice the opening question." } });
+    expect(await (await edit()).json()).toMatchObject({ ok: true, idempotentReplay: true });
+    const saved = await prisma.coachingNote.findUniqueOrThrow({ where: { id: generated.id } });
+    expect(generatedPacketNoteCanRefresh(saved)).toBe(false);
+    expect(saved.sourceJson).toMatchObject({ transcriptJobId: "source-transcript", packetBuildId: "packet-test",
+      lastEditReceipt: { previous: { body: generated.body } } });
+    expect(await prisma.coachingNoteRevision.count({ where: { noteId: generated.id } })).toBe(1);
+    expect((await edit({ kind: "SESSION_NOTE", clientRequestId: randomUUID(), expectedUpdatedAt: saved.updatedAt.toISOString() })).status).toBe(400);
+    expect((await edit({ body: "A stale edit", clientRequestId: randomUUID() })).status).toBe(409);
+    await prisma.coachingNote.update({ where: { id: generated.id }, data: { visibility: "AUTHOR_PRIVATE" } });
+    expect((await edit()).status).toBe(404);
+  });
 
   it("updates the exact actor-owned note through its Nest editor grant with a retained previous-value receipt", async () => {
     signedInAs(actorUserId, actorEmail);

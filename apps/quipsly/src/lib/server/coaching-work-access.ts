@@ -1,4 +1,6 @@
 import { Prisma } from "@prisma/client";
+import { coachingEngagementAccessWhere } from "./coaching-engagement";
+import type { SessionAccessActor } from "./session-access";
 
 /** Membership is not permission to read or change explicitly personal work. */
 export function sharedCoachingWorkVisibilityWhere() {
@@ -8,6 +10,22 @@ export function sharedCoachingWorkVisibilityWhere() {
     })),
     // Older engagement-owned records predate per-item visibility.
     { sourceJson: { path: ["visibility"], equals: Prisma.AnyNull } },
+  ] };
+}
+
+/** Show authorized shared tasks and the viewer's personal tasks from this
+ * space's sessions. Context is not sharing: never rewrite engagementId
+ * or infer access to another person's assigned work from room membership. */
+export function coachingSpaceTaskWhere(engagementId: string, actor: SessionAccessActor,
+  access: "read" | "write" = "read"): Prisma.ActionItemWhereInput {
+  const engagement = { is: coachingEngagementAccessWhere(engagementId, actor, access) };
+  return { OR: [
+    { engagementId, engagement, ...sharedCoachingWorkVisibilityWhere() },
+    {
+      engagementId: null, bookingId: null, isNestShared: false,
+      assignedUserId: actor.id,
+      room: { is: { coachingEngagement: engagement } },
+    },
   ] };
 }
 
@@ -30,9 +48,16 @@ export function activeCoachingEngagementParticipantWhere(
   };
 }
 
-/** Booking access keeps pre-engagement coaching Sessions collaborative. */
-function coachingBookingParticipantWhere(userId: string): Prisma.CoachingBookingWhereInput {
-  return { OR: [{ clientUserId: userId }, { coachUserId: userId }] };
+/** A booking inside a client space inherits its current membership. Only
+ * bookings without a client space use their original coach/client pair. */
+export function coachingBookingParticipantWhere(
+  userId: string,
+  access: "read" | "write" = "read",
+): Prisma.CoachingBookingWhereInput {
+  return { OR: [
+    { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } },
+    { engagementId: null, OR: [{ clientUserId: userId }, { coachUserId: userId }] },
+  ] };
 }
 
 export function coachingTaskCollaborationAccessWhere(
@@ -41,7 +66,7 @@ export function coachingTaskCollaborationAccessWhere(
 ): Prisma.ActionItemWhereInput[] {
   return [
     { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } }] },
-    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } }] },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId, access) } }] },
   ];
 }
 
@@ -52,6 +77,20 @@ export function personalOrSharedCoachingGoalAccessWhere(
   return [
     { ownerUserId: userId },
     { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } }] },
-    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } }] },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId, access) } }] },
   ];
+}
+
+/** Render edit controls from the same current policy used by mutations. */
+export async function readEditableCoachingGoalIds(
+  prisma: Pick<Prisma.TransactionClient, "goal">,
+  userId: string,
+  goalIds: string[],
+): Promise<Set<string>> {
+  if (!goalIds.length) return new Set();
+  const rows = await prisma.goal.findMany({
+    where: { id: { in: goalIds }, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write") },
+    select: { id: true },
+  });
+  return new Set(rows.map(row => row.id));
 }

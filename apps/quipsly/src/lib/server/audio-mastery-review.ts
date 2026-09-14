@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import { Prisma } from "@prisma/client";
@@ -91,7 +91,7 @@ export async function loadAudioMasteryReviewContext(input: Coordinates) {
   if (sourceEvidence.sha256 !== job.source.sha256 || sourceEvidence.generation !== job.source.generation || sourceEvidence.sizeBytes !== job.source.sizeBytes) {
     throw new AudioMasteryReviewError("The immutable source changed after mastering. Review is held.", 409, "AUDIO_MASTER_SOURCE_DRIFT");
   }
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const previewPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.derivative.locator));
   if (!previewPath) throw new AudioMasteryReviewError("The mastering preview escaped the authorized media root.", 409, "AUDIO_MASTER_PREVIEW_HELD");
   const [previewStat, previewEvidence] = await Promise.all([stat(previewPath), inspectImmutableStudioMediaSource(previewPath, "audio/wav")]);

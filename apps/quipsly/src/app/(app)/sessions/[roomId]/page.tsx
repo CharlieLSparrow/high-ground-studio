@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CircleAlert, LockKeyhole } from "lucide-react";
 import { notFound, unstable_rethrow } from "next/navigation";
-import { readLastTranscriptMergedNoteSource, readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { sessionNoteSourceDetails } from "@/lib/session-note-source-details";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { reconcileAudioSignalProfile } from "@/lib/server/audio-signal-profile";
@@ -13,6 +13,7 @@ import { sessionAccessWhere, sessionInvitationAccessWhere, sessionMutationAccess
 import { sessionRelationMatchesProject } from "@/lib/server/session-episode-binding";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 import { loadSessionWork } from "@/lib/server/session-work";
+import { loadSessionWorkAssignmentContext } from "@/lib/server/session-work-assignment";
 import { readTranscriptCorrectionImpactSummary } from "@/lib/server/transcript-corrections";
 import {
   canEditSessionNoteProjection,
@@ -236,7 +237,7 @@ export default async function SessionReviewPage({
             _count: { select: { deliveries: true } },
           },
         },
-        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
+        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true } } } },
         recordingAssets: {
           orderBy: { createdAt: "asc" },
           select: {
@@ -381,8 +382,11 @@ export default async function SessionReviewPage({
         },
       });
     }
+    const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
+    const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
     const sourceEvidence = buildSessionSourceEvidence({
       roomId: room.id,
+      audioMasteryAccess: visibleProject ? (visibleProject.role === "OWNER" || visibleProject.role === "EDITOR" ? "write" : "read") : undefined,
       project: room.project
         ? { id: room.project.id, slug: room.project.slug }
         : null,
@@ -524,7 +528,6 @@ export default async function SessionReviewPage({
       where: sessionInvitationAccessWhere(room.id, session.user),
       select: { id: true },
     }));
-    const canViewEntryChoiceMetrics = canManageSessionInvitations;
     // The edit/share service uses this same capability. This selects layout,
     // not access: each recording and mutation remains independently authorized.
     const recordingWorkspaceAudience = canManageSessionInvitations ? "producer" : "participant";
@@ -533,8 +536,6 @@ export default async function SessionReviewPage({
       actor: session.user,
       roomId: room.id,
     });
-    const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
-    const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
     const relationEpisode = sessionRelationMatchesProject({
       roomProjectId: room.project?.id,
       purpose: room.purpose,
@@ -646,13 +647,13 @@ export default async function SessionReviewPage({
     const tagCatalog = visibleProject ? await prisma.studioTag.findMany({
       where: { projectId: visibleProject.id, isActive: true },
       orderBy: [{ category: "asc" }, { label: "asc" }],
-      select: { id: true, label: true, slug: true, category: true, projectId: true },
+      select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true },
     }) : [];
-    const [sessionNoteRows, sessionWork] = await Promise.all([
+    const [sessionNoteRows, sessionWork, workAssignmentContext] = await Promise.all([
       prisma.coachingNote.findMany({
         where: {
           roomId: room.id,
-          kind: { in: ["SESSION_NOTE", "FOLLOW_UP", "DECISION", "PRODUCTION"] },
+          kind: { in: ["SUMMARY", "HIGHLIGHT", "SESSION_NOTE", "FOLLOW_UP", "DECISION", "PRODUCTION"] },
           ...sessionNoteVisibilityWhere({
             actorUserId: session.user.id,
             canViewProjectTeam: canViewProjectTeamNotes,
@@ -671,11 +672,12 @@ export default async function SessionReviewPage({
           createdAt: true,
           updatedAt: true,
           authorUser: { select: { name: true, primaryEmail: true } },
-          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true, hexColor: true } } } },
           _count: { select: { revisions: true } },
         },
       }),
       loadSessionWork({ prisma, roomId: room.id, actor: session.user }),
+      workspaceMode === "work" ? loadSessionWorkAssignmentContext({prisma, roomId: room.id, actor: session.user}) : null,
     ]);
     const isQuickEntry = (value: unknown) => [
       MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA,
@@ -684,18 +686,8 @@ export default async function SessionReviewPage({
     const quickEntryTags = (row: any) => (row.tagLinks || [])
       .map((link: any) => link.tag)
       .filter((tag: any) => tag.isActive && visibleProject && tag.projectId === visibleProject.id)
-      .map(({ id, label, slug }: any) => ({ id, label, slug }));
-    const noteOriginLabel = (sourceJson: unknown) => {
-      const source = jsonObject(sourceJson);
-      if (readTranscriptDerivedNoteSource(sourceJson)) return "Transcript review";
-      if (source.schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA) return "iPhone Capture";
-      if (source.schema === "quipsly-session-continuity-brief-v1") return "Saved continuity";
-      if (source.schema === "quipsly-session-context-v2") return "Session plan";
-      if (source.origin === "nest-session-notes") return "Nest Session note";
-      return "Session record";
-    };
+      .map(({ id, label, slug, hexColor }: any) => ({ id, label, slug, hexColor }));
     const sessionNotes = sessionNoteRows.map((row: any) => {
-      const parsedSourceAnchor = readTranscriptDerivedNoteSource(row.sourceJson);
       return {
         id: row.id,
         title: row.title,
@@ -707,7 +699,7 @@ export default async function SessionReviewPage({
           label: row.authorUser?.name || row.authorUser?.primaryEmail || "Note author",
           isCurrentActor: row.authorUserId === session.user.id,
         },
-        originLabel: noteOriginLabel(row.sourceJson),
+        ...sessionNoteSourceDetails(room.id, row.sourceJson),
         canEdit: canEditSessionNoteProjection({
           actorUserId: session.user.id,
           authorUserId: row.authorUserId,
@@ -721,8 +713,6 @@ export default async function SessionReviewPage({
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
         tags: quickEntryTags(row),
-        sourceAnchor: parsedSourceAnchor?.roomId === room.id ? parsedSourceAnchor : null,
-        lastMergedSource: readLastTranscriptMergedNoteSource(row.sourceJson),
       };
     });
     const sessionQuickEntries = [
@@ -841,7 +831,7 @@ export default async function SessionReviewPage({
         publicationEligible: versionedOutputGraph.currentPacket?.publicationEligible ?? false,
       } : undefined,
     };
-    return <main className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "px-6 py-5 sm:py-8 lg:px-10"}`}><div className="mx-auto max-w-[1240px]">{workspaceMode === "live" ? null : <nav aria-label="Session navigation" className="mb-6 hidden text-sm font-bold text-[#765f40] sm:block"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav>}<SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} recordingWorkspaceAudience={recordingWorkspaceAudience} canViewEntryChoiceMetrics={canViewEntryChoiceMetrics} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} focusedPlaybackSeconds={focusedPlaybackSeconds} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <div className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "min-w-0"}`}><div className="mx-auto max-w-[1240px]"><SessionReviewClient key={`${session.user.id}:${room.id}`} roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} recordingWorkspaceAudience={recordingWorkspaceAudience} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} focusedPlaybackSeconds={focusedPlaybackSeconds} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} workAssignmentContext={workAssignmentContext} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></div>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

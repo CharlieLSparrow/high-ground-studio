@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -12,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { sourceFingerprint } from "./quipsly-source-fingerprint.mjs";
 
 const stateHelperPath = fileURLToPath(
   new URL("./quipsly-local-state.sh", import.meta.url),
@@ -65,6 +67,41 @@ const nestLauncher = readFileSync(nestLauncherPath, "utf8");
 const down = readFileSync(downPath, "utf8");
 const doctor = readFileSync(doctorPath, "utf8");
 const generatedMobileDogfood = readFileSync(generatedMobileDogfoodPath, "utf8");
+test("local auth identities survive both explicit shutdown and service replacement", () => {
+  assert.match(stateHelper, /emulators:export/);
+  assert.match(stateHelper, /Application Support\/Quipsly\/firebase-auth/);
+  assert.match(down, /quipsly_local_save_auth\n\nif/);
+  assert.match(up, /replace_macos_jobs\(\) \{\n  local label\n  quipsly_local_save_auth/);
+  assert.match(up, /auth_import_args=\(--import "\$\{auth_export_dir\}"\)/);
+  assert.match(up, /--export-on-exit "\$\{auth_export_dir\}"/);
+});
+test("auth export preserves spaced arguments and failed exports stop shutdown", () => {
+  const dir = mkdtempSync(join(tmpdir(), "quipsly-auth-persistence-"));
+  try {
+    writeFileSync(join(dir, "firebase.label"), "com.quipsly.local.firebase");
+    const executable = join(dir, "firebase-stub");
+    writeFileSync(executable, '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify(process.argv.slice(2))); process.exit(Number(process.env.EXPORT_STATUS || 0));\n');
+    chmodSync(executable, 0o700);
+    const exportDir = join(dir, "Application Support", "auth");
+    for (const status of [0, 1]) {
+      const result = spawnSync("bash", ["-c", `
+        set -e
+        source "$helper"
+        quipsly_local_auth_export_dir() { printf '%s' "$exportDir"; }
+        curl() { return 0; }
+        quipsly_local_save_auth
+        printf '\\nSHUTDOWN_ALLOWED'
+      `], { encoding: "utf8", env: { ...process.env,
+        helper: stateHelperPath, exportDir, QUIPSLY_LOCAL_STATE_DIR: dir,
+        QUIPSLY_LOCAL_FIREBASE_BIN: executable, EXPORT_STATUS: String(status),
+      } });
+      assert.equal(result.status, status, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout.split("\n")[0]), ["emulators:export", exportDir,
+        "--project", "quipsly-reef", "--config", "ops/firebase-auth-emulator.local.json", "--force"]);
+      assert.equal(result.stdout.includes("SHUTDOWN_ALLOWED"), status === 0);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 const captureAuthManager = readFileSync(
   fileURLToPath(
     new URL(
@@ -175,7 +212,7 @@ test("machine-wide services use machine-wide ownership state", () => {
   );
   assert.match(
     up,
-    /"\$\{local_firebase_bin\}" emulators:start/,
+    /nohup bash "\$\{script_dir\}\/quipsly-local-up.sh" --run-firebase/,
     "both launcher paths must execute the pinned Firebase CLI directly",
   );
   assert.doesNotMatch(up, /pnpm exec firebase/);
@@ -219,7 +256,7 @@ test("machine-wide services use machine-wide ownership state", () => {
   );
   assert.match(
     up,
-    /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_media_root\}\/capture-vault\}"/,
+    /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_worker_media_root\}\/capture-vault\}"/,
   );
   assert.match(
     up,
@@ -562,14 +599,67 @@ test("source fingerprints ignore unrelated commits but detect executable input d
     assert.equal(afterUntrackedInput.status, 0, afterUntrackedInput.stderr);
     assert.notEqual(afterUntrackedInput.stdout, initial.stdout);
 
+    assert.equal(run("git", ["add", "app/draft.ts"]).status, 0);
+    assert.equal(fingerprint().stdout, afterUntrackedInput.stdout, "staging unchanged source must not restart a service");
+    assert.equal(run("git", ["commit", "--quiet", "-m", "add source"]).status, 0);
+    assert.equal(fingerprint().stdout, afterUntrackedInput.stdout, "committing unchanged source must not restart a service");
+
     rmSync(join(fixtureRoot, "app", "draft.ts"));
     rmSync(join(fixtureRoot, "app", "entry.ts"));
     const afterTrackedDeletion = fingerprint();
     assert.equal(afterTrackedDeletion.status, 0, afterTrackedDeletion.stderr);
     assert.notEqual(afterTrackedDeletion.stdout, initial.stdout);
+    assert.equal(run("git", ["add", "-u", "app"]).status, 0);
+    assert.equal(fingerprint().stdout, afterTrackedDeletion.stdout, "staging a deletion does not change the executable files");
+    assert.equal(run("git", ["commit", "--quiet", "-m", "remove source"]).status, 0);
+    assert.equal(fingerprint().stdout, afterTrackedDeletion.stdout);
   } finally {
     rmSync(fixtureRoot, { recursive: true, force: true });
   }
+});
+
+test("source fingerprint handles ignored caches, overlapping scopes, unusual names, and symlink inputs", () => {
+  const root = mkdtempSync(join(tmpdir(), "quipsly-source-content-"));
+  try {
+    assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: root }).status, 0);
+    mkdirSync(join(root, "app"));
+    writeFileSync(join(root, ".gitignore"), "app/cache/\n");
+    const filename = join(root, "app", "chapter \"one\"\nnotes.ts");
+    writeFileSync(filename, "export const chapter = 1;\n");
+    const initial = sourceFingerprint(root, ["app"]);
+    assert.equal(initial, sourceFingerprint(root, ["app", "app/*.ts"]));
+    assert.equal(spawnSync("git", ["add", "app"], { cwd: root }).status, 0);
+    assert.equal(initial, sourceFingerprint(root, ["app"]));
+    mkdirSync(join(root, "app/cache"));
+    writeFileSync(join(root, "app/cache/generated.ts"), "not runtime input\n");
+    assert.equal(initial, sourceFingerprint(root, ["app"]));
+
+    writeFileSync(join(root, "source-one.ts"), "same bytes\n");
+    writeFileSync(join(root, "source-two.ts"), "same bytes\n");
+    const link = join(root, "app/imported.ts");
+    symlinkSync("../source-one.ts", link);
+    const linked = sourceFingerprint(root, ["app"]);
+    assert.notEqual(linked, initial);
+    writeFileSync(join(root, "source-one.ts"), "changed bytes\n");
+    assert.notEqual(linked, sourceFingerprint(root, ["app"]));
+    writeFileSync(join(root, "source-one.ts"), "same bytes\n");
+    rmSync(link);
+    symlinkSync("../source-two.ts", link);
+    assert.notEqual(linked, sourceFingerprint(root, ["app"]), "retargeted links remain observable even with identical content");
+    rmSync(join(root, "source-two.ts"));
+    assert.throws(() => sourceFingerprint(root, ["app"]), { code: "ENOENT" });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("failed Git enumeration produces no successful fingerprint or credential diagnostics", () => {
+  const root = mkdtempSync(join(tmpdir(), "quipsly-source-not-a-repo-"));
+  try {
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL("./quipsly-source-fingerprint.mjs", import.meta.url)), root, "app"], { encoding: "utf8" });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /Cannot fingerprint local source/);
+    assert.doesNotMatch(result.stderr, /fatal:|not a git repository/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("worker fingerprint changes when imported follow-through or domain code changes", () => {
@@ -676,6 +766,7 @@ test("local LiveKit is an owned, health-checked lifecycle dependency", () => {
 
 test("the local lane generates the Prisma client before applying migrations", () => {
   const generateIndex = up.indexOf("pnpm db:generate");
+  const synchronizeIndex = up.indexOf("node scripts/sync-prisma-pnpm-clients.mjs");
   const migrateIndex = up.indexOf("pnpm exec prisma migrate deploy");
 
   assert.ok(
@@ -683,6 +774,8 @@ test("the local lane generates the Prisma client before applying migrations", ()
     "local startup must generate the Prisma client",
   );
   assert.ok(migrateIndex >= 0, "local startup must apply committed migrations");
+  assert.ok(generateIndex < synchronizeIndex && synchronizeIndex < migrateIndex,
+    "every app-resolved client must match the current schema before migration and startup");
   assert.ok(
     generateIndex < migrateIndex,
     "the current schema client must exist before migrations and Nest startup",

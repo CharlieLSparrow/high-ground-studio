@@ -51,6 +51,41 @@ describe("mobile transcript run versioning", () => {
     });
   });
 
+  it.each([
+    ["selected-source", 200],
+    ["older-source-in-same-room", 409],
+  ])("binds an explicitly selected job to its source (%s)", async (assetId, expectedStatus) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "coach", isStaff: false } } as any);
+    const findFirst = jest.fn().mockResolvedValue({ id: "selected-job", assetId });
+    jest.mocked(getPrismaClient).mockReturnValue({ transcriptJob: { findFirst } } as any);
+    jest.mocked(reconcileCaptureTranscriptJob).mockResolvedValue({ status: "completed", transcriptJobId: "selected-job", segmentCount: 2, wordCount: 12, alreadyCompleted: true });
+    const result = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcriptJobId: "selected-job", recordingAssetId: "selected-source" }),
+    }));
+    expect(result.status).toBe(expectedStatus);
+    if (expectedStatus === 409) {
+      expect(await result.json()).toMatchObject({ ok: false, code: "TRANSCRIPT_SOURCE_MISMATCH" });
+      expect(reconcileCaptureTranscriptJob).not.toHaveBeenCalled();
+      expect(dispatchCaptureTranscriptFollowThrough).not.toHaveBeenCalled();
+    } else {
+      expect(await result.json()).toMatchObject({ ok: true, transcriptJobId: "selected-job" });
+    }
+    expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
+  });
+
+  it("does not disclose a source mismatch before checking job access", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "outsider", isStaff: false } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({ transcriptJob: { findFirst: jest.fn().mockResolvedValue(null) } } as any);
+    const result = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcriptJobId: "private-job", recordingAssetId: "wrong-source" }),
+    }));
+    expect(result.status).toBe(404);
+    expect(reconcileCaptureTranscriptJob).not.toHaveBeenCalled();
+    expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
+  });
+
   it("creates a new transcript job instead of requeueing a segment-bearing version", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "user-1", primaryEmail: " Producer@Example.com ", isStaff: false },
@@ -98,30 +133,38 @@ describe("mobile transcript run versioning", () => {
     }));
   });
 
-  it("requeues a failed job only while it has no provider segments", async () => {
+  it.each(["FAILED", "COMPLETED"])("retries %s without discarding the prior completed provider result", async priorStatus => {
+    const retryJobId = priorStatus === "COMPLETED" ? "job-v2" : "job-v1";
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", isStaff: false } } as any);
     jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
     jest.mocked(reconcileCaptureTranscriptJob).mockResolvedValue({
       status: "pending",
-      transcriptJobId: "job-v1",
+      transcriptJobId: retryJobId,
       message: null,
     });
     jest.mocked(ensureCaptureTranscriptProcessingQueued).mockResolvedValue({
       status: "queued",
-      transcriptJobId: "job-v1",
+      transcriptJobId: retryJobId,
       queueObjectName: "queue",
       manifestObjectName: "manifest",
       resultObjectName: "result",
       executionRequested: true,
     });
     const update = jest.fn().mockResolvedValue({ id: "job-v1" });
-    const create = jest.fn();
+    const create = jest.fn().mockResolvedValue({id: retryJobId});
     jest.mocked(getPrismaClient).mockReturnValue({
-      recordingAsset: { findFirst: jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: "FAILED", _count: { segments: 0, words: 0 } }] }) },
-      transcriptJob: { create, update, findFirst: jest.fn().mockResolvedValue({ id: "job-v1" }) },
+      recordingAsset: { findFirst: jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: priorStatus, _count: { segments: 0, words: 0 } }] }) },
+      transcriptJob: { create, update, findFirst: jest.fn().mockResolvedValue({ id: retryJobId }) },
     } as any);
     const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recordingAssetId: "asset-1" }) }));
     expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({transcriptJobId: retryJobId});
+    expect(ensureCaptureTranscriptProcessingQueued).toHaveBeenCalledWith(expect.objectContaining({transcriptJobId: retryJobId}));
+    if (priorStatus === "COMPLETED") {
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({data: expect.objectContaining({assetId: "asset-1", status: "QUEUED", resultJson: expect.objectContaining({versionedFromTranscriptJobId: "job-v1"})})}));
+      expect(update).not.toHaveBeenCalled();
+      return;
+    }
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "job-v1" },
       data: expect.objectContaining({

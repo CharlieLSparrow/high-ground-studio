@@ -14,7 +14,11 @@ import {
   PhoneOff,
   Radio,
   RefreshCw,
+  Settings2,
+  Ellipsis,
   Smartphone,
+  ScreenShare,
+  ScreenShareOff,
   Users,
   Video,
 } from "lucide-react";
@@ -27,17 +31,25 @@ import {
   RoomEvent,
   Track,
   TrackPublication,
+  type Participant,
 } from "livekit-client";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
+import { CallWorkspacePanel } from "@/components/call-workspace-panel";
+import { CallAudioDestinationPicker } from "@/components/call-audio-destination-picker";
+import { CallPeoplePanel } from "@/components/call-people-panel";
+import { CallFollowThrough } from "@/components/call-follow-through";
+import type { BrowserRecordingHandoff } from "@/lib/browser-source-upload-recovery";
+import { BrowserRecordingMicrophone } from "@/lib/browser-recording-microphone";
+import { CallParticipantGallery, type CallParticipant, type CallParticipantVideo } from "@/components/call-participant-gallery";
+import { callEndpointDetails, groupCallPeople } from "@/components/call-roster";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
-import {
-  StudioSoundCheck,
-  type StudioSoundCheckDecision,
-  type StudioSoundCheckDecisionResult,
-} from "@/components/studio-sound-check";
+import { browserMediaSetupMessage, requestBrowserMedia } from "@/lib/browser-media-request";
+import { StudioSoundCheck } from "@/components/studio-sound-check";
+import callSurface from "./call-surface.module.css";
 import { StudioSpeakerTest } from "@/components/studio-speaker-test";
 import {
   decodeEpisodeWatchLiveHint,
@@ -81,6 +93,7 @@ import {
   type BrowserRetainedSourceGuardianEvidence,
 } from "@/lib/session-guardian";
 import { useActiveMediaLifecycle } from "@/hooks/use-active-media-lifecycle";
+import { useCallScreenShare } from "@/hooks/use-call-screen-share";
 
 type DeviceOption = { deviceId: string; label: string };
 type CallAudioMode = "this-device" | "other-device";
@@ -158,6 +171,7 @@ type ProviderRecordingPacket = {
 };
 
 export type LiveSessionRoomStatus = "preflight" | "checking" | "ready" | "joining" | "connected" | "reconnecting" | "ended" | "error";
+export type LiveSessionMicrophoneControl = { muted: boolean; disabled: boolean; toggle: () => Promise<void> };
 
 function readableDeviceLabel(device: MediaDeviceInfo, index: number) {
   return device.label || `${device.kind === "audioinput" ? "Microphone" : device.kind === "videoinput" ? "Camera" : "Output"} ${index + 1}`;
@@ -175,29 +189,6 @@ async function retainedMediaPermissionState(name: "microphone" | "camera") {
     // Safari and some embedded browsers expose the Permissions API without
     // accepting camera/microphone descriptors. Never turn that into a prompt.
     return "unsupported" as const;
-  }
-}
-
-async function getUserMediaWithTimeout(
-  constraints: MediaStreamConstraints,
-  timeoutMs = 15_000,
-) {
-  let expired = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const request = navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
-    if (expired) stopStream(stream);
-    return stream;
-  });
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      expired = true;
-      reject(new Error("Permission prompt timed out. Open this site's camera and microphone controls, allow the device you want, then try again."));
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([request, timeout]);
-  } finally {
-    if (timer) clearTimeout(timer);
   }
 }
 
@@ -369,16 +360,18 @@ function LiveMicrophoneStatus({
   evidence,
   muted,
   recoveryHeld,
+  compact = false,
 }: {
   evidence: StudioAudioMeterEvidence | null;
   muted: boolean;
   recoveryHeld: boolean;
+  compact?: boolean;
 }) {
   const presentation = liveMicrophoneStatusPresentation({ evidence, muted, recoveryHeld });
 
   return (
     <span
-      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-xs font-black ${presentation.style}`}
+      className={`inline-flex items-center gap-2 rounded-full border font-black ${compact ? "min-h-6 px-3 text-[10px]" : "min-h-11 px-4 text-xs"} ${presentation.style}`}
       aria-label={`Live microphone status: ${presentation.label}`}
       data-testid="live-microphone-status"
     >
@@ -395,11 +388,14 @@ function PreJoinMicrophoneActivity({
   evidence: StudioAudioMeterEvidence | null;
   muted: boolean;
 }) {
-  const presentation = liveMicrophoneStatusPresentation({
+  const measured = liveMicrophoneStatusPresentation({
     evidence,
     muted,
     recoveryHeld: false,
   });
+  const presentation = !muted && evidence?.state === "no-signal"
+    ? { ...measured, label: "Listening for your voice", style: "border-border text-muted-foreground", dot: "bg-muted-foreground" }
+    : measured;
   const level = muted
     ? 0
     : studioAudioDbfsPercent(
@@ -408,11 +404,11 @@ function PreJoinMicrophoneActivity({
 
   return (
     <div
-      className={`mt-3 rounded-xl border bg-white/85 p-3 ${presentation.style}`}
+      className={`mt-3 rounded-xl border bg-card p-3 ${presentation.style}`}
       aria-label={`Pre-join microphone status: ${presentation.label}`}
       data-testid="prejoin-microphone-activity"
     >
-      <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wide">
+      <div className="flex items-center justify-between gap-3 text-xs font-semibold">
         <span className="flex items-center gap-2">
           <span
             className={`h-2.5 w-2.5 rounded-full ${presentation.dot}`}
@@ -493,6 +489,18 @@ export function LiveSessionRoom({
   compact = false,
   narrow = false,
   showSessionHeading = true,
+  controlsContainer = null,
+  stageLayout = false,
+  companion = false,
+  onOpenSessionWork,
+  onOpenNotes,
+  onOpenTasks,
+  onOpenChat,
+  toolPanelContainer = null,
+  activeToolPanel,
+  onToolPanelChange,
+  collaborationControls,
+  onMicrophoneControlChange,
 }: {
   callRoomId: string;
   captureGroupId?: string | null;
@@ -510,8 +518,28 @@ export function LiveSessionRoom({
   compact?: boolean;
   narrow?: boolean;
   showSessionHeading?: boolean;
+  controlsContainer?: HTMLElement | null;
+  stageLayout?: boolean;
+  companion?: boolean;
+  onOpenSessionWork?: () => void;
+  onOpenNotes?: (noteId?: string) => void;
+  onOpenTasks?: () => void;
+  onOpenChat?: () => void;
+  toolPanelContainer?: HTMLElement | null;
+  activeToolPanel?: "devices" | "recording" | "details" | "people" | null;
+  onToolPanelChange?: (panel: "devices" | "recording" | "details" | "people" | null) => void;
+  collaborationControls?: ReactNode;
+  onMicrophoneControlChange?: (control: LiveSessionMicrophoneControl | null) => void;
 }) {
   const router = useRouter();
+  const [localToolPanel, setLocalToolPanel] = useState<"devices" | "recording" | "details" | "people" | null>(null);
+  const toolPanel = activeToolPanel === undefined ? localToolPanel : activeToolPanel;
+  const setToolPanel = useCallback((panel: "devices" | "recording" | "details" | "people" | null) => {
+    if (onToolPanelChange) onToolPanelChange(panel);
+    else setLocalToolPanel(panel);
+  }, [onToolPanelChange]);
+  const closeToolPanel = useCallback(() => setToolPanel(null), [setToolPanel]);
+  const [consentContainer, setConsentContainer] = useState<HTMLDivElement | null>(null);
   const experience = useMemo(
     () => sessionExperienceForPurpose(purpose || (kind === "episode" ? "PODCAST" : "COACHING")),
     [kind, purpose],
@@ -528,12 +556,20 @@ export function LiveSessionRoom({
   const [outputId, setOutputId] = useState("");
   const [cameraWanted, setCameraWanted] = useState(experience.defaultCamera);
   const [callAudioMode, setCallAudioMode] = useState<CallAudioMode>("this-device");
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [callAudioModeBusy, setCallAudioModeBusy] = useState(false);
   const [joinMuted, setJoinMuted] = useState(false);
   const [microphoneMuted, setMicrophoneMuted] = useState(false);
   const [microphoneRecoveryHeld, setMicrophoneRecoveryHeld] = useState(false);
+  const microphoneToggleInFlightRef = useRef(false);
   const [cameraMuted, setCameraMuted] = useState(false);
-  const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
+  const [cameraToggleBusy, setCameraToggleBusy] = useState(false);
+  const [cameraControlError, setCameraControlError] = useState<string | null>(null);
+  const cameraToggleInFlightRef = useRef(false);
+  const cameraOperationGenerationRef = useRef(0);
+  const [participants, setParticipants] = useState<CallParticipant[]>([]);
+  const peopleInCall = groupCallPeople(participants);
+  const [recordingControlContainer, setRecordingControlContainer] = useState<HTMLDivElement | null>(null);
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
   const [previewTested, setPreviewTested] = useState(false);
@@ -542,7 +578,20 @@ export function LiveSessionRoom({
   const [sourceLocked, setSourceLocked] = useState(false);
   const [leaveAfterSourceStops, setLeaveAfterSourceStops] = useState(false);
   const [sourceStopRequestVersion, setSourceStopRequestVersion] = useState(0);
-  const [retainedGuardianEvidence, setRetainedGuardianEvidence] = useState<BrowserRetainedSourceGuardianEvidence | null>(null);
+  const recorderIdentity = `${callRoomId}:${captureGroupId?.trim() || ""}`;
+  const [recordingHandoff, setRecordingHandoff] = useState<{identity: string; value: BrowserRecordingHandoff | null} | null>(null);
+  const handleRecordingHandoff = useCallback((value: BrowserRecordingHandoff | null) => {
+    setRecordingHandoff({identity: recorderIdentity, value});
+  }, [recorderIdentity]);
+  const recordingMicrophone = useMemo(() => new BrowserRecordingMicrophone(), [recorderIdentity]);
+  const [retainedGuardianState, setRetainedGuardianState] = useState<{
+    identity: string; evidence: BrowserRetainedSourceGuardianEvidence;
+  } | null>(null);
+  const retainedGuardianEvidence = retainedGuardianState?.identity === recorderIdentity
+    ? retainedGuardianState.evidence : null;
+  const reportRetainedGuardianEvidence = useCallback((evidence: BrowserRetainedSourceGuardianEvidence) => {
+    setRetainedGuardianState({identity: recorderIdentity, evidence});
+  }, [recorderIdentity]);
   const [pageVisible, setPageVisible] = useState(true);
   const [providerRecording, setProviderRecording] = useState<ProviderRecordingState | null>(null);
   const [providerRecordingBusy, setProviderRecordingBusy] = useState(false);
@@ -550,13 +599,14 @@ export function LiveSessionRoom({
     "Cloud recording backup is off. Local recording remains available.",
   );
   const [providerStartArmed, setProviderStartArmed] = useState(false);
-  const [remoteVideoTrackCount, setRemoteVideoTrackCount] = useState(0);
+  const [participantVideos, setParticipantVideos] = useState<CallParticipantVideo[]>([]);
   const [callRecoveryAvailable, setCallRecoveryAvailable] = useState(false);
   const [callEndedByPerson, setCallEndedByPerson] = useState(false);
   const [callPermanentlyClosed, setCallPermanentlyClosed] = useState(false);
   const [localRecordingFallback, setLocalRecordingFallback] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
+  const deviceSettingsRef = useRef<HTMLDetailsElement | null>(null);
   const intentionalDisconnectRef = useRef(false);
   const callJoinTrackedRef = useRef(false);
   const cameraWantedRef = useRef(cameraWanted);
@@ -572,6 +622,9 @@ export function LiveSessionRoom({
   const deviceRefreshGenerationRef = useRef(0);
   const activePermissionRefreshesRef = useRef(0);
   const joinAttemptGenerationRef = useRef(0);
+  const pendingMediaRequestRef = useRef<AbortController | null>(null);
+  const [devicePermissionPending, setDevicePermissionPending] = useState(false);
+  const [deviceSetupError, setDeviceSetupError] = useState<string | null>(null);
   const suppressPreferenceWriteRef = useRef(false);
   const lastPublishedWatchReceiptRef = useRef("");
   const preflightStreamRef = useRef<MediaStream | null>(null);
@@ -579,10 +632,11 @@ export function LiveSessionRoom({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
   const remoteTracksRef = useRef(new Map<string, RemoteTrack>());
-  const remoteVideoTrackSidsRef = useRef(new Set<string>());
+  const remoteAudioElementsRef = useRef(new Map<string, {track: RemoteTrack; element: HTMLMediaElement}>());
   const meterCleanupRef = useRef<(() => void) | null>(null);
   const audioMeterGenerationRef = useRef(0);
   const automaticPreviewAttemptedRef = useRef(false);
+  const previewRequestGenerationRef = useRef(0);
   const lastLeaveRequestVersionRef = useRef(leaveRequestVersion);
   const providerRecordingRequestIdsRef = useRef<Record<"START_EGRESS" | "STOP_EGRESS", string | undefined>>({
     START_EGRESS: undefined,
@@ -609,6 +663,14 @@ export function LiveSessionRoom({
   }, []);
 
   const connected = status === "connected" || status === "reconnecting";
+  const screenShare = useCallScreenShare(connected ? roomRef.current : null);
+  useEffect(() => {
+    if (connected) return;
+    cameraOperationGenerationRef.current += 1;
+    cameraToggleInFlightRef.current = false;
+    setCameraToggleBusy(false);
+    setCameraControlError(null);
+  }, [connected]);
   const mutedForNextJoin = callRecoveryAvailable ? microphoneMuted : joinMuted;
   const cameraEnabledForNextJoin = cameraWanted && !(callRecoveryAvailable && cameraMuted);
   const statusLabel = useMemo(() => {
@@ -686,6 +748,7 @@ export function LiveSessionRoom({
       setCallAudioMode("other-device");
       setMicrophoneMuted(true);
     }
+    setPreferencesLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -696,10 +759,6 @@ export function LiveSessionRoom({
   }, []);
 
   useEffect(() => {
-    setRetainedGuardianEvidence(null);
-  }, [callRoomId, captureGroupId]);
-
-  useEffect(() => {
     onStatusChange?.(status);
   }, [onStatusChange, status]);
 
@@ -708,26 +767,34 @@ export function LiveSessionRoom({
   }, [leaveAfterSourceStops, onProtectionChange, sourceLocked]);
 
   const updateRoster = useCallback((room: Room) => {
+    if (roomRef.current !== room) return;
     const active = new Set(room.activeSpeakers.map((participant) => participant.identity));
     setParticipants([
       {
         identity: room.localParticipant.identity,
+        ...callEndpointDetails(room.localParticipant.identity, room.localParticipant.metadata),
         name: room.localParticipant.name || "You",
         speaking: active.has(room.localParticipant.identity),
+        isLocal: true,
+        microphoneMuted: !room.localParticipant.isMicrophoneEnabled,
       },
       ...Array.from(room.remoteParticipants.values()).map((participant) => ({
         identity: participant.identity,
+        ...callEndpointDetails(participant.identity, participant.metadata),
         name: participant.name || "Participant",
         speaking: active.has(participant.identity),
+        isLocal: false,
+        microphoneMuted: !participant.isMicrophoneEnabled,
       })),
     ]);
   }, []);
 
   const clearRemoteMedia = useCallback(() => {
+    remoteTracksRef.current.forEach(track => { if (track.kind === Track.Kind.Audio) track.detach().forEach(element => element.remove()); });
     remoteMediaRef.current?.replaceChildren();
     remoteTracksRef.current.clear();
-    remoteVideoTrackSidsRef.current.clear();
-    setRemoteVideoTrackCount(0);
+    remoteAudioElementsRef.current.clear();
+    setParticipantVideos([]);
   }, []);
 
   const stopAudioMeter = useCallback(() => {
@@ -738,6 +805,10 @@ export function LiveSessionRoom({
   }, []);
 
   const clearPreflightPreview = useCallback(() => {
+    pendingMediaRequestRef.current?.abort();
+    pendingMediaRequestRef.current = null;
+    setDevicePermissionPending(false);
+    previewRequestGenerationRef.current += 1;
     stopAudioMeter();
     stopStream(preflightStreamRef.current);
     preflightStreamRef.current = null;
@@ -746,6 +817,44 @@ export function LiveSessionRoom({
     setPreviewTested(false);
   }, [attachLocalCameraTrack, stopAudioMeter]);
   const currentPreflightStream = useCallback(() => preflightStreamRef.current, []);
+
+  const acquireMedia = useCallback(async (constraints: MediaStreamConstraints) => {
+    pendingMediaRequestRef.current?.abort();
+    const controller = new AbortController();
+    pendingMediaRequestRef.current = controller;
+    setDevicePermissionPending(true);
+    try {
+      return await requestBrowserMedia(navigator.mediaDevices, constraints, controller.signal);
+    } finally {
+      if (pendingMediaRequestRef.current === controller) {
+        pendingMediaRequestRef.current = null;
+        setDevicePermissionPending(false);
+      }
+    }
+  }, []);
+
+  const cancelDeviceSetup = useCallback(() => {
+    setDeviceSetupError(null);
+    deviceRefreshGenerationRef.current += 1;
+    joinAttemptGenerationRef.current += 1;
+    cameraOperationGenerationRef.current += 1;
+    cameraToggleInFlightRef.current = false;
+    setCameraToggleBusy(false);
+    if (roomRef.current && roomRef.current.state !== ConnectionState.Disconnected) {
+      // Cancelling a permission request is not leaving the call. Keep the
+      // published camera, microphone meter, and transport exactly as they are.
+      pendingMediaRequestRef.current?.abort();
+      pendingMediaRequestRef.current = null;
+      setDevicePermissionPending(false);
+      setShowCallNotice(false);
+      setTechnicalMessage(null);
+      setMessage("Device setup cancelled. Your call is unchanged.");
+      return;
+    }
+    clearPreflightPreview();
+    setStatus("preflight");
+    setMessage("");
+  }, [clearPreflightPreview]);
 
   const startAudioMeter = useCallback(async (audioTrack: MediaStreamTrack | null | undefined) => {
     stopAudioMeter();
@@ -812,67 +921,6 @@ export function LiveSessionRoom({
       setMeterEvidence(null);
     }
   }, [stopAudioMeter]);
-
-  const saveSoundCheckDecision = useCallback(async (
-    decision: StudioSoundCheckDecision,
-  ): Promise<StudioSoundCheckDecisionResult> => {
-    const microphoneLabel = microphones.find((device) => device.deviceId === microphoneId)?.label || "";
-    const cameraLabel = cameraWanted
-      ? cameras.find((device) => device.deviceId === cameraId)?.label || ""
-      : "";
-    const outputLabel = outputs.find((device) => device.deviceId === outputId)?.label
-      || (supportsOutputSelection ? "System default" : "System output selected outside this browser");
-    try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(callRoomId)}/preflight`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          ...decision,
-          clientInstanceId: browserClientInstanceId(),
-          clientKind: "web",
-          deviceLabel: navigator.platform ? `Quipsly Web · ${navigator.platform}` : "Quipsly Web",
-          microphoneLabel,
-          cameraLabel,
-          outputLabel,
-          cameraWanted,
-          audioEvidence: meterEvidence,
-          cameraEvidence,
-          clientReportedAt: new Date().toISOString(),
-        }),
-      });
-      const packet = await response.json().catch(() => ({})) as {
-        ok?: boolean;
-        error?: string;
-        nextAction?: string;
-        preflight?: { status?: "READY" | "NEEDS_ATTENTION" };
-      };
-      if (!response.ok || !packet.ok) {
-        return {
-          ok: false,
-          message: packet.error || "Quipsly could not save the setup receipt. The private sample remains in this tab; retry the same decision.",
-        };
-      }
-      dispatchQuipslyProductEvent("preflight_completed", {
-        surface: "session_workspace",
-        workflow: kind === "coaching" ? "coaching" : "podcast",
-        client_kind: "browser",
-        result: packet.preflight?.status === "READY" ? "success" : "failed",
-        has_video: cameraWanted,
-      });
-      router.refresh();
-      return {
-        ok: true,
-        status: packet.preflight?.status,
-        message: `${packet.preflight?.status === "READY" ? "Setup receipt ready" : "Setup receipt needs attention"}. ${packet.nextAction || "Refresh Session readiness to share this endpoint result with collaborators."} No private audio was uploaded.`,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: `${error instanceof Error ? error.message : "The setup receipt response was lost."} The private sample remains in this tab; retry the same decision and Quipsly will use the same request ID.`,
-      };
-    }
-  }, [callRoomId, cameraEvidence, cameraId, cameraWanted, cameras, kind, meterEvidence, microphoneId, microphones, outputId, outputs, router, supportsOutputSelection]);
 
   const refreshProviderRecording = useCallback(async (announceFailure = false) => {
     try {
@@ -948,11 +996,17 @@ export function LiveSessionRoom({
   }, [outputId]);
 
   const mountRemoteTrack = useCallback((track: RemoteTrack, container: HTMLDivElement) => {
+    if (track.kind !== Track.Kind.Audio) return;
     const trackKey = track.sid || track.mediaStreamTrack.id;
-    container.querySelectorAll<HTMLElement>("[data-livekit-track-sid]").forEach((element) => {
-      if (element.dataset.livekitTrackSid === trackKey) element.remove();
-    });
-    const element = track.attach();
+    const previous = remoteAudioElementsRef.current.get(trackKey);
+    if (previous && previous.track !== track) {
+      previous.track.detach(previous.element);
+      previous.element.remove();
+    }
+    // Subscription events and the post-connect snapshot can report the same
+    // track. Reuse its element instead of creating a second playing stream.
+    const element = previous?.track === track ? previous.element : track.attach();
+    remoteAudioElementsRef.current.set(trackKey, {track, element});
     element.dataset.livekitTrackSid = trackKey;
     element.autoplay = true;
     if (track.kind === Track.Kind.Audio) {
@@ -961,10 +1015,6 @@ export function LiveSessionRoom({
       element.muted = !useAudioHere;
       element.volume = useAudioHere ? 1 : 0;
       if (useAudioHere) void routeAudioOutput(element);
-    } else {
-      element.className = "h-full min-h-0 w-full bg-black object-cover";
-      remoteVideoTrackSidsRef.current.add(trackKey);
-      setRemoteVideoTrackCount(remoteVideoTrackSidsRef.current.size);
     }
     container.appendChild(element);
   }, [routeAudioOutput]);
@@ -976,19 +1026,24 @@ export function LiveSessionRoom({
     remoteTracksRef.current.forEach((track) => mountRemoteTrack(track, element));
   }, [mountRemoteTrack]);
 
-  const attachRemoteTrack = useCallback((track: RemoteTrack) => {
+  const attachRemoteTrack = useCallback((track: RemoteTrack, participant?: Participant) => {
     const trackKey = track.sid || track.mediaStreamTrack.id;
     remoteTracksRef.current.set(trackKey, track);
+    if (track.kind === Track.Kind.Video) {
+      if (participant) setParticipantVideos(current => [...current.filter(video => video.key !== trackKey), {identity: participant.identity, key: trackKey, track}]);
+      return;
+    }
     const container = remoteMediaRef.current;
     if (container) mountRemoteTrack(track, container);
   }, [mountRemoteTrack]);
 
   const detachRemoteTrack = useCallback((track: RemoteTrack) => {
-    track.detach().forEach((element) => element.remove());
+    // React owns video nodes; detaching all tracks must not remove its nodes.
+    if (track.kind === Track.Kind.Audio) track.detach().forEach((element) => element.remove());
+    remoteAudioElementsRef.current.delete(track.sid || track.mediaStreamTrack.id);
     remoteTracksRef.current.delete(track.sid || track.mediaStreamTrack.id);
     if (track.kind !== Track.Kind.Video) return;
-    remoteVideoTrackSidsRef.current.delete(track.sid || track.mediaStreamTrack.id);
-    setRemoteVideoTrackCount(remoteVideoTrackSidsRef.current.size);
+    setParticipantVideos(current => current.filter(video => video.key !== (track.sid || track.mediaStreamTrack.id)));
   }, []);
 
   const refreshDevices = useCallback(async (
@@ -1004,8 +1059,10 @@ export function LiveSessionRoom({
     if (!navigator.mediaDevices?.enumerateDevices) {
       if (!preserveLiveConnection) setStatus("error");
       setMessage("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone or iPad.");
+      setDeviceSetupError("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone or iPad.");
       return false;
     }
+    if (permission !== "none" || cause === "manual") setDeviceSetupError(null);
     if (!preserveLiveConnection && (permission !== "none" || cause !== "initial")) {
       setStatus("checking");
       setMessage(permission === "microphone"
@@ -1020,8 +1077,8 @@ export function LiveSessionRoom({
     if (ownsPermissionRefresh) activePermissionRefreshesRef.current += 1;
     try {
       if (permission !== "none") {
-        clearPreflightPreview();
-        const permissionStream = await getUserMediaWithTimeout({
+        if (!preserveLiveConnection) clearPreflightPreview();
+        const permissionStream = await acquireMedia({
           audio: permission === "microphone" || permission === "media",
           video: permission === "camera" || permission === "media",
         });
@@ -1100,6 +1157,14 @@ export function LiveSessionRoom({
               : "Camera disconnected. Connect or choose another camera, or join with camera off.");
         }
       } else if (room) {
+        // Permission can first arrive after a deliberately muted join. Select
+        // the newly exposed input for both call and recording, without opening
+        // it or changing the participant's mute choice.
+        if (!previousMicrophoneId && nextMicrophoneId && !sourceLockedRef.current) {
+          microphoneIdRef.current = nextMicrophoneId;
+          setMicrophoneId(nextMicrophoneId);
+          setMicrophoneRecoveryHeld(false);
+        }
         if (microphoneDisconnected) {
           if (sourceLockedRef.current) {
             await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
@@ -1209,15 +1274,16 @@ export function LiveSessionRoom({
         if (!preserveLiveConnection) setStatus(nextMicrophones.length && (!cameraWantedRef.current || nextCameras.length) ? "ready" : "preflight");
         setMessage(recoveryMessages.join(" "));
       } else if ((permission === "camera" || permission === "media") && !nextCameras.length) {
-        setShowCallNotice(false);
+        setShowCallNotice(true);
         if (!preserveLiveConnection) setStatus("error");
-        setMessage("Camera access did not expose a usable device. Open this site's camera controls, choose the Canon or desired camera, then try again—or turn off Join with camera.");
+        setMessage("No camera is available. Check its connection and browser permission, or join with camera off.");
+        setDeviceSetupError("No camera is available. Check its connection and browser permission, or join with camera off.");
       } else if (permission === "camera" || permission === "media") {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("ready");
         setMessage(cameraNamesVisible ? "Camera names are visible. Choose the exact camera and run the preview." : "Camera access is available. Use the preview to verify the selected source.");
       } else if (!nextMicrophones.length) {
-        setShowCallNotice(false);
+        setShowCallNotice(permission !== "none" || cause === "manual");
         const waitingForJoinPermission = permission === "none" && cause === "initial";
         if (!preserveLiveConnection) {
           setStatus(waitingForJoinPermission || rawMicrophones.length ? "preflight" : "error");
@@ -1227,25 +1293,32 @@ export function LiveSessionRoom({
           : rawMicrophones.length
             ? "Microphone access is off. Allow it in this site's browser settings, then join again."
             : "No microphone was found. Check the cable and system sound settings, then try again.");
+        if (!waitingForJoinPermission) setDeviceSetupError(rawMicrophones.length
+          ? "Microphone access is off. Allow it in this site's browser settings, then try again."
+          : "No microphone was found. Check its connection and device sound settings, then try again.");
       } else if (cameraWantedRef.current && !nextCameras.length) {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("preflight");
-        setMessage("Microphone names are visible. Allow and choose a camera, or turn off Join with camera for an audio-only call.");
+        setMessage("Your microphone is ready. You can turn on a camera or join with camera off.");
       } else {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("ready");
         if (preserveLiveConnection) {
           if (cause !== "devicechange") setMessage("Call devices refreshed. The conversation stayed connected.");
         } else setMessage(microphoneNamesVisible
-            ? "Microphone names are visible. Choose the exact source, then run the confidence check before joining."
-            : "Microphone access is available. Use the confidence check to verify the selected source.");
+            ? "Your microphone is ready. You can join now or try the optional sound check."
+            : "Microphone access is available. Choose your device or join now.");
       }
       setTechnicalMessage(null);
       return true;
     } catch (error) {
+      if (generation !== deviceRefreshGenerationRef.current || (error instanceof Error && error.name === "AbortError")) return false;
       if (!preserveLiveConnection) setStatus("error");
+      setShowCallNotice(true);
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
-      setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
+      const setupError = browserMediaSetupMessage(error, permission === "media" ? "microphone and camera" : permission === "none" ? "devices" : permission);
+      setMessage(setupError);
+      setDeviceSetupError(setupError);
       return false;
     } finally {
       if (ownsPermissionRefresh) {
@@ -1255,7 +1328,7 @@ export function LiveSessionRoom({
         );
       }
     }
-  }, [attachLocalCameraTrack, clearPreflightPreview, startAudioMeter, stopAudioMeter]);
+  }, [acquireMedia, attachLocalCameraTrack, clearPreflightPreview, startAudioMeter, stopAudioMeter]);
 
   useEffect(() => {
     const wasLocked = previousSourceLockedRef.current;
@@ -1266,43 +1339,62 @@ export function LiveSessionRoom({
   const startSelectedPreview = useCallback(async (audioOnly = false) => {
     if (!navigator.mediaDevices?.getUserMedia) return null;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
-    if (!audioOnly && cameraWanted && !cameraId) {
-      setStatus("error");
-      setMessage("Choose a usable camera or turn off Join with camera before testing this setup.");
-      return;
-    }
+    if (!useCallAudioHere && (audioOnly || !cameraWanted)) return null;
+    const selectedMicrophoneId = microphoneIdRef.current;
+    const selectedCameraId = cameraIdRef.current;
     setStatus("checking");
     setMessage("Opening the selected studio devices…");
+    setTechnicalMessage(null);
+    const generation = ++previewRequestGenerationRef.current;
     try {
-      clearPreflightPreview();
-      const stream = await getUserMediaWithTimeout({
+      const stream = await acquireMedia({
         audio: useCallAudioHere ? {
-          ...(microphoneId ? { deviceId: { exact: microphoneId } } : {}),
+          ...(selectedMicrophoneId ? { deviceId: { exact: selectedMicrophoneId } } : {}),
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         } : false,
-        video: !audioOnly && cameraWanted && cameraId ? {
-          deviceId: { exact: cameraId },
+        video: !audioOnly && cameraWanted ? {
+          ...(selectedCameraId ? { deviceId: { exact: selectedCameraId } } : {}),
           width: { ideal: 1920 },
           height: { ideal: 1080 },
           frameRate: { ideal: 30 },
         } : false,
       });
-      preflightStreamRef.current = stream;
+      if (generation !== previewRequestGenerationRef.current) {
+        stopStream(stream);
+        return null;
+      }
+      const audioTrack = stream.getAudioTracks()[0];
+      const videoTrack = audioOnly ? undefined : stream.getVideoTracks()[0];
+      if ((useCallAudioHere && !audioTrack) || (!audioOnly && cameraWanted && !videoTrack)) {
+        stopStream(stream);
+        throw new Error("The browser did not return the selected input.");
+      }
+      // Replace only the requested inputs, after the replacement is usable.
+      // A microphone check must not blink the camera or destroy a working setup.
+      const preview = preflightStreamRef.current ?? stream;
+      if (preview !== stream) {
+        preview.getTracks().filter(track => track.kind === "audio" || !audioOnly).forEach(track => {
+          preview.removeTrack(track);
+          track.stop();
+        });
+        stream.getTracks().forEach(track => preview.addTrack(track));
+      }
+      preflightStreamRef.current = preview;
       if (!audioOnly && localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.srcObject = preview;
         await localVideoRef.current.play().catch(() => undefined);
       }
-      const videoTrack = audioOnly ? undefined : stream.getVideoTracks()[0];
-      setCameraEvidence(videoTrack
+      if (generation !== previewRequestGenerationRef.current) return null;
+      if (!audioOnly) setCameraEvidence(videoTrack
         ? studioCameraInputEvidence(
             cameras.find((device) => device.deviceId === cameraId)?.label || videoTrack.label || "Selected camera",
             videoTrack.getSettings(),
           )
         : null);
-      const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) await startAudioMeter(audioTrack);
+      if (generation !== previewRequestGenerationRef.current) return null;
       setStatus("ready");
       setPreviewTested(true);
       setTechnicalMessage(null);
@@ -1312,15 +1404,110 @@ export function LiveSessionRoom({
         : useCallAudioHere
           ? "Preview is live. This is a device check only—nothing is sent or recorded."
           : "Camera preview is live. Call audio stays on your other device; nothing is sent or recorded.");
-      return stream;
+      return preview;
     } catch (error) {
-      setStatus("error");
-      setCameraEvidence(null);
+      if (generation !== previewRequestGenerationRef.current) return null;
+      const hasWorkingPreview = preflightStreamRef.current?.getTracks().some(track => track.readyState !== "ended");
+      setStatus(hasWorkingPreview ? "ready" : "error");
+      setShowCallNotice(true);
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a preview error.");
-      setMessage("The selected setup couldn't start. Check the device connection and browser permissions, then try again.");
+      setMessage(hasWorkingPreview
+        ? "That device couldn't start. Your previous setup is still active. Check the connection or choose another device."
+        : browserMediaSetupMessage(error, useCallAudioHere ? !audioOnly && cameraWanted ? "microphone and camera" : "microphone" : "camera"));
       return null;
     }
-  }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId, startAudioMeter]);
+  }, [acquireMedia, cameraId, cameraWanted, cameras, startAudioMeter]);
+
+  const allowAndPreviewDevices = useCallback(async () => {
+    const joinAttempt = joinAttemptGenerationRef.current;
+    const allowed = await refreshDevices(callAudioMode === "this-device"
+      ? (cameraWanted ? "media" : "microphone") : "camera");
+    // Permission may resolve after Join or Leave. Never reopen a lobby stream
+    // over the call that now owns the devices, or after its view was closed.
+    if (allowed && !connected && joinAttempt === joinAttemptGenerationRef.current) {
+      await startSelectedPreview();
+    }
+  }, [callAudioMode, cameraWanted, connected, refreshDevices, startSelectedPreview]);
+
+  const previewLobbyCamera = useCallback(async (enabled: boolean, requestedCameraId = cameraIdRef.current) => {
+    automaticPreviewAttemptedRef.current = true;
+    const generation = ++previewRequestGenerationRef.current;
+    setShowCallNotice(false);
+    cameraWantedRef.current = enabled;
+    setCameraWanted(enabled);
+    cameraMutedRef.current = !enabled;
+    setCameraMuted(!enabled);
+    const existing = preflightStreamRef.current;
+    if (!enabled) {
+      existing?.getVideoTracks().forEach((track) => {
+        track.stop();
+        existing.removeTrack(track);
+      });
+      setCameraEvidence(null);
+      setPreviewTested(Boolean(existing?.getAudioTracks().length));
+      setStatus("ready");
+      setMessage("Camera off.");
+      return;
+    }
+    setStatus("checking");
+    setMessage("Opening your camera…");
+    setTechnicalMessage(null);
+    try {
+      const stream = await acquireMedia({
+        audio: false,
+        video: {
+          ...(requestedCameraId ? { deviceId: { exact: requestedCameraId } } : {}),
+          width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 },
+        },
+      });
+      if (generation !== previewRequestGenerationRef.current) {
+        stopStream(stream);
+        return;
+      }
+      const track = stream.getVideoTracks()[0];
+      if (!track) {
+        stopStream(stream);
+        throw new Error("The browser did not return a camera track.");
+      }
+      const preview = preflightStreamRef.current ?? stream;
+      if (preview !== stream) {
+        preview.getVideoTracks().forEach(oldTrack => { preview.removeTrack(oldTrack); oldTrack.stop(); });
+        preview.addTrack(track);
+      }
+      preflightStreamRef.current = preview;
+      const settings = track.getSettings();
+      const resolvedCameraId = settings.deviceId || requestedCameraId;
+      if (resolvedCameraId) {
+        cameraIdRef.current = resolvedCameraId;
+        setCameraId(resolvedCameraId);
+        setCameras((current) => current.some((device) => device.deviceId === resolvedCameraId)
+          ? current : [...current, { deviceId: resolvedCameraId, label: track.label || "Camera" }]);
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = preview;
+        await localVideoRef.current.play().catch(() => undefined);
+      }
+      if (generation !== previewRequestGenerationRef.current) return;
+      setCameraEvidence(studioCameraInputEvidence(track.label || "Camera", settings));
+      setPreviewTested(true);
+      setTechnicalMessage(null);
+      setStatus("ready");
+      setMessage("Camera preview is live. Nothing is sent or recorded.");
+    } catch (error) {
+      if (generation !== previewRequestGenerationRef.current) return;
+      const hasWorkingCamera = preflightStreamRef.current?.getVideoTracks().some(track => track.readyState !== "ended") === true;
+      cameraWantedRef.current = hasWorkingCamera;
+      setCameraWanted(hasWorkingCamera);
+      setCameraMuted(!hasWorkingCamera);
+      cameraMutedRef.current = !hasWorkingCamera;
+      setStatus("ready");
+      setShowCallNotice(true);
+      setTechnicalMessage(error instanceof Error ? error.message : "Camera preview failed.");
+      setMessage(hasWorkingCamera
+        ? "That camera couldn't start. Your previous camera is still on. Choose another camera or try again."
+        : "Camera couldn't start. Check its connection and browser permission, or join with camera off.");
+    }
+  }, [acquireMedia]);
 
   useEffect(() => {
     automaticPreviewAttemptedRef.current = false;
@@ -1338,6 +1525,7 @@ export function LiveSessionRoom({
     if ((useCallAudioHere && !microphoneId) || (cameraWanted && !cameraId)) return;
     automaticPreviewAttemptedRef.current = true;
 
+    const generation = previewRequestGenerationRef.current;
     const reopenRememberedSetup = async () => {
       const requiredPermissions = [
         useCallAudioHere ? "microphone" as const : null,
@@ -1347,7 +1535,7 @@ export function LiveSessionRoom({
       const states = await Promise.all(
         requiredPermissions.map((name) => retainedMediaPermissionState(name)),
       );
-      if (states.every((state) => state === "granted")) {
+      if (generation === previewRequestGenerationRef.current && states.every((state) => state === "granted")) {
         await startSelectedPreview();
       }
     };
@@ -1421,8 +1609,20 @@ export function LiveSessionRoom({
     void leave();
   }, [leave, leaveRequestVersion]);
 
-  const join = useCallback(async () => {
+  const join = useCallback(async (options?: { withoutDevices?: boolean }) => {
+    // A remembered-preview permission check may still be resolving. From
+    // this point onward the join attempt owns device setup, not the lobby.
+    previewRequestGenerationRef.current += 1;
+    deviceRefreshGenerationRef.current += 1;
+    pendingMediaRequestRef.current?.abort();
     const joinAttempt = ++joinAttemptGenerationRef.current;
+    if (options?.withoutDevices) {
+      setJoinMuted(true);
+      setCameraWanted(false);
+      cameraWantedRef.current = false;
+      cameraToggleInFlightRef.current = false;
+      setCameraToggleBusy(false);
+    }
     const attemptCancelled = () => joinAttempt !== joinAttemptGenerationRef.current;
     let attemptRoom: Room | null = null;
     const abandonAttemptRoom = () => {
@@ -1435,8 +1635,9 @@ export function LiveSessionRoom({
     };
     const recoveringCall = callRecoveryAvailable;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
-    const shouldJoinMuted = recoveringCall ? microphoneMutedRef.current : joinMuted;
-    const shouldJoinWithCamera = cameraWanted && !(recoveringCall && cameraMutedRef.current);
+    const shouldJoinMuted = options?.withoutDevices || (recoveringCall ? microphoneMutedRef.current : joinMuted);
+    if (useCallAudioHere && shouldJoinMuted) recordingMicrophone.setMuted(true);
+    const shouldJoinWithCamera = !options?.withoutDevices && cameraWanted && !(recoveringCall && cameraMutedRef.current);
     const microphoneNeededNow = useCallAudioHere && !shouldJoinMuted;
     const cameraNeededNow = shouldJoinWithCamera;
     let selectedMicrophoneId = microphoneIdRef.current;
@@ -1444,8 +1645,8 @@ export function LiveSessionRoom({
 
     // Join is the familiar, person-owned permission boundary. If the browser
     // can expose permission state, reuse an existing grant without another
-    // prompt. Otherwise a bounded getUserMedia request runs from this click so
-    // an abandoned prompt cannot strand the room on "Joining…". A deliberately
+    // prompt. Otherwise a cancellable request runs from this click; the lobby
+    // can cancel it or join without devices. A deliberately
     // muted join never opens the microphone merely to enumerate it.
     const requiredPermissions = [
       microphoneNeededNow ? "microphone" as const : null,
@@ -1572,20 +1773,28 @@ export function LiveSessionRoom({
       }
       roomRef.current = room;
       room
-        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => attachRemoteTrack(track))
+        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication: RemoteTrackPublication, participant: RemoteParticipant) => { attachRemoteTrack(track, participant); updateRoster(room); })
         .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => detachRemoteTrack(track))
-        .on(RoomEvent.TrackMuted, (publication: TrackPublication) => {
-          if (publication.track?.kind === Track.Kind.Video) {
+        .on(RoomEvent.TrackMuted, (publication: TrackPublication, participant: Participant) => {
+          if (participant !== room.localParticipant && publication.track?.kind === Track.Kind.Video) {
             detachRemoteTrack(publication.track as RemoteTrack);
           }
+          updateRoster(room);
         })
-        .on(RoomEvent.TrackUnmuted, (publication: TrackPublication) => {
-          if (publication.track?.kind === Track.Kind.Video) {
-            attachRemoteTrack(publication.track as RemoteTrack);
+        .on(RoomEvent.TrackUnmuted, (publication: TrackPublication, participant: Participant) => {
+          if (participant !== room.localParticipant && publication.track?.kind === Track.Kind.Video) {
+            attachRemoteTrack(publication.track as RemoteTrack, participant);
           }
+          updateRoster(room);
         })
         .on(RoomEvent.ParticipantConnected, () => updateRoster(room))
-        .on(RoomEvent.ParticipantDisconnected, () => updateRoster(room))
+        .on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+          participant.trackPublications.forEach(publication => { if (publication.track) detachRemoteTrack(publication.track); });
+          setParticipantVideos(current => current.filter(video => video.identity !== participant.identity));
+          updateRoster(room);
+        })
+        .on(RoomEvent.ParticipantNameChanged, () => updateRoster(room))
+        .on(RoomEvent.ParticipantMetadataChanged, () => updateRoster(room))
         .on(RoomEvent.ActiveSpeakersChanged, () => updateRoster(room))
         .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
           const chatThreadKeys = [
@@ -1663,12 +1872,14 @@ export function LiveSessionRoom({
           setMicrophoneRecoveryHeld(false);
           setMicrophoneMuted(shouldJoinMuted);
           microphoneMutedRef.current = shouldJoinMuted;
+          recordingMicrophone.setMuted(Boolean(shouldJoinMuted));
         } catch (error) {
           await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
           stopAudioMeter();
           setMicrophoneMuted(true);
           microphoneMutedRef.current = true;
           setMicrophoneRecoveryHeld(true);
+          recordingMicrophone.setMuted(true);
           joinRecoveryMessages.push("You joined muted because the microphone couldn't start. Choose another microphone in settings and try Unmute.");
           joinTechnicalMessages.push(error instanceof Error ? `Microphone: ${error.message}` : "Microphone: device start failed.");
         }
@@ -1677,6 +1888,7 @@ export function LiveSessionRoom({
         setMicrophoneMuted(true);
         microphoneMutedRef.current = true;
         setMicrophoneRecoveryHeld(recoveringCall ? microphoneRecoveryHeld : joinWithoutMicrophone);
+        if (useCallAudioHere) recordingMicrophone.setMuted(true);
       }
       if (attemptCancelled()) {
         abandonAttemptRoom();
@@ -1713,7 +1925,7 @@ export function LiveSessionRoom({
       suppressPreferenceWriteRef.current = false;
       room.remoteParticipants.forEach((participant: RemoteParticipant) => {
         participant.trackPublications.forEach((publication: RemoteTrackPublication) => {
-          if (publication.track) attachRemoteTrack(publication.track);
+          if (publication.track && !publication.isMuted) attachRemoteTrack(publication.track, participant);
         });
       });
       updateRoster(room);
@@ -1773,7 +1985,7 @@ export function LiveSessionRoom({
             ? "The live call couldn't connect. Retry Join call, or continue with the protected recorder on this device."
             : "The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, kind, microphoneRecoveryHeld, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
+  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, kind, microphoneRecoveryHeld, onEpisodeWatchHint, projectSlug, recordingMicrophone, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -1846,13 +2058,19 @@ export function LiveSessionRoom({
 
   const toggleMicrophone = useCallback(async () => {
     const room = roomRef.current;
-    if (!room) return;
-    if (microphoneMuted && microphoneRecoveryHeld) {
+    if (!room || microphoneToggleInFlightRef.current) return;
+    if (microphoneMuted && microphoneRecoveryHeld && sourceLockedRef.current) {
       setMessage("Choose a working microphone in settings before unmuting.");
       return;
     }
     const nextMuted = !microphoneMuted;
+    if (nextMuted) recordingMicrophone.setMuted(true);
+    microphoneToggleInFlightRef.current = true;
     try {
+      if (!nextMuted && (!microphoneIdRef.current || microphoneRecoveryHeld)) {
+        const prepared = await refreshDevices("microphone", "manual");
+        if (!prepared || !microphoneIdRef.current || roomRef.current !== room || room.state === ConnectionState.Disconnected) return;
+      }
       const selectedMicrophoneId = microphoneIdRef.current;
       const publication = await room.localParticipant.setMicrophoneEnabled(
         !nextMuted,
@@ -1865,6 +2083,10 @@ export function LiveSessionRoom({
             }
           : undefined,
       );
+      if (roomRef.current !== room || room.state === ConnectionState.Disconnected || callAudioModeRef.current !== "this-device") {
+        publication?.track?.stop();
+        return;
+      }
       if (nextMuted) {
         stopAudioMeter();
       } else {
@@ -1872,37 +2094,73 @@ export function LiveSessionRoom({
       }
       setMicrophoneMuted(nextMuted);
       microphoneMutedRef.current = nextMuted;
+      recordingMicrophone.setMuted(nextMuted);
       setTechnicalMessage(null);
     } catch (error) {
       setMessage(nextMuted
-        ? "The microphone couldn't mute. Try again or leave the call."
+        ? "The call microphone couldn't mute. Your local recording is muted. Try again or leave the call."
         : "The microphone couldn't start. Choose another microphone in settings and try again.");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a microphone error.");
+    } finally {
+      microphoneToggleInFlightRef.current = false;
     }
-  }, [microphoneMuted, microphoneRecoveryHeld, startAudioMeter, stopAudioMeter]);
+  }, [microphoneMuted, microphoneRecoveryHeld, recordingMicrophone, refreshDevices, startAudioMeter, stopAudioMeter]);
 
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
-    if (!room) return;
-    const nextEnabled = !cameraWanted || cameraMuted;
-    if (nextEnabled && !cameraId) {
-      setMessage("Choose a usable camera before starting video.");
-      return;
-    }
+    if (!room || sourceLockedRef.current || cameraToggleInFlightRef.current) return;
+    const nextEnabled = !cameraWantedRef.current || cameraMutedRef.current;
+    const generation = ++cameraOperationGenerationRef.current;
+    const stillCurrent = () => generation === cameraOperationGenerationRef.current
+      && roomRef.current === room && room.state !== ConnectionState.Disconnected;
+    cameraToggleInFlightRef.current = true;
+    setCameraToggleBusy(true);
+    setCameraControlError(null);
     try {
-      const publication = await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && cameraId ? { deviceId: cameraId } : undefined);
-      await attachLocalCameraTrack(nextEnabled ? publication?.track?.mediaStreamTrack : null);
+      // Device IDs can be hidden until permission is granted. The SDK acquires
+      // only video here and owns publication; don't open a second camera stream.
+      const selectedCameraId = cameraIdRef.current;
+      const publication = await room.localParticipant.setCameraEnabled(nextEnabled, nextEnabled && selectedCameraId ? { deviceId: selectedCameraId } : undefined);
+      if (!stillCurrent()) {
+        publication?.track?.stop();
+        return;
+      }
+      const mediaTrack = nextEnabled ? publication?.track?.mediaStreamTrack : null;
+      if (nextEnabled && (!mediaTrack || mediaTrack.readyState === "ended")) {
+        throw new Error("The camera did not return a live video track.");
+      }
+      const resolvedCameraId = mediaTrack?.getSettings().deviceId;
+      if (resolvedCameraId) {
+        cameraIdRef.current = resolvedCameraId;
+        setCameraId(resolvedCameraId);
+        setCameras((current) => current.some((camera) => camera.deviceId === resolvedCameraId)
+          ? current : [...current, { deviceId: resolvedCameraId, label: mediaTrack?.label || "Camera" }]);
+      }
+      await attachLocalCameraTrack(mediaTrack);
+      if (!stillCurrent()) return;
       setCameraWanted(true);
+      cameraWantedRef.current = true;
       setCameraMuted(!nextEnabled);
       cameraMutedRef.current = !nextEnabled;
       setTechnicalMessage(null);
     } catch (error) {
-      setMessage(nextEnabled
-        ? "The camera couldn't start. You are still connected; choose another camera in settings and try again."
-        : "The camera couldn't stop. Try again or leave the call.");
+      if (!stillCurrent()) return;
+      const errorName = error instanceof Error ? error.name : "";
+      setCameraControlError(!nextEnabled
+        ? "The camera couldn't stop. Try again or leave the call."
+        : errorName === "NotAllowedError"
+          ? "Camera access is blocked. Allow camera access in your browser’s site settings, then try Start camera again. Your call is still connected."
+          : errorName === "NotFoundError"
+            ? "No camera was found. Connect or enable a camera, then try again. Your call is still connected."
+            : "The camera couldn't start. Your call is still connected. Check that another app isn’t using the camera, or choose another camera in settings and try again.");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a camera error.");
+    } finally {
+      if (generation === cameraOperationGenerationRef.current) {
+        cameraToggleInFlightRef.current = false;
+        setCameraToggleBusy(false);
+      }
     }
-  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted]);
+  }, [attachLocalCameraTrack]);
 
   const chooseCallAudioMode = useCallback(async (nextMode: CallAudioMode) => {
     if (nextMode === callAudioModeRef.current || callAudioModeChangeInFlightRef.current) return;
@@ -1925,7 +2183,15 @@ export function LiveSessionRoom({
       suppressPreferenceWriteRef.current = false;
       setTechnicalMessage(null);
       if (nextMode === "other-device") {
-        if (!connected) clearPreflightPreview();
+        if (!connected) {
+          pendingMediaRequestRef.current?.abort();
+          previewRequestGenerationRef.current += 1;
+          const preview = preflightStreamRef.current;
+          preview?.getAudioTracks().forEach(track => { preview.removeTrack(track); track.stop(); });
+          stopAudioMeter();
+          setPreviewTested(Boolean(preview?.getVideoTracks().length));
+          setStatus("ready");
+        }
         setMicrophoneMuted(true);
         microphoneMutedRef.current = true;
         setMessage(connected
@@ -1950,7 +2216,7 @@ export function LiveSessionRoom({
       callAudioModeChangeInFlightRef.current = false;
       setCallAudioModeBusy(false);
     }
-  }, [clearPreflightPreview, connected, joinMuted, stopAudioMeter]);
+  }, [connected, joinMuted, stopAudioMeter]);
 
   const chooseMicrophone = useCallback(async (nextId: string) => {
     if (!nextId || nextId === microphoneId) return;
@@ -1974,13 +2240,16 @@ export function LiveSessionRoom({
           await startAudioMeter(publication?.track?.mediaStreamTrack);
         }
       }
-      setMicrophoneId(nextId);
       microphoneIdRef.current = nextId;
-      setMicrophoneRecoveryHeld(false);
       if (!connected) {
-        clearPreflightPreview();
-        setStatus("preflight");
+        const selected = await startSelectedPreview(true);
+        if (!selected) {
+          if (microphoneIdRef.current === nextId) microphoneIdRef.current = previousId;
+          return;
+        }
       }
+      setMicrophoneId(nextId);
+      setMicrophoneRecoveryHeld(false);
       const label = microphones.find((device) => device.deviceId === nextId)?.label || "selected microphone";
       setMessage(connected ? `Microphone switched to ${label}.` : `Microphone selected: ${label}.`);
     } catch (error) {
@@ -1988,10 +2257,10 @@ export function LiveSessionRoom({
       microphoneIdRef.current = previousId;
       setMessage(error instanceof Error ? `Microphone switch failed: ${error.message}` : "Microphone switch failed.");
     }
-  }, [clearPreflightPreview, connected, microphoneId, microphoneMuted, microphones, sourceLocked, startAudioMeter]);
+  }, [connected, microphoneId, microphoneMuted, microphones, sourceLocked, startAudioMeter, startSelectedPreview]);
 
   const chooseCamera = useCallback(async (nextId: string) => {
-    if (!nextId || nextId === cameraId) return;
+    if (!nextId || nextId === cameraId || cameraToggleInFlightRef.current) return;
     if (sourceLocked) {
       setMessage("Stop the retained local source before changing cameras. The active take keeps its original measured source profile.");
       return;
@@ -2006,14 +2275,13 @@ export function LiveSessionRoom({
         const mediaTrack = publication?.track?.mediaStreamTrack;
         await attachLocalCameraTrack(mediaTrack);
       }
+      if (!connected && cameraWantedRef.current) {
+        await previewLobbyCamera(true, nextId);
+        return;
+      }
       setCameraId(nextId);
       cameraIdRef.current = nextId;
-      if (!connected) {
-        clearPreflightPreview();
-        setStatus("preflight");
-      } else {
-        setCameraEvidence(null);
-      }
+      setCameraEvidence(null);
       const label = cameras.find((device) => device.deviceId === nextId)?.label || "selected camera";
       setMessage(connected ? `Camera switched to ${label}.` : `Camera selected: ${label}.`);
     } catch (error) {
@@ -2021,7 +2289,7 @@ export function LiveSessionRoom({
       cameraIdRef.current = previousId;
       setMessage(error instanceof Error ? `Camera switch failed: ${error.message}` : "Camera switch failed.");
     }
-  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted, cameras, clearPreflightPreview, connected, sourceLocked]);
+  }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted, cameras, connected, previewLobbyCamera, sourceLocked]);
 
   const chooseOutput = useCallback((nextId: string) => {
     suppressPreferenceWriteRef.current = false;
@@ -2036,7 +2304,7 @@ export function LiveSessionRoom({
       selectAudioOutput?: () => Promise<MediaDeviceInfo>;
     };
     if (!mediaDevices.selectAudioOutput) {
-      setMessage("Choose the MV7i or other headphone output in macOS Sound settings for this browser.");
+      setMessage("Choose your headphones in your device’s sound settings for this browser.");
       return;
     }
     try {
@@ -2069,8 +2337,12 @@ export function LiveSessionRoom({
     };
     navigator.mediaDevices?.addEventListener?.("devicechange", changed);
     return () => {
+      pendingMediaRequestRef.current?.abort();
+      pendingMediaRequestRef.current = null;
       deviceRefreshGenerationRef.current += 1;
       joinAttemptGenerationRef.current += 1;
+      previewRequestGenerationRef.current += 1;
+      cameraOperationGenerationRef.current += 1;
       if (refreshTimer) clearTimeout(refreshTimer);
       navigator.mediaDevices?.removeEventListener?.("devicechange", changed);
       meterCleanupRef.current?.();
@@ -2083,26 +2355,35 @@ export function LiveSessionRoom({
   }, [clearRemoteMedia, refreshDevices]);
 
   useEffect(() => {
+    if (!preferencesLoaded) return;
     const microphone = microphones.find((device) => device.deviceId === microphoneId);
     const camera = cameras.find((device) => device.deviceId === cameraId);
     const output = outputs.find((device) => device.deviceId === outputId);
-    if (!microphone && !camera && !output && callAudioMode === "this-device") return;
     if (suppressPreferenceWriteRef.current) {
       suppressPreferenceWriteRef.current = false;
       return;
     }
-    window.localStorage.setItem(PREFERRED_DEVICES_KEY, JSON.stringify({
+    const noVisibleDevices = !microphone && !camera && !output;
+    // Browsers can withhold device IDs until permission is granted. Explicit
+    // audio/mute/camera choices still belong to the person and must survive a
+    // reload, without erasing the last known hardware selections.
+    const hardware = noVisibleDevices ? readPreferredDevices() : {
       microphoneId: microphone?.deviceId,
       microphoneLabel: microphone?.label,
       cameraId: camera?.deviceId,
       cameraLabel: camera?.label,
       outputId: output?.deviceId,
       outputLabel: output?.label,
+    };
+    try { window.localStorage.setItem(PREFERRED_DEVICES_KEY, JSON.stringify({
+      ...hardware,
       cameraWanted,
       joinMuted,
       callAudioMode,
-    } satisfies PreferredDevices));
-  }, [callAudioMode, cameraId, cameraWanted, cameras, joinMuted, microphoneId, microphones, outputId, outputs]);
+    } satisfies PreferredDevices)); } catch {
+      // Storage restrictions must not prevent joining; current choices still apply.
+    }
+  }, [preferencesLoaded, callAudioMode, cameraId, cameraWanted, cameras, joinMuted, microphoneId, microphones, outputId, outputs]);
 
   useEffect(() => {
     if (!connected) return;
@@ -2115,14 +2396,21 @@ export function LiveSessionRoom({
   }, [callAudioMode, connected, outputId, routeAudioOutput]);
 
   useEffect(() => {
+    // Device failures and returning from companion audio can also leave the
+    // call muted. Never let its displayed muted state conceal a live master.
+    // A transport disconnect alone does not change the retained-source choice.
+    if (connected && callAudioMode === "this-device" && microphoneMuted) recordingMicrophone.setMuted(true);
+  }, [callAudioMode, connected, microphoneMuted, recordingMicrophone]);
+
+  useEffect(() => {
     void refreshProviderRecording(false);
     const interval = window.setInterval(() => void refreshProviderRecording(false), 12_000);
     return () => window.clearInterval(interval);
   }, [refreshProviderRecording]);
 
-  const handlePreparationStateChange = useCallback((state: {
-    participantReady: boolean;
-    everyoneReady: boolean;
+  const handleRecordingConsentChange = useCallback((state: {
+    participantConsentGranted: boolean;
+    everyoneConsentGranted: boolean;
   }) => {
     // Joining muted is the conventional fallback when a microphone prompt is
     // denied, dismissed, or cannot expose a usable input. Keep that immediate
@@ -2130,10 +2418,10 @@ export function LiveSessionRoom({
     // overwrite the reason Unmute is unavailable.
     if (!connected || microphoneRecoveryHeld) return;
     setMessage(
-      !state.participantReady
+      !state.participantConsentGranted
         ? "You’re connected. Recording is off until you allow it."
-        : state.everyoneReady
-          ? "You’re connected. Everyone is ready to record."
+        : state.everyoneConsentGranted
+          ? "You’re connected. Everyone has allowed recording."
           : "You’re connected. Your recording choice is saved. Waiting for the other participant.",
     );
   }, [connected, microphoneRecoveryHeld]);
@@ -2154,10 +2442,23 @@ export function LiveSessionRoom({
       conversationConnected={connected || callRecoveryAvailable || localRecordingFallback || sourceLocked}
       conversationEnded={callEndedByPerson}
       callTransportInterrupted={status === "reconnecting" || callRecoveryAvailable || localRecordingFallback}
+      recordingMicrophone={recordingMicrophone}
       onSourceLockChange={setSourceLocked}
+      onRecordingHandoffChange={handleRecordingHandoff}
       stopRequestVersion={sourceStopRequestVersion}
-      onGuardianEvidenceChange={setRetainedGuardianEvidence}
-      onPreparationStateChange={handlePreparationStateChange}
+      onGuardianEvidenceChange={reportRetainedGuardianEvidence}
+      onRecordingConsentChange={handleRecordingConsentChange}
+      consentContainer={stageLayout && connected && toolPanel !== "recording" ? consentContainer : null}
+      controlsContainer={stageLayout ? recordingControlContainer : null}
+      presentation={stageLayout ? "panel" : "card"}
+      onOpenRecordingSettings={() => setToolPanel("recording")}
+      onOpenDeviceSettings={() => {
+        if (stageLayout) setToolPanel("devices");
+        const settings = deviceSettingsRef.current;
+        if (!settings) return;
+        settings.open = true;
+        settings.querySelector("summary")?.focus();
+      }}
     />
   ) : (
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">
@@ -2166,80 +2467,134 @@ export function LiveSessionRoom({
       <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session. If recording is still unavailable, ask the host to reopen it.</p>
     </section>
   );
-  const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops;
-  const callVideoStage = (
-    <div
-      data-testid="call-video-stage"
-      className={`relative overflow-hidden rounded-2xl border border-[#d8c7a7] bg-[#211a14] ${!connected && !cameraWanted ? "h-28" : "aspect-video"}`}
-      aria-label={remoteVideoTrackCount > 0 ? "Call video stage with your preview" : "Your camera preview"}
-    >
-      <div
-        ref={bindRemoteMediaElement}
-        className={`absolute inset-0 grid overflow-hidden bg-black ${remoteVideoTrackCount > 1 ? "grid-cols-2" : "grid-cols-1"}`}
-        aria-label="Remote participant media"
-      />
-      <video
-        ref={bindLocalVideoElement}
-        muted
-        playsInline
-        aria-label="Your camera"
-        className={remoteVideoTrackCount > 0
-          ? `absolute bottom-3 right-3 z-10 aspect-video w-[32%] max-w-56 rounded-xl border-2 border-white/90 bg-black object-cover shadow-2xl ${cameraWanted && !cameraMuted ? "" : "invisible"}`
-          : `absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "opacity-20"}`}
-      />
-      {remoteVideoTrackCount === 0 && (!cameraWanted || cameraMuted) ? <div className="absolute inset-0 grid place-items-center text-center text-[#f5dfb9]"><div><CameraOff className="mx-auto" aria-hidden="true" /><p className="mt-2 text-xs font-black uppercase tracking-wide">Camera off</p></div></div> : null}
-      {!connected && remoteVideoTrackCount === 0 && cameraWanted && !cameraMuted && !previewTested ? (
-        <div className="absolute inset-0 grid place-items-center bg-black/35 px-6 text-center text-white">
-          <div>
-            <Camera className="mx-auto" aria-hidden="true" />
-            <p className="mt-2 text-xs font-black uppercase tracking-wide">Camera starts when you join</p>
-            <p className="mt-1 text-[10px] font-bold text-white/80">Preview is available in audio and video settings.</p>
-          </div>
-        </div>
-      ) : null}
-      {remoteVideoTrackCount > 0 && (!cameraWanted || cameraMuted) ? <div className="absolute bottom-3 right-3 z-10 inline-flex min-h-10 items-center gap-2 rounded-full bg-black/75 px-3 text-[10px] font-black uppercase tracking-wide text-white"><CameraOff size={14} aria-hidden="true" /> You · Camera off</div> : null}
-      {remoteVideoTrackCount === 0 ? <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">You · {sessionTitle}</div> : cameraWanted && !cameraMuted ? <div className="absolute bottom-5 right-5 z-20 rounded-full bg-black/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">You</div> : null}
+  const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops ||
+    (retainedGuardianEvidence?.protectedRecoveryCount ?? 0) > 0;
+  const callVideoStage = connected ? (
+    <CallParticipantGallery companion={companion} participants={participants} videos={[...participantVideos, ...screenShare.videos]}
+      bindLocalVideo={bindLocalVideoElement} localCameraOn={cameraWanted && !cameraMuted}
+      localMicrophoneMuted={microphoneMuted || callAudioMode === "other-device"} />
+  ) : (
+    <div data-testid="call-video-stage" aria-label="Your camera preview"
+      className={`relative overflow-hidden rounded-2xl bg-[#211a14] ${stageLayout ? "min-h-40 aspect-video max-h-[45dvh]" : !cameraWanted ? "h-28" : "aspect-video"}`}>
+      <video ref={bindLocalVideoElement} muted playsInline aria-label="Your camera"
+        className={`absolute inset-0 h-full w-full object-cover ${cameraWanted && !cameraMuted ? "" : "invisible"}`} />
+      {(!cameraWanted || cameraMuted) ? <div className="absolute inset-0 grid place-items-center text-[#f5dfb9]">
+        <div className="text-center"><CameraOff className="mx-auto size-8 opacity-70" aria-hidden="true" /><p className="mt-3 text-sm font-medium">Camera off</p></div>
+      </div> : !previewTested ? <div className="absolute inset-0 grid place-items-center bg-black/35 px-6 text-center text-white">
+        <div><Camera className="mx-auto" aria-hidden="true" /><p className="mt-2 text-sm font-semibold">Camera starts when you join</p>
+        <p className="mt-1 text-xs text-white/80">Preview is available in audio and video settings.</p></div>
+      </div> : null}
+      <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white">You</div>
     </div>
   );
+  useEffect(() => {
+    onMicrophoneControlChange?.(connected && callAudioMode === "this-device" ? {
+      muted: microphoneMuted,
+      disabled: microphoneMuted && microphoneRecoveryHeld && sourceLocked,
+      toggle: toggleMicrophone,
+    } : null);
+  }, [connected, callAudioMode, microphoneMuted, microphoneRecoveryHeld, sourceLocked, toggleMicrophone, onMicrophoneControlChange]);
+  useEffect(() => () => onMicrophoneControlChange?.(null), [onMicrophoneControlChange]);
+
+  const callControls = connected ? (
+    <div className="flex flex-col gap-2" role="group" aria-label="Call controls">
+      <div data-testid="call-control-rows" className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-center lg:gap-4">
+      <div data-testid="call-primary-controls" className="grid min-w-0 grid-cols-2 items-stretch justify-center gap-2 min-[380px]:flex [&>button]:min-w-11 min-[380px]:[&>button]:flex-1 lg:[&>button]:flex-none">
+        {callAudioMode === "this-device" ? (
+          <button type="button" title={microphoneMuted ? "Unmute" : "Mute"} onClick={() => void toggleMicrophone()} aria-pressed={microphoneMuted} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 sm:flex-row sm:gap-2 ${microphoneMuted ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"}`}>{microphoneMuted ? <MicOff size={18} /> : <Mic size={18} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
+        ) : <button type="button" title="Change call audio" onClick={() => setToolPanel("devices")} aria-label="Audio on other device, change audio settings" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-muted px-3 text-xs font-semibold text-foreground"><Smartphone size={18} /> Audio on other device</button>}
+        <button type="button" title={!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"} onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold disabled:opacity-45 sm:flex-row sm:gap-2 ${!cameraWanted || cameraMuted ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"}`}>{cameraToggleBusy ? <LoaderCircle size={18} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={18} /> : <Camera size={18} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
+        {stageLayout && typeof captureGroupId === "string" && captureGroupId.trim() ? <div ref={setRecordingControlContainer} className="min-w-0 self-center" data-testid="call-recording-control-slot" /> : null}
+        <button type="button" title={sourceLocked ? "Stop recording and leave" : "Leave"} onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-rose-800 px-3 py-2 text-xs font-semibold text-white disabled:cursor-wait disabled:opacity-60 sm:flex-row sm:gap-2"><PhoneOff size={18} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
+      </div>
+      {stageLayout ? <div data-testid="call-secondary-controls" className="grid min-w-0 grid-cols-3 items-center justify-center gap-1 border-t border-border pt-1 min-[380px]:flex lg:border-l lg:border-t-0 lg:pl-3 lg:pt-0 [&>button]:min-w-0 min-[380px]:[&>button]:flex-1 lg:[&>button]:flex-none">
+        <button type="button" onClick={() => void (screenShare.sharing || screenShare.busy ? screenShare.stop() : screenShare.start())}
+          title={screenShare.sharing ? "Stop sharing" : "Share screen"} aria-pressed={screenShare.sharing}
+          className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${screenShare.sharing ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+          {screenShare.sharing ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
+          {screenShare.busy ? "Cancel sharing" : screenShare.sharing ? "Stop sharing" : "Share screen"}
+        </button>
+        {collaborationControls}
+        <button type="button" title="People" onClick={() => setToolPanel(toolPanel === "people" ? null : "people")} aria-expanded={toolPanel === "people"} className={`inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold sm:flex-row sm:gap-2 ${toolPanel === "people" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><Users size={18} /><span>People <span className="tabular-nums">{peopleInCall.length}</span></span></button>
+        {!captureGroupId?.trim() ? <button type="button" title="Recording" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl px-3 text-xs font-semibold hover:bg-muted"><Radio size={18} />Recording</button> : null}
+        <button type="button" title="Devices" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Settings2 size={18} />Devices</button>
+        <button type="button" title="More" onClick={() => setToolPanel("details")} className="inline-flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-muted sm:flex-row sm:gap-2"><Ellipsis size={18} />More</button>
+      </div> : null}
+      </div>
+      {callAudioMode === "this-device" ? <div data-testid="call-microphone-status" data-routine={!microphoneRecoveryHeld}><LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} compact={Boolean(controlsContainer)} /></div> : null}
+      {stageLayout && toolPanel !== "devices" && devicePermissionPending ? <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+        <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />Waiting for device access…
+        <button type="button" onClick={cancelDeviceSetup} className="min-h-11 px-2 font-semibold underline underline-offset-4">Cancel device setup</button>
+      </div> : null}
+      {stageLayout && toolPanel !== "devices" && !devicePermissionPending && deviceSetupError ? <div role="alert" className="rounded-xl border border-destructive/30 bg-card p-3 text-xs">
+        <p>{deviceSetupError}</p>
+        <button type="button" onClick={() => setToolPanel("devices")} className="min-h-11 font-semibold underline underline-offset-4">Device settings</button>
+      </div> : null}
+      {cameraControlError ? <p role="alert" className="text-xs leading-5 text-destructive">{cameraControlError}</p> : null}
+      {screenShare.error ? <p role="alert" className="text-xs leading-5 text-destructive">{screenShare.error}</p> : null}
+      {screenShare.sharing ? <p role="status" className="text-center text-xs text-muted-foreground">You’re sharing your screen live. Local recordings still capture your microphone and camera, not the shared screen.</p> : null}
+    </div>
+  ) : null;
+
+  const microphoneTest = !connected && callAudioMode === "this-device" ? <StudioSoundCheck
+    getInputStream={currentPreflightStream}
+    prepareInputStream={() => startSelectedPreview(true)}
+    microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
+    outputId={outputId}
+    evidence={meterEvidence}
+    setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
+    disabled={status === "checking" || status === "joining"}
+  /> : null;
 
   return (
-    <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <section data-call-companion={companion} className={stageLayout ? "flex h-full min-h-0 min-w-0 flex-col text-foreground" : `overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
+      <div ref={bindRemoteMediaElement} aria-label="Remote participant audio" className="hidden" />
+      <div data-call-heading className="flex flex-wrap items-start justify-between gap-4">
         <div className={showSessionHeading ? "max-w-3xl" : "sr-only"}>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Call · {experience.label}</p>
           <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{sessionTitle}</h2>
         </div>
-        <div className={showSessionHeading || connected ? "flex flex-wrap items-center gap-2" : "sr-only"}>
-          {connected ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">{participants.length} in call</span> : null}
+        <div className={showSessionHeading || connected && !stageLayout ? "flex flex-wrap items-center gap-2" : "sr-only"}>
+          {connected ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">{peopleInCall.length} in call</span> : null}
           <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
         </div>
       </div>
 
-      <div className={`${showSessionHeading ? "mt-5 " : ""}grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
-        <div className="space-y-4">
-          {!connected && callPermanentlyClosed ? (
+      <div className={stageLayout ? "flex min-h-0 flex-1 flex-col" : `${showSessionHeading ? "mt-5 " : ""}grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
+        <div data-call-stage-content className={stageLayout ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
+          {stageLayout && status === "ended" && callEndedByPerson ? (
+            <CallFollowThrough roomId={callRoomId}
+              recording={recordingHandoff?.identity === recorderIdentity ? recordingHandoff.value : null}
+              onOpenWork={onOpenSessionWork} onOpenRecording={() => setToolPanel("recording")}
+              onOpenNotes={onOpenNotes} onOpenTasks={onOpenTasks} onOpenChat={onOpenChat}
+              onRejoin={callPermanentlyClosed ? undefined : () => void join()} />
+          ) : !connected && callPermanentlyClosed ? (
             <section className="rounded-2xl border border-slate-300 bg-slate-50 p-4" aria-label="Call closed">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Call ended</p>
               <h3 className="mt-1 font-serif text-2xl font-black text-slate-950">This Session is closed</h3>
               <p className="mt-2 text-xs font-bold leading-5 text-slate-800">Your retained recording is separate and remains available below to stop, save, upload, or recover.</p>
             </section>
           ) : !connected ? (
-            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 sm:p-5" aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <section className={stageLayout ? callSurface.lobby : "rounded-2xl border border-border bg-card p-4 sm:p-5"} aria-label={callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}>
+              <div className={`flex flex-wrap items-start justify-between gap-3 ${stageLayout ? callSurface.lobbyHeading : ""}`}>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">{callRecoveryAvailable ? "Call disconnected" : "Call lobby"}</p>
-                  <h3 className="mt-1 font-serif text-2xl font-black text-violet-950">{callRecoveryAvailable ? "Ready to rejoin" : "Ready to join"}</h3>
-                  <p className="mt-1 text-xs font-bold leading-5 text-violet-900">
+                  {!stageLayout ? <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{callRecoveryAvailable ? "Call disconnected" : "Call lobby"}</p> : null}
+                  <h3 className="text-2xl font-semibold text-foreground">{callRecoveryAvailable ? "Ready to rejoin?" : "Ready to join?"}</h3>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
                     {callAudioMode === "other-device"
                       ? "Call audio on your other device"
-                      : microphones.find((device) => device.deviceId === microphoneId)?.label || "Microphone not available yet"}
-                    {cameraEnabledForNextJoin ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
+                      : microphones.find((device) => device.deviceId === microphoneId)?.label || "Audio on this device"}
+                    {cameraEnabledForNextJoin ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera on when you join"}` : " · Camera off"}
                   </p>
                 </div>
-                {previewTested ? <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-950">Devices checked</span> : null}
+                {previewTested ? <span className="rounded-full border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground">Preview ready</span> : null}
               </div>
-              <div className="mt-4">{callVideoStage}</div>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className={stageLayout ? callSurface.lobbyPreview : "mt-4"}>{callVideoStage}</div>
+              <div className={stageLayout ? callSurface.lobbySetup : ""}>
+              {stageLayout ? <CallAudioDestinationPicker value={callAudioMode}
+                disabled={callAudioModeBusy || status === "joining"}
+                onChange={mode => { void chooseCallAudioMode(mode); }} /> : null}
+              <div className={`flex flex-wrap gap-2 ${stageLayout ? "justify-center" : "mt-4"}`}>
                 {callAudioMode === "this-device" ? <button
                   type="button"
                   onClick={() => {
@@ -2251,150 +2606,175 @@ export function LiveSessionRoom({
                     }
                     setJoinMuted((current) => !current);
                   }}
-                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${mutedForNextJoin ? "bg-rose-100 text-rose-950" : "border border-violet-200 bg-white text-violet-950"}`}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-medium ${mutedForNextJoin ? "bg-muted text-muted-foreground" : "bg-card text-foreground"}`}
                   aria-pressed={mutedForNextJoin}
                 >
                   {mutedForNextJoin ? <MicOff size={16} /> : <Mic size={16} />}{mutedForNextJoin ? "Muted" : "Mic on"}
+                </button> : stageLayout ? <button type="button" onClick={() => setToolPanel("devices")}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted px-4 text-sm font-medium text-muted-foreground">
+                  <MicOff size={16} /> Audio off
                 </button> : null}
                 <button
                   type="button"
                   onClick={() => {
-                    if (callRecoveryAvailable) {
+                    if (callRecoveryAvailable || sourceLocked) {
                       const nextEnabled = !cameraEnabledForNextJoin;
                       setCameraWanted(nextEnabled);
+                      cameraWantedRef.current = nextEnabled;
                       setCameraMuted(!nextEnabled);
                       cameraMutedRef.current = !nextEnabled;
                       return;
                     }
-                    setCameraWanted((current) => !current);
+                    void previewLobbyCamera(!cameraEnabledForNextJoin);
                   }}
-                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${cameraEnabledForNextJoin ? "border border-violet-200 bg-white text-violet-950" : "bg-rose-100 text-rose-950"}`}
+                  disabled={status === "joining"}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-medium ${cameraEnabledForNextJoin ? "bg-card text-foreground" : "bg-muted text-muted-foreground"}`}
                   aria-pressed={cameraEnabledForNextJoin}
                 >
                   {cameraEnabledForNextJoin ? <Camera size={16} /> : <CameraOff size={16} />}{cameraEnabledForNextJoin ? "Camera on" : "Camera off"}
                 </button>
-                <button type="button" onClick={() => void join()} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50">
+                {stageLayout ? <button type="button" onClick={() => setToolPanel("devices")} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-xs font-semibold"><Settings2 size={16} />Devices</button> : null}
+                <button type="button" autoFocus={stageLayout} onClick={() => void join()} disabled={status === "checking" || status === "joining"} className={stageLayout ? "mt-2 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground disabled:opacity-50" : "inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50"}>
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
                 </button>
               </div>
-              {callAudioMode === "this-device" && previewTested ? (
+              {status === "checking" || cameraToggleBusy ? <div className={stageLayout ? "mt-3 flex flex-wrap justify-center gap-2" : "mt-3 flex flex-wrap gap-2"}>
+                <button type="button" onClick={cancelDeviceSetup} className="min-h-11 rounded-xl border border-border px-4 text-sm">Cancel setup</button>
+                <button type="button" onClick={() => void join({ withoutDevices: true })} className="min-h-11 rounded-xl px-4 text-sm font-semibold underline underline-offset-4">Join without microphone or camera</button>
+              </div> : null}
+              {callAudioMode === "this-device" && previewTested && Boolean(preflightStreamRef.current?.getAudioTracks().length) ? (
                 <PreJoinMicrophoneActivity
                   evidence={meterEvidence}
                   muted={mutedForNextJoin}
                 />
               ) : null}
-              <p className="mt-3 text-[11px] font-bold leading-5 text-violet-900">
+              <p className={`mt-3 text-xs leading-5 text-muted-foreground ${stageLayout ? "text-center" : ""}`}>
                 {callAudioMode === "other-device"
                   ? "Quipsly keeps this device’s call microphone and speakers off to prevent echo."
                   : mutedForNextJoin
                     ? "This device will join muted."
-                    : "This device will handle the conversation audio."}
+                    : stageLayout ? "" : "This device will handle the conversation audio."}
                 {" "}Joining doesn’t start recording.
               </p>
+              {stageLayout && callAudioMode === "this-device" ? <details className="mt-3 min-w-0 rounded-xl border border-border" data-testid="lobby-audio-check">
+                <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-semibold">Test mic and speakers</summary>
+                <div className="space-y-4 border-t border-border p-3">
+                  <StudioSpeakerTest outputId={outputId}
+                    outputLabel={outputs.find((device) => device.deviceId === outputId)?.label || "the system output"}
+                    disabled={status === "checking" || status === "joining"} />
+                  {microphoneTest}
+                </div>
+              </details> : null}
+              </div>
             </section>
           ) : null}
 
           {connected ? callVideoStage : null}
+          {stageLayout ? <div ref={setConsentContainer} hidden={!connected} className="empty:hidden" data-testid="call-recording-choice-slot" /> : null}
+          {stageLayout && connected && retainedGuardianEvidence?.issue ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-card p-3 text-sm">
+            <p>Recording needs attention: {retainedGuardianEvidence.issue.detail}</p>
+            <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl border border-border px-3 font-semibold">Open recording</button>
+          </div> : null}
 
-          {connected ? (
-            <div className="flex flex-wrap gap-2" aria-label="Call controls">
-              {callAudioMode === "this-device" ? <>
-                <button type="button" onClick={() => void toggleMicrophone()} disabled={microphoneMuted && microphoneRecoveryHeld} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-45 ${microphoneMuted ? "bg-rose-100 text-rose-900" : "bg-[#3e2f21] text-white"}`}>{microphoneMuted ? <MicOff size={16} /> : <Mic size={16} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
-                <LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} />
-              </> : <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-sky-100 px-4 text-xs font-black uppercase tracking-wide text-sky-950"><Smartphone size={16} /> Audio on other device</span>}
-              <button type="button" onClick={() => void toggleCamera()} disabled={sourceLocked || ((!cameraWanted || cameraMuted) && !cameraId)} className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-wide disabled:opacity-45 ${!cameraWanted || cameraMuted ? "bg-rose-100 text-rose-900" : "border border-[#d8c7a7] bg-white text-[#5b472f]"}`}>{!cameraWanted || cameraMuted ? <CameraOff size={16} /> : <Camera size={16} />}{!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
-              <button type="button" onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-wait disabled:opacity-60"><PhoneOff size={16} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
-            </div>
-          ) : null}
+          {/* Keep transport and capture ownership here while the dock places
+              these controls outside its independently scrolling/hidden panes. */}
+          {controlsContainer ? createPortal(callControls, controlsContainer) : callControls}
 
-          {connected && showRetainedSourceControls ? retainedSourceControls : null}
+          {stageLayout && !connected && showRetainedSourceControls ? <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold">Upload status</button> : null}
 
-          <details data-testid="call-device-settings" className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-            <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Audio and video settings</summary>
+          {/* One stable recorder owns capture/recovery across call transitions.
+              Keep it mounted in the lobby so a reload resumes saved uploads
+              without asking someone to join the conversation again. */}
+          <CallWorkspacePanel title="Recording" open={toolPanel === "recording"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
+          <div hidden={!showRetainedSourceControls} data-testid="session-recorder-surface">
+            {retainedSourceControls}
+          </div>
+          </CallWorkspacePanel>
+
+          <CallWorkspacePanel title="Audio and video settings" open={toolPanel === "devices"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
+          <details ref={deviceSettingsRef} open={stageLayout || undefined} data-testid="call-device-settings" className={stageLayout ? "" : "rounded-2xl border border-border bg-card p-4"}>
+            <summary className={stageLayout ? "hidden" : "cursor-pointer text-xs font-semibold text-foreground"}>Audio and video settings</summary>
+          {stageLayout && !devicePermissionPending && (deviceSetupError || technicalMessage && (status === "error" || showCallNotice)) ? <p role="alert" className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">{deviceSetupError || message}</p> : null}
+          {connected && devicePermissionPending ? <div role="status" className="mt-3 rounded-xl border border-border bg-muted p-3 text-sm">
+            <p className="flex items-center gap-2"><LoaderCircle size={16} className="animate-spin" aria-hidden="true" />Waiting for device access…</p>
+            <p className="mt-1 text-xs text-muted-foreground">Allow access in your browser’s prompt. Your call stays connected.</p>
+            <button type="button" onClick={cancelDeviceSetup} className="mt-2 min-h-11 rounded-xl border border-border px-3 font-semibold">Cancel device setup</button>
+          </div> : null}
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
             <button
               type="button"
               onClick={() => void chooseCallAudioMode("this-device")}
               disabled={callAudioModeBusy}
-              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "this-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
+              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-semibold ${callAudioMode === "this-device" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-muted text-foreground"}`}
               aria-pressed={callAudioMode === "this-device"}
             >
               <span className="flex items-center gap-2"><Headphones size={16} /> Audio on this device</span>
-              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "this-device" ? "text-violet-100" : "text-[#765f40]"}`}>Talk and listen here</span>
+              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "this-device" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>Talk and listen here</span>
             </button>
             <button
               type="button"
               onClick={() => void chooseCallAudioMode("other-device")}
               disabled={callAudioModeBusy}
-              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "other-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
+              className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-semibold ${callAudioMode === "other-device" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-muted text-foreground"}`}
               aria-pressed={callAudioMode === "other-device"}
             >
               <span className="flex items-center gap-2"><Smartphone size={16} /> Audio on another device</span>
-              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "other-device" ? "text-violet-100" : "text-[#765f40]"}`}>Prevents echo when joining twice</span>
+              <span className={`mt-1 block text-[10px] font-semibold ${callAudioMode === "other-device" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>Prevents echo when joining twice</span>
             </button>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2" role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
-            {callAudioMode === "this-device" ? <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Microphone
-              <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
+          <div className={`mt-4 grid gap-3 ${toolPanelContainer ? "" : "md:grid-cols-2"}`} role="group" aria-label={connected ? "Live studio devices" : "Preflight studio devices"}>
+            {callAudioMode === "this-device" ? <label className="text-xs font-semibold text-foreground">Microphone
+              <select value={microphoneId} disabled={sourceLocked} onChange={(event) => void chooseMicrophone(event.target.value)} className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a microphone</option>{microphones.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
               </select>
             </label> : <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs font-bold leading-5 text-sky-950">
               Call audio is off on this device. Use your other device to talk and listen.
             </div>}
-            <label className="text-xs font-black uppercase tracking-wide text-[#5b472f]">Camera
-              <select value={cameraId} disabled={sourceLocked} onChange={(event) => void chooseCamera(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
+            <label className="text-xs font-semibold text-foreground">Camera
+              <select value={cameraId} disabled={sourceLocked || cameraToggleBusy} onChange={(event) => void chooseCamera(event.target.value)} className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed disabled:opacity-55">
                 <option value="">Choose a camera</option>{cameras.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
               </select>
             </label>
-            {callAudioMode === "this-device" ? <div className="text-xs font-black uppercase tracking-wide text-[#5b472f]">
+            {callAudioMode === "this-device" ? <div className="text-xs font-semibold text-foreground">
               <label>Headphones / output
-                <select value={outputId} disabled={!supportsOutputSelection} onChange={(event) => chooseOutput(event.target.value)} className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:opacity-50">
+                <select value={outputId} disabled={!supportsOutputSelection} onChange={(event) => chooseOutput(event.target.value)} className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-3 text-sm font-semibold normal-case tracking-normal disabled:opacity-50">
                   <option value="">System default</option>{outputs.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                 </select>
               </label>
-              {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-[#8a7354]">This browser uses the macOS or system output. Choose the MV7i headphones there.</span> : null}
-              {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-black normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
+              {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-muted-foreground">This browser uses your system audio output. Choose your headphones in your device’s sound settings.</span> : null}
+              {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-semibold normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
               <StudioSpeakerTest
                 outputId={outputId}
                 outputLabel={outputs.find((device) => device.deviceId === outputId)?.label || "the system output"}
                 disabled={status === "checking" || status === "joining"}
               />
             </div> : null}
-            {!connected ? <div className="flex min-h-12 items-center rounded-xl border border-[#d8c7a7] bg-[#fffaf0] px-3 text-xs font-bold leading-5 text-[#765f40]">
-              Your choices above are remembered on this browser. If a device is unplugged, Quipsly safely falls back to an available one.
-            </div> : <div className={`flex min-h-12 items-center rounded-xl border px-3 text-xs font-black leading-5 ${sourceLocked ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
-              {sourceLocked ? "Device switching is locked until this retained take stops." : "You can switch call devices live. Retained recording still starts separately."}
+            {!connected ? <div className="flex min-h-12 items-center rounded-xl border border-border bg-muted px-3 text-xs font-bold leading-5 text-muted-foreground">
+              Your device choices are remembered.
+            </div> : <div className={`flex min-h-12 items-center rounded-xl border px-3 text-xs font-semibold leading-5 ${sourceLocked ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
+              {sourceLocked ? "Stop recording before changing its microphone or camera." : "Changes apply to this call."}
             </div>}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            {!connected && ((callAudioMode === "this-device" && !microphoneId) || (cameraWanted && !cameraId)) ? <>
-              <button type="button" aria-label={callAudioMode === "this-device" ? `Allow microphone${cameraWanted ? " and camera" : ""}` : "Allow camera"} onClick={() => void refreshDevices(callAudioMode === "this-device" ? (cameraWanted ? "media" : "microphone") : "camera")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : callAudioMode === "this-device" ? <Mic size={15} /> : <Camera size={15} />} {callAudioMode === "this-device" ? `Use microphone${cameraWanted ? " and camera" : ""}` : "Use camera"}</button>
+            {!sourceLocked && ((callAudioMode === "this-device" && !microphoneId) || (!connected && cameraWanted && !cameraId)) ? <>
+              <button type="button" aria-label={callAudioMode === "this-device" ? `Allow microphone${cameraWanted ? " and camera" : ""}` : "Allow camera"} onClick={() => void allowAndPreviewDevices()} disabled={devicePermissionPending || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50">{devicePermissionPending || status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : callAudioMode === "this-device" ? <Mic size={15} /> : <Camera size={15} />} {callAudioMode === "this-device" ? `Use microphone${cameraWanted ? " and camera" : ""}` : "Use camera"}</button>
             </> : null}
-            {!connected ? <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={(callAudioMode === "this-device" && !microphoneId) || (cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Video size={15} /> Preview</button> : null}
-            <button type="button" onClick={() => void refreshDevices("none", "manual")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} /> Refresh devices</button>
+            {!connected && (callAudioMode === "this-device" || cameraWanted) ? <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={(cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50"><Video size={15} /> Preview</button> : null}
+            <button type="button" onClick={() => void refreshDevices("none", "manual")} disabled={devicePermissionPending || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50"><RefreshCw size={15} /> Refresh devices</button>
           </div>
 
-          {!connected && callAudioMode === "this-device" ? (
-            <details className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-3">
-              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-900">Optional sound check</summary>
+          {!stageLayout && !connected && callAudioMode === "this-device" ? (
+            <details className="mt-4">
+              <summary className="cursor-pointer text-[10px] font-semibold text-foreground">Test microphone</summary>
               <div className="mt-3">
-              <StudioSoundCheck
-                getInputStream={currentPreflightStream}
-                prepareInputStream={() => startSelectedPreview(true)}
-                microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
-                outputId={outputId}
-                evidence={meterEvidence}
-                setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
-                onDecision={saveSoundCheckDecision}
-                disabled={status === "checking" || status === "joining"}
-              />
+              {microphoneTest}
               </div>
             </details>
           ) : null}
 
-          <details data-testid="call-technical-device-details" className="mt-4 rounded-xl border border-[#e8dcc8] bg-[#fffaf0] p-3">
-            <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#765f40]">Technical device details</summary>
+          <details data-testid="call-technical-device-details" className="mt-4 rounded-xl border border-border bg-muted p-3">
+            <summary className="cursor-pointer text-[10px] font-semibold text-muted-foreground">Technical device details</summary>
             <div className="mt-3 space-y-3">
               {technicalMessage ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 font-mono text-[10px] font-semibold leading-4 text-amber-950" data-testid="call-technical-error">{technicalMessage}</p> : null}
               <StudioInputEvidenceMeter evidence={meterEvidence} />
@@ -2402,13 +2782,18 @@ export function LiveSessionRoom({
             </div>
           </details>
           </details>
+          </CallWorkspacePanel>
 
-          {showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status) ? (
-            <p data-testid="call-status-message" role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
+          {!(stageLayout && status === "ended" && callEndedByPerson) && !(stageLayout && connected && deviceSetupError === message) && (showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status)) ? (
+            <p data-testid="call-status-message" role="status" aria-live="polite" className={stageLayout && connected && message.startsWith("You’re connected.") ? "sr-only" : "rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6 text-card-foreground"}>{message}</p>
           ) : null}
 
         </div>
 
+        {stageLayout ? <CallWorkspacePanel title="People" open={toolPanel === "people"} onClose={closeToolPanel} container={toolPanelContainer}>
+          <CallPeoplePanel participants={participants.map(person => person.isLocal ? { ...person, microphoneMuted: microphoneMuted || callAudioMode === "other-device" } : person)} sharingIdentities={[...participantVideos, ...screenShare.videos].filter(video => video.track.source === Track.Source.ScreenShare).map(video => video.identity)} />
+        </CallWorkspacePanel> : null}
+        <CallWorkspacePanel title="Call details" open={toolPanel === "details"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
         <aside className="space-y-3">
           <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4" open={["recording", "needs-review"].includes(providerRecordingState)}>
             <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">More call and recording options</summary>
@@ -2453,8 +2838,8 @@ export function LiveSessionRoom({
           </div>
           </details>
           <div className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><Users size={15} /> In this room · {participants.length}</div>
-            <div className="mt-3 space-y-2">{participants.length ? participants.map((participant) => <div key={participant.identity} className="flex items-center justify-between rounded-xl bg-[#fffaf0] px-3 py-2 text-sm font-bold text-[#5b472f]"><span>{participant.name}</span><span className={`h-2.5 w-2.5 rounded-full ${participant.speaking ? "bg-emerald-500 ring-4 ring-emerald-100" : "bg-[#cdbb9a]"}`} aria-label={participant.speaking ? "Speaking" : "Quiet"} /></div>) : <p className="text-xs font-semibold leading-5 text-[#8a7354]">The roster appears after you join. iPhone and browser devices can represent the same person without replacing each other.</p>}</div>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><Users size={15} /> In this room · {peopleInCall.length}</div>
+            <div className="mt-3"><CallPeoplePanel participants={participants} /></div>
           </div>
           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs font-bold leading-5 text-sky-950">
             <Smartphone aria-hidden="true" />
@@ -2462,11 +2847,16 @@ export function LiveSessionRoom({
           </div>
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-bold leading-5 text-amber-950">
             <Headphones aria-hidden="true" />
-            <p className="mt-2">For your MV7i: choose it as microphone and choose its headphone output here when supported. Safari may require selecting it in macOS Sound instead.</p>
+            <p className="mt-2">Using a USB microphone or audio interface? Select it as your microphone and choose its headphone output. If your browser cannot change the output, use your device’s sound settings.</p>
           </div>
             </div>
           </details>
         </aside>
+        <details className="mt-4 rounded-2xl border border-border p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Recording diagnostics</summary>
+          <div className="mt-4"><SessionGuardianCard projection={guardianProjection} /></div>
+        </details>
+        </CallWorkspacePanel>
       </div>
       <div className="mt-5 space-y-4">
         {!connected && localRecordingFallback ? (
@@ -2484,15 +2874,6 @@ export function LiveSessionRoom({
             </p>
           </section>
         ) : null}
-        {!connected && showRetainedSourceControls ? retainedSourceControls : null}
-        <details className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-            Recording safety details
-          </summary>
-          <div className="mt-4">
-            <SessionGuardianCard projection={guardianProjection} />
-          </div>
-        </details>
       </div>
     </section>
   );

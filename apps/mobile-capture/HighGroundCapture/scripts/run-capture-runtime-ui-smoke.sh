@@ -115,10 +115,25 @@ case "$TEST_MODE" in
   surface)
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
     ;;
+  sound-analysis-sync)
+    TEST_CASE="testDeviceSoundAnalysisSynchronizesAfterUploadAndRelaunch"
+    if [[ -z "$TEST_RECORDING_FIXTURE_PATH" || -z "$TEST_RECORDING_FIXTURE_ASSET_ID" || -z "$TEST_RECORDING_FIXTURE_LOCAL_ID" ]]; then
+      echo "Sound-analysis sync requires one exact retained source fixture." >&2
+      exit 2
+    fi
+    ;;
   voice-writing)
-    TEST_CASE="testSignedInSpeakToWriteRecordsStopsAndEditorSavesWritingToNest"
+    TEST_CASE="testSignedInRecorderStopsAndSeparateTypedDraftSavesToNest"
+    echo "Coverage: recording plus a separate typed draft; not source-linked transcription." >&2
     if [[ -z "$TEST_VOICE_WRITING_TITLE" || -z "$TEST_VOICE_WRITING_BODY" ]]; then
       echo "Voice-writing mode requires unique exact writing title and body evidence." >&2
+      exit 2
+    fi
+    ;;
+  recording-edit)
+    TEST_CASE="testRecordingEditDraftSurvivesNativeRelaunch"
+    if [[ -z "$TEST_SESSION_ID" ]]; then
+      echo "Recording edit mode requires an accessible Session with a verified take." >&2
       exit 2
     fi
     ;;
@@ -188,6 +203,34 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  session-picker)
+    TEST_CASE="testSessionPickerKeepsSearchAndExactSelectionAcrossLaunches"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Session picker mode requires an exact Session ID and title." >&2
+      exit 2
+    fi
+    ;;
+  personal-session-task)
+    TEST_CASE="testPersonalSessionTaskEditsInItsClientSpaceAndStaysPersonalAfterRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Personal session task mode requires an exact Session, personal task, original/replacement titles, and retained tag." >&2
+      exit 2
+    fi
+    ;;
+  work-tag-filter)
+    TEST_CASE="testSharedWorkTagFiltersAndClears"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Tag filtering requires an exact Session, retained task, and shared tag label." >&2
+      exit 2
+    fi
+    ;;
+  conversation-task)
+    TEST_CASE="testConversationCreatesCanonicalTaskAndEditsItAfterRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" ]]; then
+      echo "Conversation task mode requires an exact Session and unique idea and edited task titles." >&2
+      exit 2
+    fi
+    ;;
   transcript-task-readback)
     TEST_CASE="testReviewedTranscriptTaskAppearsInTodayAndReturnsToExactSourceOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then
@@ -206,6 +249,41 @@ case "$TEST_MODE" in
     TEST_CASE="testRetainedSessionShowsCompleteMultiSegmentPacketOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
       echo "Transcript packet span mode requires the exact retained Session ID and title." >&2
+      exit 2
+    fi
+    ;;
+  transcript-task-save-retry)
+    TEST_CASE="testTranscriptTaskEditsRecoverAcrossTwoLostRepliesAndRelaunches"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" || "$BASE_URL" != "http://127.0.0.1:3014" ]]; then
+      echo "Transcript retry requires the local fault proxy, exact Session and passage, and two synthetic titles." >&2
+      exit 2
+    fi
+    ;;
+  transcript-work-drafts)
+    TEST_CASE="testTranscriptWorkDraftsRetainWritingAcrossSignedInRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* ]]; then
+      echo "Transcript work drafts require one exact Session and one segment ID." >&2
+      exit 2
+    fi
+    ;;
+  recording-transcript-export)
+    TEST_CASE="testEditedRecordingExportsMatchingSubtitles"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Edited transcript export requires an exact Session with a verified edited recording." >&2
+      exit 2
+    fi
+    ;;
+  transcript-export)
+    TEST_CASE="testTranscriptExportsStandardFilesFromTheSession"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Transcript export requires an exact accessible Session with timed transcript passages." >&2
+      exit 2
+    fi
+    ;;
+  transcript-progress)
+    TEST_CASE="testTranscriptProgressKeepsAvailableWordsUsableAndExplainsSilentSources"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Transcript progress requires a Session with available words and a retained silent-source failure." >&2
       exit 2
     fi
     ;;
@@ -266,6 +344,27 @@ case "$TEST_MODE" in
     TEST_CASE="testConsentedProviderRoomJoinsAndLeavesWithoutStartingRecording"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
       echo "Room-join mode requires an exact consented Session ID and title." >&2
+      exit 2
+    fi
+    ;;
+  room-companion)
+    TEST_CASE="testCompanionCallKeepsChatAndToolsWithTheLiveTransport"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Room-companion mode requires an exact Session ID and title." >&2
+      exit 2
+    fi
+    ;;
+  room-companion-gallery)
+    TEST_CASE="testCompanionVideoGalleryKeepsAudioOnOtherDevice"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Room-companion-gallery requires a Session with two local synthetic video peers." >&2
+      exit 2
+    fi
+    ;;
+  room-companion-recording)
+    TEST_CASE="testCompanionCallRecordsAndOpensSavedSource"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Room-companion-recording mode requires an exact Session and a coach account." >&2
       exit 2
     fi
     ;;
@@ -363,6 +462,20 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  nest-conversation-draft)
+    TEST_CASE="testIPhoneConversationDraftSurvivesDismissalAndRelaunch"
+    if [[ -z "$TEST_PROJECT_NAME" ]]; then
+      echo "Nest conversation draft mode requires a writable synthetic Nest name." >&2
+      exit 2
+    fi
+    ;;
+  nest-conversation)
+    TEST_CASE="testIPhoneCreatesTaskFromNestConversation"
+    if [[ -z "$TEST_PROJECT_NAME" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Nest conversation mode requires a writable synthetic Nest name and existing tag label." >&2
+      exit 2
+    fi
+    ;;
   tag-authoring)
     TEST_CASE="testIPhoneCreatesReusableNestTagWithCanonicalTask"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TAGGED_TASK_TITLE" || -z "$TEST_TAG_LABEL" ]]; then
@@ -402,6 +515,20 @@ case "$TEST_MODE" in
     TEST_CASE="testOwnerCreatesTwoVersionedNestBackupsFromAccount"
     if [[ -z "$TEST_PROJECT_NAME" ]]; then
       echo "Nest portability mode requires the exact owned source Nest name." >&2
+      exit 2
+    fi
+    ;;
+  coaching-note-tags)
+    TEST_CASE="testSharedCoachingNoteTagsPersistAcrossRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TAG_LABEL" || -z "$TEST_NOTE_EDIT_SOURCE_TITLE" || -z "$TEST_NOTE_EDIT_UPDATED_TITLE" || -z "$TEST_NOTE_EDIT_SOURCE_BODY" || -z "$TEST_NOTE_EDIT_UPDATED_BODY" ]]; then
+      echo "Shared-note tag mode requires an exact Session, an existing shared tag, and unique initial and updated writing." >&2
+      exit 2
+    fi
+    ;;
+  generated-session-note-edit)
+    TEST_CASE="testGeneratedSessionRecapEditsAndPersistsAcrossRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_NOTE_ID" || -z "$TEST_NOTE_EDIT_UPDATED_TITLE" || -z "$TEST_NOTE_EDIT_UPDATED_BODY" ]]; then
+      echo "Generated-note edit mode requires an exact Session, note ID, and updated title/body."
       exit 2
     fi
     ;;
@@ -768,6 +895,12 @@ fi
 cleanup_smoke_credentials
 trap - EXIT
 
+# Use the same bundle/class/method verification as CI and Fastlane before
+# reporting aggregate success. One passing, but different, test is not proof.
+node "$SCRIPT_DIR/../../../../scripts/release/quipsly-capture-ui-test-runner.mjs" \
+  --verify-result-bundle="$RESULT_BUNDLE_PATH" \
+  --selector="HighGroundCaptureUITests/$TEST_CLASS/$TEST_CASE"
+
 "${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results summary \
   --path "$RESULT_BUNDLE_PATH" |
   node -e '
@@ -811,14 +944,19 @@ process.stdin.on("end", () => {
 });
 ' "$TEST_CLASS" "$TEST_CASE"
 
-"${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results tests \
-  --path "$RESULT_BUNDLE_PATH" |
+"${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results test-details \
+  --path "$RESULT_BUNDLE_PATH" --test-id "${TEST_CLASS}/${TEST_CASE}()" |
   node -e '
 let raw = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => { raw += chunk; });
 process.stdin.on("end", () => {
   const tree = JSON.parse(raw);
+  const [expectedClass, expectedCase] = process.argv.slice(1);
+  if (tree.testIdentifier !== `${expectedClass}/${expectedCase}()` || !Array.isArray(tree.testRuns) || tree.testRuns.length === 0) {
+    console.error("Capture runtime warning details are missing or belong to another test.");
+    process.exit(5);
+  }
   const warnings = [];
   // Xcode 17 / iOS 26.3.1 emits this SwiftUI framework warning on the
   // supported Form text-input path when it first presents the keyboard.
@@ -833,6 +971,7 @@ process.stdin.on("end", () => {
     }
     if (Array.isArray(node.children)) node.children.forEach(visit);
     if (Array.isArray(node.testNodes)) node.testNodes.forEach(visit);
+    if (Array.isArray(node.testRuns)) node.testRuns.forEach(visit);
   }
   visit(tree);
   const unexpectedWarnings = warnings.filter(
@@ -852,4 +991,4 @@ process.stdin.on("end", () => {
     unexpectedRuntimeWarnings: 0,
   }, null, 2));
 });
-'
+' "$TEST_CLASS" "$TEST_CASE"

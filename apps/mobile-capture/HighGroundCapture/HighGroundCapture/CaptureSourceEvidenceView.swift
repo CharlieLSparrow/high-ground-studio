@@ -196,7 +196,7 @@ struct CaptureSourceEvidenceView: View {
                     .accessibilityIdentifier("CaptureAudioQualitySummary")
                     Text(reviewMomentCount == 0
                         ? "Quipsly scanned the full decoded recording for clipping, unusual silence, and capture interruptions. Listening is still the final check."
-                        : "Tap any marked moment below to hear it in the original. Quipsly never removes or repairs audio without your review.")
+                        : "Tap a marked moment to hear it in context. Your original recording stays unchanged.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1200,13 +1200,21 @@ struct CaptureSourceEvidenceView: View {
     private func audibleEventAnalysisCard(_ recording: LocalRecording) -> some View {
         if recording.sourceProfile?.includesAudio == true,
            let analysis = recording.sourceProfile?.audibleEventAnalysis {
-            evidenceCard(title: "Sounds to review", systemImage: "waveform.badge.magnifyingglass") {
+            evidenceCard(title: "Detected sounds", systemImage: "waveform.badge.magnifyingglass") {
                 if analysis.status == "completed" {
+                    if recording.status.isVerified {
+                        Text(recording.soundAnalysisSyncedID == analysis.analysisId
+                             ? "Sound details synced"
+                             : "Sound details saved on this device. Waiting to sync with Nest.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureSoundAnalysisSyncStatus")
+                    }
                     HStack(alignment: .top, spacing: 14) {
                         signalMetric(
                             "Suggestions",
                             value: "\(analysis.suggestions.count)",
-                            detail: "Need listening"
+                            detail: "Jump to a moment"
                         )
                         signalMetric(
                             "Coverage",
@@ -1214,7 +1222,7 @@ struct CaptureSourceEvidenceView: View {
                             detail: "\(analysis.resultWindowCount) windows"
                         )
                     }
-                    Text("These are unqualified navigation suggestions. A score is not proof that an event is audible, distracting, or safe to edit, and Apple’s general classifier does not identify Quipsly mouth-click or plosive repair candidates.")
+                    Text("Jump to detected sounds and hear them in context. Your original stays unchanged.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -1223,6 +1231,9 @@ struct CaptureSourceEvidenceView: View {
                         isExpanded: $showsTechnicalSoundDetails
                     ) {
                         VStack(alignment: .leading, spacing: 8) {
+                            Text("Apple’s general sound classifier can miss or misidentify sounds. Its scores are not loudness measurements, and it does not identify mouth-click or plosive repairs.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             EvidenceRow(
                                 label: "Detector",
                                 value: "Apple general sound classifier · \(String(format: "%.2f", analysis.effectiveWindowDurationSeconds)) s · \(Int((analysis.overlapFactor * 100).rounded()))% overlap"
@@ -1273,7 +1284,7 @@ struct CaptureSourceEvidenceView: View {
                             .foregroundStyle(.secondary)
                     } else if analysis.suggestions.isEmpty {
                         Label(
-                            "No selected classifier label crossed its review threshold. This is not proof that the recording contains no notable sounds.",
+                            "No sounds were highlighted in this recording.",
                             systemImage: "checkmark.circle"
                         )
                         .font(.caption.weight(.semibold))
@@ -1783,9 +1794,9 @@ struct CaptureSourceEvidenceView: View {
             cumulativeActiveSeconds += max(segment.durationSeconds ?? 0, 0)
             guard let reason = segment.stopReason,
                   reason != .userStop else { return nil }
-            let startedAt = ISO8601DateFormatter().date(from: segment.startedAt)
+            let startedAt = CaptureDateCoding.date(from: segment.startedAt)
             let stoppedAt = segment.stoppedAt.flatMap {
-                ISO8601DateFormatter().date(from: $0)
+                CaptureDateCoding.date(from: $0)
             }
             let offset: Double
             if reason == .callTransportGap {
@@ -2168,7 +2179,7 @@ struct CaptureSourceEvidencePreviewView: View {
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureAudioQualitySummary")
-                    Text("Tap a marked moment to hear it in the original. Quipsly never removes or repairs audio without your review.")
+                    Text("Tap a marked moment to hear it in context. Your original recording stays unchanged.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     EvidenceRow(
@@ -2359,7 +2370,7 @@ struct CaptureSourceEvidencePreviewView: View {
                         .accessibilityIdentifier("CaptureAudioMasteryPreviewBoundary")
                 }
 
-                previewCard(title: "Sounds to review", systemImage: "waveform.badge.magnifyingglass") {
+                previewCard(title: "Detected sounds", systemImage: "waveform.badge.magnifyingglass") {
                     EvidenceRow(label: "Suggestion", value: "00:12 · Cough · 86% score")
                     Text("A real suggestion is an unqualified place to listen, not proof that a sound is distracting or safe to edit. Quipsly keeps detector results separate from source integrity and repair decisions.")
                         .font(.caption)

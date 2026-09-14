@@ -84,7 +84,7 @@ export default async function JoinSessionPage({
   return <main className="grid min-h-full place-items-center bg-[#f7f0e3] px-4 py-8 text-[#3d3122] md:py-12">
     <section className="w-full max-w-xl overflow-hidden rounded-[2rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-xl shadow-amber-950/10">
       <header className="bg-[#211a14] px-6 py-7 text-[#fff7e8] md:px-8">
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#e7b15f]">{experience.label} Session</p>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#e7b15f]">{experience.label}</p>
         <h1 className="mt-2 font-serif text-3xl font-black md:text-4xl">{invitation.room.title}</h1>
         <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#d8c6a6]">
           <CalendarClock size={16} aria-hidden="true" />

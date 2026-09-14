@@ -1,4 +1,7 @@
 import { Readable } from "node:stream";
+import { createReadStream } from "node:fs";
+import { LocalMediaJobStorage } from "@high-ground/quipsly-media-processing/local-media-job-storage";
+import { getMobileCaptureLocalVaultConfig, localMobileCaptureObjectPath, MOBILE_CAPTURE_LOCAL_VAULT_BUCKET } from "@/lib/server/mobile-capture-local-vault";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
@@ -50,13 +53,24 @@ async function response(
         primaryEmail: session.user.primaryEmail,
       },
     });
-    if (result.output.bucketName !== requireMediaBucketName())
+    const local = result.output.bucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET
+      ? getMobileCaptureLocalVaultConfig() : null;
+    if (result.output.bucketName !== (local?.bucketName ?? requireMediaBucketName()))
       return json(
         409,
         "AUDITION_VAULT_MISMATCH",
         "The review copy is outside the configured private media vault.",
       );
-    const file = getMediaBucket(result.output.bucketName).file(
+    const localEvidence = local ? await new LocalMediaJobStorage(local.root).objectEvidence(result.output.objectName, result.output.generation) : null;
+    if (local && !localEvidence) return json(409, "AUDITION_OBJECT_MISMATCH", "This recording's listening copy is unavailable. Try again shortly.");
+    const file = local ? {
+      getMetadata: async () => [{
+        generation: localEvidence!.generation, size: localEvidence!.sizeBytes,
+        contentType: localEvidence!.contentType, crc32c: localEvidence!.crc32c,
+        metadata: localEvidence!.customMetadata,
+      }],
+      createReadStream: (range?: { start: number; end: number }) => createReadStream(localMobileCaptureObjectPath(result.output.objectName)!, range),
+    } : getMediaBucket(result.output.bucketName).file(
       result.output.objectName,
       { generation: result.output.generation as any },
     );

@@ -101,6 +101,7 @@ describe("coaching engagement work", () => {
       .mockResolvedValueOnce({ id: engagementId });
     jest.mocked(getPrismaClient).mockReturnValue({
       coachingEngagement: { findFirst },
+      actionItem: { findMany: jest.fn(async () => (await findFirst.mock.results[0].value).actionItems) },
     } as any);
 
     const response = await GET(request("GET"), {
@@ -140,7 +141,7 @@ describe("coaching engagement work", () => {
         authorPrivateNotesFilteredServerSide: true,
       },
     });
-    expect(findFirst.mock.calls[0][0].select.notes.where).toEqual({
+    expect(findFirst.mock.calls[0][0].select.notes.where).toMatchObject({
       OR: [
         { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
         { authorUserId: actor.id },
@@ -195,6 +196,7 @@ describe("coaching engagement work", () => {
       .mockResolvedValueOnce(null);
     jest.mocked(getPrismaClient).mockReturnValue({
       coachingEngagement: { findFirst },
+      actionItem: { findMany: jest.fn(async () => (await findFirst.mock.results[0].value).actionItems) },
     } as any);
 
     const response = await GET(request("GET"), {

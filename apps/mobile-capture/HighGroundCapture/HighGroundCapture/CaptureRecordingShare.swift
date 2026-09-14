@@ -80,9 +80,18 @@ struct CaptureRecordingShareOutput: Codable, Identifiable, Equatable {
 
     struct Body: Codable, Equatable {
         struct Edit: Codable, Equatable {
+            // A saved cut is an identity/timing reference, not a transcript passage.
+            // The server deliberately does not copy the removed words into it.
+            struct Exclusion: Codable, Equatable, Identifiable {
+                let transcriptJobId: String
+                let segmentId: String
+                var id: String { "\(transcriptJobId):\(segmentId)" }
+            }
+
             let startSeconds: TimeInterval?
             let endSeconds: TimeInterval?
-            let transcriptExclusions: [CaptureRecordingShareTranscriptSegment]?
+            let transcriptExclusions: [Exclusion]?
+            var manualCuts: [CaptureRecordingManualCut]? = nil
         }
 
         let edit: Edit?
@@ -132,6 +141,15 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
     }
 
     struct Available: Codable, Equatable {
+        struct Take: Codable, Equatable, Identifiable {
+            let id: String
+            let startedAt: String
+            let sourceCount: Int
+            var label: String {
+                let date = CaptureDateCoding.date(from: startedAt)?.formatted(date: .abbreviated, time: .shortened) ?? "Recording"
+                return "\(date) · \(sourceCount) track\(sourceCount == 1 ? "" : "s")"
+            }
+        }
         struct Timeline: Codable, Equatable {
             struct Source: Codable, Equatable {
                 let recordingAssetId: String
@@ -156,6 +174,8 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
                     "Placed automatically from recording start times"
                 case "reviewed-waveform-placement":
                     "Synced from measured audio"
+                case "mixed-waveform-clock-placement":
+                    "Synced from audio and recording clocks"
                 default:
                     "Recording timeline ready"
                 }
@@ -163,6 +183,8 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
         }
 
         let programDurationSeconds: TimeInterval
+        let selectedTakeId: String?
+        let takes: [Take]?
         let timeline: Timeline?
         let sources: [CaptureRecordingShareSource]
         let transcriptSegments: [CaptureRecordingShareTranscriptSegment]
@@ -211,8 +233,13 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     private var protectedPreviewURL: URL?
     private var protectedPreviewOutputID: String?
     private var protectedPreviewSHA256: String?
+    private var selectedTakeID: String?
+    private var selectedRoomID: String?
+    private var loadGeneration = 0
+    private var transcriptExportFiles: [URL] = []
 
     deinit {
+        for file in transcriptExportFiles { try? FileManager.default.removeItem(at: file) }
         if let videoPlaybackEndObserver {
             NotificationCenter.default.removeObserver(videoPlaybackEndObserver)
         }
@@ -221,22 +248,40 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
     }
 
-    func load(roomID: String, quiet: Bool = false) async {
+    func load(roomID: String, quiet: Bool = false, takeID: String? = nil, focus: CaptureRecordingEditorFocus? = nil) async {
+        if quiet && busyAction == "LOAD" { return }
         guard AuthManager.shared.networkActionsAllowed else {
             notice = "Reconnect to Nest before opening the recording editor."
             return
         }
-        guard let url = endpoint(roomID: roomID) else {
+        guard var url = endpoint(roomID: roomID) else {
             notice = "The configured Nest URL is invalid."
             return
         }
+        if selectedRoomID != roomID { selectedTakeID = nil; selectedRoomID = roomID }
+        if let focus {
+            if !focus.transcriptJobID.isEmpty {
+                url.append(queryItems: [URLQueryItem(name: "transcriptJobId", value: focus.transcriptJobID)])
+            }
+            if let sourceID = focus.recordingAssetID { url.append(queryItems: [URLQueryItem(name: "sourceId", value: sourceID)]) }
+        } else if let requestedTake = takeID ?? selectedTakeID {
+            url.append(queryItems: [URLQueryItem(name: "takeId", value: requestedTake)])
+        }
+        loadGeneration += 1
+        let generation = loadGeneration
         if !quiet { busyAction = "LOAD" }
-        defer { if !quiet { busyAction = nil } }
+        defer { if !quiet && generation == loadGeneration { busyAction = nil } }
         do {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard generation == loadGeneration else { return }
+            if [401, 403, 404].contains(response.statusCode) {
+                snapshot = nil
+                selectedTakeID = nil
+                stopPreviewPlayback()
+            }
             let decoded = try AuthResponseDecoder.decode(
                 CaptureRecordingShareSnapshot.self,
                 from: data,
@@ -250,11 +295,13 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             guard decoded.ok else {
                 throw CaptureRecordingShareClientError.message(decoded.error ?? "The recording editor could not load.")
             }
+            guard decoded.room?.id == roomID else { throw CaptureRecordingShareClientError.message("The recording workspace changed. Please reopen it.") }
             reconcilePlaybackAuthorization(with: decoded)
+            selectedTakeID = decoded.available?.selectedTakeId
             snapshot = decoded
             if !quiet { notice = nil }
         } catch {
-            notice = error.localizedDescription
+            if generation == loadGeneration { notice = error.localizedDescription }
         }
     }
 
@@ -266,7 +313,8 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         primaryVideoSourceID: String?,
         startSeconds: TimeInterval,
         endSeconds: TimeInterval,
-        exclusions: [CaptureRecordingShareTranscriptSegment]
+        exclusions: [CaptureRecordingShareTranscriptSegment],
+        manualCuts: [CaptureRecordingManualCut] = []
     ) async -> Bool {
         await mutate(
             roomID: roomID,
@@ -278,6 +326,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 "primaryVideoSourceId": primaryVideoSourceID ?? "",
                 "startSeconds": startSeconds,
                 "endSeconds": endSeconds,
+                "manualCuts": manualCuts.map { ["startSeconds": $0.startSeconds, "endSeconds": $0.endSeconds] },
                 "excludedTranscriptSegments": exclusions.map { exclusion in
                     var item: [String: Any] = [
                         "transcriptJobId": exclusion.transcriptJobId,
@@ -307,6 +356,52 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
 
     func stopPreviewPlayback() {
         clearPlayback()
+    }
+
+    var previewPosition: TimeInterval {
+        if let player { return player.currentTime }
+        let value = previewVideoPlayer?.currentTime().seconds ?? 0
+        return value.isFinite ? max(0, value) : 0
+    }
+
+    var previewPrepared: Bool { player != nil || previewVideoPlayer != nil }
+
+    func seekPreview(to seconds: TimeInterval) {
+        guard seconds.isFinite, let duration = snapshot?.output?.render.durationSeconds else { return }
+        let position = max(0, min(duration, seconds))
+        player?.currentTime = position
+        previewVideoPlayer?.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    func playPreviewPassage(roomID: String, outputID: String, at seconds: TimeInterval) async {
+        guard snapshot?.output?.id == outputID, busyAction == nil else { return }
+        if player == nil && previewVideoPlayer == nil { await togglePreview(roomID: roomID) }
+        guard !Task.isCancelled, snapshot?.output?.id == outputID,
+              protectedPreviewOutputID == outputID else { return }
+        seekPreview(to: seconds)
+        player?.play()
+        previewVideoPlayer?.play()
+        isPlaying = player != nil || previewVideoPlayer != nil
+    }
+
+    func readMatchingTranscript(roomID: String, output: CaptureRecordingShareOutput) async throws -> CaptureEditedTranscript {
+        guard AuthManager.shared.networkActionsAllowed,
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let room = Self.encodedPathComponent(roomID), let outputID = Self.encodedPathComponent(output.id),
+              let url = URL(string: "\(baseURL)/api/sessions/\(room)/recording-share/transcript/\(outputID)?format=json") else {
+            throw CaptureRecordingShareClientError.message("Reconnect to load this recording’s transcript.")
+        }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await AuthManager.shared.authenticatedData(for: request, expectedOwnerAccountID: owner.ownerAccountID)
+        guard !Task.isCancelled, AuthManager.currentStoredOwnerID() == owner.ownerAccountID,
+              snapshot?.output?.id == output.id, snapshot?.output?.render.sha256 == output.render.sha256 else { throw CancellationError() }
+        guard response.statusCode == 200 else { throw responseError(data, fallback: "The transcript couldn’t be loaded. Try again.") }
+        let transcript = try JSONDecoder().decode(CaptureEditedTranscript.self, from: data)
+        guard transcript.matches(outputID: output.id, sha256: output.render.sha256, duration: output.render.durationSeconds) else {
+            throw CaptureRecordingShareClientError.message("This transcript does not match the selected recording. Refresh the recording and try again.")
+        }
+        return transcript
     }
 
     func preparePreviewExport(roomID: String) async -> URL? {
@@ -524,6 +619,48 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         return URL(string: "\(baseURL)/api/sessions/\(room)/recording-share")
     }
 
+    func prepareMatchingTranscriptExport(roomID: String, format: CaptureTranscriptExportFormat) async -> URL? {
+        guard busyAction == nil, AuthManager.shared.networkActionsAllowed,
+              let output = snapshot?.output, output.render.status == "VERIFIED",
+              snapshot?.role == "COACH" || output.status == "RELEASED",
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let room = Self.encodedPathComponent(roomID),
+              let outputID = Self.encodedPathComponent(output.id),
+              let url = URL(string: "\(baseURL)/api/sessions/\(room)/recording-share/transcript/\(outputID)?format=\(format.rawValue)") else { return nil }
+        busyAction = "TRANSCRIPT_EXPORT"
+        notice = nil
+        let generation = loadGeneration
+        defer { busyAction = nil }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard AuthManager.currentStoredOwnerID() == owner.ownerAccountID,
+                  generation == loadGeneration, snapshot?.output?.id == output.id,
+                  snapshot?.output?.render.sha256 == output.render.sha256 else { return nil }
+            guard response.statusCode == 200 else {
+                throw responseError(data, fallback: "This recording’s transcript could not be exported.")
+            }
+            guard let text = String(data: data, encoding: .utf8), !text.isEmpty,
+                  response.mimeType != "text/html", response.mimeType != "application/json" else {
+                throw CaptureRecordingShareClientError.message("Quipsly did not return a transcript file. Try again.")
+            }
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("Edited-transcript-\(UUID().uuidString).\(format.rawValue)")
+            try data.write(to: file, options: [.atomic, .completeFileProtection])
+            transcriptExportFiles.append(file)
+            if (Int(response.value(forHTTPHeaderField: "X-Quipsly-Omitted-Boundary-Passages") ?? "0") ?? 0) > 0 {
+                notice = "Some words cut at a boundary were omitted because their remaining timing is uncertain."
+            } else if (Int(response.value(forHTTPHeaderField: "X-Quipsly-Untranscribed-Sources") ?? "0") ?? 0) > 0 {
+                notice = "Some recording tracks do not have a transcript yet."
+            }
+            return file
+        } catch {
+            guard AuthManager.currentStoredOwnerID() == owner.ownerAccountID, generation == loadGeneration else { return nil }
+            notice = error.localizedDescription
+            return nil
+        }
+    }
+
     private func mediaEndpoint(roomID: String, outputID: String) -> URL? {
         guard let room = Self.encodedPathComponent(roomID),
               let output = Self.encodedPathComponent(outputID) else { return nil }
@@ -615,8 +752,9 @@ private struct CaptureRecordingShareSheet: UIViewControllerRepresentable {
 }
 
 struct CaptureRecordingEditorFocus: Equatable, Hashable {
-    let transcriptJobID: String
-    let segmentID: String
+    var transcriptJobID: String = ""
+    var segmentID: String = ""
+    var recordingAssetID: String? = nil
 }
 
 struct CaptureRecordingShareEditor: View {
@@ -624,15 +762,20 @@ struct CaptureRecordingShareEditor: View {
     let focus: CaptureRecordingEditorFocus?
 
     @StateObject private var client = CaptureRecordingShareClient()
+    @StateObject private var editSync: CaptureRecordingEditSync
     @StateObject private var sourcePlayback = CaptureSessionProtectedPlaybackController()
     @State private var selectedSourceIDs = Set<String>()
     @State private var excludedSegmentIDs = Set<String>()
+    @State private var manualCuts: [CaptureRecordingManualCut] = []
+    @State private var cutStart: Double = 0
+    @State private var cutEnd: Double = 0
     @State private var startSeconds: TimeInterval = 0
     @State private var endSeconds: TimeInterval = 0
     @State private var title = ""
     @State private var outputMediaKind = "audio"
     @State private var primaryVideoSourceID = ""
     @State private var initializedSnapshot = false
+    @State private var didApplyFocus = false
     @State private var editing = false
     @State private var auditionSegmentID: String?
     @State private var auditionNotice: String?
@@ -641,37 +784,22 @@ struct CaptureRecordingShareEditor: View {
     @State private var exportURL: URL?
     @State private var isPresentingExport = false
     @State private var exportNotice: String?
+    @State private var listeningSourceID = ""
+    @State private var listeningRequestID = UUID()
 
     init(roomID: String, focus: CaptureRecordingEditorFocus? = nil) {
         self.roomID = roomID
         self.focus = focus
+        let base = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+        _editSync = StateObject(wrappedValue: CaptureRecordingEditSync(
+            baseURL: URL(string: base) ?? URL(string: "https://nest.quipsly.com")!,
+            owner: { AuthManager.currentStoredOwnerID() },
+            send: { request, owner in try await AuthManager.shared.authenticatedData(for: request, expectedOwnerAccountID: owner) }
+        ))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "scissors")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(CapturePalette.plum)
-                    .frame(width: 38, height: 38)
-                    .background(CapturePalette.plum.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Edit recording")
-                        .font(.headline)
-                    Text("Trim or remove passages, listen, and share an edited copy.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    Task { await client.load(roomID: roomID) }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(client.busyAction != nil)
-                .accessibilityLabel("Refresh recording edit")
-            }
-
             if let notice = client.notice {
                 Text(notice)
                     .font(.caption.weight(.semibold))
@@ -688,7 +816,23 @@ struct CaptureRecordingShareEditor: View {
             } else if let snapshot = client.snapshot,
                       let room = snapshot.room {
                 if snapshot.role == "COACH" {
-                    coachEditor(snapshot: snapshot, room: room)
+                    if initializedSnapshot { coachEditor(snapshot: snapshot, room: room) }
+                    else if let error = editSync.error {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Your saved edit couldn’t load").font(.headline)
+                            Text(error).font(.caption).foregroundStyle(.secondary)
+                            Button("Try again") {
+                                Task {
+                                    guard let takeID = snapshot.available?.selectedTakeId else { return }
+                                    await editSync.load(roomID: roomID, takeID: takeID)
+                                    initializeFromSnapshotIfNeeded()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CaptureRecordingEditLoadRetry")
+                        }
+                    }
+                    else { ProgressView("Loading saved edit…") }
                 } else {
                     recipientView(snapshot: snapshot)
                 }
@@ -702,17 +846,30 @@ struct CaptureRecordingShareEditor: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
-        .padding(16)
-        .background(CapturePalette.surfaceMuted)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
-        )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureRecordingShareEditor")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await client.load(roomID: roomID, focus: client.snapshot == nil ? focus : nil) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(client.busyAction != nil)
+                .accessibilityLabel("Refresh recording edit")
+            }
+        }
         .task {
-            await client.load(roomID: roomID)
+            await client.load(roomID: roomID, focus: focus)
+        }
+        .task(id: client.snapshot?.available?.selectedTakeId) {
+            guard client.snapshot?.role == "COACH", let takeID = client.snapshot?.available?.selectedTakeId else {
+                initializeFromSnapshotIfNeeded()
+                return
+            }
+            initializedSnapshot = false
+            await editSync.load(roomID: roomID, takeID: takeID)
+            guard !Task.isCancelled else { return }
             initializeFromSnapshotIfNeeded()
         }
         .task(id: pollKey) {
@@ -723,8 +880,10 @@ struct CaptureRecordingShareEditor: View {
                 await client.load(roomID: roomID, quiet: true)
             }
         }
-        .onChange(of: client.snapshot) { _, _ in initializeFromSnapshotIfNeeded() }
+        .onChange(of: workingDraft) { _, draft in if let draft { editSync.update(draft) } }
         .onDisappear {
+            listeningRequestID = UUID()
+            Task { await editSync.flush() }
             client.stopPreviewPlayback()
             sourcePlayback.close()
         }
@@ -752,7 +911,55 @@ struct CaptureRecordingShareEditor: View {
         snapshot: CaptureRecordingShareSnapshot,
         room: CaptureRecordingShareSnapshot.Room
     ) -> some View {
-        if let focus {
+        if let takes = snapshot.available?.takes, takes.count > 1 {
+            Picker("Recording", selection: Binding(
+                get: { snapshot.available?.selectedTakeId ?? "" },
+                set: { takeID in Task {
+                    await editSync.flush()
+                    client.stopPreviewPlayback()
+                    listeningRequestID = UUID()
+                    listeningSourceID = ""
+                    sourcePlayback.close()
+                    await client.load(roomID: roomID, takeID: takeID)
+                } }
+            )) {
+                ForEach(takes) { take in Text(take.label).tag(take.id) }
+            }
+            .disabled(client.busyAction != nil)
+            .accessibilityIdentifier("CaptureRecordingShareTake")
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(editSync.status).font(.caption)
+                if let error = editSync.error { Text(error).font(.caption).foregroundStyle(.secondary) }
+            }
+            if editSync.needsRetry {
+                Button("Retry") { Task { await editSync.flush() } }.buttonStyle(.bordered)
+            }
+            if editSync.conflictRevision != nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack { editConflictActions(snapshot) }
+                    VStack(alignment: .leading) { editConflictActions(snapshot) }
+                }
+            }
+        }
+        .accessibilityIdentifier("CaptureRecordingEditSync")
+        HStack {
+            Button { if let draft = editSync.undo() { applyWorkingDraft(draft) } } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!editSync.canUndo || client.busyAction != nil)
+            .keyboardShortcut("z", modifiers: .command)
+            .accessibilityIdentifier("CaptureRecordingEditUndo")
+            Button { if let draft = editSync.redo() { applyWorkingDraft(draft) } } label: {
+                Label("Redo", systemImage: "arrow.uturn.forward")
+            }
+            .disabled(!editSync.canRedo || client.busyAction != nil)
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .accessibilityIdentifier("CaptureRecordingEditRedo")
+        }
+        .buttonStyle(.bordered)
+        if let focus, !focus.segmentID.isEmpty {
             focusedPassageCard(snapshot: snapshot, focus: focus)
         }
         if let output = snapshot.output {
@@ -774,6 +981,7 @@ struct CaptureRecordingShareEditor: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(CapturePalette.brass)
             } else {
+                recordingListeningControls(snapshot: snapshot)
                 if let output = snapshot.output,
                    editing,
                    missingOutputSourceCount(output, available: sources) > 0 {
@@ -843,6 +1051,8 @@ struct CaptureRecordingShareEditor: View {
                 }
                 .padding(12)
                 .background(CapturePalette.plum.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+
+                manualCutControls(snapshot: snapshot, duration: duration)
 
                 if !videoSources.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -1053,6 +1263,11 @@ struct CaptureRecordingShareEditor: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
+                if CaptureRecordingManualCut.keptDuration(start: startSeconds, end: endSeconds, cuts: removedTimelineRanges(snapshot)) < 0.05 {
+                    Text("This trim contains only removed sections. Restore a section or widen the trim.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Button {
                     Task {
                         let success = await client.prepare(
@@ -1063,9 +1278,14 @@ struct CaptureRecordingShareEditor: View {
                             primaryVideoSourceID: outputMediaKind == "video" ? primaryVideoSourceID : nil,
                             startSeconds: startSeconds,
                             endSeconds: endSeconds,
-                            exclusions: transcript.filter { excludedSegmentIDs.contains($0.id) }
+                            exclusions: transcript.filter { excludedSegmentIDs.contains($0.id) },
+                            manualCuts: manualCuts
                         )
-                        if success { editing = false }
+                        if success {
+                            editing = false
+                            initializedSnapshot = false
+                            initializeFromSnapshotIfNeeded()
+                        }
                     }
                 } label: {
                     if client.busyAction == "PREPARE" {
@@ -1082,6 +1302,7 @@ struct CaptureRecordingShareEditor: View {
                         || startSeconds < 0
                         || endSeconds <= startSeconds
                         || endSeconds > duration + 0.05
+                        || CaptureRecordingManualCut.keptDuration(start: startSeconds, end: endSeconds, cuts: removedTimelineRanges(snapshot)) < 0.05
                         || snapshot.readiness?.verifiedRendererAvailable != true
                 )
                 .accessibilityIdentifier("CaptureRecordingSharePrepare")
@@ -1103,6 +1324,17 @@ struct CaptureRecordingShareEditor: View {
         Text("Recipient: \(room.client.label)")
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private func editConflictActions(_ snapshot: CaptureRecordingShareSnapshot) -> some View {
+        Button("Keep this edit") { Task { await editSync.keepThisEdit() } }.buttonStyle(.bordered)
+        Button("Reload saved") { Task {
+            guard let takeID = snapshot.available?.selectedTakeId else { return }
+            await editSync.load(roomID: roomID, takeID: takeID, reload: true)
+            initializedSnapshot = false
+            initializeFromSnapshotIfNeeded()
+        } }.buttonStyle(.bordered)
     }
 
     @ViewBuilder
@@ -1277,6 +1509,35 @@ struct CaptureRecordingShareEditor: View {
                 .accessibilityIdentifier("CaptureRecordingShareExport")
                 .accessibilityHint("Verifies the exact edited bytes, then opens the standard system share sheet. Quipsly does not choose or claim a recipient.")
 
+                Menu {
+                    ForEach(CaptureTranscriptExportFormat.allCases) { format in
+                        Button(format.label) {
+                            Task {
+                                exportNotice = nil
+                                exportURL = nil
+                                guard let url = await client.prepareMatchingTranscriptExport(roomID: roomID, format: format) else { return }
+                                exportURL = url
+                                isPresentingExport = true
+                            }
+                        }
+                    }
+                } label: {
+                    Label(client.busyAction == "TRANSCRIPT_EXPORT" ? "Preparing transcript…" : "Export matching transcript", systemImage: "text.bubble")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(client.busyAction != nil)
+                .accessibilityIdentifier("CaptureRecordingShareTranscriptExport")
+                .accessibilityValue(exportURL?.lastPathComponent ?? "No transcript prepared")
+                .accessibilityHint("Exports corrected text with only the speech kept in this edited recording. Subtitle times follow the edited file.")
+
+                CaptureEditedTranscriptPreview(client: client, roomID: roomID, output: output) {
+                    sourcePlayback.close()
+                    auditionSegmentID = nil
+                    auditionNotice = nil
+                }
+                .id("\(output.id):\(output.render.sha256 ?? "")")
+
                 if let exportNotice {
                     Text(exportNotice)
                         .font(.caption2.weight(.semibold))
@@ -1366,6 +1627,201 @@ struct CaptureRecordingShareEditor: View {
     }
 
     @MainActor
+    private func listenToSource(_ source: CaptureRecordingShareSource) async {
+        client.stopPreviewPlayback()
+        auditionSegmentID = nil
+        auditionNotice = nil
+        let requestID = UUID()
+        listeningRequestID = requestID
+        if sourcePlayback.errorMessage != nil { sourcePlayback.close() }
+        if sourcePlayback.preparedSourceID != source.id {
+            await sourcePlayback.prepareTranscriptAudition(source: source.mobileProtectedSource)
+        }
+        guard listeningRequestID == requestID, sourcePlayback.preparedSourceID == source.id else { return }
+        sourcePlayback.togglePlayback()
+    }
+
+    @ViewBuilder
+    private func recordingListeningControls(snapshot: CaptureRecordingShareSnapshot) -> some View {
+        let sources = snapshot.available?.sources ?? []
+        let selected = sources.first { $0.id == listeningSourceID }
+            ?? sources.first { $0.id == focus?.recordingAssetID }
+            ?? sources.first { selectedSourceIDs.contains($0.id) }
+        if let source = selected {
+            let loaded = sourcePlayback.preparedSourceID == source.id
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Listen and trim").font(.subheadline.bold())
+                if sources.count > 1 {
+                    Picker("Listen to track", selection: Binding(get: { source.id }, set: { id in
+                        listeningRequestID = UUID()
+                        sourcePlayback.close()
+                        listeningSourceID = id
+                    })) {
+                        ForEach(sources) { track in Text("\(track.participantLabel) · \(track.fileName ?? "Recording")").tag(track.id) }
+                    }
+                    .accessibilityIdentifier("CaptureRecordingListenTrack")
+                } else {
+                    Text(source.participantLabel).font(.caption).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    Button { Task { await listenToSource(source) } } label: {
+                        if sourcePlayback.isPreparing { ProgressView().frame(minWidth: 44, minHeight: 44) }
+                        else { Image(systemName: loaded && sourcePlayback.isPlaying ? "pause.fill" : "play.fill").frame(minWidth: 44, minHeight: 44) }
+                    }
+                    .captureProminentButton()
+                    .disabled(sourcePlayback.isPreparing)
+                    .accessibilityLabel(loaded && sourcePlayback.isPlaying ? "Pause recording" : "Play recording")
+                    .accessibilityIdentifier("CaptureRecordingListenToggle")
+                    Text(captureRecordingShareTime(loaded ? sourcePlayback.position : 0))
+                        .font(.subheadline.monospacedDigit())
+                    Spacer()
+                    Text(loaded ? captureRecordingShareTime(sourcePlayback.duration) : "–:––")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                CaptureRecordingWaveformView(
+                    waveform: loaded ? sourcePlayback.waveform : nil,
+                    isLoading: sourcePlayback.isLoadingWaveform,
+                    duration: loaded ? sourcePlayback.duration : 0,
+                    position: loaded ? sourcePlayback.position : 0,
+                    programOffset: source.programOffsetSeconds,
+                    keepStart: startSeconds, keepEnd: endSeconds,
+                    removedRanges: removedTimelineRanges(snapshot).compactMap { range in
+                        range.startSeconds.isFinite && range.endSeconds.isFinite && range.endSeconds > range.startSeconds ? range.startSeconds...range.endSeconds : nil
+                    },
+                    seek: { sourcePlayback.seek(to: $0) }
+                ).id(source.id)
+                ViewThatFits(in: .horizontal) {
+                    HStack { recordingMarkButtons(source, snapshot: snapshot) }
+                    VStack(alignment: .leading) { recordingMarkButtons(source, snapshot: snapshot) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(!loaded || sourcePlayback.isPreparing || !selectedSourceIDs.contains(source.id) || client.busyAction != nil)
+                ViewThatFits(in: .horizontal) {
+                    HStack { recordingBoundaryChecks(source) }
+                    VStack(alignment: .leading) { recordingBoundaryChecks(source) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(!loaded || sourcePlayback.isPreparing || !selectedSourceIDs.contains(source.id))
+                Text("Keep \(captureRecordingShareTime(startSeconds))–\(captureRecordingShareTime(endSeconds)) of the session")
+                    .font(.caption.monospacedDigit())
+                    .accessibilityIdentifier("CaptureRecordingListenKeptRange")
+                if let error = sourcePlayback.errorMessage {
+                    Text(error).font(.caption).foregroundStyle(CapturePalette.brass)
+                        .accessibilityIdentifier("CaptureRecordingListenError")
+                }
+                if let auditionNotice { Text(auditionNotice).font(.caption).foregroundStyle(.secondary) }
+            }
+            .padding(12)
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureRecordingListenAndTrim")
+        }
+    }
+
+    @ViewBuilder
+    private func recordingBoundaryChecks(_ source: CaptureRecordingShareSource) -> some View {
+        Button("Check trim start") { checkListeningBoundary(start: true, source: source) }
+            .accessibilityIdentifier("CaptureRecordingCheckTrimStart")
+            .frame(minHeight: 44)
+        Button("Check trim end") { checkListeningBoundary(start: false, source: source) }
+            .accessibilityIdentifier("CaptureRecordingCheckTrimEnd")
+            .frame(minHeight: 44)
+    }
+
+    private func checkListeningBoundary(start: Bool, source: CaptureRecordingShareSource) {
+        let lower = max(0, startSeconds - source.programOffsetSeconds)
+        let upper = min(sourcePlayback.duration, endSeconds - source.programOffsetSeconds)
+        guard sourcePlayback.preparedSourceID == source.id, upper > lower else {
+            auditionNotice = "This track is outside the kept part of the session. Choose another track."
+            return
+        }
+        client.stopPreviewPlayback()
+        sourcePlayback.playRange(startSeconds: start ? lower : max(lower, upper - 5),
+                                 endSeconds: start ? min(upper, lower + 5) : upper)
+        auditionNotice = "Checking the original track at your trim \(start ? "start" : "end"). Play the edited preview to hear removed passages applied."
+    }
+
+    @ViewBuilder
+    private func recordingMarkButtons(_ source: CaptureRecordingShareSource, snapshot: CaptureRecordingShareSnapshot) -> some View {
+        Button("Set start here") { markListeningBoundary(start: true, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkStart")
+            .frame(minHeight: 44)
+        Button("Set end here") { markListeningBoundary(start: false, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkEnd")
+            .frame(minHeight: 44)
+        Button("Mark cut start") { markListeningCut(start: true, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkCutStart").frame(minHeight: 44)
+        Button("Mark cut end") { markListeningCut(start: false, source: source, snapshot: snapshot) }
+            .accessibilityIdentifier("CaptureRecordingMarkCutEnd").frame(minHeight: 44)
+    }
+
+    private func markListeningCut(start: Bool, source: CaptureRecordingShareSource, snapshot: CaptureRecordingShareSnapshot) {
+        guard sourcePlayback.preparedSourceID == source.id, selectedSourceIDs.contains(source.id),
+              let position = CaptureRecordingTrimPosition.programTime(sourceSeconds: sourcePlayback.position,
+                sourceDuration: sourcePlayback.duration, offset: source.programOffsetSeconds,
+                programDuration: snapshot.available?.programDurationSeconds ?? 0) else { return }
+        if start { cutStart = position } else { cutEnd = position }
+        editing = true
+        auditionNotice = "Cut \(start ? "start" : "end") marked. Choose both ends, then remove the section below."
+    }
+
+    private func removedTimelineRanges(_ snapshot: CaptureRecordingShareSnapshot) -> [CaptureRecordingManualCut] {
+        manualCuts + editableTranscript(snapshot).filter { excludedSegmentIDs.contains($0.id) }.map {
+            CaptureRecordingManualCut(startSeconds: $0.cutStartSeconds ?? $0.startSeconds, endSeconds: $0.cutEndSeconds ?? $0.endSeconds)
+        }
+    }
+
+    private func manualCutControls(snapshot: CaptureRecordingShareSnapshot, duration: Double) -> some View {
+        let candidate = CaptureRecordingManualCut(startSeconds: cutStart, endSeconds: cutEnd)
+        let canRemove = cutStart.isFinite && cutEnd.isFinite && cutStart >= startSeconds && cutEnd <= endSeconds
+            && cutEnd - cutStart >= 0.05 && manualCuts.count < 500
+            && CaptureRecordingManualCut.keptDuration(start: startSeconds, end: endSeconds, cuts: removedTimelineRanges(snapshot) + [candidate]) >= 0.05
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Remove a section").font(.subheadline.bold())
+            Text("Mark its start and end while listening, or enter seconds. All tracks stay together. No transcript needed.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                timeField("Cut start", value: $cutStart, maximum: duration)
+                timeField("Cut end", value: $cutEnd, maximum: duration)
+            }
+            Button("Remove section", systemImage: "scissors") {
+                manualCuts.append(candidate)
+                cutStart = 0
+                cutEnd = 0
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canRemove || client.busyAction != nil)
+            .accessibilityIdentifier("CaptureRecordingRemoveSection")
+            ForEach(Array(manualCuts.enumerated()), id: \.offset) { index, cut in
+                HStack {
+                    Text("\(captureRecordingShareTime(cut.startSeconds))–\(captureRecordingShareTime(cut.endSeconds))").monospacedDigit()
+                    Spacer()
+                    Button("Restore") { manualCuts.remove(at: index) }
+                        .accessibilityLabel("Restore section \(index + 1)")
+                        .accessibilityIdentifier("CaptureRecordingRestoreSection-\(index)")
+                }.font(.caption).frame(minHeight: 44)
+            }
+            Text("Original recordings stay unchanged.").font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(CapturePalette.plum.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func markListeningBoundary(start: Bool, source: CaptureRecordingShareSource, snapshot: CaptureRecordingShareSnapshot) {
+        guard sourcePlayback.preparedSourceID == source.id, selectedSourceIDs.contains(source.id),
+              let position = CaptureRecordingTrimPosition.programTime(sourceSeconds: sourcePlayback.position,
+                sourceDuration: sourcePlayback.duration, offset: source.programOffsetSeconds,
+                programDuration: snapshot.available?.programDurationSeconds ?? 0),
+              start ? position <= endSeconds - 0.1 : position >= startSeconds + 0.1 else {
+            auditionNotice = start ? "Choose a start before the current end, or extend the end first." : "Choose an end after the current start, or move the start first."
+            return
+        }
+        auditionNotice = nil
+        editing = true
+        if start { startSeconds = position } else { endSeconds = position }
+    }
+
+    @MainActor
     private func auditionPassage(
         _ segment: CaptureRecordingShareTranscriptSegment,
         snapshot: CaptureRecordingShareSnapshot
@@ -1379,6 +1835,7 @@ struct CaptureRecordingShareEditor: View {
         }
         client.stopPreviewPlayback()
         auditionSegmentID = segment.id
+        listeningSourceID = source.id
         auditionNotice = "Preparing \(source.participantLabel)'s exact retained source…"
         await sourcePlayback.prepareTranscriptAudition(source: source.mobileProtectedSource)
         guard sourcePlayback.preparedSourceID == source.id else {
@@ -1497,6 +1954,8 @@ struct CaptureRecordingShareEditor: View {
         guard !initializedSnapshot,
               let snapshot = client.snapshot,
               let available = snapshot.available else { return }
+        // Never replace a saved draft with defaults because its read failed.
+        if let takeID = available.selectedTakeId, editSync.loadedTakeID != takeID { return }
         selectedSourceIDs = sourceIDsForEditing(snapshot.output, available: available.sources)
         startSeconds = snapshot.output?.body.edit?.startSeconds ?? 0
         endSeconds = snapshot.output?.body.edit?.endSeconds ?? available.programDurationSeconds
@@ -1504,13 +1963,44 @@ struct CaptureRecordingShareEditor: View {
         outputMediaKind = snapshot.output?.render.mediaKind == "video" ? "video" : "audio"
         primaryVideoSourceID = snapshot.output?.render.primaryVideoSourceId ?? ""
         excludedSegmentIDs = Set(snapshot.output?.body.edit?.transcriptExclusions?.map(\.id) ?? [])
-        if focus != nil {
+        manualCuts = snapshot.output?.body.edit?.manualCuts ?? []
+        cutStart = 0
+        cutEnd = 0
+        editing = false
+        if let saved = editSync.state, editSync.loadedTakeID == available.selectedTakeId,
+           saved.baseOutputId == snapshot.output?.id {
+            applyWorkingDraft(saved)
+        }
+        if focus != nil && !didApplyFocus {
             // Entering from an exact transcript passage is an editing intent,
             // but it is not an edit decision. Reveal the existing draft controls
             // without changing the source set, range, exclusions, or output.
             editing = true
+            didApplyFocus = true
         }
         initializedSnapshot = true
+    }
+
+    private var workingDraft: CaptureRecordingEditDraft? {
+        guard initializedSnapshot, client.snapshot?.role == "COACH",
+              client.snapshot?.available?.selectedTakeId == editSync.loadedTakeID,
+              editSync.loadedTakeID != nil else { return nil }
+        return CaptureRecordingEditDraft(selected: selectedSourceIDs.sorted(), startSeconds: startSeconds, endSeconds: endSeconds,
+            title: title, outputMediaKind: outputMediaKind, primaryVideoSourceId: primaryVideoSourceID,
+            excludedTranscriptKeys: excludedSegmentIDs.sorted(), editing: editing,
+            baseOutputId: client.snapshot?.output?.id, baseOutputRevision: client.snapshot?.output?.revision, manualCuts: manualCuts)
+    }
+
+    private func applyWorkingDraft(_ draft: CaptureRecordingEditDraft) {
+        selectedSourceIDs = Set(draft.selected)
+        excludedSegmentIDs = Set(draft.excludedTranscriptKeys)
+        manualCuts = draft.manualCuts ?? []
+        startSeconds = draft.startSeconds
+        endSeconds = draft.endSeconds
+        title = draft.title
+        outputMediaKind = draft.outputMediaKind
+        primaryVideoSourceID = draft.primaryVideoSourceId
+        editing = draft.editing
     }
 
     private func restoreEditorFromCurrentOutput(_ snapshot: CaptureRecordingShareSnapshot) {
@@ -1523,6 +2013,7 @@ struct CaptureRecordingShareEditor: View {
         outputMediaKind = output.render.mediaKind == "video" ? "video" : "audio"
         primaryVideoSourceID = output.render.primaryVideoSourceId ?? ""
         excludedSegmentIDs = Set(output.body.edit?.transcriptExclusions?.map(\.id) ?? [])
+        manualCuts = output.body.edit?.manualCuts ?? []
         editing = true
     }
 
@@ -1631,7 +2122,93 @@ struct CaptureRecordingShareEditor: View {
     }
 }
 
-private func captureRecordingShareTime(_ value: TimeInterval) -> String {
+private struct CaptureEditedTranscriptPreview: View {
+    @ObservedObject var client: CaptureRecordingShareClient
+    let roomID: String
+    let output: CaptureRecordingShareOutput
+    let beforePlayback: () -> Void
+    @State private var expanded = false
+    @State private var transcript: CaptureEditedTranscript?
+    @State private var error: String?
+    @State private var query = ""
+    @State private var attempt = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let duration = output.render.durationSeconds, duration > 0 {
+                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                    VStack(spacing: 4) {
+                        Slider(value: Binding(get: {min(duration, client.previewPosition)}, set: {client.seekPreview(to: $0)}), in: 0...duration)
+                            .disabled(!client.previewPrepared)
+                            .accessibilityLabel("Edited recording position")
+                            .accessibilityIdentifier("CaptureEditedRecordingPosition")
+                        HStack { Text(captureRecordingShareTime(client.previewPosition)); Spacer(); Text(captureRecordingShareTime(duration)) }
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            DisclosureGroup("Read along with this recording", isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Tap a passage to play it. Text and times match this edited recording.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
+                    else if let transcript {
+                        if let notice = transcript.notice, !notice.isEmpty { Text(notice).font(.caption).foregroundStyle(.secondary) }
+                        if transcript.segments.isEmpty {
+                            Text("No transcribed speech is available in this edit yet. You can still listen to or share the recording.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        } else {
+                            TextField("Find in this transcript", text: $query).textFieldStyle(.roundedBorder)
+                            let visible = transcript.segments.enumerated().filter { _, passage in
+                                query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || "\(passage.speakerLabel ?? "") \(passage.text)".localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespacesAndNewlines))
+                            }
+                            if visible.isEmpty { Text("No passages match your search.").font(.caption).foregroundStyle(.secondary) }
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 8) {
+                                    ForEach(visible, id: \.offset) { index, passage in
+                                        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                                            let active = client.previewPosition >= passage.startSeconds && client.previewPosition < passage.endSeconds
+                                            Button {
+                                                beforePlayback()
+                                                Task { await client.playPreviewPassage(roomID: roomID, outputID: output.id, at: passage.startSeconds) }
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 5) {
+                                                    Text("\(captureRecordingShareTime(passage.startSeconds)) · \(passage.speakerLabel ?? "Speaker")")
+                                                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                                    Text(passage.text).font(.body).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                                                }
+                                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(10)
+                                                .background(active ? CapturePalette.plum.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 10))
+                                            }
+                                            .buttonStyle(.plain).disabled(client.busyAction != nil)
+                                            .accessibilityIdentifier("CaptureEditedTranscriptPassage-\(index)")
+                                            .accessibilityAddTraits(active ? [.isSelected] : [])
+                                        }
+                                    }
+                                }
+                            }.frame(maxHeight: 320)
+                        }
+                    } else { ProgressView("Loading transcript…") }
+                    Button("Refresh transcript") { attempt += 1 }.buttonStyle(.bordered)
+                }.padding(.top, 8)
+            }
+            .accessibilityIdentifier("CaptureEditedTranscriptPreview")
+        }
+        .task(id: "\(expanded):\(attempt)") {
+            guard expanded else { transcript = nil; error = nil; return }
+            transcript = nil; error = nil
+            do {
+                let result = try await client.readMatchingTranscript(roomID: roomID, output: output)
+                guard !Task.isCancelled else { return }
+                transcript = result
+            } catch is CancellationError { }
+            catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        }
+    }
+}
+
+func captureRecordingShareTime(_ value: TimeInterval) -> String {
     let seconds = max(0, Int(value.rounded()))
     let hours = seconds / 3_600
     let minutes = (seconds % 3_600) / 60

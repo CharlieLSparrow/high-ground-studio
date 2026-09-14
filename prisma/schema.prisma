@@ -451,6 +451,7 @@ enum EmailRecipientDeliveryStatus {
 
 enum TransactionalEmailKind {
   BOOKING_CONFIRMED
+  BOOKING_RESCHEDULED
   SESSION_REMINDER_24H
   SESSION_REMINDER_1H
 }
@@ -981,6 +982,7 @@ model User {
   coachingNoteRevisionsAuthored         CoachingNoteRevision[]                      @relation("CoachingNoteRevisionActor")
   coachingNoteTagsCreated               CoachingNoteTagLink[]                       @relation("CoachingNoteTagCreatedBy")
   sessionOutputsCreated                 SessionOutput[]                             @relation("SessionOutputCreatedBy")
+  recordingEditDrafts                   SessionRecordingEditDraft[]
   sessionOutputsReceived                SessionOutput[]                             @relation("SessionOutputRecipient")
   sessionOutputRevisions                SessionOutputRevision[]                     @relation("SessionOutputRevisionActor")
   deliveryEventsActed                   DeliveryEvent[]                             @relation("DeliveryEventActor")
@@ -1084,6 +1086,7 @@ model User {
   marketingCampaigns               MarketingCampaign[]
   organizationMemberships          OrganizationMember[]
   studioProjectAccessGrantsCreated StudioProjectAccessGrant[]   @relation("StudioProjectAccessGrantCreatedBy")
+  studioProjectMemberships         StudioProjectAccessGrant[]   @relation("StudioProjectAccessGrantMember")
   nativeAuthCodes                  StudioNativeAuthCode[]
   nativeDeviceSessions             StudioNativeDeviceSession[]
   feedbackTickets                  FeedbackTicket[]
@@ -2553,6 +2556,7 @@ model CallRoom {
   sourceAlignmentDecisions       SessionAudioAlignmentDecisionReceipt[]
   audioAuditionJobs              SessionAudioAuditionJob[]
   transcriptJobs                 TranscriptJob[]
+  followThroughAnalysis          SessionFollowThroughAnalysis?
   transcriptCorrections          TranscriptCorrection[]
   transcriptVerifications        TranscriptSegmentVerification[]
   transcriptSpeakerAttributions  TranscriptSpeakerAttribution[]
@@ -2560,6 +2564,7 @@ model CallRoom {
   transcriptEvaluationRuns       TranscriptEvaluationRun[]
   notes                          CoachingNote[]
   outputs                        SessionOutput[]
+  recordingEditDrafts            SessionRecordingEditDraft[]
   deliveryEvents                 DeliveryEvent[]
   actionItems                    ActionItem[]
   goals                          Goal[]
@@ -2585,20 +2590,23 @@ model CallRoom {
 // It remains available when a coaching Session has no Nest/project and never
 // grants access beyond the canonical CallRoom participant boundary.
 model SessionConversationMessage {
-  id              String    @id
-  roomId          String
-  authorUserId    String
-  clientRequestId String
-  replyToId       String?
-  body            String    @db.Text
-  revision        Int       @default(1)
-  editedAt        DateTime?
-  deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                  String    @id
+  roomId              String
+  authorUserId        String?
+  authorNameSnapshot  String?
+  authorEmailSnapshot String?
+  clientRequestId     String
+  replyToId           String?
+  body                String    @db.Text
+  gifUrl              String?
+  revision            Int       @default(1)
+  editedAt            DateTime?
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   room      CallRoom                             @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  author    User                                 @relation("SessionConversationMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  author    User?                                @relation("SessionConversationMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
   replyTo   SessionConversationMessage?          @relation("SessionConversationReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   SessionConversationMessage[]         @relation("SessionConversationReply")
   revisions SessionConversationMessageRevision[]
@@ -3516,6 +3524,28 @@ model UploadChunk {
   @@index([status, createdAt])
 }
 
+// Latest source-bound semantic analysis for a Session. Its lease belongs to
+// processing, not the UI; generated notes/tasks/goals remain canonical work.
+model SessionFollowThroughAnalysis {
+  roomId            String    @id
+  sourceFingerprint String
+  provider          String
+  model             String
+  version           String
+  status            String
+  leaseId           String?
+  leaseUntil        DateTime?
+  attemptCount      Int       @default(0)
+  nextAttemptAt     DateTime?
+  resultJson        Json?
+  errorCode         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  room              CallRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+}
+
 model TranscriptJob {
   id                       String              @id @default(cuid())
   roomId                   String?
@@ -3538,6 +3568,8 @@ model TranscriptJob {
   providerResponseObject   String?
   workerBuildId            String?
   resultJson               Json                @default("{}")
+  // Recovery cursor, independent of source edits and provider retry budgets.
+  followThroughCheckedAt   DateTime?
   createdAt                DateTime            @default(now())
   updatedAt                DateTime            @updatedAt
 
@@ -3560,6 +3592,7 @@ model TranscriptJob {
   @@index([studioProjectId, status, createdAt])
   @@index([episodeProductionId, status, createdAt])
   @@index([status, createdAt])
+  @@index([status, followThroughCheckedAt, id])
 }
 
 model TranscriptSegment {
@@ -4107,6 +4140,26 @@ model CoachingNoteRevision {
 // canonical records. Releasing it changes in-app visibility only; delivery
 // receipts record what Quipsly actually did without implying email or message
 // delivery.
+// Mutable editing intent is independent of immutable sources and rendered outputs.
+// Each person's take draft syncs across devices; revision checks prevent lost edits.
+model SessionRecordingEditDraft {
+  id              String   @id @default(cuid())
+  roomId          String
+  userId          String
+  takeId          String
+  revision        Int      @default(1)
+  clientRequestId String   @db.Uuid
+  stateJson       Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  room CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId, takeId])
+  @@index([userId, updatedAt])
+}
+
 model SessionOutput {
   id                 String              @id
   roomId             String
@@ -4187,6 +4240,9 @@ model ActionItem {
   assignedUserId String?
   projectId      String?
   engagementId   String?
+  // Responsibility and sharing are independent. Existing personal and
+  // Session/client-space tasks retain their own access rules.
+  isNestShared   Boolean          @default(false)
   title          String
   detail         String?
   status         ActionItemStatus @default(OPEN)
@@ -4904,6 +4960,7 @@ model StudioProjectAccessGrant {
   id              String                    @id @default(cuid())
   projectId       String
   email           String
+  memberUserId    String?
   role            StudioProjectAccessRole   @default(VIEWER)
   status          StudioProjectAccessStatus @default(ACTIVE)
   createdByUserId String?
@@ -4914,10 +4971,12 @@ model StudioProjectAccessGrant {
 
   project   StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy User?         @relation("StudioProjectAccessGrantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  member    User?         @relation("StudioProjectAccessGrantMember", fields: [memberUserId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, email])
   @@index([email, status])
   @@index([projectId, status])
+  @@index([memberUserId, status, projectId])
 }
 
 model StudioDocument {

@@ -14,7 +14,6 @@ import {
   FileText,
   Film,
   FolderOpen,
-  ListTodo,
   Mic,
   Microscope,
   PackageCheck,
@@ -29,7 +28,8 @@ import {
 import { getOutputFamilyLabel, listOutputsForNestKind } from "@high-ground/quipsly-domain/output-catalog";
 
 import { auth } from "@/auth";
-import { tagFocusHref } from "@/components/tag-search-chips";
+import { TagSearchChips } from "@/components/tag-search-chips";
+import { NestTaskList } from "@/components/nest-task-list";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   PRIVATE_FICTION_ISSUE_SLUG,
@@ -82,16 +82,6 @@ function normalizeProjectView(value: string | string[] | undefined): ProjectView
 
 function defaultEpisodeForNest(slug: string) {
   return slug === "high-ground-odyssey-manuscript" ? "episode-4" : "current-episode";
-}
-
-function mediaTime(value: number) {
-  const seconds = Math.max(0, Math.floor(value));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainder = seconds % 60;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
-    : `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
 function documentActionLabel(kind: StudioNestKind) {
@@ -252,7 +242,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
     }),
     prisma.studioTag.findMany({
       where: { projectId: project.id, isActive: true },
-      select: { id: true, label: true, slug: true, category: true },
+      select: { id: true, label: true, slug: true, category: true, hexColor: true },
       orderBy: [{ category: "asc" }, { label: "asc" }],
       take: 30,
     }),
@@ -322,7 +312,6 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
   const goals = projectFollowThrough.goals;
   const tasks = projectFollowThrough.tasks;
   const openTasks = tasks.filter((task) => task.status === "OPEN");
-  const resolvedTasks = tasks.filter((task) => task.status !== "OPEN");
   const activeGoals = goals.filter((goal) => goal.status === "ACTIVE");
   const nextTask = openTasks[0] ?? tasks[0];
   const activeGoal = goals.find((goal) => goal.status === "ACTIVE") ?? goals[0];
@@ -524,11 +513,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                 </div>
                 {tags.length ? (
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {tags.map((tag) => (
-                      <Link key={tag.id} href={tagFocusHref(tag.id)} className="inline-flex min-h-11 items-center rounded-full border border-sky-200 bg-white px-4 text-xs font-black text-sky-950 hover:border-sky-500">
-                        #{tag.label}
-                      </Link>
-                    ))}
+                    <TagSearchChips tags={tags} className="" />
                   </div>
                 ) : (
                   <p className="mt-4 text-sm font-semibold leading-6 text-sky-950">Add tags as you work to make related ideas easier to find.</p>
@@ -567,36 +552,27 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
 
           {view === "work" ? (
             <>
-              {canWrite ? <NestQuickCapture projectId={project.id} projectSlug={project.slug} projectName={project.name} tags={tags} /> : null}
-              <section aria-labelledby="nest-follow-through-heading" className="rounded-3xl border border-sky-200 bg-white p-5 shadow-sm md:p-6">
+              {canWrite ? <details className="rounded-2xl border border-border bg-card p-4 text-foreground">
+                <summary className="min-h-11 cursor-pointer font-semibold">Add a task, note, or goal</summary>
+                <NestQuickCapture projectId={project.id} projectSlug={project.slug} projectName={project.name} tags={tags} initialKind="TASK" />
+              </details> : null}
+              <section aria-labelledby="nest-follow-through-heading" className="rounded-3xl border border-border bg-card p-5 text-foreground shadow-sm md:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-800">Same records, in context</p>
-                    <h2 id="nest-follow-through-heading" className="mt-1 font-serif text-3xl font-black">Project follow-through</h2>
-                    <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Only your owned goals and actor-visible committed tasks appear. Unreviewed transcript suggestions stay excluded.</p>
+                    <h2 id="nest-follow-through-heading" className="font-serif text-3xl font-semibold">Tasks and goals</h2>
+                    <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Keep the next steps close to the work.</p>
                   </div>
-                  <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-sky-300 bg-white px-4 text-xs font-black text-sky-900">Open all work</Link>
+                  <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-semibold">Open all work</Link>
                 </div>
-                <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-violet-200 bg-violet-50/35 p-4">
+                <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(14rem,1fr)]">
+                  <div className="order-2 rounded-2xl border border-border bg-background p-4">
                     <h3 className="inline-flex items-center gap-2 font-serif text-xl font-black"><Target size={18} className="text-violet-700" aria-hidden="true" /> Goals</h3>
                     {goals.length ? <ul className="mt-3 space-y-2">{goals.map((goal) => {
                       const progress = goal.progressReceipts[0]?.progressPercent;
                       return <li key={goal.id}><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="block rounded-xl border border-violet-100 bg-white p-3 outline-none hover:border-violet-300 focus-visible:ring-2 focus-visible:ring-violet-500"><span className="font-black">{goal.title}</span><span className="mt-1 block text-xs font-bold text-[#806a4d]">{goal.status.toLowerCase().replaceAll("_", " ")} · {progress === null || progress === undefined ? "no progress update" : `${progress}% progress`}{goal.targetAt ? ` · target ${goal.targetAt.toLocaleDateString()}` : ""}</span></Link></li>;
-                    })}</ul> : <p className="mt-3 text-sm font-semibold text-[#765f40]">No owned goals are attached yet.</p>}
+                    })}</ul> : <p className="mt-3 text-sm text-muted-foreground">No goals yet. Add one above when you have something to work toward.</p>}
                   </div>
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/35 p-4">
-                    <h3 className="inline-flex items-center gap-2 font-serif text-xl font-black"><ListTodo size={18} className="text-emerald-700" aria-hidden="true" /> Tasks</h3>
-                    {openTasks.length ? <ul className="mt-3 space-y-2">{openTasks.map((task) => <li key={task.id} className="rounded-xl border border-emerald-100 bg-white p-3"><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="font-black outline-none hover:underline focus-visible:ring-2 focus-visible:ring-emerald-600">{task.title}</Link><p className="mt-1 text-xs font-bold text-[#806a4d]">{task.dueAt ? `due ${task.dueAt.toLocaleDateString()}` : "no due date"}{task.room?.title ? ` · ${task.room.title}` : ""}</p>{task.sourceAnchor ? <Link href={`/sessions/${encodeURIComponent(task.sourceAnchor.roomId)}#transcript-segment-${encodeURIComponent(task.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">Return to {mediaTime(task.sourceAnchor.startSeconds)}–{mediaTime(task.sourceAnchor.endSeconds)}</Link> : null}</li>)}</ul> : <p className="mt-3 text-sm font-semibold text-[#765f40]">No open actor-visible tasks are attached yet.</p>}
-                    {resolvedTasks.length ? (
-                      <details className="mt-3 rounded-xl border border-emerald-100 bg-white p-3">
-                        <summary className="cursor-pointer text-xs font-black text-emerald-900">Resolved tasks · {resolvedTasks.length}</summary>
-                        <ul className="mt-3 space-y-2">
-                          {resolvedTasks.map((task) => <li key={task.id}><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="text-xs font-bold text-[#765f40] hover:underline">{task.title} · {task.status.toLowerCase()}</Link></li>)}
-                        </ul>
-                      </details>
-                    ) : null}
-                  </div>
+                  <NestTaskList projectId={project.id} tasks={tasks.map(task => ({ id: task.id, title: task.title, detail: task.detail, status: task.status, dueAt: task.dueAt?.toISOString() ?? null, updatedAt: task.updatedAt.toISOString(), canEdit: task.canEdit, recurring: Boolean(task.recurrenceOccurrence), tags: task.tags, conversationSourceHref: task.conversationSourceHref, sourceAnchor: task.sourceAnchor }))} />
                 </div>
               </section>
             </>

@@ -90,7 +90,7 @@ export function buildCaptureSourceAlignmentProposal(input: {
   startReceipt?: unknown;
 }): CaptureSourceAlignmentProposal {
   const sourceProfile = object(input.sourceProfile);
-  const captureGroupId = text(input.captureGroupId) || null;
+  const captureGroupId = captureGroupIdentity(input.captureGroupId) || null;
   const base = baseProposal(captureGroupId);
   if (Object.keys(sourceProfile).length === 0) {
     return {
@@ -177,14 +177,7 @@ export function buildCaptureSourceAlignmentProposal(input: {
         ),
       }
     : null;
-  const uncertaintyMilliseconds = rounded(
-    Math.max(
-      selected.uncertaintyMilliseconds,
-      selected.networkRoundTripMilliseconds / 2,
-    )
-    + Math.abs(selected.wallClockDiscontinuityMilliseconds) / 2
-    + 2,
-  );
+  const uncertaintyMilliseconds = rounded(clockSampleUncertainty(selected) + 2);
   const clockDriftEvidence = buildClockDriftEvidence({
     monotonicStartedNanoseconds,
     openingSample: selected,
@@ -380,7 +373,7 @@ function validClockSample(input: {
   const sampleId = text(sample.sampleId);
   const clientKind = text(sample.clientKind);
   const sampleRoomId = text(sample.callRoomId);
-  const sampleCaptureGroupId = text(sample.captureGroupId);
+  const sampleCaptureGroupId = captureGroupIdentity(sample.captureGroupId);
   const monotonicSent = positiveBigInt(
     sample.deviceMonotonicSentNanoseconds,
   );
@@ -447,8 +440,13 @@ function validClockSample(input: {
     deviceWallReceivedAtMilliseconds: wallReceived.milliseconds,
     networkRoundTripMilliseconds,
     serverOffsetMilliseconds,
-    uncertaintyMilliseconds:
+    uncertaintyMilliseconds: Math.max(
       reportedUncertainty ?? networkRoundTripMilliseconds / 2,
+      timestampResolutionMilliseconds(sample.deviceWallSentAt),
+      timestampResolutionMilliseconds(sample.deviceWallReceivedAt),
+      timestampResolutionMilliseconds(sample.serverReceivedAt),
+      timestampResolutionMilliseconds(sample.serverSentAt),
+    ),
     wallClockDiscontinuityMilliseconds,
     sourceProfileDateEncoding:
       wallSent.encoding === "swift-reference-date"
@@ -459,9 +457,32 @@ function validClockSample(input: {
 }
 
 function compareClockQuality(left: ValidClockSample, right: ValidClockSample) {
-  return left.networkRoundTripMilliseconds - right.networkRoundTripMilliseconds
-    || left.uncertaintyMilliseconds - right.uncertaintyMilliseconds
+  // A fast request is not a precise clock when its timestamps were rounded or
+  // the wall clock moved. Use the same error budget reported with the result.
+  return clockSampleUncertainty(left) - clockSampleUncertainty(right)
+    || left.networkRoundTripMilliseconds - right.networkRoundTripMilliseconds
     || left.sampleId.localeCompare(right.sampleId);
+}
+
+function clockSampleUncertainty(sample: ValidClockSample) {
+  return Math.max(sample.uncertaintyMilliseconds, sample.networkRoundTripMilliseconds / 2)
+    + Math.abs(sample.wallClockDiscontinuityMilliseconds) / 2;
+}
+
+function captureGroupIdentity(value: unknown) {
+  const identifier = text(value);
+  // Foundation's UUID encoder uses uppercase. UUID case is not identity; other
+  // application IDs remain case-sensitive and must not be silently conflated.
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)
+    ? identifier.toLowerCase() : identifier;
+}
+
+function timestampResolutionMilliseconds(value: unknown) {
+  if (typeof value !== "string") return 1;
+  const fraction = value.match(/T\d{2}:\d{2}:\d{2}\.(\d+)/)?.[1];
+  // Old iOS ledgers wrote whole seconds. A good network RTT cannot restore
+  // precision that was discarded before the clock profile reached the server.
+  return fraction ? Math.max(1, 10 ** (3 - fraction.length)) : 1000;
 }
 
 function projectedServerStartMilliseconds(

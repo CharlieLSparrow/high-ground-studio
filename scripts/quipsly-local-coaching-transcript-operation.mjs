@@ -89,6 +89,13 @@ const expectedTermsByRole = (() => {
       `Controlled ${role} transcript terms are missing or unsafe.`,
     );
   }
+  if (configured.followThrough) {
+    for (const field of ["goalTitle", "taskTitle", "noteQuote"]) {
+      assert(typeof configured.followThrough[field] === "string" &&
+        configured.followThrough[field].length > 0 && configured.followThrough[field].length <= 240,
+      `Controlled follow-through ${field} is missing or too long.`);
+    }
+  }
   return configured;
 })();
 process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
@@ -600,6 +607,37 @@ try {
     sha256: createHash("sha256").update(mentorFile).digest("hex"),
   };
 
+  let followThrough = null;
+  if (expectedTermsByRole?.followThrough) {
+    const expected = expectedTermsByRole.followThrough;
+    await page.goto(`${baseURL}/sessions/${ROOM_ID}?mode=transcript`, { waitUntil: "domcontentloaded" });
+    await page.getByText("Session results and status", { exact: true }).click();
+    const recap = page.locator("#review-material");
+    await recap.getByText(expected.noteQuote, { exact: false }).first().waitFor({ timeout: 30_000 });
+    const automaticSource = { sourceJson: { path: ["origin"], equals: "quipsly-session-follow-through" } };
+    const [goals, tasks, notes] = await Promise.all([
+      prisma.goal.findMany({ where: { roomId: ROOM_ID, ...automaticSource }, select: { title: true } }),
+      prisma.actionItem.findMany({ where: { roomId: ROOM_ID, ...automaticSource }, select: { title: true } }),
+      prisma.coachingNote.findMany({ where: { roomId: ROOM_ID, kind: "HIGHLIGHT", ...automaticSource }, select: { title: true, body: true } }),
+    ]);
+    const equal = (left, right) => left.toLowerCase() === right.toLowerCase();
+    assert(goals.length === 1 && equal(goals[0].title, expected.goalTitle), "Generated goal did not match controlled speech.");
+    assert(tasks.length === 1 && equal(tasks[0].title, expected.taskTitle), "Generated task did not match controlled speech.");
+    assert(notes.length === 1 && notes[0].body.toLowerCase().includes(expected.noteQuote.toLowerCase()),
+      "Generated notes retained greeting/fragment clutter or lost the useful preference.");
+    await page.goto(`${baseURL}/coaching/engagements/${encodeURIComponent(freshContext.engagementId)}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("tablist", { name: "Client space", exact: true })
+      .getByRole("tab", { name: "Work", exact: true }).click();
+    for (const [kind, item] of [["goal", goals[0]], ["task", tasks[0]], ["note", notes[0]]]) {
+      await page.getByRole("button", { name: `Open ${kind}: ${item.title}`, exact: true }).waitFor({ timeout: 20_000 });
+    }
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("tab", { name: "Work", exact: true }).click();
+    await page.getByRole("button", { name: `Open goal: ${goals[0].title}`, exact: true }).waitFor({ timeout: 20_000 });
+    followThrough = { goalCount: goals.length, taskCount: tasks.length, noteCount: notes.length,
+      controlledContentMatched: true, renderedInClientSpace: true, retainedAfterReload: true };
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -618,6 +656,7 @@ try {
         renderedTranscriptRuns: results,
         controlledSpeechTermsObserved,
         mentorReport,
+        followThrough,
         realSpeechQualityProven: false,
         naturalHumanSpeechProven: false,
         humanPlaybackReviewProven: false,

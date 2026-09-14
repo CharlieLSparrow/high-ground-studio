@@ -53,7 +53,7 @@ describe("transactional email transport", () => {
       }),
     );
     await expect(sendTransactionalEmail({
-      recipientEmail: "CLIENT@Example.com",
+      recipientEmail: "DELIVERY-CHECK@Quipsly.com",
       recipientName: "Chris",
       counterpartName: "Casey",
       roomId: "room-1",
@@ -73,16 +73,31 @@ describe("transactional email transport", () => {
       "idempotency-key": "txn-email/one",
     });
     const body = JSON.parse(String(request?.body));
-    expect(body.to).toEqual(["client@example.com"]);
+    expect(body.to).toEqual(["delivery-check@quipsly.com"]);
     expect(body.text).toContain("https://nest.quipsly.com/sessions/room-1?mode=live");
     expect(body).not.toHaveProperty("cc");
     expect(body).not.toHaveProperty("bcc");
   });
 
-  it("never sends synthetic local recipients", async () => {
+  it("clearly identifies a reschedule and sends the new local time with the same session link", async () => {
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({id: "changed-time"}), {status: 200}));
+    await expect(sendTransactionalEmail({
+      recipientEmail: "delivery-check@quipsly.com", roomId: "retained-room", roomTitle: "Writing together",
+      scheduledStart: new Date("2026-09-10T16:00:00Z"), timezone: "America/Denver",
+      kind: "BOOKING_RESCHEDULED", idempotencyKey: "txn-email/time-change",
+    })).resolves.toMatchObject({ok: true, providerMessageId: "changed-time"});
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]?.body));
+    expect(body.subject).toContain("Your Quipsly session time has changed");
+    expect(body.text).toContain("Your session has a new time.");
+    expect(body.text).toContain("10:00");
+    expect(body.text).toContain("https://nest.quipsly.com/sessions/retained-room?mode=live");
+    expect(fetchMock.mock.calls[0]![1]?.headers).toMatchObject({"idempotency-key": "txn-email/time-change"});
+  });
+
+  it.each(["client@dev.test", "client-first@example.test", "client@example.org", "client@host.invalid"])("never sends synthetic recipient %s", async (recipientEmail) => {
     const fetchMock = jest.spyOn(global, "fetch");
     await expect(sendTransactionalEmail({
-      recipientEmail: "client@dev.test",
+      recipientEmail,
       roomId: "room-1",
       roomTitle: "Local acceptance",
       scheduledStart: new Date("2026-08-28T18:00:00.000Z"),

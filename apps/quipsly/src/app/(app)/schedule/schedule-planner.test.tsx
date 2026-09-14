@@ -56,7 +56,7 @@ describe("SchedulePlanner", () => {
       },
     }]} targets={[]} />);
     const link = screen.getByRole("link", { name: "Return to 0:03–0:04" });
-    expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
+    expect(link).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1");
     expect(screen.getByRole("link", { name: "Use the client commitment" })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
     expect(screen.getByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toBeInTheDocument();
@@ -99,7 +99,7 @@ describe("SchedulePlanner", () => {
     }]} targets={[]} />);
     expect(screen.getByRole("link", { name: "Return to 0:12–0:17" })).toHaveAttribute(
       "href",
-      "/sessions/room-2#transcript-segment-segment-2",
+      "/sessions/room-2?mode=transcript&source=asset-2&at=12.4#transcript-segment-segment-2",
     );
     expect(screen.getByRole("link", { name: "Build the coaching review habit" })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByText("Homer: Build a repeatable coaching review habit.")).toBeInTheDocument();

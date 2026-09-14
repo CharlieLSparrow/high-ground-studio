@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { SessionSourceClockAttentionCard } from "./session-source-clock-attention-card";
 import { buildSessionSourceClockAttention, type SessionSourceClockSource } from "./session-source-clock-attention";
+import { RecordingDetails } from "./session-recordings-workspace";
 
 const mockRefresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
@@ -31,6 +32,27 @@ beforeEach(() => {
 afterAll(() => { jest.restoreAllMocks(); });
 
 describe("SessionSourceClockAttentionCard", () => {
+  it("does not load a source from hidden details or resume playback when reopened", () => {
+    const attention = buildSessionSourceClockAttention({
+      transcript: [{ id: "segment-1", segmentId: "segment-1", source, startSeconds: 8, endSeconds: 10,
+        text: "Provider attempt", speakerLabel: "Charlie", providerConfidence: 0.6, reviewState: "unreviewed" }],
+      audibleEvents: [], dialogueRepairs: [], mastery: [], edits: [],
+    });
+    const view = render(<RecordingDetails><SessionSourceClockAttentionCard attention={attention} /></RecordingDetails>);
+    const details = screen.getByText("Recording details & troubleshooting").closest("details")!;
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelectorAll("audio")).toHaveLength(1);
+    details.open = false;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const media = view.container.querySelector("audio")!;
+    expect(media).not.toHaveAttribute("autoplay");
+    expect(media.paused).toBe(true);
+  });
   it("shows the authority boundary and direct source-return controls", () => {
     const attention = buildSessionSourceClockAttention({
       transcript: [{ id: "segment-1", segmentId: "segment-1", source, startSeconds: 8, endSeconds: 10, text: "Provider attempt", speakerLabel: "Charlie", providerConfidence: 0.6, reviewState: "unreviewed" }],
@@ -40,7 +62,7 @@ describe("SessionSourceClockAttentionCard", () => {
     expect(screen.getByRole("heading", { name: "Listen where the evidence points" })).toBeInTheDocument();
     expect(screen.getByText("60% provider confidence · not measured accuracy")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open Audio Studio/i })).toHaveAttribute("href", expect.stringContaining("at=8.000"));
-    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-1");
+    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=recording-1&at=8#transcript-segment-segment-1");
     expect(screen.getByLabelText(/Protected source for/i)).toHaveAttribute("src", "/api/ingest/media/source-1");
   });
 
@@ -64,7 +86,7 @@ describe("SessionSourceClockAttentionCard", () => {
     expect(screen.getByText(/Grouped listening avoids about/i)).toBeInTheDocument();
     expect(screen.getByText("Transcript attempt · 0:08–0:10")).toBeInTheDocument();
     expect(screen.getByText("Audible-event detector · 0:09.5–0:09.7")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-1");
+    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=recording-1&at=8#transcript-segment-segment-1");
     expect(screen.getAllByRole("link", { name: /Open Audio Studio/i })).toHaveLength(2);
   });
 

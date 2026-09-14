@@ -167,6 +167,9 @@ export type SessionReviewPacket = {
     id: string;
     status: string;
     provider: string;
+    failureCode?: string | null;
+    retryable?: boolean;
+    errorMessage?: string | null;
     segmentCount: number;
     wordCount?: number;
     readiness?: SessionTranscriptConfidence;
@@ -181,6 +184,7 @@ export type SessionReviewPacket = {
   } | null;
   transcriptProcessingGate?: { allowed: boolean; errorCode?: string; error?: string; explicitReleaseRequired?: boolean };
   packet?: {
+    generation?: import("@/lib/session-follow-through-progress").SessionFollowThroughProgress | null;
     reviewAccess?: {
       canReviewPrivatePacket: boolean;
       role: "CANONICAL_REVIEWER" | "SESSION_PARTICIPANT";
@@ -251,6 +255,11 @@ export type SessionReviewPacket = {
 };
 
 export type SessionTranscriptResultSource = {
+  recordingAssetId?: string | null;
+  sourceStartSeconds?: number | null;
+  sourceEndSeconds?: number | null;
+  programStartSeconds?: number | null;
+  programEndSeconds?: number | null;
   segmentId: string | null;
   startSeconds: number | null;
   endSeconds: number | null;

@@ -1,6 +1,6 @@
 import React from "react";
 import { createHash, webcrypto } from "node:crypto";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useSearchParams } from "next/navigation";
 
@@ -243,7 +243,10 @@ describe("CloudEditor production truth UX", () => {
     jest.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
 
   it("renders the current editor modes and source/program distinction after access resolves", async () => {
     render(<CloudEditor />);
@@ -255,7 +258,10 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByRole("button", { name: "Program Monitor" })).toBeInTheDocument();
   });
 
-  it("configures, assembles, receipts, and persists a wide-aware camera policy", async () => {
+  it.each(["manual", "auto"] as const)("configures, assembles, receipts, and persists a wide-aware camera policy through %s save", async (saveMode) => {
+    // Wall-clock speed must not decide whether the manual Save button still
+    // exists. Exercise both paths explicitly, including the real debounce.
+    jest.useFakeTimers();
     mockEpisodeProduction({
       timelineJson: {
         payloadVersion: 5,
@@ -280,7 +286,7 @@ describe("CloudEditor production truth UX", () => {
         savedAt: "2026-08-07T00:00:00.000Z",
       },
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<CloudEditor />);
 
     expect(await screen.findByText(/Loaded Current Episode from saved timeline/i)).toBeInTheDocument();
@@ -302,7 +308,11 @@ describe("CloudEditor production truth UX", () => {
       }),
     }));
 
-    await user.click(screen.getByRole("button", { name: "Save Episode Timeline" }));
+    if (saveMode === "manual") {
+      await user.click(screen.getByRole("button", { name: "Save Episode Timeline" }));
+    } else {
+      await act(async () => { await jest.advanceTimersByTimeAsync(900); });
+    }
     await waitFor(() => {
       const saveCall = jest.mocked(globalThis.fetch).mock.calls.find(([, init]) => {
         const body = JSON.parse(String(init?.body ?? "{}"));
@@ -310,6 +320,7 @@ describe("CloudEditor production truth UX", () => {
       });
       expect(saveCall).toBeDefined();
       const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
+      expect(JSON.parse(String(saveCall?.[1]?.body)).editReviewSaveMode).toBe(saveMode);
       expect(saved.payloadVersion).toBe(6);
       expect(saved.cameraAssemblyPolicy).toEqual(expect.objectContaining({ style: "natural-conversation", wideClipId: "wide-cam" }));
       expect(saved.cameraSwitchDecisions).toEqual(expect.arrayContaining([expect.objectContaining({ source: "deterministic-assembly", evidence: expect.objectContaining({ policyId: "camera-assembly-policy" }) })]));
@@ -539,7 +550,7 @@ describe("CloudEditor production truth UX", () => {
     }));
 
     await user.click(screen.getByRole("button", { name: /Proof-listen source for evidence/i }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i));
     expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:06/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
   });
@@ -570,7 +581,7 @@ describe("CloudEditor production truth UX", () => {
     fireEvent.timeUpdate(protectedSource);
     await user.click(screen.getByRole("checkbox", { name: /I listened inside this exact source range/i }));
     await user.click(screen.getByRole("button", { name: "Record proof-listen" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listened through the exact protected Capture recording/i);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Proof-listened through the exact protected Capture recording/i));
     expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Apply proposal" }));
@@ -608,7 +619,9 @@ describe("CloudEditor production truth UX", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "Restore to edit" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Restored 00:02–00:05 to the active edit/i);
+    // A status node already exists for the prior operation. Restoration saves
+    // asynchronously, so wait for its result, not just that retained node.
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Restored 00:02–00:05 to the active edit/i));
     expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(await screen.findByRole("region", { name: "Exact range edit decisions" })).toBeInTheDocument();

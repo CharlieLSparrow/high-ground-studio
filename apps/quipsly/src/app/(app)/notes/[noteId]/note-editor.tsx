@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Copy, Download, LoaderCircle } from "lucide-react";
 import type { CanonicalDocumentNoteSnapshot, CanonicalDocumentNoteEditInput } from "@/lib/server/canonical-document-note-edit";
+import { DocumentTags } from "@/components/document-tags";
 
 type Note = CanonicalDocumentNoteSnapshot & { projectName: string };
 type Draft = { title: string; blocks: CanonicalDocumentNoteSnapshot["blocks"] };
@@ -144,6 +145,7 @@ export function NoteEditor({ initial, actorId }: { initial: Note; actorId: strin
     <div className="rounded-2xl border border-quipsly-divider bg-quipsly-surface p-5 shadow-sm sm:p-9">
       <Link href={`/nests/${encodeURIComponent(initial.projectSlug)}`} className="text-xs text-quipsly-muted hover:underline">{initial.projectName}</Link>
       <input aria-label="Note title" maxLength={160} readOnly={!initial.canEditContent || !ready} value={draft.title} placeholder="Untitled note" onChange={(event) => update({ ...draftRef.current, title: event.target.value })} onBlur={() => void persist()} className="mt-4 mb-6 block w-full border-0 bg-transparent font-serif text-3xl font-bold outline-none placeholder:text-quipsly-muted sm:text-4xl" />
+      {initial.canEditContent && <DocumentTags key={`${actorId}:${initial.projectId}:${initial.id}`} documentId={initial.id} projectId={initial.projectId} actorId={actorId} />}
       {draft.blocks.map((block, index) => <textarea key={block.id} id={`note-block-${block.id}`} aria-label={draft.blocks.length === 1 ? "Note text" : `Note text ${index + 1}`} readOnly={!initial.canEditContent || !ready} maxLength={20_000} value={block.body} placeholder="Start writing…" rows={Math.max(14, block.body.split("\n").length + 2)} onChange={(event) => update({ ...draftRef.current, blocks: draftRef.current.blocks.map((item) => item.id === block.id ? { ...item, body: event.target.value } : item) })} onBlur={() => void persist()} className="block min-h-64 w-full scroll-mt-6 resize-y border-0 bg-transparent text-base leading-8 outline-none placeholder:text-quipsly-muted" />)}
     </div>
   </article>;

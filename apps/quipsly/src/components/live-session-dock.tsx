@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import callSurface from "./call-surface.module.css";
 import {
   ChevronDown,
   ExternalLink,
   MessageSquareText,
+  NotebookPen,
+  ListTodo,
   Mic2,
+  Mic,
+  MicOff,
   PanelRightClose,
   PanelRightOpen,
   PhoneOff,
@@ -27,9 +32,18 @@ import {
 import {
   LiveSessionRoom,
   type LiveSessionRoomStatus,
+  type LiveSessionMicrophoneControl,
 } from "@/components/live-session-room";
 import { SessionThread } from "@/components/session-thread";
+import { CallNotesPanel } from "@/components/call-notes-panel";
+import { CallWorkPanel } from "@/components/call-work-panel";
+import { CallWorkspacePanel } from "@/components/call-workspace-panel";
 import type { SessionCaptureProfile } from "@/lib/session-experience";
+import { captureAppDeepLink } from "@/lib/capture-universal-link";
+import { selectSessionEntry } from "@/lib/session-entry-client";
+import { WorkspacePanelActivity } from "./workspace-panel-activity";
+import { useSessionChatActivity } from "@/hooks/use-session-chat-activity";
+import { useCallViewport } from "@/hooks/use-call-viewport";
 
 export type LiveSessionDockConfig = {
   callRoomId: string;
@@ -77,7 +91,7 @@ export function liveSessionStatusLabel(status: LiveSessionRoomStatus | null) {
     case "reconnecting": return "Reconnecting…";
     case "checking": return "Checking devices…";
     case "ended": return "Call ended";
-    case "error": return "Connection needs attention";
+    case "error": return "Needs attention";
     default: return "Ready to join";
   }
 }
@@ -90,16 +104,73 @@ export function useLiveSessionDock() {
   return useContext(LiveSessionDockContext);
 }
 
-export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
+export function LiveSessionDockProvider({ children, currentUser }: {
+  children: ReactNode;
+  currentUser?: { name: string | null; email: string | null };
+}) {
   const [active, setActive] = useState<LiveSessionDockConfig | null>(null);
   const [dismissedCallRoomId, setDismissedCallRoomId] = useState<string | null>(null);
   const [pending, setPending] = useState<LiveSessionDockConfig | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const visibleViewport = useCallViewport(isOpen);
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
   const [sourceProtected, setSourceProtected] = useState(false);
+  const [microphoneControl, setMicrophoneControl] = useState<LiveSessionMicrophoneControl | null>(null);
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
   const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
   const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
+  const [workspacePanel, setWorkspacePanel] = useState<"chat" | "notes" | "work" | "devices" | "recording" | "details" | "people" | null>(null);
+  const chatOpen = workspacePanel === "chat";
+  const notesOpen = workspacePanel === "notes";
+  const workOpen = workspacePanel === "work";
+  const [notesVisitedRoom, setNotesVisitedRoom] = useState<string | null>(null);
+  const [noteToOpen, setNoteToOpen] = useState<{ id: string; request: number } | null>(null);
+  const [workVisitedRoom, setWorkVisitedRoom] = useState<string | null>(null);
+  const [entryToOpen, setEntryToOpen] = useState<{id: string; request: number} | null>(null);
+  const [messageToOpen, setMessageToOpen] = useState<{id: string; request: number} | null>(null);
+  const [notesNeedAttention, setNotesNeedAttention] = useState(false);
+  const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
+  const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
+  const dockDialogRef = useRef<HTMLDialogElement>(null);
+  const [companionFits, setCompanionFits] = useState(false);
+  const companion = companionFits && (status === "connected" || status === "reconnecting") && (chatOpen || notesOpen || workOpen);
+  const unreadChatCount = useSessionChatActivity(active?.callRoomId ?? null);
+  const unreadChatBadge = unreadChatCount > 0 ? <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
+    aria-label={`${unreadChatCount} unread chat ${unreadChatCount === 1 ? "message" : "messages"}`}>{unreadChatCount > 99 ? "99+" : unreadChatCount}</span> : null;
+
+  useEffect(() => {
+    const dialog = dockDialogRef.current;
+    if (!dialog) return;
+    if (isOpen && !dialog.open) dialog.showModal();
+    if (!isOpen && dialog.open) dialog.close();
+  }, [active?.callRoomId, isOpen]);
+
+  useEffect(() => {
+    const dialog = dockDialogRef.current;
+    if (!dialog || !isOpen || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      // A landscape tablet has room for two panes. Short windows need their
+      // height for writing, not a thumbnail above the keyboard.
+      const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      setCompanionFits(entry.contentRect.width < 56 * rootFontSize && entry.contentRect.height >= 620);
+    });
+    observer.observe(dialog);
+    return () => observer.disconnect();
+  }, [active?.callRoomId, isOpen]);
+
+  useEffect(() => {
+    setWorkspacePanel(null);
+    setNoteToOpen(null);
+    setEntryToOpen(null);
+    setMessageToOpen(null);
+  }, [active?.callRoomId]);
+
+  useEffect(() => {
+    // Reveal the after-call destination even when someone leaves from chat or
+    // settings. Panels stay mounted, so an unfinished message is not lost.
+    if (status === "ended" && !sourceProtected) setWorkspacePanel(null);
+  }, [status, sourceProtected]);
 
   const requestSession = useCallback((config: LiveSessionDockConfig, requestOpen: boolean) => {
     setActive((current) => {
@@ -176,13 +247,17 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !isOpen) return;
+      if (event.key !== "Escape" || event.defaultPrevented || !isOpen) return;
       event.preventDefault();
+      if (workspacePanel) {
+        setWorkspacePanel(null);
+        return;
+      }
       minimize();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, minimize]);
+  }, [workspacePanel, isOpen, minimize]);
 
   const value = useMemo<LiveSessionDockContextValue>(() => ({
     activeCallRoomId: active?.callRoomId || null,
@@ -197,46 +272,65 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const sessionHref = active
     ? `/sessions/${encodeURIComponent(active.callRoomId)}?mode=overview`
     : "#";
+  const inLobby = !callIsActive(status) && status !== "ended";
+  const joiningName = currentUser?.name?.trim() || currentUser?.email?.trim();
 
   return (
     <LiveSessionDockContext.Provider value={value}>
-      <div className={isOpen && active ? "2xl:grid 2xl:grid-cols-[minmax(0,1fr)_minmax(25rem,36rem)] 2xl:gap-5" : ""}>
+      <div>
         <div className="min-w-0">{children}</div>
 
         {active ? (
-          <aside
+          <dialog
+            ref={dockDialogRef}
+            style={visibleViewport}
             aria-label={`${active.sessionTitle} live call dock`}
+            onCancel={(event) => { event.preventDefault(); if (workspacePanel) setWorkspacePanel(null); else minimize(); }}
             aria-hidden={!isOpen}
             inert={!isOpen ? true : undefined}
             className={isOpen
-              ? "fixed inset-3 bottom-20 z-[70] overflow-y-auto rounded-[1.75rem] border border-[#cbb791] bg-[#fdf8ee] p-3 shadow-2xl shadow-black/30 md:inset-6 md:bottom-6 2xl:sticky 2xl:inset-auto 2xl:top-0 2xl:z-30 2xl:max-h-[calc(100vh-7.5rem)]"
+              ? `${callSurface.surface} fixed inset-0 z-[70] m-0 flex h-dvh max-h-dvh w-full max-w-none min-h-0 flex-col overflow-hidden border-0 bg-background p-0 text-foreground`
               : "pointer-events-none fixed h-px w-px overflow-hidden opacity-0"
             }
           >
-            <header className="sticky top-0 z-20 rounded-2xl border border-[#d8c7a7] bg-[#3d3122] p-3 text-white shadow-lg">
-              <div className="flex items-start justify-between gap-3">
+            <header className="z-20 shrink-0 border-b border-border px-4 py-3 sm:px-6">
+              <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
-                    <Radio size={13} aria-hidden="true" /> {liveSessionStatusLabel(status)}
-                  </p>
-                  <h2 className="mt-1 truncate font-serif text-lg font-black">{active.sessionTitle}</h2>
+                  <h2 className="truncate text-base font-semibold">{active.sessionTitle}</h2>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{(status === "ready" || status === "preflight") && active.parentLabel ? active.parentLabel : liveSessionStatusLabel(status)}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" onClick={minimize} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Minimize live call"><ChevronDown size={18} /></button>
-                  <button type="button" onClick={requestClose} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-rose-500/20" aria-label="Close live call"><X size={18} /></button>
+                  <button type="button" onClick={() => setWorkspacePanel(panel => panel === "chat" ? null : "chat")} aria-label={chatOpen ? "Hide chat" : "Show chat"} aria-description={unreadChatCount > 0 ? `${unreadChatCount} unread messages` : undefined} aria-expanded={chatOpen} aria-controls="live-call-chat-panel" className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${chatOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><MessageSquareText size={18} /><span className="hidden sm:inline">Chat</span>{unreadChatBadge}</button>
+                  <button type="button" onClick={() => { setNotesVisitedRoom(active.callRoomId); setWorkspacePanel(panel => panel === "notes" ? null : "notes"); }} aria-label={notesOpen ? "Hide notes" : "Show notes"} aria-expanded={notesOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${notesOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><NotebookPen size={18} /><span className="hidden sm:inline">Notes</span>{notesNeedAttention ? <span role="status" title="A note needs your attention" className="size-2 rounded-full bg-amber-500"><span className="sr-only">A note is not saved</span></span> : null}</button>
+                  <button type="button" onClick={() => { setWorkVisitedRoom(active.callRoomId); setWorkspacePanel(panel => panel === "work" ? null : "work"); }} aria-label={workOpen ? "Hide tasks" : "Show tasks"} aria-expanded={workOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${workOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}><ListTodo size={18} /><span className="hidden sm:inline">Tasks</span></button>
+                  <button type="button" onClick={minimize} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Minimize live call"><ChevronDown size={18} /></button>
+                  <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-muted" aria-label="Close live call"><X size={18} /></button>
                 </div>
               </div>
-              <nav aria-label="Live Session work" className="mt-3 flex gap-2 overflow-x-auto pb-1 text-[10px] font-black uppercase tracking-wide">
-                {callIsActive(status) ? <><Link href={sessionHref} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Overview</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=transcript")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Transcript</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=notes")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Notes</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Goals & tasks</Link></> : null}
-                {active.parentHref ? <Link href={active.parentHref} onClick={minimize} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/40 px-3 py-2 text-amber-100 hover:bg-white/10">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
+              {inLobby && joiningName ? <p data-testid="call-joining-identity" className="mt-2 text-xs leading-5 text-muted-foreground">
+                Joining as <strong className="font-medium text-foreground">{joiningName}</strong>
+                {currentUser?.name?.trim() && currentUser.email?.trim() ? <span className="break-all"> ({currentUser.email.trim()})</span> : null}
+              </p> : null}
+              <details className="group mt-1 text-xs text-muted-foreground">
+              <summary className="w-fit cursor-pointer py-1 hover:text-foreground">Session workspace</summary>
+              <nav aria-label="Live Session work" className="flex flex-wrap gap-2 py-2 text-xs font-medium">
+                <Link href={sessionHref} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Session workspace</Link>
+                {callIsActive(status) ? <>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=transcript")}`} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Transcript</Link>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=notes")}`} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Notes</Link>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} onClick={minimize} className="rounded-lg border border-border px-3 py-2 hover:bg-muted">Goals & tasks</Link></> : null}
+                {active.parentHref ? <Link href={active.parentHref} onClick={minimize} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 hover:bg-muted">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
               </nav>
+              {!callIsActive(status) ? <a href={captureAppDeepLink(active.callRoomId)}
+                onClick={() => selectSessionEntry(active.callRoomId, "CAPTURE_APP")}
+                className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground underline underline-offset-4">
+                <ExternalLink size={14} aria-hidden="true" /> Open in Quipsly Capture
+              </a> : null}
+              </details>
             </header>
 
             {pending ? (
-              <section className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-live="polite">
+              <section className="mt-3 max-h-[35dvh] shrink-0 overflow-y-auto rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-live="polite">
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><Repeat2 size={15} /> Another Session requested</p>
                 <p className="mt-2 text-sm font-semibold">Leave <strong>{active.sessionTitle}</strong> and open <strong>{pending.sessionTitle}</strong>?</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -247,7 +341,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
             ) : null}
 
             {showLeaveDecision ? (
-              <section className="mt-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-rose-950" aria-live="polite">
+              <section className="mt-3 max-h-[35dvh] shrink-0 overflow-y-auto rounded-2xl border border-rose-300 bg-rose-50 p-4 text-rose-950" aria-live="polite">
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><PhoneOff size={15} /> Leave this live call?</p>
                 <p className="mt-2 text-sm font-semibold">Closing disconnects this browser. Minimizing keeps the mic, camera, participant audio, and local source controls alive.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -257,8 +351,12 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               </section>
             ) : null}
 
-            <div className="mt-3 space-y-3">
-              <LiveSessionRoom
+            <div data-testid="live-call-workspace" data-panel-open={Boolean(workspacePanel)} data-companion={companion} className={`${callSurface.workspace} relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6`}>
+              <div id="live-call-stage-panel" className={`${callSurface.stage} relative min-h-0 min-w-0 overflow-y-auto overscroll-contain`}>
+              {companion ? <button type="button" onClick={() => setWorkspacePanel(null)} className="absolute inset-y-0 right-0 flex w-28 flex-col items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-muted"><PanelRightClose size={18} />Back to call</button> : null}
+              {/* Mount the call only after its persistent portal host exists;
+                  moving an already-mounted recorder into a portal restarts it. */}
+              {toolPanelContainer ? <LiveSessionRoom
                 key={active.callRoomId}
                 callRoomId={active.callRoomId}
                 captureGroupId={active.captureGroupId}
@@ -269,41 +367,82 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 episodeSlug={active.episodeSlug || null}
                 onStatusChange={setStatus}
                 onProtectionChange={setSourceProtected}
+                onMicrophoneControlChange={setMicrophoneControl}
                 leaveRequestVersion={leaveRequestVersion}
                 onExitComplete={finishRequestedExit}
                 compact
                 narrow
                 showSessionHeading={false}
-              />
-              {active.projectSlug ? (
-                <SessionThread
-                  projectSlug={active.projectSlug}
+                stageLayout
+                companion={companion}
+                onOpenSessionWork={minimize}
+                onOpenNotes={(id) => {
+                  setNotesVisitedRoom(active.callRoomId);
+                  setNoteToOpen(current => id ? { id, request: (current?.request ?? 0) + 1 } : null);
+                  setWorkspacePanel("notes");
+                }}
+                onOpenTasks={() => { setWorkVisitedRoom(active.callRoomId); setWorkspacePanel("work"); }}
+                onOpenChat={() => setWorkspacePanel("chat")}
+                controlsContainer={controlsContainer}
+                toolPanelContainer={toolPanelContainer}
+                activeToolPanel={workspacePanel === "chat" || workspacePanel === "notes" || workspacePanel === "work" ? null : workspacePanel}
+                onToolPanelChange={setWorkspacePanel}
+              /> : null}
+              </div>
+              <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>
+              {!companion ? <button type="button" onClick={() => setWorkspacePanel(null)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted"><PanelRightClose size={16} />Back to call</button> : null}
+                <WorkspacePanelActivity.Provider value={chatOpen && isOpen}><SessionThread
+                  projectSlug={active.projectSlug ?? undefined}
                   roomId={active.callRoomId}
                   sessionTitle={active.sessionTitle}
                   canPost={active.canPost}
                   scopeLabel="This live Session"
                   scopeDescription="Messages stay here after the call."
-                />
-              ) : (
-                <section className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
-                  <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><MessageSquareText size={15} /> Session thread unavailable</p>
-                  <p className="mt-2 text-sm font-semibold text-[#765f40]">Connect this Session to a Nest to give the call a durable shared thread.</p>
-                </section>
-              )}
+                  onOpenWork={minimize}
+                  messageToOpen={messageToOpen}
+                  onOpenTask={id => {
+                    setWorkVisitedRoom(active.callRoomId);
+                    setEntryToOpen(current => ({id, request: (current?.request ?? 0) + 1}));
+                    setWorkspacePanel("work");
+                  }}
+                  heading="Chat"
+                  presentation="call"
+                  fillHeight
+                /></WorkspacePanelActivity.Provider>
+              </div>
+              <div ref={setToolPanelContainer} data-testid="live-call-tool-panel"
+                className={`min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border ${workspacePanel && !chatOpen ? "block" : "hidden"}`} />
+              {toolPanelContainer && notesVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Notes" open={notesOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
+                <CallNotesPanel key={active.callRoomId} roomId={active.callRoomId} active={notesOpen && isOpen} noteToOpen={noteToOpen} onOpenWorkspace={minimize} onAttentionChange={setNotesNeedAttention} />
+              </CallWorkspacePanel> : null}
+              {toolPanelContainer && workVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Tasks" open={workOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
+                <CallWorkPanel key={active.callRoomId} roomId={active.callRoomId} active={workOpen && isOpen} entryToOpen={entryToOpen} onOpenWorkspace={minimize}
+                  onOpenConversation={id => {
+                    setMessageToOpen(current => ({id, request: (current?.request ?? 0) + 1}));
+                    setWorkspacePanel("chat");
+                  }} />
+              </CallWorkspacePanel> : null}
             </div>
-          </aside>
+            <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-foreground empty:hidden" />
+          </dialog>
         ) : null}
       </div>
 
-      {active && !isOpen ? (
+      {active && !isOpen && (status !== "ended" || sourceProtected) ? (
         <section className="fixed bottom-20 left-3 right-3 z-[65] flex items-center gap-3 rounded-2xl border border-[#d8c7a7] bg-[#3d3122] p-2.5 text-white shadow-2xl shadow-black/30 md:bottom-5 md:left-auto md:right-5 md:w-[min(32rem,calc(100vw-2.5rem))]" aria-label="Minimized live call">
-          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${callIsActive(status) ? "bg-emerald-400 text-emerald-950" : "bg-amber-200 text-amber-950"}`}><Mic2 size={18} /></span>
+          {microphoneControl ? <button type="button" onClick={() => void microphoneControl.toggle()} disabled={microphoneControl.disabled}
+            aria-label={microphoneControl.muted ? "Unmute microphone" : "Mute microphone"} aria-pressed={microphoneControl.muted}
+            title={microphoneControl.muted ? "Unmute microphone" : "Mute microphone"}
+            className={`grid size-11 shrink-0 place-items-center rounded-xl disabled:opacity-50 ${microphoneControl.muted ? "bg-white/15 text-white" : "bg-[#d6d6b6] text-[#25291f]"}`}>
+            {microphoneControl.muted ? <MicOff size={18} /> : <Mic size={18} />}
+          </button> : <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/15"><Mic2 size={18} /></span>}
           <button type="button" onClick={() => setIsOpen(true)} className="min-w-0 flex-1 text-left">
             <span className="block truncate text-sm font-black">{active.sessionTitle}</span>
             <span className="block truncate text-[11px] font-semibold text-[#dfd0b8]">{liveSessionStatusLabel(status)}</span>
           </button>
           <button type="button" onClick={() => setIsOpen(true)} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Open live call"><PanelRightOpen size={18} /></button>
-          <button type="button" onClick={requestClose} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-rose-500/20" aria-label="Leave or close live call"><PanelRightClose size={18} /></button>
+          {unreadChatCount > 0 ? <button type="button" onClick={() => { setIsOpen(true); setWorkspacePanel("chat"); }} aria-label="Open unread call chat" aria-description={`${unreadChatCount} unread messages`} className="flex min-h-11 items-center gap-1 rounded-xl px-2"><MessageSquareText size={18} />{unreadChatBadge}</button> : null}
+          <button type="button" onClick={requestClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl bg-rose-900 hover:bg-rose-800" aria-label="Leave or close live call"><PhoneOff size={18} /></button>
         </section>
       ) : null}
     </LiveSessionDockContext.Provider>

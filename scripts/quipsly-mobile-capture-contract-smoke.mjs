@@ -374,9 +374,11 @@ function checkMeetingSpineContractSources() {
   );
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
   const coachingHomeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift");
+  const coachingScheduleText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CoachingScheduleUpdate.swift");
   const captureExperienceUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
+  const sessionConversationServerText = sourceText("apps/quipsly/src/lib/server/session-conversation.ts");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
   const providerRecordingCommandText = sourceText("apps/quipsly/src/lib/server/provider-recording-command.ts");
   const liveKitWebhookText = sourceText("apps/quipsly/src/app/api/providers/livekit/webhook/route.ts");
@@ -403,15 +405,13 @@ function checkMeetingSpineContractSources() {
     "Capture keeps relationship-wide conversation and Session continuity beside private/shared work on the iPhone.",
   );
   expect(
-    coachingHomeText.includes('"action": "reschedule-booking"')
+    coachingScheduleText.includes('"action": "reschedule-booking"')
+      && coachingHomeText.includes("MobileCoachingScheduleChange(")
+      && coachingHomeText.includes("performAction(command.body)")
       && coachingHomeText.includes('"action": "cancel-booking"')
-      && coachingHomeText.includes("CaptureCoachingManage_")
-      && coachingHomeText.includes("CaptureCoachingRescheduleSheet")
-      && coachingHomeText.includes("CaptureCoachingSaveReschedule")
-      && coachingHomeText.includes('["CANCELED", "COMPLETED", "NO_SHOW"]')
-      && coachingHomeText.includes("The client space and its existing work stay available."),
+      && coachingHomeText.includes("payload.result?.bookingId == booking.id"),
     "nativeCoachingSchedulingManagementParity",
-    "Capture lets an authorized coach reschedule or cancel a canonical appointment from the iPhone while preserving the client relationship and existing work.",
+    "Capture scheduling is wired to the canonical command and matching booking response. Operated native and database journeys separately prove usability and retained client work.",
   );
   expect(
     coachingHomeText.includes("MobilePublicCoachingOffering")
@@ -610,8 +610,8 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes('accessibilityIdentifier: "ProviderToggleMuteButton"')
       && capturePhoneShellText.includes('accessibilityIdentifier: "ProviderLeaveRoomButton"')
       && capturePhoneShellText.includes('.safeAreaInset(edge: .bottom, spacing: 0)')
-      && providerRoomCallAudioEvidenceText.includes('"Waiting for others"')
-      && providerRoomCallAudioEvidenceText.includes('"2 people here"'),
+      && providerRoomCallAudioEvidenceText.includes("static func label(personKeys: [String])")
+      && providerRoomCallAudioEvidenceText.includes("Set(personKeys).count"),
     "nativeLiveCallMicrophoneConfidence",
     "Native Capture keeps participant presence plus persistent Mute and Leave controls conventional while projecting one plain-language live microphone state from transient exact-path PCM without creating a recording.",
   );
@@ -668,11 +668,12 @@ function checkMeetingSpineContractSources() {
       && sessionConversationText.includes('hint.threadKey == "session:\\(context.roomID)"')
       && sessionConversationText.includes('"clientRequestId": send.requestID.uuidString.lowercased()')
       && sessionConversationText.includes("QuipslyCapture/SessionConversation")
-      && sessionConversationText.includes("Messages stay with this Session.")
-      && capturePhoneShellText.includes("MobileSessionConversationCard")
+      && sessionConversationText.includes('accessibilityIdentifier("CaptureSessionChatBoundary")')
+      && capturePhoneShellText.includes("MobileSessionConversationThread")
       && capturePhoneShellText.includes("sessionConversation.receiveLiveHint")
-      && nestChatRouteText.includes("sessionConversationAccessWhere")
-      && nestChatRouteText.includes("sessionMutationAccessWhere"),
+      && sessionConversationServerText.includes("sessionConversationAccessWhere")
+      && sessionConversationServerText.includes("sessionMutationAccessWhere")
+      && nestChatRouteText.includes("SESSION_CONVERSATION_MOVED"),
     "nativeSessionAndEpisodeThreadsRemainDistinct",
     "Capture projects exact-call Session chat and durable Episode chat as separate account-protected scopes over the canonical Nest access boundary.",
   );
@@ -773,9 +774,10 @@ function checkMeetingSpineContractSources() {
     onDeviceTranscriptText.includes("recognitionDeadlineSeconds: Double")
       && onDeviceTranscriptText.includes("Task.sleep(for: .seconds(deadlineSeconds))")
       && onDeviceTranscriptText.includes("compatibleRecognitionWindows(")
-      && onDeviceTranscriptText.includes("url-final-time-indexed-on-device-windowed-v2")
+      && onDeviceTranscriptText.includes("url-final-time-indexed-on-device-windowed-v3")
+      && onDeviceTranscriptText.includes("url-final-time-indexed-apple-service-windowed-v3")
       && onDeviceTranscriptText.includes("window.owns(")
-      && onDeviceTranscriptText.includes("gate.storeTimeout(timeoutTask)")
+      && onDeviceTranscriptText.includes("gate.onFinish { timeoutTask.cancel() }")
       && !onDeviceTranscriptText.includes("Task.sleep(for: .seconds(45))"),
     "nativeLongFormTranscriptFallbackUsesSourceDeadline",
     "Legacy Apple speech stays below its request limit with overlap-owned source windows, preserves original time, and uses one cancellable source-duration deadline instead of killing long coaching transcription after a fixed timeout.",
@@ -799,21 +801,19 @@ function checkMeetingSpineContractSources() {
   const quickEntrySurfaceIndex = captureRecorderViewText.indexOf(
     "sessionQuickEntrySurface(session)",
   );
-  const conversationSurfaceIndex = captureRecorderViewText.indexOf(
-    "sessionConversationSurface(session)",
-  );
   expect(
     captureRecorderViewText.indexOf("ProviderRoomControls(") >= 0
       && captureRecorderViewText.indexOf("ConsentStrip(") > captureRecorderViewText.indexOf("ProviderRoomControls(")
       && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
       && quickEntrySurfaceIndex > captureRecorderViewText.indexOf("RecorderHero(")
-      && conversationSurfaceIndex > quickEntrySurfaceIndex
       && captureRecorderViewText.includes("CaptureQuickEntryBar(")
-      && captureRecorderViewText.includes("MobileSessionConversationCard(")
-      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > conversationSurfaceIndex
+      && captureRecorderViewText.includes('accessibilityIdentifier("CaptureCallOpenChat")')
+      && captureRecorderViewText.includes("MobileSessionConversationThread(")
+      && !captureRecorderViewText.includes("MobileSessionConversationCard(")
+      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > quickEntrySurfaceIndex
       && captureRecorderViewText.indexOf("CaptureSessionResultsCard(") > captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard("),
     "nativeRecordHierarchyKeepsCapturePrimary",
-    "The shipping Record hierarchy leads with the room, keeps quick work and conversation close to the call, reveals consent and recording only after entry, and continues into transcript plus editable results.",
+    "Recorder wiring includes direct Session chat and contextual work; operated native UI tests verify reachability before and during a call.",
   );
   expect(
     capturePhoneShellText.includes("CaptureSessionTranscriptLifecycle_")
@@ -1640,18 +1640,17 @@ function checkTranscriptCorrectionContractSources() {
       && taskRouteText.includes("calendarMutated: false")
       && taskRouteText.includes("externalDelivery: false")
       && taskRouteText.includes("publication: false")
-      && nativeText.includes("CaptureTranscriptCreateTaskButton")
+      && nativeText.includes("CaptureTranscriptMakeTaskButton")
+      && nativeText.includes("beginCreatingWork(.task)")
       && nativeText.includes("focusSegmentID: String? = nil")
       && nativeText.includes("@State private var scrollTargetSegmentID: String?")
       && nativeText.includes(".scrollTargetLayout()")
-      && nativeText.includes("Assigned to you with a link back to this transcript moment.")
       && shellText.includes("CaptureTodayTaskSourceLink_")
       && workModelText.includes("readTranscriptDerivedTaskSource")
       && schedulePageText.includes("readTranscriptDerivedTaskSource")
-      && schedulePageText.includes("Reviewed transcript timestamp")
+      && schedulePageText.includes("parsedSourceAnchor?.roomId === task.room?.id")
       && schedulePlannerText.includes("Focus source · transcript")
       && todayRouteText.includes("readTranscriptDerivedTaskSource")
-      && todayRouteText.includes("Reviewed transcript follow-through")
       && todayRouteText.includes("tasksRankedForToday: true")
       && shellText.includes("task.todayReason?.nonempty")
       && webText.includes("Make this my task")
@@ -1679,8 +1678,8 @@ function checkTranscriptCorrectionContractSources() {
       && goalRouteText.includes("calendarMutated: false")
       && goalRouteText.includes("externalDelivery: false")
       && goalRouteText.includes("publication: false")
-      && nativeText.includes("CaptureTranscriptCreateGoalButton")
-      && nativeText.includes("Owned by you with a link back to this transcript moment.")
+      && nativeText.includes("CaptureTranscriptMakeGoalButton")
+      && nativeText.includes("beginCreatingWork(.goal)")
       && webText.includes("Make this my goal")
       && webText.includes("Owned by you with a link back to this transcript moment.")
       && workModelText.includes("readTranscriptDerivedGoalSource")
@@ -1754,7 +1753,7 @@ function checkTranscriptCorrectionContractSources() {
       && schemaText.includes("model GoalTagLink")
       && schemaText.includes("model CallRoomTagLink")
       && workTagsText.includes('kind: "quipsly-work-tags-v1"')
-      && workTagsText.includes("Every tag must be active and belong to the record's Nest.")
+      && workTagsText.includes("assignableOrRetainedTagWhere(input.entityKind, entityId)")
       && workTagsText.includes("externalSideEffects: false")
       && sessionsRouteText.includes("projectId: captureProjectId")
       && sessionsRouteText.includes("const MOBILE_CAPTURE_ROOM_INCLUDE = {")
@@ -1813,16 +1812,17 @@ function checkTranscriptCorrectionContractSources() {
       && collectionsText.includes("snapshot.items.some((item) => item.id === requestedCaptureId)")
       && sessionReviewPageText.includes("sessionQuickEntries={sessionQuickEntries}")
       && sessionReviewPageText.includes("sessionNotes={sessionNotes}")
-      && sessionReviewPageText.includes('return "iPhone Capture"')
+      && sessionReviewPageText.includes("...sessionNoteSourceDetails(room.id, row.sourceJson)")
       && sessionReviewText.includes("<SessionNotesWorkspace")
       && sessionNotesWorkspaceText.includes("TagSearchChips")
       && sessionNotesWorkspaceText.includes('payload.idempotentReplay ? "This note was already saved." : "Note saved."')
       && sessionNotesWorkspaceText.includes("noteAppearsInView(payload.note, activeView)")
       && sessionNotesWorkspaceText.includes("Audience")
-      && sessionReviewText.includes('scope="work"')
+      && sessionReviewText.includes('<SessionWorkWorkspace')
+      && sessionReviewText.includes('entries={sessionQuickEntries}')
+      && sessionReviewText.includes('assignmentContext={workAssignmentContext}')
       && sessionReviewText.includes("Session follow-through")
-      && includesNormalized(sessionReviewText, "ordinary editable items, not proposals waiting for approval")
-      && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),
+      && includesNormalized(sessionReviewText, "ordinary editable items, not proposals waiting for approval"),
     "canonicalMobileQuickEntryOutbox",
     "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session, Home Nest, and explicit writable-Nest work replay to canonical project records while private URL/text sources enter Inbox with exact readback and no external side effects.",
   );
@@ -2144,12 +2144,12 @@ function checkTranscriptCorrectionContractSources() {
       && sessionReviewText.includes("TranscriptSpeakerEvidenceBadge")
       && transcriptSpeakerEvidenceBadgeText.includes("Participant recording")
       && transcriptSpeakerEvidenceBadgeText.includes("Automatic speaker label")
-      && transcriptSpeakerEvidenceBadgeText.includes("Speaker needs review")
+      && transcriptSpeakerEvidenceBadgeText.includes("Speaker not named")
       && nativeText.includes("speakerAuthority")
       && nativeText.includes("CaptureTranscriptSpeakerEvidenceBadge")
       && nativeText.includes("Participant recording")
       && nativeText.includes("Automatic speaker label")
-      && nativeText.includes("Speaker needs review"),
+      && nativeText.includes("Speaker not named"),
     "packetSpeakerIdentityEvidenceVisible",
     "Nest and iPhone Session follow-through explain whether a speaker name was reviewed, bound to an isolated participant recording, supplied automatically, or remains unresolved without conflating that identity with word review.",
   );
@@ -2322,7 +2322,7 @@ function checkTranscriptCorrectionContractSources() {
       && clientFollowUpServiceText.includes("sourceAnchorForRoom")
       && clientFollowUpServiceText.includes("sourceAnchorsRestrictedToSession: true")
       && clientFollowUpWebText.includes("Includes exact source")
-      && clientFollowUpWebText.includes("mode=transcript#transcript-segment-")
+      && clientFollowUpWebText.includes("href={transcriptSourceHref(anchor)}")
       && bridgeText.includes("let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?")
       && mobileComponentsText.includes("CaptureClientFollowUpSource_")
       && mobileComponentsText.includes("CaptureTranscriptReviewView")
@@ -2447,9 +2447,9 @@ function checkTranscriptCorrectionContractSources() {
     "Session, Schedule, and linked Goals return to the same scoped Work task ID, including completed work hidden by the default filter.",
   );
   expect(
-    workModelText.includes('attentionReason: "Overdue commitment"')
-      && workModelText.includes('"Due within 24 hours" as const')
-      && workModelText.includes('"Reviewed transcript follow-through" as const')
+    workModelText.includes("const attentionReason = task.status")
+      && workModelText.includes("sourceAnchor !== null")
+      && workModelText.includes("attentionReason,")
       && workClientText.includes('initialFilter = "OPEN"')
       && workClientText.includes('filter === "ATTENTION"')
       && workPageText.includes('requestedFocus.view === "attention"'),
@@ -2457,23 +2457,25 @@ function checkTranscriptCorrectionContractSources() {
     "Work source retains canonical task attention projection and filtering; it does not require another global navigation destination.",
   );
   expect(
-    nestDashboardText.includes("Project follow-through")
+    nestDashboardText.includes("readNestProjectFollowThrough")
       && nestFollowThroughText.includes("isUnreviewedTranscriptActionItem")
       && nestFollowThroughText.includes("readTranscriptDerivedTaskSource")
       && nestFollowThroughText.includes("ownerUserId: actorUserId")
-      && nestDashboardText.includes('href={`/work?goal=${encodeURIComponent(goal.id)}`}')
-      && nestDashboardText.includes('href={`/work?task=${encodeURIComponent(task.id)}`}')
-      && nestDashboardText.includes('href={`/sessions/${encodeURIComponent(task.sourceAnchor.roomId)}#transcript-segment-${encodeURIComponent(task.sourceAnchor.segmentId)}`}'),
+      && nestFollowThroughText.includes("personalOrSharedSessionTaskAccessWhere(actorUserId)")
+      && nestFollowThroughText.includes("readEditableWorkQueueTaskIds(prisma, input.actorUserId")
+      && nestFollowThroughText.includes("parsedSource?.roomId === task.room?.id"),
     "nestProjectCanonicalFollowThrough",
-    "A Nest shows actor-scoped owned goals and accepted canonical tasks with same-ID Work navigation and exact transcript return.",
+    "Nest follow-through uses the canonical scoped task query, separate edit capabilities, owned goals, and matching transcript-source identity; rendered navigation is covered by component and database tests.",
   );
   expect(
     workspaceSearchText.includes("personalOrSharedWorkspaceTaskAccessWhere")
       && taskAccessText.includes("export function personalOrSharedWorkspaceTaskAccessWhere")
       && taskAccessText.includes("{ assignedUserId: userId }")
-      && taskAccessText.includes("{ assignedUserId: null, engagementId: null, projectId: { in: projectIds } }")
+      && taskAccessText.includes("sessionActorAccessWhere({ id: userId })")
+      && taskAccessText.includes("coachingBookingParticipantWhere(userId, access)")
       && taskAccessText.includes("assignedUserId: null")
-      && workspaceSearchText.includes("roomAccessWhere")
+      && workspaceSearchText.includes("sessionActorAccessWhere({ id: input.actorUserId, primaryEmail: input.actorEmail })")
+      && workspaceSearchText.includes("personalOrSharedCoachingGoalAccessWhere(input.actorUserId)")
       && workspaceSearchText.includes("isUnreviewedTranscriptActionItem")
       && workspaceSearchText.includes("createdByUserId: input.actorUserId")
       && workspaceSearchText.includes("perKindLimit: RESULT_LIMIT")
@@ -2483,21 +2485,17 @@ function checkTranscriptCorrectionContractSources() {
       && workspaceSearchText.includes("tagLinks: { some: { tagId: focusedTagId } }")
       && workspaceSearchText.includes("prisma.studioTag.findMany")
       && workspaceSearchText.includes("isActive: true")
-      && workspaceSearchPageText.includes('redirectTo="/find"')
-      && workspaceSearchPageText.includes('href={`/work?task=${encodeURIComponent(item.id)}`}')
-      && workspaceSearchPageText.includes('href={`/work?goal=${encodeURIComponent(item.id)}`}')
-      && workspaceSearchPageText.includes('href={`/sessions/${encodeURIComponent(item.id)}`}')
-      && workspaceSearchPageText.includes('ResultSection title="Tags"')
-      && workspaceSearchPageText.includes("tagFocusHref(item.id)")
-      && workspaceSearchPageText.includes("Same-label tags in other Nests are not mixed in.")
-      && workspaceSearchPageText.includes("No record identities were disclosed.")
+      && workspaceSearchPageText.includes("await auth()")
+      && workspaceSearchPageText.includes("if (!session?.user?.id)")
+      && workspaceSearchPageText.includes("searchWorkspace(prisma")
+      && workspaceSearchPageText.includes("actorUserId: session.user.id")
+      && workspaceSearchPageText.includes("actorEmail,")
       && tagSearchChipsText.includes("tagFocusHref(tag.id)")
       && researchLibraryModelText.includes("tagCatalog: ResearchSourceTag[]")
       && researchLibraryModelText.includes("...source.annotations.flatMap")
-      && !researchLibraryModelText.includes("...source.tags.map")
-      && workspaceSearchPageText.includes("Search is read-only"),
+      && !researchLibraryModelText.includes("...source.tags.map"),
     "permissionFilteredCanonicalWorkspaceSearch",
-    "Search All is authenticated, permission-filtered, bounded, candidate-safe, and focuses exact canonical tag identities across work and evidence without same-label mixing or side effects.",
+    "Search source retains authenticated identity, canonical task/Session/goal access, and bounded exact-tag query wiring. Rendered navigation and database isolation are tested separately; screen wording is not a contract.",
   );
 }
 

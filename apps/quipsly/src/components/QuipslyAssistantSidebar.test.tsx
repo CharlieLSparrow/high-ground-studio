@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import type { AssistantAction, AssistantActionStatus } from "./assistant-types";
 import { QuipslyAssistantSidebar } from "./QuipslyAssistantSidebar";
@@ -43,8 +43,9 @@ function assistantFor(actions: AssistantAction[], previews: any[] = []) {
   } as any;
 }
 
-function renderSidebar(actions: AssistantAction[], previews: any[] = []) {
-  return render(
+function renderSidebar(actions: AssistantAction[], previews: any[] = [], open = true) {
+  const assistant = assistantFor(actions, previews);
+  const rendered = render(
     <QuipslyAssistantSidebar
       projectId="project-1"
       projectSlug="high-ground-odyssey"
@@ -52,14 +53,16 @@ function renderSidebar(actions: AssistantAction[], previews: any[] = []) {
       documentTitle="Episode 4"
       activeView={{ id: "everything", name: "Everything" } as any}
       visibleBlocks={[]}
-      assistant={assistantFor(actions, previews)}
+      assistant={assistant}
     />,
   );
+  if (open) fireEvent.click(screen.getByRole("button", {name: "Open Quipsly assistant"}));
+  return {...rendered, assistant};
 }
 
-describe("assistant human-review truth", () => {
+describe("assistant work, recovery, and optional details", () => {
   it("keeps the assistant launcher above Nest Chat and names the control clearly", () => {
-    renderSidebar([]);
+    renderSidebar([], [], false);
 
     expect(screen.getByRole("button", { name: "Open Quipsly assistant" })).toHaveClass(
       "bottom-[8.75rem]",
@@ -70,9 +73,9 @@ describe("assistant human-review truth", () => {
   it("labels document mutation as a persisted edit rather than a local approval", () => {
     renderSidebar([action("PROPOSE_REWRITE", "proposed")]);
 
-    expect(screen.getByRole("button", { name: "Apply persisted edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply edit" })).toBeInTheDocument();
     expect(screen.queryByText("Save to QuipLore")).not.toBeInTheDocument();
-    expect(screen.getByText(/one clear action and can be undone/i)).toBeInTheDocument();
+    expect(screen.getByText(/Requested writing is saved to your page/)).toBeInTheDocument();
   });
 
   it("does not add a separate review click before a Story Bible save", () => {
@@ -91,29 +94,31 @@ describe("assistant human-review truth", () => {
   });
 
   it("shows a durable receipt boundary after manuscript application", () => {
-    renderSidebar([action("PROPOSE_REWRITE", "applied")]);
+    const saved = action("PROPOSE_REWRITE", "applied");
+    const {assistant} = renderSidebar([saved]);
 
-    expect(screen.getByText("Persisted manuscript edit · reversible operation recorded.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Undo persisted edit" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Apply persisted edit" })).not.toBeInTheDocument();
+    expect(screen.getByText("Saved to your writing.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Undo edit" }));
+    expect(assistant.undoAction).toHaveBeenCalledWith(saved);
+    expect(screen.queryByRole("button", { name: "Apply edit" })).not.toBeInTheDocument();
   });
 
   it("makes the shared action capability and review policy inspectable without adding another approval step", () => {
-    const governed = action("PROPOSE_REWRITE", "proposed");
+    const governed = action("PROPOSE_REWRITE", "ready");
     governed.governance = {
       actionId: "governed-action-12345678",
       runId: "governed-run-87654321",
       capabilityId: "quipsly.writing.rewrite.propose",
-      decisionPolicy: "EXPLICIT_APPROVAL",
-      decisionStatus: "PENDING",
-      status: "PROPOSED",
+      decisionPolicy: "DELEGATED",
+      decisionStatus: "NOT_REQUIRED",
+      status: "READY",
     };
     renderSidebar([governed]);
 
-    expect(screen.getByText("Details · applies only when chosen")).toBeInTheDocument();
+    expect(screen.getByText("Details · no approval needed")).toBeInTheDocument();
     expect(screen.getByText("quipsly.writing.rewrite.propose")).toBeInTheDocument();
-    expect(screen.getByText(/run 87654321 · action 12345678 · proposed/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Apply persisted edit" })).toBeInTheDocument();
+    expect(screen.getByText(/run 87654321 · action 12345678 · ready/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: /approve|apply edit|review proposal/i})).not.toBeInTheDocument();
   });
 
   it("shows read-only work as automatic instead of an approval proposal", () => {

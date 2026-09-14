@@ -1,4 +1,5 @@
 import { getPrismaClient } from "@/lib/prisma";
+import { coachingBookingActorAccessWhere } from "@/lib/server/coaching-booking-access";
 import { buildIcsCalendar } from "@/lib/server/calendar-ics";
 import { resolveCalendarPublicOrigin } from "@/lib/server/calendar-public-origin";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -31,19 +32,11 @@ export async function GET(
     );
 
   const { bookingId } = await context.params;
-  const prisma = getPrismaClient() as any;
+  const prisma = getPrismaClient();
   const booking = await prisma.coachingBooking.findFirst({
     where: {
       id: bookingId,
-      ...(session.user.isStaff
-        ? {}
-        : {
-            OR: [
-              { clientUserId: session.user.id },
-              { coachUserId: session.user.id },
-              { callRoom: { createdByUserId: session.user.id } },
-            ],
-          }),
+      ...coachingBookingActorAccessWhere(session.user, { includeRoomCreator: true }),
     },
     select: {
       id: true,

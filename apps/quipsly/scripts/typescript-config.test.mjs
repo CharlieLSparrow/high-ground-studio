@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { typescriptConfigForBuild } from "./typescript-config.mjs";
+import { typescriptConfigForBuild, typecheckDistDirectory } from "./typescript-config.mjs";
+
+test("typechecking does not rewrite the active dev or release output", () => {
+  assert.equal(typecheckDistDirectory({}), ".next-typecheck");
+  assert.equal(typecheckDistDirectory({QUIPSLY_BUILD_DIST_DIR: ".next-release"}), ".next-typecheck");
+  assert.equal(typecheckDistDirectory({QUIPSLY_TYPECHECK_DIST_DIR: ".next-typecheck-ci"}), ".next-typecheck-ci");
+  assert.deepEqual(typescriptConfigForBuild(typecheckDistDirectory({})).include.filter(entry => entry.startsWith(".next")),
+    [".next-typecheck/types/**/*.ts", ".next-typecheck/dev/types/**/*.ts"]);
+});
 
 test("build lanes include only their own generated route validators", () => {
   for (const lane of [".next", ".next-release", ".next-recovery-lab"]) {

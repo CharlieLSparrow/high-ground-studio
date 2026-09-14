@@ -454,74 +454,11 @@ private enum OnDeviceTranscriptDeadline {
         seconds: Double,
         operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
-        try await withCheckedThrowingContinuation { continuation in
-            let gate = TranscriptDeadlineGate(continuation)
-            let operationTask = Task {
-                do {
-                    gate.resume(returning: try await operation())
-                } catch {
-                    gate.resume(throwing: error)
-                }
-            }
-            gate.store(operationTask)
-            Task {
-                try? await Task.sleep(for: .seconds(seconds))
-                gate.timeout()
-            }
-        }
-    }
-}
-
-/// SpeechAnalyzer has been observed on physical iPadOS to ignore task-group
-/// cancellation while awaiting its result stream. A deadline must therefore
-/// release the caller without structurally waiting for that OS task to finish.
-/// The abandoned task is still cancelled and cannot publish through this
-/// single-resume gate if it eventually wakes up.
-private final class TranscriptDeadlineGate<Value: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<Value, Error>?
-    private var operationTask: Task<Void, Never>?
-
-    init(_ continuation: CheckedContinuation<Value, Error>) {
-        self.continuation = continuation
-    }
-
-    func store(_ task: Task<Void, Never>) {
-        lock.lock()
-        if continuation == nil {
-            lock.unlock()
-            task.cancel()
-            return
-        }
-        operationTask = task
-        lock.unlock()
-    }
-
-    func resume(returning value: Value) {
-        take(cancelOperation: false)?.resume(returning: value)
-    }
-
-    func resume(throwing error: Error) {
-        take(cancelOperation: false)?.resume(throwing: error)
-    }
-
-    func timeout() {
-        take(cancelOperation: true)?.resume(
-            throwing: OnDeviceTranscriptFailure.recognitionTimedOut
+        try await CaptureAsyncDeadline.run(
+            seconds: seconds,
+            timeoutError: OnDeviceTranscriptFailure.recognitionTimedOut,
+            operation: operation
         )
-    }
-
-    private func take(
-        cancelOperation: Bool
-    ) -> CheckedContinuation<Value, Error>? {
-        lock.lock()
-        let continuation = self.continuation
-        self.continuation = nil
-        let operationTask = self.operationTask
-        self.operationTask = nil
-        lock.unlock()
-        if cancelOperation { operationTask?.cancel() }
-        return continuation
     }
 }
 
@@ -553,6 +490,7 @@ private enum OnDeviceTranscriptSource {
         var hasher = SHA256()
         var byteCount: Int64 = 0
         while true {
+            try Task.checkCancellation()
             guard let data = try handle.read(upToCount: 1024 * 1024), !data.isEmpty else { break }
             hasher.update(data: data)
             byteCount += Int64(data.count)
@@ -606,6 +544,7 @@ private enum AppleOnDeviceTranscriptEngine {
     }
 
     static func prepare(locale requestedLocale: Locale, allowModelDownload: Bool) async throws -> Prepared {
+        try Task.checkCancellation()
         guard SpeechTranscriber.isAvailable else { throw OnDeviceTranscriptFailure.unavailable }
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
             throw OnDeviceTranscriptFailure.unsupportedLocale
@@ -631,6 +570,7 @@ private enum AppleOnDeviceTranscriptEngine {
                 }
                 status = await AssetInventory.status(forModules: modules)
             } catch {
+                try Task.checkCancellation()
                 throw OnDeviceTranscriptFailure.modelInstallFailed(error.localizedDescription)
             }
         }
@@ -657,17 +597,28 @@ private enum AppleOnDeviceTranscriptEngine {
             context.contextualStrings[.general] = Array(contextualPhrases.prefix(100))
             try? await analyzer.setContext(context)
         }
-        async let resultCollection = collectFinalResults(from: prepared.transcriber)
-        if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
-            try await analyzer.finalizeAndFinish(through: lastSample)
-        } else {
-            await analyzer.cancelAndFinishNow()
-        }
-        let segments = try await resultCollection
-        guard !segments.isEmpty else { throw OnDeviceTranscriptFailure.noFinalizedSpeech }
-        return segments.sorted {
-            if $0.startSeconds == $1.startSeconds { return $0.endSeconds < $1.endSeconds }
-            return $0.startSeconds < $1.startSeconds
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            async let resultCollection = collectFinalResults(from: prepared.transcriber)
+            do {
+                if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
+                    try await analyzer.finalizeAndFinish(through: lastSample)
+                } else {
+                    await analyzer.cancelAndFinishNow()
+                }
+                let segments = try await resultCollection
+                guard !segments.isEmpty else { throw OnDeviceTranscriptFailure.noFinalizedSpeech }
+                return segments.sorted {
+                    if $0.startSeconds == $1.startSeconds { return $0.endSeconds < $1.endSeconds }
+                    return $0.startSeconds < $1.startSeconds
+                }
+            } catch {
+                // Stop result production before unwinding the async-let scope.
+                await analyzer.cancelAndFinishNow()
+                throw error
+            }
+        } onCancel: {
+            Task { await analyzer.cancelAndFinishNow() }
         }
     }
 
@@ -699,6 +650,7 @@ private enum AppleSpeechAdaptedTranscriptEngine {
     }
 
     static func prepare(locale requestedLocale: Locale, allowModelDownload: Bool) async throws -> Prepared {
+        try Task.checkCancellation()
         guard let locale = await DictationTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
             throw OnDeviceTranscriptFailure.unsupportedLocale
         }
@@ -721,6 +673,7 @@ private enum AppleSpeechAdaptedTranscriptEngine {
                 }
                 status = await AssetInventory.status(forModules: modules)
             } catch {
+                try Task.checkCancellation()
                 throw OnDeviceTranscriptFailure.modelInstallFailed(error.localizedDescription)
             }
         }
@@ -747,17 +700,28 @@ private enum AppleSpeechAdaptedTranscriptEngine {
             context.contextualStrings[.general] = Array(contextualPhrases.prefix(100))
             try? await analyzer.setContext(context)
         }
-        async let resultCollection = collectResults(from: prepared.transcriber)
-        if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
-            try await analyzer.finalizeAndFinish(through: lastSample)
-        } else {
-            await analyzer.cancelAndFinishNow()
-        }
-        let segments = try await resultCollection
-        guard !segments.isEmpty else { throw OnDeviceTranscriptFailure.noFinalizedSpeech }
-        return segments.sorted {
-            if $0.startSeconds == $1.startSeconds { return $0.endSeconds < $1.endSeconds }
-            return $0.startSeconds < $1.startSeconds
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            async let resultCollection = collectResults(from: prepared.transcriber)
+            do {
+                if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
+                    try await analyzer.finalizeAndFinish(through: lastSample)
+                } else {
+                    await analyzer.cancelAndFinishNow()
+                }
+                let segments = try await resultCollection
+                guard !segments.isEmpty else { throw OnDeviceTranscriptFailure.noFinalizedSpeech }
+                return segments.sorted {
+                    if $0.startSeconds == $1.startSeconds { return $0.endSeconds < $1.endSeconds }
+                    return $0.startSeconds < $1.startSeconds
+                }
+            } catch {
+                // Stop result production before unwinding the async-let scope.
+                await analyzer.cancelAndFinishNow()
+                throw error
+            }
+        } onCancel: {
+            Task { await analyzer.cancelAndFinishNow() }
         }
     }
 
@@ -798,6 +762,7 @@ private enum AppleCompatibleTranscriptEngine {
         contextualPhrases: [String],
         recognitionDeadlineSeconds: Double
     ) async throws -> Result {
+        try Task.checkCancellation()
         let authorization = await speechAuthorization()
         guard authorization == .authorized else {
             throw OnDeviceTranscriptFailure.speechPermissionDenied
@@ -866,8 +831,8 @@ private enum AppleCompatibleTranscriptEngine {
             language: recognizer.locale.identifier,
             transcriber: "SFSpeechRecognizer",
             preset: usesOnDeviceRecognition
-                ? "url-final-time-indexed-on-device-windowed-v2"
-                : "url-final-time-indexed-apple-service-windowed-v2"
+                ? "url-final-time-indexed-on-device-windowed-v3"
+                : "url-final-time-indexed-apple-service-windowed-v3"
         )
     }
 
@@ -889,37 +854,42 @@ private enum AppleCompatibleTranscriptEngine {
             request.requiresOnDeviceRecognition = true
         }
 
-        let taskBox = LegacySpeechTaskBox()
-        return try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) in
-            let gate = LegacySpeechContinuationGate(continuation)
-            let recognitionTask = recognizer.recognitionTask(with: request) { result, error in
-                if let result, result.isFinal {
-                    let segments = phraseSegments(
-                        from: result.bestTranscription.segments,
-                        window: window
-                    )
-                    guard !segments.isEmpty else {
-                        gate.resume(throwing: OnDeviceTranscriptFailure.noFinalizedSpeech)
+        let gate = CaptureAsyncResultGate<[OnDeviceTranscriptSegment]>()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) in
+                guard gate.install(continuation) else { return }
+                let recognitionTask = recognizer.recognitionTask(with: request) { result, error in
+                    if let result, result.isFinal {
+                        let segments = phraseSegments(
+                            from: result.bestTranscription.segments,
+                            window: window
+                        )
+                        guard !segments.isEmpty else {
+                            gate.finish(.failure(OnDeviceTranscriptFailure.noFinalizedSpeech))
+                            return
+                        }
+                        gate.finish(.success(segments))
+                    } else if let error {
+                        gate.finish(.failure(error))
+                    }
+                }
+                let cancellation = LegacySpeechCancellationHandle(recognitionTask)
+                gate.onFinish { cancellation.cancel() }
+                let timeoutTask = Task {
+                    do {
+                        try await Task.sleep(for: .seconds(deadlineSeconds))
+                    } catch {
                         return
                     }
-                    gate.resume(returning: segments)
-                } else if let error {
-                    gate.resume(throwing: error)
+                    guard !Task.isCancelled else { return }
+                    gate.finish(.failure(OnDeviceTranscriptFailure.recognitionTimedOut))
                 }
+                gate.onFinish { timeoutTask.cancel() }
             }
-            taskBox.store(recognitionTask)
-            let timeoutTask = Task {
-                do {
-                    try await Task.sleep(for: .seconds(deadlineSeconds))
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                taskBox.cancel()
-                gate.resume(throwing: OnDeviceTranscriptFailure.recognitionTimedOut)
-            }
-            gate.storeTimeout(timeoutTask)
+        } onCancel: {
+            gate.finish(.failure(CancellationError()))
         }
     }
 
@@ -1038,63 +1008,13 @@ private enum AppleCompatibleTranscriptEngine {
     }
 }
 
-private final class LegacySpeechTaskBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var task: SFSpeechRecognitionTask?
 
-    func store(_ task: SFSpeechRecognitionTask) {
-        lock.lock()
-        self.task = task
-        lock.unlock()
-    }
-
-    func cancel() {
-        lock.lock()
-        let task = self.task
-        self.task = nil
-        lock.unlock()
-        task?.cancel()
-    }
-}
-
-private final class LegacySpeechContinuationGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>?
-    private var timeoutTask: Task<Void, Never>?
-
-    init(_ continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) {
-        self.continuation = continuation
-    }
-
-    func storeTimeout(_ task: Task<Void, Never>) {
-        lock.lock()
-        if continuation == nil {
-            lock.unlock()
-            task.cancel()
-            return
-        }
-        timeoutTask = task
-        lock.unlock()
-    }
-
-    func resume(returning value: [OnDeviceTranscriptSegment]) {
-        take()?.resume(returning: value)
-    }
-
-    func resume(throwing error: Error) {
-        take()?.resume(throwing: error)
-    }
-
-    private func take() -> CheckedContinuation<[OnDeviceTranscriptSegment], Error>? {
-        lock.lock()
-        let value = continuation
-        continuation = nil
-        let timeoutTask = self.timeoutTask
-        self.timeoutTask = nil
-        lock.unlock()
-        timeoutTask?.cancel()
-        return value
-    }
+/// Speech's legacy task is not Sendable. Its only cross-task use is requesting
+/// cancellation, which is dispatched onto the main actor that created it.
+nonisolated private final class LegacySpeechCancellationHandle: @unchecked Sendable {
+    private let task: SFSpeechRecognitionTask
+    init(_ task: SFSpeechRecognitionTask) { self.task = task }
+    func cancel() { Task { @MainActor [self] in task.cancel() } }
 }
 
 @MainActor
@@ -1322,6 +1242,28 @@ final class OnDeviceTranscriptManager: ObservableObject {
             allowModelDownload: true,
             locale: locale
         )
+    }
+
+    /// One recovery path for spoken writing and recorded sessions. Reuse saved
+    /// words and accepted cloud work before starting recognition again.
+    func retryTranscript(recording: LocalRecording, fileURL: URL?) {
+        guard !recording.needsClearSpeechRetry || storedTranscript(for: recording.id) != nil else { return }
+        let recoverLocally = OnDeviceTranscriptDeliveryPolicy.shouldRecoverLocallyAfterPermissionChange(
+            fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+            cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
+            cloudFallbackStatus: recording.cloudTranscriptFallbackStatus,
+            speechRecognitionIsAuthorized: SFSpeechRecognizer.authorizationStatus() == .authorized,
+            localSourceIsAvailable: fileURL != nil,
+            sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry)
+        switch phase(for: recording.id) {
+        case .savedLocally, .waitingForVerifiedUpload:
+            submitSavedTranscript(recording: recording)
+        case .failed where recording.cloudTranscriptFallbackRequestId != nil && !recoverLocally:
+            submitPendingCloudFallback(recording: recording)
+        default:
+            guard let fileURL else { return }
+            begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
+        }
     }
 
     func submitSavedTranscript(recording: LocalRecording) {
@@ -1726,6 +1668,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
                         // Adaptation is an accuracy preference, never a gate to
                         // receiving writing. Fall back to the ordinary long-form
                         // engine if Apple cannot use the adapted model here.
+                        try Task.checkCancellation()
                         let result = try await standardTranscriptResult(
                             fileURL: preparedAudio.url,
                             locale: locale,
@@ -1771,8 +1714,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     ? "built-in"
                     : "apple-service"
             }
-            attemptStage = .preservingDeviceResult
             try Task.checkCancellation()
+            attemptStage = .preservingDeviceResult
             let after = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value

@@ -1,6 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NoteEditor } from "./note-editor";
+jest.mock("@/components/document-tags", () => ({ DocumentTags: ({ documentId, actorId }: { documentId: string; actorId: string }) => <div data-testid="document-tags" data-document={documentId} data-actor={actorId} /> }));
 
 const initial = {
   id: "note", stableId: "stable-note", projectId: "nest", projectSlug: "my-nest", projectName: "My nest",
@@ -19,6 +20,8 @@ describe("focused note editor", () => {
   it("saves the existing block and title, then clears its local recovery copy", async () => {
     jest.mocked(fetch).mockResolvedValue(response() as Response);
     render(<NoteEditor initial={initial} actorId="actor" />);
+    expect(screen.getByTestId("document-tags")).toHaveAttribute("data-document", "note");
+    expect(screen.getByTestId("document-tags")).toHaveAttribute("data-actor", "actor");
     expect(screen.getByLabelText("Note text")).toHaveAttribute("id", "note-block-block");
     fireEvent.change(screen.getByLabelText("Note title"), { target: { value: "A useful idea" } });
     fireEvent.change(screen.getByLabelText("Note text"), { target: { value: "Start with what the client wants to change." } });

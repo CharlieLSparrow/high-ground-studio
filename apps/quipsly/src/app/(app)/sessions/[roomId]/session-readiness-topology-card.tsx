@@ -18,6 +18,7 @@ import {
 
 import { buildSessionRecordingStatus, type SessionRecordingStatus } from "@/lib/session-recording-status";
 import type { SessionReadinessExpectedSource, SessionReadinessSource, SessionReadinessTopology } from "./session-readiness-topology";
+import { useRecordingToolsActive } from "./session-recordings-workspace";
 
 type LiveDevice = {
   id: string;
@@ -139,7 +140,8 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
     expectedClientKind: "",
     expectedDeviceLabel: "",
   });
-  const liveReadbackEnabled = topology.generatedAt !== "1970-01-01T00:00:00.000Z";
+  const active = useRecordingToolsActive();
+  const liveReadbackEnabled = active && topology.generatedAt !== "1970-01-01T00:00:00.000Z";
 
   const refreshPresence = useCallback(async (foreground = true) => {
     if (foreground) setRefreshing(true);
@@ -181,19 +183,29 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
 
   useEffect(() => {
     if (!liveReadbackEnabled) return;
-    void refreshPresence(false);
-    const interval = window.setInterval(() => {
+    const refreshVisible = () => {
       if (document.visibilityState === "visible") void refreshPresence(false);
-    }, 20_000);
-    return () => window.clearInterval(interval);
+    };
+    refreshVisible();
+    const interval = window.setInterval(refreshVisible, 20_000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [liveReadbackEnabled, refreshPresence]);
   useEffect(() => {
     if (!liveReadbackEnabled) return;
-    void refreshRecordingStatus();
-    const interval = window.setInterval(() => {
+    const refreshVisible = () => {
       if (document.visibilityState === "visible") void refreshRecordingStatus();
-    }, recordingStatus.safeToLeave ? 30_000 : 8_000);
-    return () => window.clearInterval(interval);
+    };
+    refreshVisible();
+    const interval = window.setInterval(refreshVisible, recordingStatus.safeToLeave ? 30_000 : 8_000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [liveReadbackEnabled, recordingStatus.safeToLeave, refreshRecordingStatus]);
 
   const liveByParticipant = useMemo(() => {
@@ -303,7 +315,7 @@ export function SessionReadinessTopologyCard({ roomId, topology, canManageSource
       <div className="max-w-3xl">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-800">Recording</p>
         <h2 id="session-readiness-topology-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Recording status</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Stay on this Session until Quipsly says every required recording is safe. Technical details stay out of the way unless something needs attention.</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Saved recordings are ready to work with. Keep Quipsly open on a recording device with unfinished uploads; you can work elsewhere in the app while it uploads.</p>
       </div>
       <button type="button" onClick={() => void refreshAll()} disabled={refreshing || !liveReadbackEnabled} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50">
         <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} aria-hidden="true" />

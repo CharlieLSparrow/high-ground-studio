@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import { Prisma, type Prisma as PrismaTypes } from "@prisma/client";
@@ -191,7 +191,7 @@ export async function reconcileEpisodeProgramDelivery(input: Coordinates) {
   }
   const result = parseEpisodeProgramDeliveryResult(record(row.resultJson).receipt, job);
   await assertExactFile(context.programPath, job.source.sha256, job.source.sizeBytes, "The promoted Episode program changed before delivery registration.");
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const outputPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.output.locator));
   if (!outputPath) throw new EpisodeProgramDeliveryError("The encoded Episode program escaped the authorized media root.", 409, "EPISODE_PROGRAM_DELIVERY_OUTPUT_HELD");
   await assertExactFile(outputPath, result.output.sha256, result.output.sizeBytes, "The encoded Episode program no longer matches its worker receipt.", "audio/mp4");
@@ -361,7 +361,7 @@ async function loadPromotedProgram(input: Coordinates & { mixJobId: string }) {
   if (!promotion || promotion.operation !== "PROMOTE" || promotion.mixJobId !== context.row.id || !promotion.reviewReceiptId || promotion.reviewReceiptId !== review?.id || review.decision !== "APPROVED" || promotion.programFingerprintSha256 !== context.proposal.programFingerprintSha256 || promotion.proposalSha256 !== proposalSha256 || promotion.baselineSha256 !== context.result.baselineDerivative?.sha256 || promotion.previewSha256 !== context.result.derivative.sha256 || !attachment) {
     throw new EpisodeProgramDeliveryError("Delivery encoding requires the current exact promoted multitrack Episode program.", 409, "EPISODE_PROGRAM_DELIVERY_ACTIVE_PROMOTION_REQUIRED");
   }
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const registeredPath = text(record(record(context.row.resultJson).registration).outputPath);
   const programPath = await resolveAllowedLocalStudioMediaPath(registeredPath || path.resolve(root, context.result.derivative.locator));
   if (!programPath) throw new EpisodeProgramDeliveryError("The promoted Episode program has no authorized byte location.", 409, "EPISODE_PROGRAM_DELIVERY_CANDIDATE_UNAVAILABLE");

@@ -48,6 +48,9 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var waveform: CaptureAudioWaveform?
+    @Published private(set) var isLoadingWaveform = false
+    private var waveformTask: Task<CaptureAudioWaveform, Error>?
 
     private struct SourceBinding {
         let recordingAssetID: String
@@ -70,9 +73,11 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     private var boundSource: SourceBinding?
     private var timeObserver: Any?
     private var completionObserver: NSObjectProtocol?
+    private var itemStatusObservation: NSKeyValueObservation?
     private var accountCancellable: AnyCancellable?
     private var boundedPlaybackStart: TimeInterval?
     private var boundedPlaybackEnd: TimeInterval?
+    private var preparationGeneration = 0
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -164,7 +169,9 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         isPreparing = true
         errorMessage = nil
         statusMessage = "Preparing compact audio from the exact camera source…"
-        defer { isPreparing = false }
+        preparationGeneration += 1
+        let generation = preparationGeneration
+        defer { if generation == preparationGeneration { isPreparing = false } }
         do {
             var method = "POST"
             var derivative: CaptureSessionAudioAuditionResponse.Derivative?
@@ -174,6 +181,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
                 request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
                 let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+                guard generation == preparationGeneration, !Task.isCancelled else { return }
                 let payload = try JSONDecoder().decode(CaptureSessionAudioAuditionResponse.self, from: data)
                 guard response.statusCode < 400, payload.ok else {
                     throw Self.error(payload.error ?? "Compact transcript audio could not be prepared.", code: response.statusCode)
@@ -190,6 +198,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
                 }
                 method = "GET"
                 try await Task.sleep(for: .seconds(1.5))
+                guard generation == preparationGeneration, !Task.isCancelled else { return }
             }
             guard let derivative,
                   derivative.schema == "quipsly-session-audio-audition-v1",
@@ -221,6 +230,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
                 statusMessage = "Exact-source transcript audio ready · \(Self.fileSize(derivative.byteSize))"
             }
         } catch {
+            guard generation == preparationGeneration else { return }
             clearPreparedState()
             errorMessage = error.localizedDescription
             statusMessage = nil
@@ -247,7 +257,9 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         isPreparing = true
         errorMessage = nil
         statusMessage = "Preparing the exact verified source…"
-        defer { isPreparing = false }
+        preparationGeneration += 1
+        let generation = preparationGeneration
+        defer { if generation == preparationGeneration { isPreparing = false } }
         do {
             var request = URLRequest(url: playbackURL)
             request.httpMethod = "GET"
@@ -255,6 +267,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
             let (temporaryURL, response) = try await AuthManager.shared.authenticatedDownload(for: request, expectedOwnerAccountID: owner.ownerAccountID)
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
+            guard generation == preparationGeneration, !Task.isCancelled else { return }
             try validateResponse(response, binding: binding)
             guard AuthManager.shared.matchesStableOwnerSnapshot(owner) else { throw Self.error("The Quipsly account changed before playback preparation finished.", code: 401) }
             let verification = try Self.hashAndByteCount(at: temporaryURL)
@@ -267,6 +280,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             configurePlayer(fileURL: locations.media, binding: binding)
             statusMessage = "Exact source ready · \(Self.fileSize(binding.byteCount))"
         } catch {
+            guard generation == preparationGeneration else { return }
             clearPreparedState()
             errorMessage = error.localizedDescription
             statusMessage = nil
@@ -361,6 +375,10 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
 
     func seek(to requestedSeconds: TimeInterval) {
         guard let player else { return }
+        // A deliberate seek leaves a bounded transcript/trim audition. Its old
+        // stop marker must not pull the playhead back after the user moves on.
+        boundedPlaybackStart = nil
+        boundedPlaybackEnd = nil
         let bounded = min(max(requestedSeconds.isFinite ? requestedSeconds : 0, 0), max(duration, 0))
         player.seek(
             to: CMTime(seconds: bounded, preferredTimescale: 600),
@@ -382,6 +400,13 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
     }
 
     func close() {
+        waveformTask?.cancel()
+        waveformTask = nil
+        waveform = nil
+        isLoadingWaveform = false
+        preparationGeneration += 1
+        isPreparing = false
+        itemStatusObservation = nil
         player?.pause()
         if let timeObserver, let player {
             player.removeTimeObserver(timeObserver)
@@ -414,6 +439,20 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         let player = AVPlayer(url: fileURL)
         player.actionAtItemEnd = .pause
         self.player = player
+        if !binding.isVideo {
+            isLoadingWaveform = true
+            let decoding = Task.detached(priority: .utility) {
+                try CaptureAudioWaveform.read(url: fileURL)
+            }
+            waveformTask = decoding
+            Task { [weak self, weak player] in
+                let result = try? await decoding.value
+                guard let self, let player, self.player === player else { return }
+                self.waveform = result
+                self.isLoadingWaveform = false
+                self.waveformTask = nil
+            }
+        }
         duration = 0
         position = 0
         timeObserver = player.addPeriodicTimeObserver(
@@ -421,10 +460,10 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             queue: .main
         ) { [weak self, weak player] time in
             MainActor.assumeIsolated {
-                guard let self else { return }
+                guard let self, let player, self.player === player else { return }
                 let seconds = time.seconds
                 if seconds.isFinite { self.position = max(seconds, 0) }
-                let itemDuration = player?.currentItem?.duration.seconds ?? 0
+                let itemDuration = player.currentItem?.duration.seconds ?? 0
                 if itemDuration.isFinite, itemDuration > 0 {
                     self.duration = itemDuration
                 }
@@ -432,8 +471,8 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
                    seconds.isFinite,
                    seconds >= end - 0.015 {
                     let start = self.boundedPlaybackStart ?? 0
-                    player?.pause()
-                    player?.seek(
+                    player.pause()
+                    player.seek(
                         to: CMTime(seconds: start, preferredTimescale: 600),
                         toleranceBefore: .zero,
                         toleranceAfter: .zero
@@ -448,14 +487,31 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             }
         }
         if let item = player.currentItem {
+            itemStatusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self, weak player] item, _ in
+                Task { @MainActor [weak self, weak player] in
+                    guard let self, let player, self.player === player else { return }
+                    switch item.status {
+                    case .readyToPlay:
+                        let seconds = item.duration.seconds
+                        if seconds.isFinite, seconds > 0 { self.duration = seconds }
+                    case .failed:
+                        player.pause()
+                        self.isPlaying = false
+                        self.errorMessage = "This recording couldn’t play. Try loading it again, or choose another track."
+                        self.audioSession.endLocalPlayback()
+                    default: break
+                    }
+                }
+            }
             completionObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: item,
                 queue: .main
-            ) { [weak self] _ in
+            ) { [weak self, weak player] _ in
                 MainActor.assumeIsolated {
-                    self?.isPlaying = false
-                    self?.audioSession.endLocalPlayback()
+                    guard let self, let player, self.player === player else { return }
+                    self.isPlaying = false
+                    self.audioSession.endLocalPlayback()
                 }
             }
         }
@@ -655,12 +711,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         fileName: String,
         isVideo: Bool
     ) -> String {
-        let candidate = URL(fileURLWithPath: fileName).pathExtension.lowercased()
-        let allowed = [
-            "aac", "m4a", "mp3", "ogg", "wav", "webm",
-            "m4v", "mov", "mp4",
-        ]
-        return allowed.contains(candidate) ? candidate : (isVideo ? "mp4" : "m4a")
+        CaptureRecordingPlaybackFormat.fileExtension(fileName: fileName, isVideo: isVideo)
     }
 
     nonisolated private static func hashAndByteCount(

@@ -467,7 +467,7 @@ final class CaptureRoomReceiptStore: ObservableObject {
 private extension JSONEncoder {
     static var captureLedger: JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        CaptureDateCoding.configure(encoder)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return encoder
     }
@@ -476,7 +476,7 @@ private extension JSONEncoder {
 private extension JSONDecoder {
     static var captureLedger: JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        CaptureDateCoding.configure(decoder)
         return decoder
     }
 }

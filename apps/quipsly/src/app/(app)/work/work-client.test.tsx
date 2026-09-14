@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 
@@ -8,7 +8,8 @@ import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
 const refresh = jest.fn();
-jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+const replace = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh, replace }) }));
 jest.mock("./actions", () => ({
   applyTagMerge: jest.fn(),
   applyTagMergeRollback: jest.fn(),
@@ -38,7 +39,7 @@ const snapshot: WorkSnapshot = {
   tasks: [{
     id: "task-1", title: "Finish episode notes", detail: "Use transcript evidence", status: "OPEN", dueAt: null, reminderAt: "2026-07-19T12:00:00.000Z", reminderId: "reminder-1", reminderStatus: "ACTIVE", reminderUpdatedAt: "2026-07-18T18:00:00.000Z", completedAt: null,
     createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:00:00.000Z", isOverdue: false, assigneeLabel: null,
-    provenance: "Reviewed transcript timestamp", attentionReason: "Reviewed transcript follow-through", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
+    provenance: "Session transcript", attentionReason: "From session transcript", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
     project: null, tags: [], canEdit: true, canManageTags: true, canManageReminder: true,
     sourceAnchor: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", speakerAuthority: "source-binding", sourceBoundParticipantId: "participant-charlie", acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", playbackSourceId: "source-1" },
     lastMergedTranscriptEvidence: null,
@@ -49,7 +50,208 @@ const snapshot: WorkSnapshot = {
 };
 
 describe("Work Queue interactions", () => {
-  beforeEach(() => jest.clearAllMocks());
+  // Reset implementations and queued one-shot replies too: a failed test must
+  // not feed its unused response into an unrelated task/goal scenario.
+  beforeEach(() => jest.resetAllMocks());
+
+  it.each(["task", "goal"] as const)("lets a client tag a shared %s without a Nest grant, and retry a failed palette read", async entityKind => {
+    const user = userEvent.setup();
+    const originalFetch = global.fetch;
+    const tag = { id: "research", label: "Research", hexColor: "#506b46", isActive: true };
+    const updatedAt = "2026-09-09T02:00:00.000Z";
+    const fetchMock = jest.fn().mockResolvedValueOnce({ ok: false, json: async () => { throw new SyntaxError("Unexpected end of JSON input"); } })
+      .mockResolvedValue({ ok: true, json: async () => ({ ok: true, tags: [tag], selectedTagIds: [], updatedAt, canCreateTags: false }) });
+    global.fetch = fetchMock;
+    jest.mocked(replaceWorkTags).mockResolvedValue({ ok: true } as never);
+    const goal = { id: "goal-1", title: "Prepare together", description: null, status: "ACTIVE" as const,
+      targetAt: null, achievedAt: null, progressPercent: null, progressNote: null, provenance: "Canonical goal" as const,
+      updatedAt: "2026-09-09T00:00:00.000Z", roomId: null, sessionTitle: null, sessionStart: null,
+      project: null, tags: [], canEdit: true, canManageTags: true, parent: null, childCount: 0, linkedTasks: [], sourceAnchor: null };
+    try {
+      render(<WorkClient initialSnapshot={{ ...snapshot, goals: [goal] }} initialView={entityKind === "goal" ? "goals" : "tasks"} projectOptions={[]} />);
+      expect(fetchMock).not.toHaveBeenCalled();
+      const card = document.getElementById(`work-${entityKind}-${entityKind}-1`)!;
+      await user.click(within(card).getByText("Edit tags"));
+      expect(await within(card).findByRole("status")).toHaveTextContent("Tags couldn't load");
+      expect(within(card).queryByRole("button", { name: "Save tags" })).not.toBeInTheDocument();
+      await user.click(within(card).getByRole("button", { name: "Try again" }));
+      const choice = await within(card).findByRole("checkbox", { name: "Research" });
+      expect(choice.closest("label")).toHaveStyle({ backgroundColor: "#506b46" });
+      expect(fetchMock).toHaveBeenLastCalledWith(`/api/work/tags?entityKind=${entityKind}&entityId=${entityKind}-1`, expect.objectContaining({ cache: "no-store" }));
+      expect(within(card).queryByRole("button", { name: "Create & apply" })).not.toBeInTheDocument();
+      await user.click(choice);
+      await user.click(within(card).getByRole("button", { name: "Save tags" }));
+      await within(card).findByText("Tags saved.");
+      expect(replaceWorkTags).toHaveBeenCalledWith({ entityKind, entityId: `${entityKind}-1`, tagIds: ["research"], expectedUpdatedAt: updatedAt });
+      expect(refresh).toHaveBeenCalled();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it.each(["task", "goal"] as const)("keeps shared colors and retained archived tags when editing %s tags", async entityKind => {
+    const user = userEvent.setup();
+    const archived = { id: "earlier", label: "Earlier focus", slug: "earlier", category: "topic", projectId: "project-1",
+      hexColor: "#506b46", isActive: false, archivedAt: "2026-09-08T00:00:00.000Z", updatedAt: "2026-09-08T00:00:00.000Z", aliases: [] };
+    const active = { ...archived, id: "research", label: "Research", slug: "research", isActive: true, archivedAt: null, hexColor: "#805a3b" };
+    const unusedArchived = { ...archived, id: "retired", label: "Retired elsewhere" };
+    const project = { id: "project-1", name: "Shared coaching", slug: "shared-coaching", role: "EDITOR", canWrite: true, tags: [archived, active, unusedArchived] };
+    const goal = { id: "goal-1", title: "Prepare together", description: null, status: "ACTIVE" as const,
+      targetAt: null, achievedAt: null, progressPercent: null, progressNote: null, provenance: "Canonical goal" as const,
+      updatedAt: "2026-09-09T00:00:00.000Z", roomId: null, sessionTitle: null, sessionStart: null,
+      project, tags: [archived], canEdit: true, canManageTags: true, parent: null, childCount: 0, linkedTasks: [], sourceAnchor: null };
+    let finish!: (value: never) => void;
+    jest.mocked(replaceWorkTags).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    render(<WorkClient initialSnapshot={{ ...snapshot, tasks: [{ ...snapshot.tasks[0]!, project, tags: [archived] }], goals: [goal] }}
+      initialView={entityKind === "goal" ? "goals" : "tasks"} projectOptions={[project]} />);
+    const card = document.getElementById(`work-${entityKind}-${entityKind}-1`)!;
+    await user.click(within(card).getByText("Edit Shared coaching tags"));
+    const retained = screen.getByRole("checkbox", { name: "Earlier focus (archived)" });
+    const research = screen.getByRole("checkbox", { name: "Research" });
+    expect(retained).toBeChecked();
+    expect(retained.closest("label")).toHaveStyle({ backgroundColor: "#506b46" });
+    expect(research.closest("label")).toHaveStyle({ backgroundColor: "#805a3b" });
+    expect(screen.queryByRole("checkbox", { name: /Retired elsewhere/ })).not.toBeInTheDocument();
+    await user.click(research);
+    await user.click(screen.getByRole("button", { name: "Save tags" }));
+    expect(replaceWorkTags).toHaveBeenCalledWith(expect.objectContaining({ entityKind, tagIds: ["earlier", "research"] }));
+    expect(screen.getByRole("button", { name: "Create & apply" })).toBeDisabled();
+    expect(retained).toBeDisabled();
+    finish({ ok: true } as never);
+    await screen.findByText("Tags saved.");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("starts with tasks and preserves writing when switching optional work views", async () => {
+    const user = userEvent.setup();
+    render(<WorkClient initialSnapshot={snapshot} />);
+    expect(screen.getByRole("heading", { name: snapshot.tasks[0]!.title })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Weekly review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Goals" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Keep my next idea");
+    await user.click(screen.getByRole("button", { name: "Goals" }));
+    await user.type(screen.getByRole("textbox", { name: "Goal title" }), "Write the next chapter");
+    expect(replace).toHaveBeenLastCalledWith("/work?view=goals", { scroll: false });
+    await user.click(screen.getByRole("button", { name: "Tasks" }));
+    expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue("Keep my next idea");
+    await user.click(screen.getByRole("button", { name: "Goals" }));
+    expect(screen.getByRole("textbox", { name: "Goal title" })).toHaveValue("Write the next chapter");
+    await user.click(screen.getByRole("button", { name: "Weekly planning" }));
+    expect(screen.getByRole("region", { name: "Weekly commitments" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Weekly review" })).toBeVisible();
+    expect(createWorkTask).not.toHaveBeenCalled();
+    expect(createWorkGoal).not.toHaveBeenCalled();
+    expect(saveWeeklyCommitment).not.toHaveBeenCalled();
+  });
+
+  it("keeps a task draft after a failed save and retries from the same form", async () => {
+    const user = userEvent.setup();
+    jest.mocked(createWorkTask).mockResolvedValueOnce({ ok: false, code: "UNAVAILABLE", error: "Could not save. Try again." })
+      .mockResolvedValueOnce({ ok: true, taskId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" })
+      .mockResolvedValueOnce({ ok: true, taskId: "new", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "new-receipt" });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    const title = screen.getByRole("textbox", { name: "Task title" });
+    await user.type(title, "Capture this before I forget");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Could not save");
+    expect(title).toHaveValue("Capture this before I forget");
+    expect(title).toBeDisabled();
+    await user.click(await screen.findByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(2));
+    expect(createWorkTask).toHaveBeenNthCalledWith(2, jest.mocked(createWorkTask).mock.calls[0]![0]);
+    await waitFor(() => expect(title).toHaveValue(""));
+    await waitFor(() => expect(title).toBeEnabled());
+    await user.type(title, "A deliberately new task");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(jest.mocked(createWorkTask).mock.calls[2]![0].clientRequestId).not.toBe(jest.mocked(createWorkTask).mock.calls[0]![0].clientRequestId);
+  });
+
+  it.each(["tasks", "goals"] as const)("recovers a thrown %s save using the identical command, even after switching views", async view => {
+    const user = userEvent.setup();
+    const action = view === "tasks" ? jest.mocked(createWorkTask) : jest.mocked(createWorkGoal);
+    action.mockRejectedValueOnce(new Error("Connection dropped"));
+    jest.mocked(createWorkTask).mockResolvedValue({ ok: true, taskId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    jest.mocked(createWorkGoal).mockResolvedValue({ ok: true, goalId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    render(<WorkClient initialSnapshot={snapshot} initialView={view} />);
+    const title = screen.getByRole("textbox", { name: view === "tasks" ? "Task title" : "Goal title" });
+    await user.type(title, "Do not lose this idea");
+    await user.click(screen.getByRole("button", { name: view === "tasks" ? "Add task" : "Add goal" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Retry to recover");
+    expect(title).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Weekly planning" }));
+    await user.click(screen.getByRole("button", { name: view === "tasks" ? "Tasks" : "Goals" }));
+    await user.click(screen.getByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(2));
+    expect(action.mock.calls[1]![0]).toEqual(action.mock.calls[0]![0]);
+    expect(action.mock.calls[0]![0].clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+    await waitFor(() => expect(title).toBeEnabled());
+    expect(title).toHaveValue("");
+  });
+
+  it("allows a rejected input to be corrected without retaining a failed command", async () => {
+    const user = userEvent.setup();
+    jest.mocked(createWorkTask).mockResolvedValueOnce({ ok: false, code: "INVALID_INPUT", error: "Choose a different Nest." })
+      .mockResolvedValueOnce({ ok: true, taskId: "corrected", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    const title = screen.getByRole("textbox", { name: "Task title" });
+    await user.type(title, "First draft");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("different Nest");
+    await waitFor(() => expect(title).toBeEnabled());
+    await user.clear(title);
+    await user.type(title, "Corrected draft");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(2));
+    expect(jest.mocked(createWorkTask).mock.calls[1]![0]).toMatchObject({ title: "Corrected draft" });
+    expect(jest.mocked(createWorkTask).mock.calls[1]![0].clientRequestId).not.toBe(jest.mocked(createWorkTask).mock.calls[0]![0].clientRequestId);
+  });
+
+  it("does not forget an uncertain save when a later retry temporarily loses authorization", async () => {
+    const user = userEvent.setup();
+    jest.mocked(createWorkTask).mockRejectedValueOnce(new Error("Lost reply"))
+      .mockResolvedValueOnce({ ok: false, code: "AUTH_REQUIRED", error: "Sign in again." })
+      .mockResolvedValueOnce({ ok: true, taskId: "recovered", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    const title = screen.getByRole("textbox", { name: "Task title" });
+    await user.type(title, "Keep the original request");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await user.click(await screen.findByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Sign in again"));
+    expect(title).toBeDisabled();
+    // The message can render before React completes the action transition.
+    // Wait for the real retry control rather than clicking the prior busy UI.
+    await user.click(await screen.findByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(createWorkTask).toHaveBeenCalledTimes(3));
+    expect(jest.mocked(createWorkTask).mock.calls.map(call => call[0])).toEqual(Array(3).fill(jest.mocked(createWorkTask).mock.calls[0]![0]));
+  });
+
+  it.each(["goals", "weekly"] as const)("keeps the %s draft when saving fails", async view => {
+    const user = userEvent.setup();
+    jest.mocked(createWorkGoal).mockResolvedValue({ ok: false, code: "UNAVAILABLE", error: "Save failed. Try again." });
+    jest.mocked(saveWeeklyCommitment).mockResolvedValue({ ok: false, code: "UNAVAILABLE", error: "Save failed. Try again." });
+    render(<WorkClient initialSnapshot={snapshot} initialView={view} />);
+    const input = screen.getByRole("textbox", { name: view === "goals" ? "Goal title" : "First commitment" });
+    await user.type(input, "Keep this useful idea");
+    await user.click(screen.getByRole("button", { name: view === "goals" ? "Add goal" : "Save weekly plan" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Save failed");
+    expect(input).toHaveValue("Keep this useful idea");
+    if (view === "weekly") expect(saveWeeklyCommitment).toHaveBeenCalledWith(expect.objectContaining({ clientReviewed: false }));
+  });
+
+  it("keeps the chosen Nest ready for the next task after saving", async () => {
+    const user = userEvent.setup();
+    jest.mocked(createWorkTask).mockResolvedValue({ ok: true, taskId: "nest-task", updatedAt: "2026-09-09T04:00:00.000Z", receiptId: "receipt" });
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[{ id: "writing", slug: "writing", name: "Writing", role: "OWNER", canWrite: true, tags: [] }]} />);
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Keep working in this Nest");
+    await user.click(screen.getByText("Details, date & repeat"));
+    const nest = within(screen.getByRole("region", { name: "Add a personal task" })).getByRole("combobox", { name: "Nest (optional)" });
+    await user.selectOptions(nest, "writing");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Task added.");
+    expect(nest).toHaveValue("writing");
+    expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue("");
+    expect(createWorkTask).toHaveBeenCalledWith(expect.objectContaining({ projectId: "writing" }));
+  });
 
   it("server-renders task, goal, and commitment dates from deterministic UTC snapshots", () => {
     const instant = "2026-07-19T00:30:00.000Z";
@@ -216,7 +418,7 @@ describe("Work Queue interactions", () => {
       timezone: expect.any(String),
       expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("reminder, repeat, status, tags, goal links, and external calendars were left unchanged");
+    expect(await screen.findByRole("status")).toHaveTextContent("Task saved.");
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -262,7 +464,7 @@ describe("Work Queue interactions", () => {
       }],
       counts: { ...snapshot.counts, activeGoals: 1 },
     };
-    render(<WorkClient initialSnapshot={goalSnapshot} />);
+    render(<WorkClient initialSnapshot={goalSnapshot} initialView="goals" />);
     const link = screen.getByRole("link", { name: "Return to 0:12–0:17" });
     expect(link).toHaveAttribute("href", "/sessions/room-2?mode=transcript&source=asset-2&at=12.4#transcript-segment-segment-2");
     expect(screen.getByText("Homer: Build a repeatable coaching review habit.")).toBeInTheDocument();
@@ -317,7 +519,7 @@ describe("Work Queue interactions", () => {
       counts: { ...snapshot.counts, activeGoals: 1 },
     };
 
-    render(<WorkClient initialSnapshot={goalSnapshot} />);
+    render(<WorkClient initialSnapshot={goalSnapshot} initialView="goals" />);
 
     expect(screen.getByText("Progress: 40%")).toBeInTheDocument();
     expect(screen.getByText("Latest progress:").parentElement).toHaveTextContent("Two reviews completed.");
@@ -367,7 +569,7 @@ describe("Work Queue interactions", () => {
       counts: { ...snapshot.counts, activeGoals: 2 },
     };
 
-    render(<WorkClient initialSnapshot={goalSnapshot} />);
+    render(<WorkClient initialSnapshot={goalSnapshot} initialView="goals" />);
 
     expect(
       screen.getByRole("heading", {
@@ -424,7 +626,7 @@ describe("Work Queue interactions", () => {
       receiptId: "goal-edit-receipt",
     });
 
-    render(<WorkClient initialSnapshot={goalSnapshot} />);
+    render(<WorkClient initialSnapshot={goalSnapshot} initialView="goals" />);
     const editGoalSummary = screen.getByText("Edit goal");
     await user.click(editGoalSummary);
     const goalEditor = editGoalSummary.closest("details");
@@ -485,7 +687,7 @@ describe("Work Queue interactions", () => {
       updatedAt: "2026-07-18T18:00:01.000Z",
       receiptId: "goal-edit-keep-receipt",
     });
-    render(<WorkClient initialSnapshot={{
+    render(<WorkClient initialView="goals" initialSnapshot={{
       ...snapshot,
       goals: [goal],
       counts: { ...snapshot.counts, activeGoals: 1 },
@@ -510,7 +712,7 @@ describe("Work Queue interactions", () => {
   it("opens the derived attention lens without creating an unread notification state", () => {
     render(<WorkClient initialSnapshot={snapshot} initialFilter="ATTENTION" />);
     expect(screen.getByRole("button", { name: "Attention" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Reviewed transcript follow-through")).toBeInTheDocument();
+    expect(screen.getByText("From session transcript")).toBeInTheDocument();
     expect(screen.getByText("Finish episode notes")).toBeInTheDocument();
   });
 
@@ -519,8 +721,8 @@ describe("Work Queue interactions", () => {
       { id: "tag-proof", label: "Proof listen", slug: "proof-listen", category: "workflow", projectId: "project-1", isActive: true },
     ] };
     const { rerender } = render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
-    expect(screen.queryByRole("heading", { name: "Nest vocabulary" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage 1 tag" })).toHaveAttribute("href", "/work?manage=tags");
+    expect(screen.queryByRole("heading", { name: "Shared tags" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage tags" })).toHaveAttribute("href", "/work?manage=tags");
 
     rerender(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
     expect(screen.getByRole("heading", { name: "Tags", level: 1 })).toBeInTheDocument();
@@ -575,8 +777,31 @@ describe("Work Queue interactions", () => {
     await user.click(screen.getByRole("checkbox", { name: "Episode 4" }));
     await user.click(screen.getByRole("button", { name: "Save tags" }));
     expect(replaceWorkTags).toHaveBeenCalledWith({ entityKind: "task", entityId: "task-1", tagIds: ["tag-proof", "tag-episode"], expectedUpdatedAt: snapshot.tasks[0].updatedAt });
-    expect(await screen.findByRole("status")).toHaveTextContent("No external action was taken");
+    expect(await screen.findByRole("status")).toHaveTextContent("Tags saved.");
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("previews tag color, saves once, and resets without an approval workflow", async () => {
+    const user = userEvent.setup();
+    const tag = { id: "tag-proof", label: "Proof listen", slug: "proof-listen", category: "workflow", projectId: "project-1", isActive: true, archivedAt: null, hexColor: "#aabbcc", updatedAt: "2026-07-18T18:00:00.000Z", aliases: [] };
+    const project = { id: "project-1", name: "High Ground Odyssey", slug: "high-ground", role: "EDITOR", canWrite: true, tags: [tag] };
+    jest.mocked(changeWorkTagTaxonomy).mockResolvedValue({ ok: true, operation: "COLOR", projectId: project.id, tag, aliases: [], revision: 1, receiptId: "color-receipt" });
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
+    await user.click(screen.getByRole("button", { name: "Manage Proof listen" }));
+    expect(screen.getByRole("button", { name: "Save color" })).toBeDisabled();
+    fireEvent.input(screen.getByLabelText("Color for Proof listen"), { target: { value: "#805a3b" } });
+    expect(screen.getByRole("button", { name: "Save color" })).toBeEnabled();
+    expect(screen.getAllByText("#Proof listen").some(element => element.style.backgroundColor === "rgb(128, 90, 59)")).toBe(true);
+    fireEvent.change(screen.getByLabelText("Color for Proof listen"), { target: { value: "#506b46" } });
+    expect(changeWorkTagTaxonomy).not.toHaveBeenCalled();
+    expect(screen.getAllByText("#Proof listen").some(element => element.style.backgroundColor === "rgb(80, 107, 70)")).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Save color" }));
+    expect(changeWorkTagTaxonomy).toHaveBeenLastCalledWith({ tagId: tag.id, operation: "COLOR", label: undefined, hexColor: "#506b46", expectedUpdatedAt: tag.updatedAt });
+    expect(await screen.findByRole("status")).toHaveTextContent("Color saved for #Proof listen.");
+    expect(refresh).toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Use theme color" }));
+    await user.click(screen.getByRole("button", { name: "Save color" }));
+    expect(changeWorkTagTaxonomy).toHaveBeenLastCalledWith(expect.objectContaining({ operation: "COLOR", hexColor: null }));
   });
 
   it("renames canonical vocabulary while explaining preserved aliases", async () => {
@@ -642,12 +867,12 @@ describe("Work Queue interactions", () => {
       projectId: "project-1",
       label: "Media clip QA",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("no record was tagged automatically");
+    expect(await screen.findByRole("status")).toHaveTextContent("Created #Media clip QA for High Ground Odyssey.");
     expect(screen.getByRole("textbox", { name: "New reusable tag" })).toHaveValue("");
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("keeps imported keywords out of canonical choices until explicit promotion", async () => {
+  it("adds an imported tag suggestion in one click without a review checkbox", async () => {
     const user = userEvent.setup();
     const project = {
       id: "project-1",
@@ -702,10 +927,9 @@ describe("Work Queue interactions", () => {
     expect(screen.getByText("This Nest has no active tags yet. Create the first reusable tag below.")).toBeInTheDocument();
 
     rerender(<WorkClient initialSnapshot={projectTaskSnapshot} projectOptions={[project]} manageTags />);
-    expect(screen.getByText("Suggestion only")).toBeInTheDocument();
-    const promoteButton = screen.getByRole("button", { name: "Promote to #Narrative evidence" });
-    expect(promoteButton).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "Add #Narrative evidence to intentional shared vocabulary." }));
+    const suggestions = screen.getByRole("region", { name: "Tag suggestions for High Ground Odyssey" });
+    expect(within(suggestions).queryByRole("checkbox")).not.toBeInTheDocument();
+    const promoteButton = within(suggestions).getByRole("button", { name: "Add tag #Narrative evidence" });
     expect(promoteButton).toBeEnabled();
     await user.click(promoteButton);
     expect(reviewImportedWorkTag).toHaveBeenCalledWith({
@@ -713,7 +937,7 @@ describe("Work Queue interactions", () => {
       operation: "PROMOTE",
       expectedUpdatedAt: "2026-07-23T16:00:00.000Z",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("intentional shared vocabulary");
+    expect(await screen.findByRole("status")).toHaveTextContent("Added #Narrative evidence.");
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -754,7 +978,7 @@ describe("Work Queue interactions", () => {
     });
     render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
     await user.click(screen.getByRole("button", { name: "Manage Rough cut" }));
-    const sourceRow = screen.getByText("#Rough cut").closest("li");
+    const sourceRow = screen.getByRole("button", { name: "Close Rough cut controls" }).closest("li");
     expect(sourceRow).not.toBeNull();
     await user.click(within(sourceRow!).getByText("Merge into another tag"));
     await user.selectOptions(within(sourceRow!).getByRole("combobox", { name: "Canonical target" }), "tag-edit");
@@ -881,10 +1105,16 @@ describe("Work Queue interactions", () => {
     expect(task).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("heading", { name: "Focused task" })).toBeInTheDocument();
     expect(screen.queryByText("Unrelated queue noise")).not.toBeInTheDocument();
+    for (const name of ["Weekly review", "Weekly commitments", "Add a personal task", "Goals"]) {
+      expect(screen.queryByRole("region", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("region", { name: "Work overview" })).not.toBeInTheDocument();
     await waitFor(() => expect(task).toHaveFocus());
     await user.click(screen.getByRole("button", { name: "Show full task queue" }));
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Unrelated queue noise")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Weekly commitments" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Add a personal task" })).toBeInTheDocument();
   });
 
   it("opens one focused goal without making the user cross the task wall", async () => {
@@ -903,9 +1133,13 @@ describe("Work Queue interactions", () => {
     expect(screen.getByRole("heading", { name: "Focused goal" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Tasks" })).not.toBeInTheDocument();
     expect(screen.queryByText("Unrelated durable direction")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Weekly review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Add a personal task" })).not.toBeInTheDocument();
     await waitFor(() => expect(goalCard).toHaveFocus());
     await user.click(screen.getByRole("button", { name: "Show all goals" }));
     expect(screen.getByText("Unrelated durable direction")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Weekly review" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Goals" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it.each(["task", "goal"] as const)(
@@ -925,10 +1159,11 @@ describe("Work Queue interactions", () => {
     const user = userEvent.setup();
     render(<WorkClient initialSnapshot={snapshot} />);
     await user.type(screen.getByRole("textbox", { name: "Task title" }), "Draft the next outline");
+    await user.click(screen.getByText("Details, date & repeat"));
     await user.type(screen.getByRole("textbox", { name: "Useful detail" }), "Start from the session notes");
     await user.click(screen.getByRole("button", { name: "Add task" }));
-    expect(createWorkTask).toHaveBeenCalledWith({ title: "Draft the next outline", detail: "Start from the session notes", dueLocal: null, timezone: null, projectId: null, recurrence: null });
-    expect(await screen.findByRole("status")).toHaveTextContent("assigned to you");
+    expect(createWorkTask).toHaveBeenCalledWith({ clientRequestId: expect.any(String), title: "Draft the next outline", detail: "Start from the session notes", dueLocal: null, timezone: null, projectId: null, recurrence: null });
+    expect(await screen.findByRole("status")).toHaveTextContent("Task added.");
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -937,6 +1172,7 @@ describe("Work Queue interactions", () => {
     const user = userEvent.setup();
     render(<WorkClient initialSnapshot={snapshot} />);
     await user.type(screen.getByRole("textbox", { name: "Task title" }), "Review coaching goals");
+    await user.click(screen.getByText("Details, date & repeat"));
     await user.selectOptions(screen.getByRole("combobox", { name: "Repeat" }), "FIXED");
     await user.type(screen.getByLabelText("Due (required)"), "2026-07-20T09:00");
     const timezone = screen.getByRole("textbox", { name: "Timezone" });
@@ -950,8 +1186,8 @@ describe("Work Queue interactions", () => {
       timezone: "America/Denver",
       recurrence: { cadence: "FIXED", frequency: "WEEKLY", interval: 1 },
     }));
-    expect(await screen.findByRole("status")).toHaveTextContent("3 canonical occurrences");
-    expect(screen.getByRole("status")).toHaveTextContent("No reminder or provider event was scheduled");
+    expect(await screen.findByRole("status")).toHaveTextContent("3 upcoming occurrences");
+    expect(setWorkTaskReminder).not.toHaveBeenCalled();
   });
 
   it("edits future recurrence by versioning the open horizon instead of rewriting history", async () => {
@@ -1019,7 +1255,7 @@ describe("Work Queue interactions", () => {
     render(<WorkClient initialSnapshot={snapshot} />);
     await user.click(screen.getByRole("button", { name: "Mark done" }));
     expect(updateWorkTaskStatus).toHaveBeenCalledWith({ taskId: "task-1", nextStatus: "DONE", expectedUpdatedAt: "2026-07-18T18:00:00.000Z" });
-    expect(await screen.findByText("No open tasks are in your scoped queue.")).toBeInTheDocument();
+    expect(await screen.findByText("No open tasks. Add your next step above.")).toBeInTheDocument();
   });
 
   it("lets an owner reopen a completed one-time task", async () => {
@@ -1039,6 +1275,93 @@ describe("Work Queue interactions", () => {
     await user.click(screen.getByRole("button", { name: "Reopen" }));
     expect(updateWorkTaskStatus).toHaveBeenCalledWith({ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T18:00:00.000Z" });
     expect(await screen.findByRole("button", { name: "Mark done" })).toBeInTheDocument();
+  });
+
+  it.each(["Mark done", "Cancel"])("undoes %s without losing shared tags or transcript context", async action => {
+    const confirm = jest.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: action === "Cancel" ? "CANCELED" : "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "change" })
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "OPEN", updatedAt: "2026-07-18T19:01:00.000Z", receiptId: "undo" });
+    const tag = { id: "writing", label: "Writing", slug: "writing", category: "topic", projectId: "project-1", hexColor: "#805a3b" };
+    render(<WorkClient initialSnapshot={{ ...snapshot, tasks: [{ ...snapshot.tasks[0]!, tags: [tag] }] }} />);
+    await user.click(screen.getByRole("button", { name: action }));
+    expect(confirm).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:00:00.000Z" });
+    expect(await screen.findByText("Change undone.")).toBeInTheDocument();
+    const card = screen.getByRole("article");
+    expect(within(card).getByRole("heading", { name: "Finish episode notes" })).toBeVisible();
+    expect(within(card).getByRole("link", { name: "Find all accessible work tagged Writing" })).toHaveStyle({ backgroundColor: "#805a3b" });
+    expect(within(card).getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1");
+    expect(within(card).getByRole("button", { name: "Mark done" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("does not overwrite a newer task change when Undo conflicts", async () => {
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "change" })
+      .mockResolvedValueOnce({ ok: false, code: "CONFLICT", error: "This task changed. Refresh to see the latest version." });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Mark done" }));
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("This task changed. Refresh to see the latest version.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Finish episode notes" })).not.toBeInTheDocument();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(updateWorkTaskStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps Undo available after a failed connection and retries the same saved revision", async () => {
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "change" })
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "OPEN", updatedAt: "2026-07-18T19:01:00.000Z", receiptId: "undo" });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Mark done" }));
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Couldn't undo this change. Please try again.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Change undone.")).toBeInTheDocument();
+    expect(jest.mocked(updateWorkTaskStatus).mock.calls.slice(1)).toEqual([
+      [{ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:00:00.000Z" }],
+      [{ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:00:00.000Z" }],
+    ]);
+  });
+
+  it("keeps the task usable after a failed status save", async () => {
+    const user = userEvent.setup();
+    jest.mocked(updateWorkTaskStatus).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Mark done" }));
+    expect(await screen.findByText("Couldn't save this change. Please try again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark done" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("does not let an older Undo response erase the next task's Undo", async () => {
+    const user = userEvent.setup();
+    let finishUndo!: (result: Awaited<ReturnType<typeof updateWorkTaskStatus>>) => void;
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ ok: true, taskId: "task-1", status: "DONE", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "first-change" })
+      .mockImplementationOnce(() => new Promise(resolve => { finishUndo = resolve; }))
+      .mockResolvedValueOnce({ ok: true, taskId: "task-2", status: "CANCELED", updatedAt: "2026-07-18T19:02:00.000Z", receiptId: "second-change" })
+      .mockResolvedValueOnce({ ok: true, taskId: "task-2", status: "OPEN", updatedAt: "2026-07-18T19:03:00.000Z", receiptId: "second-undo" });
+    render(<WorkClient initialSnapshot={{ ...snapshot, tasks: [snapshot.tasks[0]!, { ...snapshot.tasks[0]!, id: "task-2", title: "Write the next chapter" }] }} />);
+    await user.click(within(document.getElementById("work-task-task-1")!).getByRole("button", { name: "Mark done" }));
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+    await user.click(within(document.getElementById("work-task-task-2")!).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(updateWorkTaskStatus).toHaveBeenCalledTimes(3));
+    finishUndo({ ok: true, taskId: "task-1", status: "OPEN", updatedAt: "2026-07-18T19:01:00.000Z", receiptId: "first-undo" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled());
+    expect(screen.getByRole("status")).toHaveTextContent("Task canceled.");
+    expect(screen.getByRole("heading", { name: "Finish episode notes" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({ taskId: "task-2", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T19:02:00.000Z" });
+    expect(await screen.findByRole("heading", { name: "Write the next chapter" })).toBeVisible();
   });
 
   it("explicitly preserves an overdue recurring occurrence as missed instead of silently canceling it", async () => {
@@ -1068,14 +1391,15 @@ describe("Work Queue interactions", () => {
     const user = userEvent.setup();
     render(<WorkClient initialSnapshot={recurring} />);
     await user.click(screen.getByRole("button", { name: "Skip missed" }));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("preserve it as skipped"));
+    expect(window.confirm).toHaveBeenCalledWith("Skip this occurrence? The next repeat will follow its usual schedule.");
     expect(updateWorkTaskStatus).toHaveBeenCalledWith({
       taskId: "task-1",
       nextStatus: "CANCELED",
       expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
       decisionReason: "MISSED_OCCURRENCE_SKIPPED",
     });
-    expect(await screen.findByText(/Missed occurrence preserved as skipped/i)).toBeInTheDocument();
+    expect(await screen.findByText("Occurrence skipped.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     confirm.mockRestore();
   });
 
@@ -1083,30 +1407,35 @@ describe("Work Queue interactions", () => {
     jest.mocked(createWorkGoal).mockResolvedValue({ ok: true, goalId: "goal-new", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "goal-receipt" });
     const user = userEvent.setup();
     render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Goals" }));
     await user.type(screen.getByRole("textbox", { name: "Goal title" }), "Make coaching follow-through obvious");
     await user.type(screen.getByRole("textbox", { name: "Why or definition of success" }), "The next action opens from its source session");
     await user.click(screen.getByRole("button", { name: "Add goal" }));
     expect(createWorkGoal).toHaveBeenCalledWith({
+      clientRequestId: expect.any(String),
       title: "Make coaching follow-through obvious",
       description: "The next action opens from its source session",
       targetAt: null,
       projectId: null,
     });
-    expect(await screen.findByText(/No tasks or calendar events were added automatically/i)).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("Goal added.");
+    expect(createWorkTask).not.toHaveBeenCalled();
   });
 
   it("saves an actor-owned weekly plan without implying task or calendar completion", async () => {
     jest.mocked(saveWeeklyCommitment).mockResolvedValue({ ok: true, commitmentId: "week-1", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "week-receipt" });
     const user = userEvent.setup();
     render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: "Weekly planning" }));
     await user.type(screen.getByRole("textbox", { name: "First commitment" }), "Proof-listen the final episode");
-    await user.click(screen.getByRole("checkbox", { name: /I reviewed this against what actually happened/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Mark reflection complete/i }));
     await user.click(screen.getByRole("button", { name: "Save weekly plan" }));
     expect(saveWeeklyCommitment).toHaveBeenCalledWith(expect.objectContaining({
       commitmentOne: "Proof-listen the final episode",
       clientReviewed: true,
       expectedUpdatedAt: null,
     }));
-    expect(await screen.findByText(/No messages or calendar events were created/i)).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("Weekly plan saved.");
+    expect(updateWorkTaskStatus).not.toHaveBeenCalled();
   });
 });

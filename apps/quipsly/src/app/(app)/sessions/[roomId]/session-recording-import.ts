@@ -46,6 +46,15 @@ export const SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE = Object.freeze({
 
 export const SESSION_RECORDING_EXTERNAL_ATTESTATION = true;
 
+export function sessionRecordingLocalDateTimeValue(value: string | null, fallback: Date) {
+  const parsed = value ? new Date(value) : fallback;
+  const safe = Number.isFinite(parsed.getTime()) ? parsed : fallback;
+  const shifted = new Date(safe.getTime() - safe.getTimezoneOffset() * 60_000);
+  // datetime-local accepts fractional seconds. Truncating to minutes can turn
+  // short recordings into zero-length sources and shifts cross-device sync.
+  return shifted.toISOString().slice(0, 23);
+}
+
 export function suggestSessionRecordingRange(input: {
   durationSeconds: number;
   lastModifiedMs: number;

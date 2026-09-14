@@ -26,6 +26,8 @@ const SOURCE = path.join(
 export function parseRunnerArguments(argv) {
   const options = {
     suite: "critical",
+    platform: "all",
+    phase: "all",
     shard: 1,
     shards: 4,
     destination:
@@ -50,6 +52,8 @@ export function parseRunnerArguments(argv) {
     const name = argument.slice(0, separator);
     const value = argument.slice(separator + 1);
     if (name === "--suite") options.suite = value;
+    else if (name === "--platform") options.platform = value;
+    else if (name === "--phase") options.phase = value;
     else if (name === "--shard") options.shard = Number(value);
     else if (name === "--shards") options.shards = Number(value);
     else if (name === "--destination") options.destination = value;
@@ -59,7 +63,23 @@ export function parseRunnerArguments(argv) {
     else throw new Error(`unknown argument: ${argument}`);
   }
 
+  if (!["all", "iphone", "ipad"].includes(options.platform)) {
+    throw new Error("platform must be all, iphone, or ipad");
+  }
+  if (!["all", "build", "test"].includes(options.phase)) {
+    throw new Error("phase must be all, build, or test");
+  }
   return options;
+}
+
+/** The CI platform lanes partition the same plan; they never substitute a
+ * shorter suite. Local/release invocations still default to both devices. */
+export function selectPlatformPlan(plan, platform = "all") {
+  if (!["all", "iphone", "ipad"].includes(platform)) throw new Error("platform must be all, iphone, or ipad");
+  const selectors = platform === "all" ? plan.selectors : plan.selectors.filter(selector =>
+    selector.includes("RegularWidthIPad") === (platform === "ipad"));
+  if (!selectors.length) throw new Error(`No tests selected for ${platform}; an empty platform lane cannot pass`);
+  return { ...plan, platform, selectedTestCount: selectors.length, selectors };
 }
 
 export function createExecutionGroups(plan, options) {
@@ -85,7 +105,29 @@ export function createExecutionGroups(plan, options) {
   ].filter(Boolean);
 }
 
+// Finish small result bundles as we go. If the CI job reaches its overall
+// deadline, Xcode may leave the active bundle unreadable; earlier batches
+// must still retain their screenshots, failures, and exact test identities.
+// This changes neither selected coverage nor the number of test attempts.
+export function createExecutionBatches(groups, batchSize = 8) {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new Error("test batch size must be a positive integer");
+  }
+  return groups.flatMap((group) => {
+    const count = Math.ceil(group.selectors.length / batchSize);
+    return Array.from({ length: count }, (_, index) => ({
+      ...group,
+      name: count === 1 ? group.name : `${group.name}-${index + 1}-of-${count}`,
+      selectors: group.selectors.slice(index * batchSize, (index + 1) * batchSize),
+    }));
+  });
+}
+
 export function createXcodeArguments(plan, options) {
+  const action = options.action ?? "test";
+  if (!["test", "build-for-testing", "test-without-building"].includes(action)) {
+    throw new Error("Unsupported Xcode test action");
+  }
   return [
     "-project",
     PROJECT,
@@ -101,8 +143,111 @@ export function createXcodeArguments(plan, options) {
       ? ["-resultBundlePath", options.resultBundlePath]
       : []),
     ...plan.selectors.map((selector) => `-only-testing:${selector}`),
-    "test",
+    action,
   ];
+}
+
+export function resolvedSimulatorDestination(output, destination) {
+  const requested = Object.fromEntries(destination.split(",").map((part) => {
+    const separator = part.indexOf("=");
+    return [part.slice(0, separator).trim(), part.slice(separator + 1).trim()];
+  }));
+  if (requested.platform !== "iOS Simulator" || (!requested.id && !requested.name)
+    || Object.keys(requested).some((key) => !["platform", "id", "name", "OS", "arch"].includes(key))) {
+    throw new Error(`Unsupported simulator destination: ${destination}`);
+  }
+  const targets = JSON.parse(output);
+  const appTargets = Array.isArray(targets)
+    ? targets.filter((entry) => entry.target === "HighGroundCapture") : [];
+  const settings = appTargets.length === 1 ? appTargets[0].buildSettings : null;
+  const id = settings?.TARGET_DEVICE_IDENTIFIER;
+  if (!/^[0-9a-f-]{36}$/i.test(id ?? "")
+    || settings.PLATFORM_NAME !== "iphonesimulator"
+    || settings.TARGET_DEVICE_PLATFORM_NAME !== "iphonesimulator"
+    || (requested.id && requested.id.toLowerCase() !== id.toLowerCase())
+    || (requested.OS && requested.OS !== "latest" && requested.OS !== settings.TARGET_DEVICE_OS_VERSION)
+    || (requested.arch && !String(settings.ARCHS ?? "").split(/\s+/).includes(requested.arch))) {
+    throw new Error(`Xcode did not resolve the requested simulator; no tests started on ${destination}`);
+  }
+  // A name/OS request has now been resolved by Xcode. Use that same identity
+  // for testing instead of doing a second potentially different lookup.
+  return `platform=iOS Simulator,id=${id}${requested.arch ? `,arch=${requested.arch}` : ""}`;
+}
+
+export function simulatorDiscoveryLag(error, destination) {
+  const match = /^platform=iOS Simulator,id=([0-9a-f-]{36})(?:,arch=(?:arm64|x86_64))?$/i.exec(destination);
+  const stderr = String(error?.stderr ?? "");
+  const available = stderr.split(/Available destinations for[^\n]*:/i)[1];
+  // Only the observed cold-runner failure qualifies. A concrete destination,
+  // missing runtime, bad package, timeout, or name-based request is not lag.
+  // Xcode 26.2's -showBuildSettings reports this destination failure as 64;
+  // other destination operations use 70. The diagnostic and exact-device
+  // recheck, not an exit code alone, establish eligibility for setup recovery.
+  return match && [64, 70].includes(error?.code) && !error?.killed
+    && /Unable to find a device matching the provided destination specifier/i.test(stderr)
+    && available?.includes("DVTiOSDeviceSimulatorPlaceholder")
+    && !/\bid:[ ]*[0-9a-f]{8}-[0-9a-f-]{27}/i.test(available)
+    && !/Ineligible destinations|error:|not installed/i.test(available)
+    ? match[1] : null;
+}
+
+export async function refreshAvailableSimulator(id, run = promisify(execFile)) {
+  const { stdout } = await run("xcrun", ["simctl", "list", "devices", "available", "--json"],
+    { encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
+  const matches = Object.entries(JSON.parse(stdout).devices ?? {})
+    .filter(([runtime]) => runtime.startsWith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+    .flatMap(([, devices]) => Array.isArray(devices) ? devices : [])
+    .filter(device => device.udid?.toLowerCase() === id.toLowerCase());
+  if (matches.length !== 1 || matches[0].isAvailable !== true) {
+    throw new Error(`Requested simulator ${id} is no longer available; no tests started`);
+  }
+  // Recheck the same identity immediately before Xcode resolution, rather than
+  // trusting a Safari launch several minutes earlier on the hosted runner.
+  await run("xcrun", ["simctl", "bootstatus", id, "-b"],
+    { encoding: "utf8", timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+}
+
+export async function ensureXcodeDestination(options, {
+  resolve = async () => {
+    try {
+      const result = await promisify(execFile)("xcodebuild", [
+        "-project", PROJECT, "-scheme", "HighGroundCapture",
+        "-derivedDataPath", options.derivedDataPath,
+        "-destination", options.destination, "-destination-timeout", "30",
+        "-showBuildSettings", "-json",
+      ], { encoding: "utf8", timeout: 180_000, maxBuffer: 4 * 1024 * 1024 });
+      process.stderr.write(result.stderr);
+      if (/multiple matching destinations/i.test(result.stderr)) {
+        throw new Error(`Ambiguous simulator destination: ${options.destination}`);
+      }
+      // Build settings can contain inherited environment values. Do not dump
+      // them into shared CI logs; report only the verified device below.
+      return result.stdout;
+    } catch (error) {
+      process.stderr.write(error.stderr ?? "");
+      throw error;
+    }
+  },
+  refresh = refreshAvailableSimulator,
+} = {}) {
+  process.stdout.write(`Resolving Xcode simulator: ${options.destination}\n`);
+  let output;
+  try {
+    output = await resolve();
+  } catch (error) {
+    const id = simulatorDiscoveryLag(error, options.destination);
+    if (!id) throw error;
+    process.stdout.write(`Xcode has not discovered simulator ${id}; checking that exact device before one setup-only retry.\n`);
+    try {
+      await refresh(id);
+      output = await resolve();
+    } catch (recoveryError) {
+      throw new Error(`Xcode simulator discovery failed before tests started; recovery: ${recoveryError.message}`, { cause: error });
+    }
+  }
+  const resolved = resolvedSimulatorDestination(output, options.destination);
+  process.stdout.write(`Xcode resolved ${resolved}\n`);
+  return resolved;
 }
 
 export function resultBundlePath(evidenceRoot, platformName) {
@@ -198,6 +343,26 @@ export async function verifyResultBundle(bundlePath, selectors) {
   return verifyResultTests(JSON.parse(stdout), selectors);
 }
 
+// An exit-code failure must not hide the named test failures in the result
+// bundle. Keep both signals, including a missing/unreadable bundle, in the
+// final platform summary so diagnosing CI does not require scanning build logs.
+export async function verifyPlatformExecution({ result, bundlePath, selectors }, verifyBundle = verifyResultBundle) {
+  const problems = [];
+  let verifiedCount = 0;
+  try {
+    verifyExecution({ ...result, expectedCount: selectors.length });
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    verifiedCount = await verifyBundle(bundlePath, selectors);
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  if (problems.length) throw new Error(problems.join("; "));
+  return verifiedCount;
+}
+
 async function runXcodebuild(arguments_) {
   return new Promise((resolve, reject) => {
     const child = spawn("xcodebuild", arguments_, {
@@ -238,35 +403,78 @@ async function main() {
   }
   const options = parseRunnerArguments(argv);
   const tests = discoverDeterministicTests(await readFile(SOURCE, "utf8"));
-  const plan = createPlan(tests, options);
+  const plan = selectPlatformPlan(createPlan(tests, options), options.platform);
   const executionGroups = createExecutionGroups(plan, options);
   options.evidenceRoot ??= await mkdtemp(path.join(os.tmpdir(), "quipsly-capture-ui-"));
   await mkdir(options.evidenceRoot, { recursive: true });
   process.stdout.write(`Xcode results: ${options.evidenceRoot}\n`);
 
   process.stdout.write(
-    `Quipsly Capture ${plan.suite} UI suite: ${plan.selectedTestCount} tests`
+    `Quipsly Capture ${plan.suite} UI suite (${plan.platform}): ${plan.selectedTestCount} tests`
       + `${plan.shards > 1 ? ` · shard ${plan.shard}/${plan.shards}` : ""}\n`,
   );
   let executedCount = 0;
-  for (const execution of executionGroups) {
-    const bundlePath = resultBundlePath(options.evidenceRoot, execution.name);
-    process.stdout.write(
-      `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
-    );
-    const result = await runXcodebuild(createXcodeArguments(
-      { selectors: execution.selectors },
-      {
-        ...options,
-        destination: execution.destination,
-        resultBundlePath: bundlePath,
-      },
-    ));
-    verifyExecution({
-      ...result,
-      expectedCount: execution.selectors.length,
-    });
-    executedCount += await verifyResultBundle(bundlePath, execution.selectors);
+  const failures = [];
+  for (const group of executionGroups) {
+    let resolvedDestination;
+    try {
+      resolvedDestination = await ensureXcodeDestination({ ...options, destination: group.destination });
+    } catch (error) {
+      const failure = `${group.name}: ${error instanceof Error ? error.message : String(error)}`;
+      failures.push(failure);
+      process.stderr.write(`${failure}\n`);
+      continue;
+    }
+    if (options.phase !== "test") {
+      const bundlePath = resultBundlePath(options.evidenceRoot, `${group.name}-build`);
+      process.stdout.write(`Building ${group.name} test products once on ${resolvedDestination}\n`);
+      try {
+        const result = await runXcodebuild(createXcodeArguments(group, {
+          ...options, destination: resolvedDestination, resultBundlePath: bundlePath,
+          action: "build-for-testing",
+        }));
+        if (result.exitCode !== 0) throw new Error(`build-for-testing failed with exit code ${result.exitCode}`);
+      } catch (error) {
+        failures.push(`${group.name} build: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+    }
+    if (options.phase === "build") continue;
+    for (const execution of createExecutionBatches([group])) {
+      const bundlePath = resultBundlePath(options.evidenceRoot, execution.name);
+      process.stdout.write(
+        `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
+      );
+      try {
+        const result = await runXcodebuild(createXcodeArguments(
+          { selectors: execution.selectors },
+          {
+            ...options,
+            destination: resolvedDestination,
+            resultBundlePath: bundlePath,
+            action: "test-without-building",
+          },
+        ));
+        executedCount += await verifyPlatformExecution({
+          result,
+          bundlePath,
+          selectors: execution.selectors,
+        });
+      } catch (error) {
+        // Batches are independent. Retain each finished bundle and exercise
+        // the remaining selectors once; do not retry failures into a green result.
+        const failure = `${execution.name}: ${error instanceof Error ? error.message : String(error)}`;
+        failures.push(failure);
+        process.stderr.write(`${failure}\nResults (if produced): ${bundlePath}\n`);
+      }
+    }
+  }
+  if (failures.length) {
+    throw new Error(`Capture UI validation failed in ${failures.length} destination setup(s) or test batch(es):\n${failures.join("\n")}`);
+  }
+  if (options.phase === "build") {
+    process.stdout.write("BUILD ONLY: test products compiled; no UI tests executed or qualified.\n");
+    return;
   }
   if (executedCount !== plan.selectedTestCount) {
     throw new Error(

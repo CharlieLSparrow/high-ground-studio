@@ -16,7 +16,7 @@ const captureKinds: Array<{
   help: string;
 }> = [
   { kind: "NOTE", label: "Note", icon: FileText, help: "A private writing note inside this project." },
-  { kind: "TASK", label: "Task", icon: ListTodo, help: "One committed action, assigned to you." },
+  { kind: "TASK", label: "Task", icon: ListTodo, help: "Your own task in this Nest." },
   { kind: "GOAL", label: "Goal", icon: Target, help: "An outcome this project should move toward." },
 ];
 
@@ -29,14 +29,16 @@ export function NestQuickCapture({
   projectSlug,
   projectName,
   tags,
+  initialKind = "NOTE",
 }: {
   projectId: string;
   projectSlug: string;
   projectName: string;
   tags: Array<{ id: string; label: string; slug: string; category: string }>;
+  initialKind?: CaptureKind;
 }) {
   const router = useRouter();
-  const [kind, setKind] = useState<CaptureKind>("NOTE");
+  const [kind, setKind] = useState<CaptureKind>(initialKind);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -173,7 +175,6 @@ export function NestQuickCapture({
         <label className="mt-4 block text-[10px] font-black uppercase tracking-wide text-[#765f40]">
           {kind === "NOTE" ? "Note title" : kind === "TASK" ? "Action" : "Outcome"}
           <input
-            autoFocus
             required
             maxLength={kind === "NOTE" ? 160 : 500}
             value={title}

@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import "@testing-library/jest-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { StudioSoundCheck } from "./studio-sound-check";
 
@@ -79,42 +79,18 @@ describe("StudioSoundCheck", () => {
     Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: originalPause });
   });
 
-  it("requires full playback and records only the listener decision callback", async () => {
-    const onDecision = jest.fn().mockResolvedValue({
-      ok: true,
-      status: "READY",
-      message: "Setup receipt ready. No private audio was uploaded.",
-    });
+  it("offers private playback without requiring a review, receipt, or approval", async () => {
     const stream = { getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
-    render(
-      <StudioSoundCheck
-        getInputStream={() => stream}
-        microphoneLabel="Shure MV7i"
-        outputId="mv7i-headphones"
-        evidence={evidence}
-        setupKey="mv7i:canon:mv7i-headphones"
-        onDecision={onDecision}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Record private sample" }));
+    render(<StudioSoundCheck getInputStream={() => stream} microphoneLabel="Shure MV7i"
+      outputId="mv7i-headphones" evidence={evidence} setupKey="mv7i:canon:mv7i-headphones" />);
+    fireEvent.click(screen.getByRole("button", { name: "Test microphone" }));
     expect(screen.getByText("Use your normal voice")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Stop and listen" }));
-
-    const clearButton = await screen.findByRole("button", { name: "Sounds clear in headphones" });
-    expect(clearButton).toBeDisabled();
-    const audio = screen.getByLabelText("Private call-path sound-check sample");
-    expect(screen.getByText("If something sounds wrong")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stop test" }));
+    const audio = await screen.findByLabelText("Microphone test playback");
+    expect(screen.queryByRole("button", { name: /Sounds clear|Needs adjustment|Approve/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Test microphone" })).toBeEnabled();
     fireEvent.ended(audio);
-    expect(clearButton).toBeEnabled();
-    fireEvent.click(clearButton);
-
-    await waitFor(() => expect(onDecision).toHaveBeenCalledWith(expect.objectContaining({
-      requestId: expect.any(String),
-      playbackDecision: "HEARD_CLEAR",
-      privateSamplePlaybackComplete: true,
-    })));
-    expect(screen.getByRole("status")).toHaveTextContent(/no private audio was uploaded/i);
+    expect(screen.getByRole("status")).toHaveTextContent("You can join whenever");
   });
 
   it("opens the selected microphone itself when Preview has not run", async () => {
@@ -130,9 +106,9 @@ describe("StudioSoundCheck", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Record private sample" }));
+    fireEvent.click(screen.getByRole("button", { name: "Test microphone" }));
 
-    expect(await screen.findByRole("button", { name: "Stop and listen" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Stop test" })).toBeInTheDocument();
     expect(prepareInputStream).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("status")).toHaveTextContent(/recording 10 private seconds from Shure MV7i/i);
   });
@@ -148,9 +124,9 @@ describe("StudioSoundCheck", () => {
         setupKey="mv7i:canon:mv7i-headphones"
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Record private sample" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop and listen" }));
-    await screen.findByLabelText("Private call-path sound-check sample");
+    fireEvent.click(screen.getByRole("button", { name: "Test microphone" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop test" }));
+    await screen.findByLabelText("Microphone test playback");
 
     rerender(
       <StudioSoundCheck
@@ -162,7 +138,34 @@ describe("StudioSoundCheck", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("Private call-path sound-check sample")).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/studio setup changed/i);
+    expect(screen.queryByLabelText("Microphone test playback")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/devices changed/i);
+  });
+
+  it("does not start a late microphone test after its setup changes", async () => {
+    let resolve!: (stream: MediaStream) => void;
+    const prepare = jest.fn(() => new Promise<MediaStream>(done => { resolve = done; }));
+    const props = { getInputStream: () => null, prepareInputStream: prepare, microphoneLabel: "Mic", outputId: "", evidence: null };
+    const { rerender } = render(<StudioSoundCheck {...props} setupKey="first" />);
+    fireEvent.click(screen.getByRole("button", { name: "Test microphone" }));
+    fireEvent.click(screen.getByRole("button", { name: "Test microphone" }));
+    expect(prepare).toHaveBeenCalledTimes(1);
+    rerender(<StudioSoundCheck {...props} setupKey="second" />);
+    await act(async () => { resolve({ getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream); });
+    expect(screen.queryByRole("button", { name: "Stop test" })).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("drops an outstanding microphone test when leaving the lobby", async () => {
+    let resolve!: (stream: MediaStream) => void;
+    const prepare = () => new Promise<MediaStream>(done => { resolve = done; });
+    const start = jest.spyOn(TestMediaRecorder.prototype, "start");
+    const { unmount } = render(<StudioSoundCheck getInputStream={() => null} prepareInputStream={prepare}
+      microphoneLabel="Mic" outputId="" evidence={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Test microphone" }));
+    unmount();
+    await act(async () => { resolve({ getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream); });
+    expect(start).not.toHaveBeenCalled();
+    start.mockRestore();
   });
 });

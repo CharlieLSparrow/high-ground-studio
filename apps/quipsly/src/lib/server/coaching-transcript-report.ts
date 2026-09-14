@@ -17,6 +17,7 @@ import {
   VerticalAlign,
   WidthType,
 } from "docx";
+import type { SessionTranscriptTimingAuthority } from "./session-transcript-assembly";
 
 export const COACHING_TRANSCRIPT_REPORT_SCHEMA =
   "quipsly-coaching-transcript-report-v2";
@@ -69,11 +70,7 @@ export type CoachingTranscriptReportSource = {
   sourceSha256?: string | null;
   participantId?: string | null;
   programOffsetSeconds?: number;
-  timingAuthority?:
-    | "single-source-origin"
-    | "reviewed-waveform-placement"
-    | "capture-clock-proposal"
-    | "reported-wall-clock-fallback";
+  timingAuthority?: SessionTranscriptTimingAuthority;
   timingUncertaintyMilliseconds?: number | null;
   timingReviewRequired?: boolean;
   sampleAccurateClaimed?: false;
@@ -93,11 +90,12 @@ export type CoachingTranscriptReportInput = {
   participants: ReportParticipant[];
   speakerGroups?: ReportSpeakerGroup[];
   segments: ReportSegment[];
+  incomplete?: boolean;
 };
 
 export type CoachingTranscriptReportTurn = {
   segmentId: string;
-  speaker: "coach" | "client";
+  speaker: "coach" | "client" | "unassigned";
   speakerLabel: string;
   timestamp: string;
   startSeconds: number;
@@ -116,17 +114,14 @@ export type CoachingTranscriptReport = {
   title: string;
   sessionDate: string;
   generatedAt: string;
+  incomplete: boolean;
   sources: Array<{
     transcriptJobId: string;
     recordingAssetId: string;
     sourceSha256: string | null;
     participantId: string | null;
     programOffsetSeconds: number;
-    timingAuthority:
-      | "single-source-origin"
-      | "reviewed-waveform-placement"
-      | "capture-clock-proposal"
-      | "reported-wall-clock-fallback";
+    timingAuthority: SessionTranscriptTimingAuthority;
     timingUncertaintyMilliseconds: number | null;
     timingReviewRequired: boolean;
     sampleAccurateClaimed: false;
@@ -139,13 +134,13 @@ export type CoachingTranscriptReport = {
     confirmedTurns: number;
     unreviewedTurns: number;
   };
+  speakerCoverage: {
+    unassignedTurns: number;
+    hasCoach: boolean;
+    hasClient: boolean;
+  };
   timelineTiming: {
-    authority:
-      | "single-source-origin"
-      | "reviewed-waveform-placement"
-      | "capture-clock-proposal"
-      | "reported-wall-clock-fallback"
-      | "mixed";
+    authority: SessionTranscriptTimingAuthority | "mixed";
     waveformReviewRequired: boolean;
     maximumUncertaintyMilliseconds: number | null;
     sampleAccurateClaimed: false;
@@ -212,6 +207,7 @@ export function buildCoachingTranscriptReport(
       : 0,
     timingAuthority:
       source.timingAuthority === "reviewed-waveform-placement" ||
+      source.timingAuthority === "mixed-waveform-clock-placement" ||
       source.timingAuthority === "capture-clock-proposal" ||
       source.timingAuthority === "reported-wall-clock-fallback" ||
       source.timingAuthority === "single-source-origin"
@@ -279,7 +275,6 @@ export function buildCoachingTranscriptReport(
       ]),
   );
 
-  const unresolved: string[] = [];
   const turns = input.segments
     .map((segment) => {
       const source =
@@ -287,10 +282,15 @@ export function buildCoachingTranscriptReport(
         sourcesByRecordingId.get(clean(segment.recordingAssetId, 240)) ??
         (sources.length === 1 ? sources[0] : null);
       if (!source) {
-        unresolved.push(
-          `${transcriptTimestamp(segment.startSeconds)} source not bound`,
+        throw new CoachingTranscriptReportError(
+          "A transcript passage no longer matches its recording. Refresh the transcript before exporting.",
+          409,
+          "REPORT_SOURCE_MISSING",
         );
-        return null;
+      }
+      if ((segment.transcriptJobId && segment.transcriptJobId !== source.transcriptJobId)
+        || (segment.recordingAssetId && segment.recordingAssetId !== source.recordingAssetId)) {
+        throw new CoachingTranscriptReportError("A transcript passage points to conflicting recording sources.", 409, "REPORT_SOURCE_CHANGED");
       }
       const attributedId =
         clean(segment.speakerAttribution?.participantId) ||
@@ -307,27 +307,26 @@ export function buildCoachingTranscriptReport(
           ? ("coach" as const)
           : participant?.id === client.id
             ? ("client" as const)
-            : null;
-      if (!participant || !participantRole) {
-        unresolved.push(
-          `${transcriptTimestamp(segment.startSeconds)} ${clean(segment.speakerLabel) || "unnamed speaker"}`,
-        );
-        return null;
-      }
+            : ("unassigned" as const);
       const sourceStartSeconds = Number(segment.startSeconds);
       const sourceEndSeconds = Number(segment.endSeconds);
+      if (!Number.isFinite(sourceStartSeconds) || !Number.isFinite(sourceEndSeconds)
+        || sourceStartSeconds < 0 || sourceEndSeconds < sourceStartSeconds) {
+        throw new CoachingTranscriptReportError("A transcript passage has invalid timing. Refresh the transcript before exporting.", 409, "REPORT_TIMING_INVALID");
+      }
       const startSeconds = source.programOffsetSeconds + sourceStartSeconds;
       const endSeconds = source.programOffsetSeconds + sourceEndSeconds;
       return {
         segmentId: segment.id,
         speaker: participantRole,
-        speakerLabel: participant.displayLabel,
+        speakerLabel: participant?.displayLabel || clean(segment.speakerLabel, 320)
+          || clean(segment.providerSpeakerLabel, 320) || "Speaker not named",
         timestamp: transcriptTimestamp(startSeconds),
         startSeconds,
         endSeconds,
         sourceStartSeconds,
         sourceEndSeconds,
-        text: clean(segment.text, 20_000),
+        text: typeof segment.text === "string" ? segment.text.trim() : "",
         reviewState: segment.acceptedCorrection
           ? ("corrected" as const)
           : segment.acceptedVerification
@@ -344,28 +343,11 @@ export function buildCoachingTranscriptReport(
         left.segmentId.localeCompare(right.segmentId),
     );
 
-  if (unresolved.length) {
-    throw new CoachingTranscriptReportError(
-      `Name every transcript speaker before exporting. Unresolved: ${unresolved.slice(0, 3).join(", ")}${unresolved.length > 3 ? "…" : ""}`,
-      409,
-      "REPORT_SPEAKERS_UNRESOLVED",
-    );
-  }
   if (!turns.length) {
     throw new CoachingTranscriptReportError(
-      "The reviewed transcript has no speaker turns to export.",
+      "There is no transcript text to export yet.",
       409,
       "REPORT_TRANSCRIPT_EMPTY",
-    );
-  }
-  if (
-    !turns.some((turn) => turn.speaker === "coach") ||
-    !turns.some((turn) => turn.speaker === "client")
-  ) {
-    throw new CoachingTranscriptReportError(
-      "The mentor transcript needs both the coach and client recording perspectives. Wait for the complete Session transcript before exporting.",
-      409,
-      "REPORT_SPEAKERS_INCOMPLETE",
     );
   }
   const generatedAt = iso(input.generatedAt) ?? new Date(0).toISOString();
@@ -382,6 +364,7 @@ export function buildCoachingTranscriptReport(
     title: clean(input.title, 240) || "Coaching Session",
     sessionDate,
     generatedAt,
+    incomplete: input.incomplete === true,
     sources,
     coach,
     client,
@@ -393,6 +376,11 @@ export function buildCoachingTranscriptReport(
         .length,
       unreviewedTurns: turns.filter((turn) => turn.reviewState === "unreviewed")
         .length,
+    },
+    speakerCoverage: {
+      unassignedTurns: turns.filter(turn => turn.speaker === "unassigned").length,
+      hasCoach: turns.some(turn => turn.speaker === "coach"),
+      hasClient: turns.some(turn => turn.speaker === "client"),
     },
     timelineTiming: {
       authority:
@@ -408,20 +396,21 @@ export function buildCoachingTranscriptReport(
   };
 }
 
-const BRAND = "F47B20";
+const BRAND = "000000";
 const INK = "34291F";
 const MUTED = "746453";
 const PAPER = "FFFDF8";
-const LINE = "D9C7A5";
+const LINE = "D9D9D9";
 
 function borders(color = LINE) {
   const side = { style: BorderStyle.SINGLE, size: 5, color };
   return { top: side, bottom: side, left: side, right: side };
 }
 
-function reportCell(children: Paragraph[], shaded = false) {
+function reportCell(children: Paragraph[], shaded = false, columnSpan?: number) {
   return new TableCell({
     children,
+    columnSpan,
     verticalAlign: VerticalAlign.TOP,
     shading: shaded ? { fill: "FFF5E8", type: ShadingType.CLEAR } : undefined,
     borders: borders(),
@@ -452,12 +441,12 @@ function reportHeaderCell(label: string) {
   });
 }
 
-function speakerTurnParagraph(turn: CoachingTranscriptReportTurn) {
+function speakerTurnParagraph(turn: CoachingTranscriptReportTurn, includeName = false) {
   return new Paragraph({
     spacing: { after: 80 },
     children: [
       new TextRun({
-        text: `${turn.timestamp}  `,
+        text: `${turn.timestamp}${includeName ? `  ${turn.speakerLabel}` : ""}  `,
         bold: true,
         color: BRAND,
         size: 18,
@@ -489,26 +478,38 @@ export async function renderCoachingTranscriptReport(
     day: "numeric",
     timeZone: "UTC",
   }).format(new Date(report.sessionDate));
-  const reviewDescription =
-    report.review.unreviewedTurns === 0
-      ? "Every turn in this export has been confirmed or corrected against the source recording."
-      : `${report.review.unreviewedTurns} of ${report.turns.length} turns have not yet been explicitly checked against playback.`;
+  const speakerDescription = report.speakerCoverage.unassignedTurns > 0
+    ? "Voices not linked to a coach or client appear across both columns with their available speaker label."
+    : !report.speakerCoverage.hasCoach || !report.speakerCoverage.hasClient
+      ? "This export contains the available transcript. Only one participant has text in this recording."
+      : "Coach and client turns appear in recording order.";
+  const coverageDescription = `${report.incomplete
+    ? "Partial transcript. Some participant audio is not included because its transcript is not available yet. "
+    : ""}${speakerDescription}`;
   const uncertaintyDescription =
     report.timelineTiming.maximumUncertaintyMilliseconds === null
       ? ""
       : ` (up to ${report.timelineTiming.maximumUncertaintyMilliseconds} ms estimated uncertainty)`;
   const timingDescription =
     report.timelineTiming.authority === "capture-clock-proposal"
-      ? `Cross-device timestamps use preserved monotonic/server clock proposals${uncertaintyDescription}. Waveform and drift review are still required before sample-accurate editing.`
+      ? `Cross-device timestamps are estimated from the recording clocks${uncertaintyDescription}.`
       : report.timelineTiming.authority === "reported-wall-clock-fallback"
-        ? "Cross-device timestamps use reported recording starts because complete capture-clock evidence was unavailable. Treat them as estimates until waveform and drift review."
-        : "Timestamps use the recording's source-local clock; no cross-device synchronization is implied.";
+        ? "Cross-device timestamps are estimated from the recording start times."
+        : report.timelineTiming.authority === "reviewed-waveform-placement"
+          ? "Cross-device timestamps use measured waveform alignment."
+          : report.timelineTiming.authority === "mixed-waveform-clock-placement" || report.timelineTiming.authority === "mixed"
+            ? "Cross-device timestamps combine measured alignment and recording-clock estimates."
+            : "Timestamps refer to the original recording.";
   const transcriptRows = report.turns.map(
     (turn) =>
       new TableRow({
-        cantSplit: true,
+        // A long answer must continue onto the next page instead of overflowing
+        // a single unsplittable row. Word repeats the column headings.
+        cantSplit: false,
         children:
-          turn.speaker === "coach"
+          turn.speaker === "unassigned"
+            ? [reportCell([speakerTurnParagraph(turn, true)], true, 2)]
+            : turn.speaker === "coach"
             ? [
                 reportCell([speakerTurnParagraph(turn)]),
                 reportCell([new Paragraph("")]),
@@ -562,6 +563,14 @@ export async function renderCoachingTranscriptReport(
     title: `${report.title} coaching transcript`,
     subject: "Source-bound coaching transcript for mentor review",
     description: `${report.schema}; room ${report.roomId}; ${report.sources.length} exact recording source(s)`,
+    customProperties: [
+      { name: "Quipsly source map", value: JSON.stringify({
+        schema: report.schema, roomId: report.roomId, generatedAt: report.generatedAt,
+        sources: report.sources,
+        turns: report.turns.map(({segmentId, transcriptJobId, recordingAssetId, sourceStartSeconds, sourceEndSeconds, startSeconds, endSeconds}) =>
+          ({segmentId, transcriptJobId, recordingAssetId, sourceStartSeconds, sourceEndSeconds, startSeconds, endSeconds})),
+      }) },
+    ],
     styles: {
       default: { document: { run: { font: "Aptos", color: INK, size: 21 } } },
     },
@@ -569,6 +578,7 @@ export async function renderCoachingTranscriptReport(
       {
         properties: {
           page: {
+            size: { width: 12240, height: 15840 },
             margin: {
               top: 720,
               right: 720,
@@ -604,7 +614,7 @@ export async function renderCoachingTranscriptReport(
                 alignment: AlignmentType.CENTER,
                 children: [
                   new TextRun({
-                    text: "Source-bound report  •  Page ",
+                    text: "Quipsly  •  Page ",
                     color: MUTED,
                     size: 16,
                     font: "Aptos",
@@ -634,12 +644,13 @@ export async function renderCoachingTranscriptReport(
             ],
           }),
           new Paragraph({
+            style: "Title",
             spacing: { after: 180 },
             children: [
               new TextRun({
                 text: report.title,
                 bold: true,
-                color: INK,
+                color: "000000",
                 size: 34,
                 font: "Aptos Display",
               }),
@@ -725,23 +736,14 @@ export async function renderCoachingTranscriptReport(
             spacing: { before: 180, after: 180 },
             children: [
               new TextRun({
-                text: reviewDescription,
-                bold: true,
-                color: report.review.unreviewedTurns ? "9A5B00" : "237A45",
+                text: coverageDescription,
+                color: MUTED,
                 size: 19,
               }),
               new TextRun({
                 break: 1,
-                text: "Timestamps stay linked to the protected source. Provider evidence remains unchanged underneath reviewed corrections.",
-                color: MUTED,
-                size: 18,
-              }),
-              new TextRun({
-                break: 1,
                 text: timingDescription,
-                color: report.timelineTiming.waveformReviewRequired
-                  ? "9A5B00"
-                  : MUTED,
+                color: MUTED,
                 size: 17,
               }),
             ],
@@ -767,7 +769,7 @@ export async function renderCoachingTranscriptReport(
               new TextRun({
                 text: "RECAP OF THE COMPETENCIES",
                 bold: true,
-                color: INK,
+                color: "000000",
                 size: 28,
                 font: "Aptos Display",
               }),
@@ -808,21 +810,7 @@ export async function renderCoachingTranscriptReport(
             spacing: { before: 180 },
             children: [
               new TextRun({
-                text: `Evidence: ${report.sources.length} independently source-bound participant recording${report.sources.length === 1 ? "" : "s"}`,
-                color: MUTED,
-                size: 15,
-              }),
-              ...report.sources.flatMap((source, index) => [
-                new TextRun({
-                  break: 1,
-                  text: `Source ${index + 1}: transcript ${source.transcriptJobId}  •  recording ${source.recordingAssetId}  •  program +${source.programOffsetSeconds.toFixed(3)}s  •  ${source.timingAuthority}${source.sourceSha256 ? `  •  SHA-256 ${source.sourceSha256}` : ""}`,
-                  color: MUTED,
-                  size: 15,
-                }),
-              ]),
-              new TextRun({
-                break: 1,
-                text: `Generated ${report.generatedAt}`,
+                text: `Exported ${new Intl.DateTimeFormat("en-US", {dateStyle: "medium", timeZone: "UTC"}).format(new Date(report.generatedAt))}. Recording references are retained in the document properties.`,
                 color: MUTED,
                 size: 15,
               }),

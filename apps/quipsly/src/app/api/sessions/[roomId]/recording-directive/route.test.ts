@@ -287,6 +287,86 @@ describe("Session recording directive route", () => {
     expect(JSON.stringify(packet)).not.toContain("participant-2");
   });
 
+  function stoppedAttempt(stopStates: Array<[string, string, (string | null)?]>, startStates: Array<[string, string, (string | null)?]>) {
+    const receipts = (states: Array<[string, string, (string | null)?]>) => states.map(([participantId, state, captureId = "55555555-5555-4555-8555-555555555555"]) => ({
+      participantId, state, clientInstanceId: `device-${participantId}`, clientKind: "web",
+      captureId,
+      deviceLabel: "Test browser", occurredAt: directive.issuedAt, receivedAt: directive.issuedAt,
+    }));
+    prisma.callRecordingDirective.findFirst
+      .mockResolvedValueOnce({...directive, action: "STOP", sequence: 2n, receipts: receipts(stopStates)})
+      .mockResolvedValueOnce({...directive, receipts: receipts(startStates)});
+  }
+
+  it("does not call an absent participant a recording still finishing", async () => {
+    stoppedAttempt([["participant-1", "STOPPED"]], [["participant-1", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses: [{state: "STOPPED_SAFELY", endpointCount: 1}, {state: "WAITING", endpointCount: 0}],
+      recordingHealth: {waitingParticipantCount: 0, allParticipantsStoppedSafely: false},
+    });
+    expect(prisma.callRecordingDirective.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: {roomId: "room-1", captureGroupId: room.captureGroupId, action: "START", sequence: {lt: 2n}},
+    }));
+  });
+
+  it("does not manufacture a saved recording from an idle endpoint's STOP acknowledgement", async () => {
+    stoppedAttempt([["participant-1", "STOPPED", null]], []);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses:[{state:"WAITING",endpointCount:1,noRecordingReported:true}, {state:"WAITING",endpointCount:0,noRecordingReported:true}],
+      recordingHealth:{waitingParticipantCount:0,allParticipantsStoppedSafely:false},
+    });
+  });
+
+  it("flags a source that started but lost its identity before STOP instead of calling it saved or nonexistent", async () => {
+    stoppedAttempt([["participant-1", "STOPPED", null]], [["participant-1", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses:[{state:"NEEDS_ATTENTION",noRecordingReported:false}, {state:"WAITING"}],
+      recordingHealth:{attentionParticipantCount:1,waitingParticipantCount:0,allParticipantsStoppedSafely:false},
+    });
+  });
+
+  it("retains a disconnected recorder until it acknowledges STOP", async () => {
+    stoppedAttempt([["participant-1", "STOPPED"]], [["participant-1", "STARTED"], ["participant-2", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses: [{state: "STOPPED_SAFELY"}, {state: "STOPPING", endpointCount: 1}],
+      recordingHealth: {waitingParticipantCount: 1, allParticipantsStoppedSafely: false},
+    });
+  });
+
+  it("lets stop evidence supersede a prior start failure for the same endpoint", async () => {
+    stoppedAttempt([["participant-1", "STOPPED"], ["participant-2", "STOPPED"]], [["participant-1", "START_FAILED"], ["participant-2", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive.recordingHealth).toMatchObject({
+      waitingParticipantCount: 0, attentionParticipantCount: 0, allParticipantsStoppedSafely: true,
+    });
+  });
+
+  it("does not expose another participant's prior START receipts to a client", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "guest-2"}} as never);
+    prisma.callRoom.findFirst.mockResolvedValueOnce(room).mockResolvedValueOnce(null);
+    stoppedAttempt([], [["participant-1", "STARTED"], ["participant-2", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive.participantStatuses).toHaveLength(1);
+    expect(packet.directive.participantStatuses[0]).toMatchObject({participantLabel: "You", state: "STOPPING"});
+    expect(packet.directive.endpointReceipts).toHaveLength(1);
+    expect(packet.directive.endpointReceipts[0].participantLabel).toBe("You");
+    expect(JSON.stringify(packet)).not.toContain("Coach Taylor");
+  });
+
+  it("keeps participant evidence distinct when installation IDs coincide", async () => {
+    prisma.callRecordingDirective.findFirst.mockResolvedValue({...directive, receipts: room.participants.map(participant => ({
+      participantId: participant.id, clientInstanceId: "same-installation", state: "STARTED",
+      clientKind: "web", deviceLabel: "Browser", occurredAt: directive.issuedAt, receivedAt: directive.issuedAt,
+    }))});
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive.recordingHealth.allParticipantsRecording).toBe(true);
+    expect(new Set(packet.directive.endpointReceipts.map((item: {id: string}) => item.id)).size).toBe(2);
+  });
+
   it("keeps a non-controller scoped to their own endpoint state", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "guest-2", primaryEmail: "guest@example.test" },
@@ -378,7 +458,9 @@ describe("Session recording directive route", () => {
     });
   });
 
-  it("accepts an idempotent endpoint acknowledgment only from a known installation", async () => {
+  it("accepts a participant's local recording status without a provider join or sound-check decision", async () => {
+    prisma.callParticipantProviderGrantReceipt.findFirst.mockResolvedValue(null);
+    prisma.callParticipantPreflightReceipt.findFirst.mockResolvedValue(null);
     prisma.callRecordingDirective.findFirst.mockResolvedValue({
       id: directive.id,
       action: "START",
@@ -399,6 +481,8 @@ describe("Session recording directive route", () => {
       context,
     );
     expect(response.status).toBe(201);
+    expect(prisma.callParticipantProviderGrantReceipt.findFirst).not.toHaveBeenCalled();
+    expect(prisma.callParticipantPreflightReceipt.findFirst).not.toHaveBeenCalled();
     expect(await response.json()).toMatchObject({
       ok: true,
       endpointReceipt: { state: "STARTED", occurredAt },
@@ -413,6 +497,17 @@ describe("Session recording directive route", () => {
         }),
       }),
     );
+  });
+
+  it.each([null, { id: room.id, participants: [] }])("rejects recording status without active participant access", async unavailableRoom => {
+    prisma.callRoom.findFirst.mockResolvedValue(unavailableRoom);
+    const response = await PATCH(request("PATCH", {
+      receiptId: "44444444-4444-4444-8444-444444444444", directiveId: directive.id,
+      state: "STOPPED", clientInstanceId: "new-browser", clientKind: "web", deviceLabel: "Mac",
+    }), context);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({code: "PARTICIPANT_REQUIRED"});
+    expect(prisma.callRecordingEndpointReceipt.create).not.toHaveBeenCalled();
   });
 
   it("replays the original endpoint event time and rejects identity drift", async () => {

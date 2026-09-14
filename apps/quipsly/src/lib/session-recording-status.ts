@@ -72,27 +72,27 @@ function personStatus(
     state = "RECOVERY_REQUIRED";
     labelText = "Needs attention";
     detail = person.isCurrentActor
-      ? "Open Quipsly on this device and retry the upload. Your original recording stays protected."
+      ? "Open Quipsly on the device you recorded with and retry its unfinished upload."
       : `Ask ${person.label} to open Quipsly on their recording device and retry the upload.`;
   } else if (pendingSourceCount > 0 || unresolvedCapture) {
     state = "KEEP_OPEN";
-    labelText = "Keep device open";
+    labelText = "Upload pending";
     detail = person.isCurrentActor
-      ? "Keep Quipsly open on this device while your recording finishes uploading."
+      ? "Keep Quipsly open on the device you recorded with so unfinished uploads can resume."
       : `Ask ${person.label} to keep Quipsly open on their recording device.`;
   } else if (requiredReady && allReportedQueuesDrained) {
     state = "SAFE";
-    labelText = "Safe";
-    detail = "Required recordings are verified and this device reports no pending uploads.";
+    labelText = "Saved";
+    detail = "Recordings are verified and the reported device queues are empty.";
   } else if (requiredReady || verifiedSourceCount > 0) {
     state = "CHECK_DEVICE";
-    labelText = "Confirm device";
+    labelText = "Recordings saved";
     detail = person.isCurrentActor
-      ? "Your cloud copy is safe. Wait until this device also says its upload is complete."
-      : `${person.label}’s cloud copy is safe. Ask them to confirm their recording device says Upload complete.`;
+      ? "Your saved recordings are ready. Status for other device uploads has not been confirmed yet."
+      : `${person.label}’s saved recordings are ready. Other device uploads may still be pending.`;
   } else if (person.sources.length > 0 || person.endpointQueues.length > 0 || required.some((source) => source.fulfillment !== "missing")) {
     state = "KEEP_OPEN";
-    labelText = "Keep device open";
+    labelText = "Upload pending";
     detail = person.isCurrentActor
       ? "Keep Quipsly open while your recording is matched to its verified cloud copy."
       : `Ask ${person.label} to keep Quipsly open while their recording finishes.`;
@@ -157,11 +157,11 @@ export function buildSessionRecordingStatus(input: {
     ? "CHECK_DEVICE"
     : topologyState;
   const copy = {
-    SAFE: ["Every recording is safe", "All required recordings are verified and every reporting device has finished uploading."],
-    KEEP_OPEN: ["Recording is finishing", "Keep Quipsly open on the affected devices while their recordings finish uploading."],
-    CHECK_DEVICE: ["Cloud copies are safe", "Before closing an affected device, wait until Quipsly says its upload is complete."],
+    SAFE: ["Uploads complete", "Recordings are verified and every reporting device has finished uploading."],
+    KEEP_OPEN: ["Recordings waiting to finish", "Open Quipsly on the recording devices to resume unfinished uploads. You can keep working with saved recordings."],
+    CHECK_DEVICE: ["Recordings saved", "Saved recordings are ready to use. Other device uploads have not all been confirmed yet."],
     RECOVERY_REQUIRED: ["A recording needs attention", "Open Quipsly on the affected recording device and retry its upload."],
-    PLAN_REQUIRED: ["Choose the recordings to protect", "Confirm which audio and video sources are required before relying on a Safe result."],
+    PLAN_REQUIRED: ["Recording sources", "Extra sources can be listed in recording details. A source plan is not needed for a standard session."],
     NOT_STARTED: ["Recording has not started", "No retained recording is visible yet."],
     NOT_REQUIRED: ["No recording is required", "This Session does not require a retained recording."],
   } satisfies Record<SessionRecordingStatusState, [string, string]>;

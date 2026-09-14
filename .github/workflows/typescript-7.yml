@@ -18,6 +18,7 @@ on:
       - "scripts/ci/plan-changed-surfaces.mjs"
       - "scripts/ci/plan-changed-surfaces.test.mjs"
       - "scripts/ci/typecheck-typescript-7.sh"
+      - "scripts/ci/typecheck-typescript-7.test.mjs"
       - ".github/workflows/typescript-7.yml"
   workflow_dispatch:
 
@@ -45,14 +46,19 @@ jobs:
           node-version-file: .node-version
           cache: "pnpm"
 
+      - name: Validate compatibility runner
+        run: |
+          bash -n scripts/ci/typecheck-typescript-7.sh
+          node --test scripts/ci/typecheck-typescript-7.test.mjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Validate compatibility runner
-        run: bash -n scripts/ci/typecheck-typescript-7.sh
 
       - name: Typecheck migrated projects with TypeScript 7
         run: bash scripts/ci/typecheck-typescript-7.sh
 
       - name: Test TypeScript repository governance tooling
         run: pnpm --filter @high-ground/repository-governance test
+
+      - name: Test authenticated Quipsly agent tools
+        run: pnpm --filter quipsly-mcp test

@@ -1,4 +1,5 @@
 import "server-only";
+import { isExternallyImportedRecording } from "@high-ground/quipsly-media-processing";
 
 import { createHash, randomUUID } from "node:crypto";
 
@@ -6,6 +7,7 @@ import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-proces
 import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock.js";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { markCaptureTranscriptFollowThroughStale } from "@/lib/server/capture-transcript-follow-through-state";
+import { transcriptFailurePresentation } from "./transcript-failure-presentation";
 import {
   buildAudioTranscriptEvidence,
   type AudioTranscriptEvidenceSegment,
@@ -192,6 +194,7 @@ function playbackFromAsset(
       sourceId: protectedBinding.recordingAssetId,
       url: protectedBinding.url,
       kind: protectedBinding.kind,
+      contentType: protectedBinding.contentType,
       recordingAssetId: protectedBinding.recordingAssetId,
       durationSeconds: typeof asset.durationSeconds === "number" ? asset.durationSeconds : null,
       label: text(asset.fileName) || "Session recording",
@@ -256,6 +259,7 @@ function recordingForPlaybackPreparation(asset: any, gateAllowed: boolean) {
   return {
     id: asset.id as string,
     participantId: text(asset.participantId) || null,
+    sourceSha256: text(asset.checksum).toLowerCase() || null,
     recordedStartedAt: asset.recordedStartedAt instanceof Date
       ? asset.recordedStartedAt.toISOString()
       : asset.recordedStartedAt ?? null,
@@ -406,6 +410,17 @@ function visibleTranscriptProposals(corrections: any[]) {
   });
 }
 
+const transcriptRecordingSelect = {
+  id: true, roomId: true, participantId: true, kind: true, status: true,
+  verifiedAt: true, fileName: true, contentType: true, durationSeconds: true,
+  byteSize: true, checksum: true, recordedStartedAt: true, storageBucket: true,
+  storageObjectPath: true, localManifestJson: true, segmentsJson: true,
+  participant: { select: {
+    id: true, userId: true, displayName: true, email: true,
+    user: { select: { name: true, primaryEmail: true } },
+  } },
+} as const;
+
 async function loadAccessibleRoom(
   prisma: any,
   roomId: string,
@@ -413,6 +428,7 @@ async function loadAccessibleRoom(
   recordingAssetId?: string | null,
   transcriptJobId?: string | null,
   segmentId?: string | null,
+  completedOnly = false,
 ) {
   const room = await prisma.callRoom.findFirst({
     where: accessibleRoomWhere(roomId, actor),
@@ -517,12 +533,13 @@ async function loadAccessibleRoom(
         },
       },
       transcriptJobs: {
-        ...((recordingAssetId || transcriptJobId || segmentId)
+        ...((recordingAssetId || transcriptJobId || segmentId || completedOnly)
           ? {
               where: {
                 ...(recordingAssetId ? { assetId: recordingAssetId } : {}),
                 ...(transcriptJobId ? { id: transcriptJobId } : {}),
                 ...(segmentId ? { segments: { some: { id: segmentId } } } : {}),
+                ...(completedOnly ? { status: "COMPLETED", segments: { some: {} } } : {}),
               },
             }
           : {}),
@@ -542,7 +559,7 @@ async function loadAccessibleRoom(
           providerResponseObject: true,
           workerBuildId: true,
           resultJson: true,
-          _count: { select: { words: true } },
+          _count: { select: { words: true, segments: true } },
           speakerAttributions: {
             where: { status: "active" },
             orderBy: { updatedAt: "desc" },
@@ -557,35 +574,7 @@ async function loadAccessibleRoom(
               reviewedAt: true,
             },
           },
-          asset: {
-            select: {
-              id: true,
-              roomId: true,
-              participantId: true,
-              kind: true,
-              status: true,
-              verifiedAt: true,
-              fileName: true,
-              contentType: true,
-              durationSeconds: true,
-              byteSize: true,
-              checksum: true,
-              recordedStartedAt: true,
-              storageBucket: true,
-              storageObjectPath: true,
-              localManifestJson: true,
-              segmentsJson: true,
-              participant: {
-                select: {
-                  id: true,
-                  userId: true,
-                  displayName: true,
-                  email: true,
-                  user: { select: { name: true, primaryEmail: true } },
-                },
-              },
-            },
-          },
+          asset: { select: transcriptRecordingSelect },
           segments: {
             orderBy: { startSeconds: "asc" },
             select: {
@@ -668,6 +657,45 @@ export async function readTranscriptCorrectionDesk(input: {
     input.segmentId,
   );
   let job = room.transcriptJobs[0] ?? null;
+  // Retrying does not remove an earlier usable transcript. Keep the same
+  // source and authorize the replacement read; explicit job/passage links
+  // retain their exact identity instead of silently switching revisions.
+  const fallbackAssetId = input.recordingAssetId || job?.asset?.id;
+  if (!input.transcriptJobId && !input.segmentId && fallbackAssetId && job
+      && (job.status !== "COMPLETED" || !job.segments?.length)) {
+    const prior = await loadAccessibleRoom(input.prisma, input.roomId, input.actor, fallbackAssetId, null, null, true);
+    if (prior.transcriptJobs[0]) {
+      room = prior;
+      job = prior.transcriptJobs[0];
+    }
+  }
+  // A saved source is useful before a job exists. Authorize the room first,
+  // then resolve only that room's source; never substitute its latest job.
+  if (input.recordingAssetId && !input.transcriptJobId && !input.segmentId && !job) {
+    const asset = await input.prisma.recordingAsset.findFirst({
+      where: { id: input.recordingAssetId, roomId: room.id, status: "VERIFIED" },
+      select: transcriptRecordingSelect,
+    });
+    // Private/shareable exports have their own recipient-scoped output route.
+    // Session membership must not turn a coach-only export into a shared source.
+    if (asset && object(asset.localManifestJson).source !== "session-recording-share") {
+      const evidence = await transcriptProcessingEvidence(input.prisma, asset);
+      const playback = evidence.gate.allowed
+        ? playbackFromAsset(asset, exactProtectedPlaybackBinding(room.id, asset, evidence.receipts))
+        : null;
+      return {
+        ok: true, roomId: room.id, roomTitle: room.title ?? null, roomPurpose: room.purpose,
+        scheduledStart: room.scheduledStart instanceof Date ? room.scheduledStart.toISOString() : room.scheduledStart ?? null,
+        projectId: room.projectId ?? null, transcriptJobId: null, transcriptStatus: null,
+        processing: null, gate: evidence.gate,
+        recording: recordingForPlaybackPreparation(asset, evidence.gate.allowed),
+        sourceSha256: text(asset.checksum).toLowerCase() || null,
+        playback, spectralContext: await spectralContextForPlayback(input.prisma, playback, room.projectId ?? null),
+        evidence: buildTranscriptEvidence(null, [], []), participants: [], speakerGroups: [], segments: [],
+        boundaries: transcriptCorrectionBoundaries(),
+      };
+    }
+  }
   if ((input.recordingAssetId || input.transcriptJobId || input.segmentId) && !job) {
     throw new TranscriptCorrectionError(
       "The selected recording has no accessible transcript in this Session.",
@@ -1406,11 +1434,14 @@ function transcriptProcessingSummary(job: any) {
   const result = object(job.resultJson);
   const control = object(result.processingControl);
   const routing = object(control.routing);
+  // Old attempts may have labelled an import as its uploader's isolated mic.
+  // Correct that projection without modifying immutable provider evidence.
+  const imported = isExternallyImportedRecording(job.asset ?? {});
   const persistedRoutingSummary = routing.schema === "quipsly-transcript-routing-summary-v1"
     ? {
-        sourceTopology: text(routing.sourceTopology) || "unknown",
-        participantLabel: text(routing.participantLabel) || null,
-        speakerAuthority: text(routing.speakerAuthority) || "unresolved",
+        sourceTopology: imported ? "unknown" : text(routing.sourceTopology) || "unknown",
+        participantLabel: imported ? null : text(routing.participantLabel) || null,
+        speakerAuthority: imported && routing.speakerAuthority === "source-binding" ? "unresolved" : text(routing.speakerAuthority) || "unresolved",
         provider: text(routing.provider) || null,
         model: text(routing.model) || null,
         modelRevisionPolicy: text(routing.modelRevisionPolicy) || null,
@@ -1447,9 +1478,12 @@ function transcriptProcessingSummary(job: any) {
         providerOutputRemainsImmutable: true,
       }
     : null);
+  const failure = transcriptFailurePresentation(job);
   return {
     status: job.status,
-    message: job.errorMessage ?? null,
+    message: failure.errorMessage,
+    failureCode: failure.failureCode,
+    retryable: failure.retryable,
     wordCount: job._count?.words ?? 0,
     sourceBound: Boolean(
       job.sourceGeneration

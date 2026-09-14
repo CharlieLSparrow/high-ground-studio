@@ -2,6 +2,18 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var authManager = AuthManager.shared
+
+    var body: some View {
+        CaptureAccountWorkspace()
+            // Authentication may replace a restored account without unmounting
+            // the signed-in shell. Never reuse its notes, roles or Nest selection
+            // for another person. Same-account offline recovery keeps this ID.
+            .id(authManager.accountOwnerID)
+    }
+}
+
+private struct CaptureAccountWorkspace: View {
+    @StateObject private var authManager = AuthManager.shared
     @StateObject private var captureModel = CaptureExperienceModel()
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController

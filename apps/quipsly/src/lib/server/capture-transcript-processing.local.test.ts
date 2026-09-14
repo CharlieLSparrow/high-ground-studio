@@ -98,6 +98,14 @@ describe("local Capture transcript worker availability", () => {
     });
   });
 
+  it("does not turn the uploader of an external conversation into its only speaker", () => {
+    expect(captureTranscriptSourceTopology({
+      kind: "LOCAL_AUDIO", participantId: "coach-participant",
+      participant: { displayName: "Casey" },
+      localManifestJson: { reportedSourceProfile: { kind: "quipsly-nest-external-recording-import-v1" } },
+    })).toEqual({ kind: "unknown" });
+  });
+
   it("uses only an exact verified interruption-repair derivative for provider input", () => {
     const source = captureTranscriptProcessingSource({
       storageBucket: "quipsly-media",

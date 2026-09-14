@@ -40,7 +40,7 @@ describe("development-only local Capture vault", () => {
     await rm(temporaryDirectory, { recursive: true, force: true });
   });
 
-  it("refuses production, non-loopback databases, and roots outside the OS temporary directory", () => {
+  it("refuses production, non-loopback databases, and broad filesystem roots", () => {
     Reflect.set(process.env, "NODE_ENV", "production");
     expect(() => getMobileCaptureLocalVaultConfig()).toThrow("disabled in production");
 
@@ -49,8 +49,10 @@ describe("development-only local Capture vault", () => {
     expect(() => getMobileCaptureLocalVaultConfig()).toThrow("loopback PostgreSQL database");
 
     process.env.DATABASE_URL = "postgresql://quipsly@localhost:5432/quipsly_test";
-    process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT = path.join(process.cwd(), "capture-vault");
-    expect(() => getMobileCaptureLocalVaultConfig()).toThrow("below the operating-system temporary directory");
+    process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT = os.homedir();
+    expect(() => getMobileCaptureLocalVaultConfig()).toThrow("dedicated directory");
+    process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT = path.join(os.homedir(), "Library", "Application Support", "Quipsly", "local-media", "capture-vault");
+    expect(getMobileCaptureLocalVaultConfig()?.root).toBe(process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT);
   });
 
   it("gives an ordinary loopback development server a confined local vault", () => {
@@ -64,8 +66,8 @@ describe("development-only local Capture vault", () => {
       origin: "http://127.0.0.1:3012",
       bucketName: "quipsly-local-development-vault",
     });
-    expect(config?.root.startsWith(os.tmpdir())).toBe(true);
-    expect(config?.root.endsWith(path.join("quipsly-media-ingest", "capture-vault"))).toBe(true);
+    expect(config?.root.startsWith(os.tmpdir())).toBe(false);
+    expect(config?.root).toBe(path.join(os.homedir(), "Library", "Application Support", "Quipsly", "local-media", "capture-vault"));
   });
 
   it("issues a secret same-origin capability and stores only its SHA-256 binding", () => {

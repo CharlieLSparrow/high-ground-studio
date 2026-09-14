@@ -66,6 +66,8 @@ describe("JoinSessionPage identity return", () => {
       `/login?callbackUrl=${encodeURIComponent(expectedCallback)}&sessionInviteToken=${encodeURIComponent(TOKEN)}`,
     );
     expect(screen.getByText("Coaching with Homer")).toBeInTheDocument();
+    expect(screen.getByText("Coaching Session", {exact: true})).toBeVisible();
+    expect(screen.queryByText("Coaching Session Session")).not.toBeInTheDocument();
   });
 
   it("preserves the exact invitation while switching away from the wrong account", async () => {

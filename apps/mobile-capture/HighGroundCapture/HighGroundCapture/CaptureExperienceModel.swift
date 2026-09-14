@@ -68,9 +68,9 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .audio: "Audio"
-        case .podcastAV: "Podcast audio + video"
+        case .podcastAV: "Audio + video"
         case .soloVideo: "Solo video"
-        case .podcastCamera: "Podcast camera"
+        case .podcastCamera: "Video only"
         }
     }
 
@@ -107,13 +107,13 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .audio:
-            "A high-quality local microphone source. The live room remains a separate call."
+            "Records high-quality audio on this device."
         case .podcastAV:
-            "Two local masters: the selected microphone plus a video-only camera file in one capture group. The live room remains the call."
+            "Records separate audio and video tracks on this device."
         case .soloVideo:
-            "Camera and microphone in one local movie for a solo episode, short, or YouTube recording."
+            "Records one video file with sound."
         case .podcastCamera:
-            "A video-only camera master while the LiveKit room carries conversation audio. Quipsly aligns the sources later."
+            "Records video only. Use another device to record audio."
         }
     }
 }
@@ -232,6 +232,14 @@ enum CaptureLaunchConfiguration {
             && ProcessInfo.processInfo.arguments.contains(
                 "--capture-derived-analysis-persistence-failure-ui-test"
             )
+        #else
+        false
+        #endif
+    }
+
+    static var usesSlowDerivedAudioAnalysisUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        forcesLocalVoiceNoteUITest && ProcessInfo.processInfo.arguments.contains("--capture-slow-derived-analysis-ui-test")
         #else
         false
         #endif
@@ -427,6 +435,16 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// An explicit unsigned Share Sheet test must not restore credentials left
+    /// by a separate authenticated simulator journey. Do not erase that account.
+    nonisolated static var usesSignedOutShareExtensionUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("\(shareOwnerPreviewPrefix)none")
+        #else
+        false
+        #endif
+    }
+
     /// A simulator-only owner used to exercise the real Share Extension and
     /// protected handoff without a production account or network mutation.
     nonisolated static var shareExtensionUITestOwner: String? {
@@ -503,6 +521,8 @@ final class CaptureExperienceModel: ObservableObject {
     @Published private(set) var activeCoordinatedCaptureGroupID: UUID?
     @Published private(set) var isCoordinatingPodcastCapture = false
     @Published private(set) var activeRoomSession: MobileCaptureSession?
+    @Published private(set) var completedCall: CaptureCompletedCall?
+    private var callRecordingScope: CaptureCallRecordingScope?
     @Published private(set) var ownsRoomCameraPreview = false
     @Published private(set) var captureReceiptNotice: String?
     @Published private(set) var captureSafetyNotice: String?
@@ -758,21 +778,11 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     var nextSession: MobileCaptureSession? {
-        let activeSessions = scheduledSessions.filter {
-            !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased())
-        }
-        return activeSessions.min { left, right in
-            switch (left.scheduledStart, right.scheduledStart) {
-            case let (leftDate?, rightDate?):
-                return leftDate < rightDate
-            case (_?, nil):
-                return true
-            case (nil, _?):
-                return false
-            case (nil, nil):
-                return left.id < right.id
-            }
-        } ?? scheduledSessions.first
+        let sessions = scheduledSessions
+        guard let id = CaptureSessionScheduling.nextID(in: sessions.map {
+            (id: $0.id, startsAt: $0.scheduledStart, status: $0.status)
+        }) else { return nil }
+        return sessions.first { $0.id == id }
     }
 
     var isProviderConnected: Bool {
@@ -967,6 +977,10 @@ final class CaptureExperienceModel: ObservableObject {
                 ?? requestedPreviewSessionID
                 ?? sessionClient.sessions.first?.id
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--capture-post-call-ui-preview"),
+               let selectedSession {
+                completedCall = CaptureCompletedCall(roomID: selectedSession.callRoomId, recordingIDs: [])
+            }
             if CaptureLaunchConfiguration.usesCallRejoinPreview,
                let selectedSession {
                 providerRoom.loadRejoinPreview(
@@ -1094,15 +1108,21 @@ final class CaptureExperienceModel: ObservableObject {
         destinationProjectName: String? = nil,
         noteKind: MobileSessionNoteKind? = nil,
         noteVisibility: MobileSessionNoteVisibility? = nil,
+        sessionID: String? = nil,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
         reminderAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil
     ) -> Bool {
-        let session = kind == .source || saveToHomeNest || destinationProjectID != nil
-            ? nil
-            : selectedSession
+        let savesInSession = kind != .source && !saveToHomeNest && destinationProjectID == nil
+        let session = savesInSession
+            ? sessionID.flatMap { id in sessions.first { $0.callRoomId == id } } ?? (sessionID == nil ? selectedSession : nil)
+            : nil
+        if savesInSession, sessionID != nil, session == nil {
+            errorMessage = "This session is no longer available. Your draft is still on this device."
+            return false
+        }
         if usesPreviewData && !CaptureLaunchConfiguration.usesReminderDeterministicUITest {
             quickEntrySyncMessage = "Preview only — no note, task, goal, or source was saved."
             return true
@@ -1290,9 +1310,10 @@ final class CaptureExperienceModel: ObservableObject {
                 noteVisibility: noteVisibility,
                 tagIDs: tagIDs,
                 expectedUpdatedAt: expectedUpdatedAt,
+                preserveTags: Set(tagIDs) == Set(note.tags.map(\.id)),
                 replacingHeld: replacingHeld
             )
-            sessionNoteEditMessage = "The complete note edit is protected on \(CaptureDeviceVocabulary.thisDevice). Nest will recheck authorship, Session access, audience, tags, and revision before applying it."
+            sessionNoteEditMessage = "Saved on \(CaptureDeviceVocabulary.thisDevice). Syncing changes…"
             sessionNoteEditMessageRoomID = roomID
             Task { [weak self] in
                 await self?.syncSessionNoteEdit(edit)
@@ -2070,7 +2091,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         if mode == .soloVideo, providerRoom.isConnected || providerRoom.isConnecting {
-            errorMessage = "Solo video owns the local microphone. Leave the live room first, or use Podcast camera for a video-only master beside room audio."
+            errorMessage = "Solo video needs the microphone. Leave the call first, or choose Video only and record audio on another device."
             return
         }
         guard AuthManager.shared.stableOwnerSnapshot() != nil else {
@@ -2123,7 +2144,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         if mode == .soloVideo, providerRoom.isConnected || providerRoom.isConnecting {
-            errorMessage = "Solo video includes microphone audio and cannot take over the audio session during a live room. Use Podcast camera or leave the room."
+            errorMessage = "Solo video needs the microphone. Leave the call first, or choose Video only and record audio on another device."
             return
         }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
@@ -2187,7 +2208,7 @@ final class CaptureExperienceModel: ObservableObject {
                 isChangingCapture = false
                 errorMessage = mode == .soloVideo
                     ? "Solo video includes microphone audio. Save current audio and video consent for every required participant before starting."
-                    : "Podcast audio + video creates a separate microphone master. Save current audio and video consent for every required participant before starting."
+                    : "Audio + video records both sources. Everyone being recorded needs to allow audio and video recording before you start."
                 return
             }
         }
@@ -2650,7 +2671,10 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Leave the active live room before recording a different session."
             return
         }
-        if providerRoom.isConnected, providerRoom.isMuted {
+        // A companion participates in room coordination without owning call
+        // audio. Its transport is intentionally muted; its independent local
+        // microphone must remain available for a source recording.
+        if providerRoom.isConnected, providerRoom.usesCallAudio, providerRoom.isMuted {
             errorMessage = "Unmute the live-room microphone before starting the local master. Quipsly records that same owned input pipeline so the call and file cannot disagree about the active microphone."
             return
         }
@@ -2785,6 +2809,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
         let command = RecorderCommand(
             action: .start,
+            sessionTitle: session.displayTitle,
             projectSlug: usesLocalPersonalVoiceNoteAuthority
                 ? nil
                 : session.projectSlug ?? contextSlugs.projectSlug ?? "capture-inbox",
@@ -2802,8 +2827,8 @@ final class CaptureExperienceModel: ObservableObject {
         )
         audioCapture.handleCommand(command)
 
-        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()
-        guard audioStarted, audioCapture.captureState == .recording else {
+        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal(includingPausedSource: true)
+        guard audioStarted, [.recording, .paused].contains(audioCapture.captureState) else {
             isChangingCapture = false
             errorMessage = audioCapture.lastErrorMessage ?? "The local recorder did not start. Nothing was recorded."
             if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority {
@@ -2825,14 +2850,17 @@ final class CaptureExperienceModel: ObservableObject {
         selectedSessionID = session.id
         isChangingCapture = false
         clearSessionEntryNotice(for: session.id)
+        let captureDescription = audioCapture.captureState == .paused
+            ? "Recording paused. Your audio is retained; tap Resume when you’re ready."
+            : "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone."
 
         if usesPreviewData {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Preview mode does not contact Nest."
+            message = "\(captureDescription) Preview mode does not contact Nest."
             return
         }
 
         if usesLocalPersonalVoiceNoteAuthority {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Your private voice note is safe locally and will sync when Nest reconnects."
+            message = "\(captureDescription) Your private voice note is safe locally and will sync when Nest reconnects."
             return
         }
 
@@ -2840,9 +2868,9 @@ final class CaptureExperienceModel: ObservableObject {
             captureReceiptNotice = persistenceError
         }
         if captureAuthorityBasis == .recentDeviceConsent {
-            message = "Recording safely on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
+            message = "\(captureDescription) The source is safe on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
         } else {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Quipsly syncs the Session in the background."
+            message = "\(captureDescription) Quipsly syncs the Session in the background."
         }
         scheduleReceiptFlush()
         startConsentMonitor(captureID: captureID, audioCapture: audioCapture)
@@ -3059,6 +3087,13 @@ final class CaptureExperienceModel: ObservableObject {
         }
         activeRoomSession = session
         selectedSessionID = session.id
+        let recordingScope = callRecordingScope?.roomID == session.callRoomId
+            ? callRecordingScope!
+            : CaptureCallRecordingScope(
+                roomID: session.callRoomId,
+                existingRecordingIDs: Set(LocalRecordingLibrary.shared.recordings.map(\.id))
+                    .subtracting([activeAudioCapture?.activeLocalRecordingID, activeVideoCapture?.activeRecordingID].compactMap { $0 })
+            )
         let preparedJoin = await sessionClient.prepareRoomJoin(
             for: session,
             endpointRole: useCallAudio ? "primary" : "companion"
@@ -3103,6 +3138,8 @@ final class CaptureExperienceModel: ObservableObject {
         }
         errorMessage = providerRoom.lastError
         if providerRoom.isConnected {
+            callRecordingScope = recordingScope
+            completedCall = nil
             clearSessionEntryNotice(for: session.id)
         } else {
             activeRoomSession = nil
@@ -3116,6 +3153,7 @@ final class CaptureExperienceModel: ObservableObject {
         isChangingRoom = true
         defer { isChangingRoom = false }
         await providerRoom.disconnect()
+        if !providerRoom.isConnected { finishCallWorkspace() }
         activeRoomSession = nil
         preparedRoomJoin = nil
     }
@@ -3125,7 +3163,10 @@ final class CaptureExperienceModel: ObservableObject {
     /// STOP command: every participant owns an independent local master.
     private func protectLocalSourceForNativeCallEnd() async -> Bool {
         let sourceWasActive = localSourceIsActive
-        guard sourceWasActive else { return true }
+        guard sourceWasActive else {
+            finishCallWorkspace()
+            return true
+        }
 
         message = "The call ended. Protecting \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
         let session = activeRoomSession ?? selectedSession
@@ -3178,7 +3219,8 @@ final class CaptureExperienceModel: ObservableObject {
             }
         }
         if protected {
-            message = "Call ended. Your recording is protected on \(CaptureDeviceVocabulary.thisDevice). Keep Quipsly open until this Session says Safe to close."
+            finishCallWorkspace()
+            message = "Call ended. Your recording is saved on \(CaptureDeviceVocabulary.thisDevice). Upload and transcription continue in Quipsly."
             if let roomID = session?.callRoomId {
                 monitorSourceExitReadiness(roomID: roomID)
             }
@@ -3186,6 +3228,19 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "The call ended while \(CaptureDeviceVocabulary.thisDevice) was still closing its recording. Keep Quipsly open until Library shows the protected source."
         }
         return protected
+    }
+
+    private func finishCallWorkspace() {
+        guard let scope = callRecordingScope else { return }
+        completedCall = scope.complete(recordings: LocalRecordingLibrary.shared.recordings.map {
+            CaptureCallRecordingIdentity(id: $0.id, roomID: $0.callRoomId)
+        })
+        callRecordingScope = nil
+    }
+
+    func dismissCompletedCall() {
+        completedCall = nil
+        message = nil
     }
 
     func toggleRoomMute() async {
@@ -3198,16 +3253,20 @@ final class CaptureExperienceModel: ObservableObject {
         let retainedRecordingContinues =
             localSourceIsActive
             && activeAudioCapture?.isUsingProviderAudioMaster == true
+        // Mute the retained samples before awaiting the call transport. An
+        // unsuccessful unmute must never expose audio to the saved file.
+        if targetMuted { activeAudioCapture?.setProviderMicrophoneMuted(true) }
         await providerRoom.setMuted(
             targetMuted,
             retainedRecordingContinues: retainedRecordingContinues
         )
         guard providerRoom.isMuted == targetMuted else { return }
+        activeAudioCapture?.setProviderMicrophoneMuted(targetMuted)
         errorMessage = nil
         if retainedRecordingContinues {
             message = targetMuted
-                ? "Call muted. Your protected local recording continues."
-                : "Call microphone live. Your protected local recording continues."
+                ? "Microphone muted in the call and recording. The timeline continues with silence."
+                : "Microphone live in the call and recording."
         }
     }
 
@@ -3546,8 +3605,8 @@ final class CaptureExperienceModel: ObservableObject {
             sourceType: recording.effectiveMediaKind.uploadSourceType,
             captureGroupId: recording.captureGroupId,
             sourceProfileJson: recording.encodedSourceProfileJSON,
-            startedAt: ISO8601DateFormatter().string(from: recording.startedAt),
-            stoppedAt: recording.stoppedAt.map { ISO8601DateFormatter().string(from: $0) },
+            startedAt: CaptureDateCoding.string(from: recording.startedAt),
+            stoppedAt: recording.stoppedAt.map { CaptureDateCoding.string(from: $0) },
             recordingSegmentsJson: recording.recordingSegmentsJson,
             localRecordingID: recording.id,
             ownerAccountID: recording.ownerAccountID
@@ -3664,6 +3723,8 @@ final class CaptureExperienceModel: ObservableObject {
         let ownerAccountID = normalizedOwnerAccountID(ownerAccountID)
         guard ownerAccountID != observedReceiptOwnerAccountID else { return }
         observedReceiptOwnerAccountID = ownerAccountID
+        completedCall = nil
+        callRecordingScope = nil
         // An unrecorded local writing shell has no protected media owner yet.
         // Never carry that navigation authority across an account boundary.
         localPersonalVoiceNoteSessions = []
@@ -4105,6 +4166,8 @@ extension MobileCaptureSession {
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
                 scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60)),
+                captureSources: preparationWorkingDraftPreview ? [] : captureGroupPreviewSources(
+                    captureGroupID: "preview-coaching-sources", promotedSourceCount: 2),
                 transcriptResults: preparationWorkingDraftPreview
                     ? nil
                     : capturePreviewTranscriptResults,

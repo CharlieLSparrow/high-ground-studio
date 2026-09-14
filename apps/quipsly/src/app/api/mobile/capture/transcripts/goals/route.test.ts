@@ -82,7 +82,7 @@ describe("explicit transcript-derived goal", () => {
   it("replays the same actor request without creating a duplicate goal", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1" } } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
-    const replay = { id: "goal-replay", ownerUserId: "user-1", roomId: "room-1", title: "Publish the pilot", description: null, status: "ACTIVE", createdAt: new Date(), sourceJson: { schema: "quipsly-transcript-derived-goal-v1", clientRequestId: "goal-replay", createdByUserId: "user-1" } };
+    const replay = { id: "goal-replay", ownerUserId: "user-1", roomId: "room-1", title: "Publish the pilot", description: null, status: "ACTIVE", createdAt: new Date(), sourceJson: { schema: "quipsly-transcript-derived-goal-v1", clientRequestId: "goal-replay", createdByUserId: "user-1", segmentId: "segment-1", providerTextSha256: "a".repeat(64) } };
     const tx = { goal: { findUnique: jest.fn().mockResolvedValue(replay), create: jest.fn() } };
     jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
     const response = await POST(request({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "goal-replay", expectedProviderTextSha256: "a".repeat(64), title: "Publish the pilot" }));
@@ -106,6 +106,8 @@ describe("explicit transcript-derived goal", () => {
         schema: "quipsly-transcript-derived-goal-v1",
         clientRequestId: "goal-replay",
         createdByUserId: "user-1",
+        segmentId: "segment-1",
+        providerTextSha256: "a".repeat(64),
         materializationIntent: { title: "Publish the pilot", description: null, targetAt: null, tagIds: [] },
       },
     };
@@ -115,5 +117,26 @@ describe("explicit transcript-derived goal", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ ok: false, code: "IDEMPOTENCY_CONFLICT" });
     expect(tx.goal.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { segmentId: "segment-2", providerTextSha256: "a".repeat(64) },
+    { segmentId: "segment-1", providerTextSha256: "b".repeat(64) },
+    {},
+  ])("rejects replay without the exact source identity: %j", async (source) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1" } } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
+    const replay = { id: "goal-replay", ownerUserId: "user-1", roomId: "room-1", title: "Publish the pilot",
+      description: null, status: "ACTIVE", createdAt: new Date(), sourceJson: {
+        schema: "quipsly-transcript-derived-goal-v1", clientRequestId: "goal-replay", createdByUserId: "user-1", ...source,
+      } };
+    const tx = { goal: { findUnique: jest.fn().mockResolvedValue(replay), create: jest.fn() } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
+    const response = await POST(request({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "goal-replay",
+      expectedProviderTextSha256: "a".repeat(64), title: "Publish the pilot" }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, code: "IDEMPOTENCY_CONFLICT" });
+    expect(tx.goal.create).not.toHaveBeenCalled();
+    expect(recordSucceededTranscriptWorkAction).not.toHaveBeenCalled();
   });
 });

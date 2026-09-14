@@ -2869,6 +2869,8 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             return "audio/aac"
         case "wav":
             return "audio/wav"
+        case "caf":
+            return "audio/x-caf"
         case "mp3":
             return "audio/mpeg"
         case "mov":

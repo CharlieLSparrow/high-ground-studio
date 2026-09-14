@@ -220,7 +220,7 @@ describe("Schedule page truth states", () => {
 
     render(await SchedulePage());
 
-    expect(screen.getByText(/Source: Reviewed transcript timestamp/)).toBeInTheDocument();
+    expect(screen.getByText(/Source: Session transcript/)).toBeInTheDocument();
     expect(screen.getByText("Source: iPhone capture")).toBeInTheDocument();
     expect(screen.getByLabelText("Tags: Coaching follow-up")).toHaveTextContent("#Coaching follow-up");
     expect(screen.getByRole("link", { name: "Find all accessible work tagged Coaching follow-up" })).toHaveAttribute("href", "/find?tag=tag-1");
@@ -228,7 +228,7 @@ describe("Schedule page truth states", () => {
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute(
       "href",
-      "/sessions/room-1#transcript-segment-segment-1",
+      "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1",
     );
     expect(screen.getByRole("heading", { name: "Time for the work you actually chose." })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Real rooms, grouped by current status" })).not.toBeInTheDocument();

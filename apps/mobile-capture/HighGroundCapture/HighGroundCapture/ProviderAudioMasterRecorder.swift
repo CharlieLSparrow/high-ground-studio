@@ -23,6 +23,7 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
     private let stateLock = NSLock()
 
     private var acceptsPCM = false
+    private var microphoneMuted = false
     private var didReportFirstPCM = false
     private var startedAt: Date?
     private var stoppedAt: Date?
@@ -128,22 +129,26 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
         }
     }
 
-    @objc func render(pcmBuffer: AVAudioPCMBuffer) {
-        let acceptsPCM = stateLock.quipslyLocked { self.acceptsPCM }
-        guard acceptsPCM else { return }
-
-        // AudioMixRecorderSource performs the SDK-owned format conversion and
-        // schedules the buffer without opening another hardware input.
-        source.render(pcmBuffer: pcmBuffer)
-
-        let liveTranscriptPCMConsumer = stateLock.quipslyLocked {
-            self.liveTranscriptPCMConsumer
+    func setMicrophoneMuted(_ muted: Bool) {
+        stateLock.quipslyLocked {
+            microphoneMuted = muted
+            if muted { averagePowerDB = -160; peakPowerDB = -160 }
         }
-        liveTranscriptPCMConsumer?(pcmBuffer)
+    }
 
-        let levels = ProviderAudioPCMLevelAnalyzer.levels(for: pcmBuffer)
+    @objc func render(pcmBuffer: AVAudioPCMBuffer) {
         var firstPCMCallback: (@Sendable () -> Void)?
         stateLock.quipslyLocked {
+            guard acceptsPCM else { return }
+            // Serialize mute with both destinations: neither the durable file
+            // nor live transcription may receive private microphone samples.
+            // Dropping an allocation failure is preferable to forwarding raw
+            // input; AudioMixRecorder preserves missing time as silence.
+            guard let retainedBuffer = microphoneMuted
+                ? ProviderAudioPrivacyBuffer.silence(matching: pcmBuffer) : pcmBuffer else { return }
+            source.render(pcmBuffer: retainedBuffer)
+            liveTranscriptPCMConsumer?(retainedBuffer)
+            let levels = ProviderAudioPCMLevelAnalyzer.levels(for: retainedBuffer)
             averagePowerDB = levels.averagePowerDBFS
             peakPowerDB = levels.peakPowerDBFS
             receivedPCMAt = Date()

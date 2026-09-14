@@ -77,13 +77,15 @@ describe("development-only local episode media vault", () => {
 
     process.env.DATABASE_URL =
       "postgresql://quipsly@localhost:5432/quipsly_test";
-    process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT = path.join(
-      process.cwd(),
-      "media-vault",
-    );
+    process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT = os.homedir();
     expect(() => getLocalMediaIngestRoot()).toThrow(
-      "below the operating-system temporary directory",
+      "dedicated directory",
     );
+  });
+
+  it("defaults uploads to persistent application data rather than disposable temporary files", () => {
+    delete process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT;
+    expect(getLocalMediaIngestRoot()).toBe(path.join(os.homedir(), "Library", "Application Support", "Quipsly", "local-media"));
   });
 
   it("rejects traversal outside the configured local vault", async () => {

@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionRecordingShareCard } from "./session-recording-share-card";
@@ -45,9 +45,274 @@ function response(value: unknown) {
 }
 
 describe("SessionRecordingShareCard", () => {
+  it("removes sections without transcription, previews the cut and restores through undo", async () => {
+    const noWords = {...snapshot, available: {...snapshot.available, transcriptSegments: []}};
+    const requests: any[] = [];
+    global.fetch = jest.fn(async (_url, options) => { if (options?.method === "POST") requests.push(JSON.parse(String(options.body))); return response(noWords); }) as typeof fetch;
+    const originalPlayer = jest.fn(() => <div>Source player</div>);
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={originalPlayer} />);
+    const start = await screen.findByRole("spinbutton", {name: "Cut start (seconds)"});
+    const end = screen.getByRole("spinbutton", {name: "Cut end (seconds)"});
+    fireEvent.change(start, {target: {value: "4"}});
+    fireEvent.change(end, {target: {value: "9"}});
+    await userEvent.click(screen.getByRole("button", {name: /^Remove section$/}));
+    expect((originalPlayer.mock.calls.at(-1) as any)[1].removedRanges).toEqual([{startSeconds: 4, endSeconds: 9}]);
+    expect(screen.getByText("Edited recording: about 0:25. Original unchanged.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.queryByRole("button", {name: "Restore section 1"})).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Redo recording edit"}));
+    await userEvent.click(screen.getByRole("button", {name: "Create private preview"}));
+    expect(requests[0]).toMatchObject({manualCuts: [{startSeconds: 4, endSeconds: 9}], excludedTranscriptSegments: []});
+  });
+
+  it("marks cut times in the assembled clock and prevents removing the entire trim", async () => {
+    global.fetch = jest.fn(async () => response({...snapshot, available: {...snapshot.available, programDurationSeconds: 35, sources: [{...snapshot.available.sources[0], programOffsetSeconds: 5}]}})) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={(_ids, controls) => <>
+      <button onClick={() => controls.onCutBoundary?.("start", "recording_asset_0001", 2)}>Cut begins here</button>
+      <button onClick={() => controls.onCutBoundary?.("end", "recording_asset_0001", 4)}>Cut ends here</button>
+    </>} />);
+    await userEvent.click(await screen.findByRole("button", {name: "Cut begins here"}));
+    await userEvent.click(screen.getByRole("button", {name: "Cut ends here"}));
+    expect(screen.getByRole("spinbutton", {name: "Cut start (seconds)"})).toHaveValue(7);
+    expect(screen.getByRole("spinbutton", {name: "Cut end (seconds)"})).toHaveValue(9);
+    fireEvent.change(screen.getByRole("spinbutton", {name: "Cut start (seconds)"}), {target: {value: "0"}});
+    fireEvent.change(screen.getByRole("spinbutton", {name: "Cut end (seconds)"}), {target: {value: "35"}});
+    expect(screen.getByRole("button", {name: /^Remove section$/})).toBeDisabled();
+  });
+
+  const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  const scrollIntoView = jest.fn();
   beforeEach(() => {
     jest.restoreAllMocks();
     Reflect.deleteProperty(global, "fetch");
+    // jsdom has no layout engine. Model this browser method and assert its
+    // target; whether scrolling feels right still needs browser workflow proof.
+    scrollIntoView.mockReset();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+  });
+
+  it("projects exact edit cuts and source offsets into the waveform without a second edit state", async () => {
+    global.fetch = jest.fn(async () => response(snapshot)) as typeof fetch;
+    const originalPlayer = jest.fn(() => <div>Original player</div>);
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={originalPlayer} />);
+    await screen.findByText("Original player");
+    expect((originalPlayer.mock.calls.at(-1) as any)[1]).toMatchObject({sourceOffsets: {recording_asset_0001: 0}, removedRanges: []});
+    await userEvent.click(screen.getByRole("checkbox", {name: `Keep in recording: ${transcriptSegment.text}`}));
+    expect((originalPlayer.mock.calls.at(-1) as any)[1].removedRanges).toEqual([{startSeconds: 8.1, endSeconds: 11.9}]);
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect((originalPlayer.mock.calls.at(-1) as any)[1].removedRanges).toEqual([]);
+  });
+  afterEach(() => {
+    if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+    else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  });
+
+  it("switches recording attempts without combining their sources or gaps", async () => {
+    const takes = [{id: "start:latest", startedAt: "2026-09-09T12:00:00Z", sourceCount: 1},
+      {id: "start:earlier", startedAt: "2026-09-09T11:00:00Z", sourceCount: 1}];
+    const latest = {...snapshot, available: {...snapshot.available, takes, selectedTakeId: "start:latest"}};
+    const earlier = {...snapshot, available: {...snapshot.available, takes, selectedTakeId: "start:earlier", programDurationSeconds: 20,
+      sources: [{...snapshot.available.sources[0]!, id: "earlier-source", stoppedAt: "2026-08-22T12:00:20.000Z"}], transcriptSegments: []}};
+    const fetchMock = jest.fn(async (url: string, options?: RequestInit) => response(url.includes("/recording-edit")
+      ? {ok: true, actorUserId: "coach_user_0001", edit: options?.method === "PUT" ? {revision: 1} : null}
+      : url.includes("start%3Aearlier") ? earlier : latest));
+    global.fetch = fetchMock as typeof fetch;
+    const takeChanged = jest.fn();
+    render(<SessionRecordingShareCard roomId="session_room_0001" initialSourceId="recording_asset_0001" onTakeSourcesChange={takeChanged}
+      renderOriginalRecordings={ids => <div data-testid="selected-take-player">{ids.join(",")}</div>} />);
+    const selector = await screen.findByRole("combobox", {name: /Choose recording/});
+    expect(fetchMock).toHaveBeenCalledWith("/api/sessions/session_room_0001/recording-share?sourceId=recording_asset_0001", expect.anything());
+    expect(selector).toHaveValue("start:latest");
+    expect(screen.getByTestId("selected-take-player")).toHaveTextContent("recording_asset_0001");
+    fireEvent.change(screen.getByRole("slider", {name: "Recording start"}), {target: {value: "3"}});
+    await userEvent.selectOptions(selector, "start:earlier");
+    await waitFor(() => expect(selector).toHaveValue("start:earlier"));
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("20");
+    expect(screen.getByTestId("selected-take-player")).toHaveTextContent("earlier-source");
+    expect(takeChanged).toHaveBeenLastCalledWith(["earlier-source"]);
+    expect(screen.getByTestId("selected-take-player")).not.toHaveTextContent("recording_asset_0001");
+    expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/sessions/session_room_0001/recording-share?takeId=start%3Aearlier", expect.anything());
+    await userEvent.selectOptions(selector, "start:latest");
+    await waitFor(() => expect(selector).toHaveValue("start:latest"));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("30");
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("0");
+    await userEvent.click(screen.getByRole("button", {name: "Redo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
+  });
+
+  it("keeps trimming and preview available with mixed measured and clock placement", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response({...snapshot, available: {...snapshot.available,
+      timeline: {...snapshot.available.timeline, authority: "mixed-waveform-clock-placement", reason: "Matched tracks stay together; recording clocks place the remaining groups.",
+        sources: [{...snapshot.available.timeline.sources[0], timingUncertaintyMilliseconds: null}]},
+    }}));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByText("Synced from audio and recording clocks")).toBeInTheDocument();
+    expect(screen.getByRole("slider", {name: "Recording start"})).toBeEnabled();
+    expect(screen.getByRole("button", {name: "Create private preview"})).toBeEnabled();
+    expect(screen.getByTestId("recording-timeline-status")).not.toHaveTextContent("estimated within");
+  });
+
+  it("maps playhead marks to the assembled timeline, saves them, and undoes each mark independently", async () => {
+    const writes: any[] = [];
+    const workspace = {...snapshot, available: {...snapshot.available, selectedTakeId: "take-offset", programDurationSeconds: 35,
+      sources: [{...snapshot.available.sources[0]!, programOffsetSeconds: 5}]}};
+    global.fetch = jest.fn(async (url: string, options?: RequestInit) => {
+      if (!url.includes("/recording-edit")) return response(workspace);
+      if (options?.method === "PUT") {
+        writes.push(JSON.parse(String(options.body)));
+        return response({ok: true, edit: {revision: writes.length}});
+      }
+      return response({ok: true, actorUserId: "coach_user_0001", edit: null});
+    }) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={(_ids, controls) => <>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", 2.125)}>Mark source start</button>
+      <button onClick={() => controls.onTrimBoundary("end", "recording_asset_0001", 20.375)}>Mark source end</button>
+    </>} />);
+    await userEvent.click(await screen.findByRole("button", {name: "Mark source start"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("7.125");
+    await userEvent.click(screen.getByRole("button", {name: "Mark source end"}));
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("25.375");
+    await waitFor(() => expect(writes.at(-1)?.state).toMatchObject({startSeconds: 7.125, endSeconds: 25.375, editing: true}), {timeout: 3000});
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("35");
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("7.125");
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("0");
+    await userEvent.click(screen.getByRole("button", {name: "Redo recording edit"}));
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("7.125");
+  });
+
+  it("rejects foreign, invalid, and crossed playhead marks without changing the edit", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={(_ids, controls) => <>
+      <button onClick={() => controls.onTrimBoundary("start", "another-take", 5)}>Foreign track</button>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", Number.NaN)}>Invalid clock</button>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", 31)}>Past source end</button>
+      <button onClick={() => controls.onTrimBoundary("start", "recording_asset_0001", 30)}>Cross end</button>
+    </>} />);
+    for (const name of ["Foreign track", "Invalid clock", "Past source end", "Cross end"]) {
+      await userEvent.click(await screen.findByRole("button", {name}));
+      expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("0");
+      expect(screen.getByRole("slider", {name: "Recording end"})).toHaveValue("30");
+      expect(screen.getByRole("button", {name: "Undo recording edit"})).toBeDisabled();
+    }
+  });
+
+  it("keeps an in-progress trim when reconnecting an initial autosave timeout", async () => {
+    let offline = true;
+    const writes: any[] = [];
+    global.fetch = jest.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes("/recording-edit")) {
+        if (offline) throw new DOMException("signal is aborted without reason", "AbortError");
+        if (options?.method === "PUT") { writes.push(JSON.parse(String(options.body))); return response({ok: true, edit: {revision: 1}}); }
+        return response({ok: true, actorUserId: "coach_user_0001", edit: null});
+      }
+      return response({...snapshot, available: {...snapshot.available, selectedTakeId: "take-new"}});
+    }) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", {name: "Reconnect saving"});
+    expect(screen.queryByText("signal is aborted without reason")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("slider", {name: "Recording start"}), {target: {value: "3"}});
+    offline = false;
+    await userEvent.click(screen.getByRole("button", {name: "Reconnect saving"}));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].state.startSeconds).toBe(3);
+    expect(screen.getByRole("slider", {name: "Recording start"})).toHaveValue("3");
+    expect(screen.queryByRole("button", {name: "Reconnect saving"})).not.toBeInTheDocument();
+  });
+
+  it("undoes transcript cuts and trims independently, including keyboard shortcuts", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const undo = await screen.findByRole("button", {name: "Undo recording edit"});
+    const redo = screen.getByRole("button", {name: "Redo recording edit"});
+    expect(undo).toBeDisabled();
+    const start = screen.getByRole("slider", {name: "Recording start"});
+    fireEvent.change(start, {target: {value: "2"}});
+    await userEvent.click(screen.getByRole("checkbox", {name: `Keep in recording: ${transcriptSegment.text}`}));
+    await userEvent.click(undo);
+    expect(screen.getByRole("checkbox", {name: `Keep in recording: ${transcriptSegment.text}`})).toBeChecked();
+    expect(start).toHaveValue("2");
+    fireEvent.keyDown(start, {key: "z", metaKey: true});
+    expect(start).toHaveValue("0");
+    fireEvent.keyDown(start, {key: "z", metaKey: true, shiftKey: true});
+    expect(start).toHaveValue("2");
+    await userEvent.click(redo);
+    expect(screen.getByRole("checkbox", {name: `Restore to recording: ${transcriptSegment.text}`})).not.toBeChecked();
+    // Browsers keep their own text undo; the recording history must not steal it.
+    fireEvent.keyDown(screen.getByRole("searchbox", {name: "Search recording transcript"}), {key: "z", ctrlKey: true});
+    expect(screen.getByRole("checkbox", {name: `Restore to recording: ${transcriptSegment.text}`})).not.toBeChecked();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes autosaved trims and text cuts after the editor is remounted", async () => {
+    const workspace = {...snapshot, available: {...snapshot.available, selectedTakeId: "start:saved"}};
+    let saved: any = null;
+    global.fetch = jest.fn(async (url: string, options?: RequestInit) => {
+      if (!url.includes("/recording-edit")) return response(workspace);
+      if (options?.method === "PUT") {
+        const body = JSON.parse(String(options.body));
+        saved = {revision: (saved?.revision ?? 0) + 1, state: body.state, updatedAt: new Date().toISOString()};
+      }
+      return response({ok: true, actorUserId: "coach_user_0001", edit: saved});
+    }) as typeof fetch;
+    const first = render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const start = await screen.findByRole("slider", {name: "Recording start"});
+    fireEvent.change(start, {target: {value: "3"}});
+    await userEvent.click(screen.getByRole("checkbox", {name: `Keep in recording: ${transcriptSegment.text}`}));
+    await waitFor(() => expect(saved?.state).toMatchObject({startSeconds: 3, excludedTranscriptKeys: [`${transcriptSegment.transcriptJobId}:${transcriptSegment.segmentId}`]}));
+    first.unmount();
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByRole("slider", {name: "Recording start"})).toHaveValue("3");
+    expect(screen.getByRole("checkbox", {name: `Restore to recording: ${transcriptSegment.text}`})).not.toBeChecked();
+    expect(screen.getByText("Edits saved")).toBeInTheDocument();
+  });
+
+  it("restores the full range in one undoable action", async () => {
+    global.fetch = jest.fn().mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const start = await screen.findByRole("slider", {name: "Recording start"});
+    const end = screen.getByRole("slider", {name: "Recording end"});
+    fireEvent.change(start, {target: {value: "3"}});
+    fireEvent.change(end, {target: {value: "24"}});
+    await userEvent.click(screen.getByRole("button", {name: "Use full recording"}));
+    expect(start).toHaveValue("0");
+    expect(end).toHaveValue("30");
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect(start).toHaveValue("3");
+    expect(end).toHaveValue("24");
+  });
+
+  it("ignores a late response from the previous Session", async () => {
+    let resolveOld!: (value: Response) => void;
+    global.fetch = jest.fn().mockImplementationOnce(() => new Promise<Response>(resolve => {resolveOld = resolve;}))
+      .mockResolvedValue(response({...snapshot, room: {...snapshot.room, id: "new-room", title: "New session"}}));
+    const view = render(<SessionRecordingShareCard roomId="old-room" />);
+    view.rerender(<SessionRecordingShareCard roomId="new-room" />);
+    await screen.findByRole("heading", {name: "Trim and share"});
+    await act(async () => {resolveOld(response({...snapshot, room: {...snapshot.room, title: "Stale session"}}));});
+    expect(screen.queryByDisplayValue("Stale session recording")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("New session recording")).toBeInTheDocument();
+  });
+
+  it("clears a transient refresh failure once recording status recovers", async () => {
+    let fail = false;
+    global.fetch = jest.fn(async () => {
+      if (fail) throw new Error("Recording status couldn’t refresh.");
+      return response(snapshot);
+    }) as typeof fetch;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", {name: "Refresh"});
+    fail = true;
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    expect(await screen.findByText("Recording status couldn’t refresh.")).toBeVisible();
+    fail = false;
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    await waitFor(() => expect(screen.queryByText("Recording status couldn’t refresh.")).not.toBeInTheDocument());
   });
 
   it("shows loading rather than a permission failure while the workspace is being read", () => {
@@ -55,6 +320,28 @@ describe("SessionRecordingShareCard", () => {
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading recording tools");
     expect(screen.queryByText(/unavailable|recipient boundary/i)).not.toBeInTheDocument();
+  });
+
+  it("does not keep a queued notice after the prepared edit is ready to play and share", async () => {
+    let prepared = false;
+    const ready = { ...snapshot, output: {
+      id: "private-edit-1", status: "DRAFT", title: "First coaching session recording", revision: 2,
+      contentSha256: "d".repeat(64), recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "a".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/private-edit-1",
+      body: { edit: { startSeconds: 0, endSeconds: 30 } },
+    } };
+    const requests: string[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") { prepared = true; requests.push(JSON.parse(String(init.body)).action); }
+      return response(prepared ? ready : snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create private preview" }));
+    expect(await screen.findByLabelText("Private recording preview")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
+    expect(screen.queryByText(/preview queued/i)).not.toBeInTheDocument();
+    expect(requests).toEqual(["PREPARE"]);
   });
 
   it("recovers a failed read through Try again without mutating or sharing the recording", async () => {
@@ -78,6 +365,90 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.queryByText(/A draft stays coach-only/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Only you can see the preview/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes recording availability without replacing an unfinished trim or text cut", async () => {
+    const requests: Record<string, unknown>[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const start = await screen.findByRole("slider", { name: "Recording start" });
+    fireEvent.change(start, { target: { value: "2" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Recording end" }), { target: { value: "28" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: `Keep in recording: ${transcriptSegment.text}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(start).toHaveValue("2");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("28");
+    expect(screen.getByRole("checkbox", { name: `Restore to recording: ${transcriptSegment.text}` })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({ startSeconds: 2, endSeconds: 28,
+      excludedTranscriptSegments: [expect.objectContaining({ segmentId: transcriptSegment.segmentId })] }));
+  });
+
+  it("reuses an exact failed preparation request but gives changed edits a new identity", async () => {
+    const requests: Record<string, unknown>[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") {
+        requests.push(JSON.parse(String(init.body)));
+        throw new Error(`Preview connection interrupted ${requests.length}`);
+      }
+      return response(snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const prepare = await screen.findByRole("button", { name: "Create private preview" });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await userEvent.click(prepare);
+      await screen.findByText(`Preview connection interrupted ${attempt}`);
+    }
+    fireEvent.change(screen.getByRole("slider", { name: "Recording start" }), { target: { value: "2" } });
+    await userEvent.click(prepare);
+    await screen.findByText("Preview connection interrupted 3");
+    expect(requests[0].clientRequestId).toBe(requests[1].clientRequestId);
+    expect(requests[2].clientRequestId).not.toBe(requests[1].clientRequestId);
+    expect(requests[2].startSeconds).toBe(2);
+  });
+
+  it("updates untouched defaults as participant recordings become available", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response({ ...snapshot,
+      available: { ...snapshot.available, programDurationSeconds: 0, sources: [], transcriptSegments: [] },
+      readiness: { ...snapshot.readiness, hasVerifiedParticipantSources: false },
+    })).mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByRole("button", { name: "Create private preview" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create private preview" })).toBeEnabled());
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("30");
+  });
+
+  it("removes cached recording tools after an explicit access denial", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response(snapshot))
+      .mockResolvedValue({ ok: false, status: 403, json: async () => ({ok: false, error: "Access removed"}) });
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", { name: "Create private preview" });
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText("Access removed");
+    expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
+    expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+  });
+
+  it("can recover when a previously selected recording attempt is no longer available", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response({...snapshot,
+      available: {...snapshot.available, selectedTakeId: "start:removed"},
+    })).mockResolvedValueOnce(response({ok: true, actorUserId: "coach_user_0001", edit: null}))
+      .mockResolvedValueOnce({ok: false, status: 404, json: async () => ({ok: false, error: "Recording attempt unavailable"})})
+      .mockResolvedValueOnce(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", {name: "Create private preview"});
+    await userEvent.click(screen.getByRole("button", {name: "Refresh"}));
+    await screen.findByText("Recording attempt unavailable");
+    await userEvent.click(screen.getByRole("button", {name: "Try again"}));
+    await screen.findByRole("button", {name: "Create private preview"});
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toContain("takeId=start%3Aremoved");
+    expect((global.fetch as jest.Mock).mock.calls[3][0]).toBe("/api/sessions/session_room_0001/recording-share");
   });
 
   it("shows automatic sync quality without making it another required workflow", async () => {
@@ -394,7 +765,9 @@ describe("SessionRecordingShareCard", () => {
     fireEvent.loadedMetadata(source);
     expect(source.currentTime).toBeCloseTo(8.1, 3);
     expect(play).toHaveBeenCalled();
-    expect(screen.getByText(/plays only the exact source passage/i)).toBeInTheDocument();
+    expect(screen.getByText(/plays the original passage.*original recording stays unchanged/i)).toBeInTheDocument();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "nearest" }));
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(document.getElementById("recording-cut-audition"));
   });
 
   it("keeps overlapping speech included and explains why", async () => {
@@ -489,7 +862,7 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByRole("button", { name: "Create new private edit" })).toBeInTheDocument();
   });
 
-  it("records optional listening evidence without turning it into a share gate", async () => {
+  it.each(["audio", "video"])("keeps %s playback read-only and shares only on the coach's explicit action", async (mediaKind) => {
     const draftOutput = {
       id: "session_output_review_0001",
       status: "DRAFT",
@@ -497,25 +870,22 @@ describe("SessionRecordingShareCard", () => {
       revision: 2,
       contentSha256: "d".repeat(64),
       recipient: { id: "client_user_0001", label: "Client" },
-      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      render: { status: "VERIFIED", mediaKind, durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
       mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_review_0001",
       playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: false, reviewedAt: null, clientTrackedPlaybackIsNotProofOfAudibility: true },
       body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
     };
-    const reviewedOutput = { ...draftOutput, revision: 3, playbackReview: { ...draftOutput.playbackReview, reviewed: true, reviewedAt: "2026-08-24T12:00:00.000Z" } };
-    let currentOutput: typeof draftOutput | typeof reviewedOutput = draftOutput;
     const requests: Array<Record<string, any>> = [];
     global.fetch = jest.fn(async (_url, init) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         requests.push(body);
-        if (body.action === "REVIEW") currentOutput = reviewedOutput;
       }
-      return response({ ...snapshot, output: currentOutput });
+      return response({ ...snapshot, output: draftOutput });
     }) as jest.MockedFunction<typeof fetch>;
 
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
-    const audio = await screen.findByLabelText("Private recording preview") as HTMLAudioElement;
+    const audio = await screen.findByLabelText(mediaKind === "video" ? "Private video preview" : "Private recording preview") as HTMLMediaElement;
     Object.defineProperties(audio, {
       duration: { configurable: true, value: 30 },
       paused: { configurable: true, value: false },
@@ -529,17 +899,16 @@ describe("SessionRecordingShareCard", () => {
       fireEvent.pause(audio);
     }
 
-    await waitFor(() => expect(requests.some((request) => request.action === "REVIEW")).toBe(true));
-    expect(requests.find((request) => request.action === "REVIEW")).toMatchObject({
-      outputId: draftOutput.id,
-      expectedRevision: 2,
-      playbackEvidence: { listenedSecondBins: [0, 15, 29], clientTrackedPlaybackIsNotProofOfAudibility: true },
-    });
-    expect(await screen.findByText(/listening review saved for this exact private preview/i)).toBeInTheDocument();
+    fireEvent.ended(audio);
+    expect(requests).toEqual([]);
+    expect(screen.queryByText(/listening review saved|You listened through/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", {name: "Share with Client"}));
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({action: "RELEASE", outputId: draftOutput.id, expectedRevision: 2});
   });
 
-  it("describes a client release without claiming somebody completed an optional review", async () => {
+  it("keeps a client recording simple with technical evidence available in file details", async () => {
     const output = {
       id: "session_output_released_0001",
       status: "RELEASED",
@@ -558,6 +927,14 @@ describe("SessionRecordingShareCard", () => {
 
     expect(await screen.findByText("Your coach shared this private recording in your Session.")).toBeInTheDocument();
     expect(screen.queryByText(/released this reviewed copy/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Download recording"})).toHaveAttribute("href", `${output.mediaUrl}?download=1`);
+    expect(screen.getByText("Ready")).toBeVisible();
+    const checksum = screen.getByText(output.render.sha256);
+    expect(checksum.closest("details")).not.toHaveAttribute("open");
+    expect(checksum).not.toBeVisible();
+    await userEvent.click(screen.getByText("File details"));
+    expect(checksum).toBeVisible();
+    expect(screen.getByText("VERIFIED")).toBeVisible();
   });
 
   it("reopens the current edit without losing transcript cuts and cancels safely", async () => {
@@ -598,6 +975,13 @@ describe("SessionRecordingShareCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Edit private preview" }));
     const restored = screen.getByText(transcriptSegment.text).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(restored).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Restore all" }));
+    await userEvent.click(screen.getByRole("button", { name: "Use full recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(screen.getByRole("slider", { name: "Recording start" })).toHaveValue("0");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("30");
+    expect(restored).toBeChecked();
   });
 
   it("reopens from the exact reviewed source manifest instead of substituting the current default track", async () => {

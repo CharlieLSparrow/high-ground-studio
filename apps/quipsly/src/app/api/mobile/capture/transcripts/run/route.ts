@@ -45,6 +45,7 @@ export async function POST(request: Request) {
 
   const body = await readJson(request);
   let transcriptJobId = text(body.transcriptJobId);
+  const explicitlySelectedJob = Boolean(transcriptJobId);
   const recordingAssetId = text(body.recordingAssetId);
 
   if (!transcriptJobId && !recordingAssetId) {
@@ -194,13 +195,20 @@ export async function POST(request: Request) {
           id: transcriptJobId,
           OR: accessibleRoomWhere,
         },
-    select: { id: true },
+    select: { id: true, assetId: true },
   });
 
   if (!job) {
     return NextResponse.json(
       { ok: false, error: "You do not have access to this transcript job." },
       { status: 404 },
+    );
+  }
+
+  if (explicitlySelectedJob && recordingAssetId && job.assetId !== recordingAssetId) {
+    return NextResponse.json(
+      { ok: false, error: "This transcript belongs to a different recording. Open the recording and retry.", code: "TRANSCRIPT_SOURCE_MISMATCH" },
+      { status: 409 },
     );
   }
 

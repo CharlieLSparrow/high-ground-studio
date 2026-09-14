@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from "react";
-import { render, screen } from "@testing-library/react";
+import React, { useEffect, useRef, useState } from "react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CaptureAppHandoff } from "./capture-app-handoff";
+import { useSessionChatActivity } from "@/hooks/use-session-chat-activity";
 
 import {
   LiveSessionDockLauncher,
@@ -18,6 +19,10 @@ const mockRoomLifecycle = {
   leaveRequested: jest.fn(),
 };
 
+jest.mock("@/app/(app)/work/actions", () => ({editWorkTask: jest.fn(), editWorkGoal: jest.fn(), updateWorkTaskStatus: jest.fn(), updateWorkGoalStatus: jest.fn()}));
+jest.mock("next/navigation", () => ({useRouter: () => ({refresh: jest.fn()})}));
+jest.mock("@/hooks/use-session-chat-activity", () => ({useSessionChatActivity: jest.fn(() => 0)}));
+
 jest.mock("./live-session-room", () => ({
   LiveSessionRoom: ({
     callRoomId,
@@ -26,6 +31,7 @@ jest.mock("./live-session-room", () => ({
     onProtectionChange,
     leaveRequestVersion = 0,
     onExitComplete,
+    collaborationControls,
   }: {
     callRoomId: string;
     captureGroupId: string;
@@ -33,6 +39,7 @@ jest.mock("./live-session-room", () => ({
     onProtectionChange?: (protectedSourceActive: boolean) => void;
     leaveRequestVersion?: number;
     onExitComplete?: () => void;
+    collaborationControls?: React.ReactNode;
   }) => {
     const mountedRoomId = useRef(callRoomId).current;
     const handledLeaveRequest = useRef(0);
@@ -50,12 +57,15 @@ jest.mock("./live-session-room", () => ({
       mockRoomLifecycle.mounted(mountedRoomId);
       return () => mockRoomLifecycle.unmounted(mountedRoomId);
     }, [mountedRoomId]);
-    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}<button onClick={() => onStatusChange?.("connected")}>Simulate connection</button><button onClick={() => onStatusChange?.("reconnecting")}>Simulate reconnect</button></div>;
+    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}{collaborationControls}<button onClick={() => onStatusChange?.("connected")}>Simulate connection</button><button onClick={() => onStatusChange?.("reconnecting")}>Simulate reconnect</button><button onClick={() => onStatusChange?.("ended")}>Simulate ended call</button><button onClick={() => onProtectionChange?.(false)}>Simulate saved sources</button></div>;
   },
 }));
 
 jest.mock("./session-thread", () => ({
-  SessionThread: ({ roomId }: { roomId: string }) => <div>Durable thread {roomId}</div>,
+  SessionThread: ({ roomId, onOpenWork }: { roomId: string; onOpenWork?: () => void }) => {
+    const [draft, setDraft] = useState("");
+    return <div>Durable thread {roomId}<textarea aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} /><button onClick={onOpenWork}>Open linked task</button></div>;
+  },
 }));
 
 const episodeConfig: LiveSessionDockConfig = {
@@ -87,6 +97,101 @@ describe("LiveSessionDockProvider", () => {
     mockRoomLifecycle.mounted.mockClear();
     mockRoomLifecycle.unmounted.mockClear();
     mockRoomLifecycle.leaveRequested.mockClear();
+    jest.mocked(useSessionChatActivity).mockReturnValue(0);
+  });
+
+  it("shows the authenticated account and client context before joining without another confirmation", async () => {
+    mockRoomLifecycle.initialStatus = "ready";
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider currentUser={{name: "Casey Park", email: "casey@quipsly.test"}}><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    expect(screen.getByTestId("call-joining-identity")).toHaveTextContent("Joining as Casey Park (casey@quipsly.test)");
+    expect(screen.getByTestId("call-joining-identity")).toBeVisible();
+    expect(screen.getByText("Coaching engagement", {selector: "p"})).toBeVisible();
+    expect(screen.queryByRole("button", {name: /confirm.*identity/i})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Simulate connection"}));
+    expect(screen.queryByTestId("call-joining-identity")).not.toBeInTheDocument();
+    expect(screen.getByText("In call", {selector: "p"})).toBeVisible();
+  });
+
+  it("does not call a device-setup failure a connection failure", () => {
+    expect(liveSessionStatusLabel("error")).toBe("Needs attention");
+  });
+
+  it("keeps a compact stage with work on phones, then returns to full call without remounting", async () => {
+    const original = global.ResizeObserver;
+    let resize!: ResizeObserverCallback;
+    global.ResizeObserver = class {
+      constructor(callback: ResizeObserverCallback) { resize = callback; }
+      observe() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const user = userEvent.setup();
+    const {unmount} = render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    const measure = (width: number, height: number) => act(() => resize([{contentRect: {width, height}}] as ResizeObserverEntry[], {} as ResizeObserver));
+    measure(430, 760);
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "true");
+    await user.type(screen.getByRole("textbox", {name: "Message"}), "Keep this thought");
+    await user.click(screen.getByRole("button", {name: "Back to call"}));
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "false");
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    expect(screen.getByRole("textbox", {name: "Message"})).toHaveValue("Keep this thought");
+    measure(1200, 900);
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "false");
+    measure(430, 500);
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "false");
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    unmount(); global.ResizeObserver = original;
+  });
+
+  it("opens unread chat from the minimized call without reconnecting or losing the room", async () => {
+    jest.mocked(useSessionChatActivity).mockReturnValue(3);
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    expect(within(screen.getByRole("button", {name: "Show chat"})).getByLabelText("3 unread chat messages")).toBeVisible();
+    expect(screen.getByRole("button", {name: "Show chat"})).toHaveAttribute("aria-description", "3 unread messages");
+    await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+    const minimized = screen.getByLabelText("Minimized live call");
+    expect(within(minimized).getByLabelText("3 unread chat messages")).toBeVisible();
+    await user.click(within(minimized).getByRole("button", {name: "Open unread call chat"}));
+    expect(screen.getByRole("button", {name: "Hide chat"})).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("textbox", {name: "Message"})).toBeVisible();
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+  });
+
+  it("keeps the connected room alive while opening work linked from chat", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    await user.click(screen.getByRole("button", {name: "Open linked task"}));
+    expect(screen.getByLabelText("Minimized live call")).toBeVisible();
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+  });
+
+  it("switches call and chat views without remounting the room or discarding a draft", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "Show chat" }));
+    expect(screen.getByRole("button", { name: "Hide chat" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-panel-open", "true");
+    expect(document.getElementById("live-call-stage-panel")).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "A thought to come back to");
+    await user.click(screen.getByRole("button", { name: "Back to call" }));
+    expect(document.getElementById("live-call-chat-panel")).toHaveClass("hidden");
+    expect(screen.getByRole("button", { name: "Show chat" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "Show chat" }));
+    await user.click(screen.getByRole("button", { name: "Minimize live call" }));
+    await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", { name: "Open live call" }));
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("A thought to come back to");
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
   });
 
   it("distinguishes an open lobby from an actual call and retains state when minimized", async () => {
@@ -98,7 +203,7 @@ describe("LiveSessionDockProvider", () => {
     }
     render(<LiveSessionDockProvider><Status /><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
     expect(screen.getByTestId("connection-status")).toHaveTextContent("ready");
-    expect(screen.getByText("Ready to join")).toBeInTheDocument();
+    expect(screen.getByText("Coaching engagement", {selector: "p"})).toBeVisible();
     expect(screen.queryByRole("link", { name: "Transcript" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Simulate connection" }));
     expect(screen.getByTestId("connection-status")).toHaveTextContent("connected");
@@ -107,6 +212,62 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.getByTestId("connection-status")).toHaveTextContent("reconnecting");
     await user.click(screen.getByRole("button", { name: "Minimize live call" }));
     expect(screen.getByLabelText("Minimized live call")).toHaveTextContent("Reconnecting…");
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+  });
+
+  it("keeps a note editor mounted across chat, minimize and return without leaving the call", async () => {
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({ok: true, json: async () => ({ok: true, actorUserId: "coach", canCreate: true, notes: []})})) as unknown as typeof fetch;
+    const user = userEvent.setup();
+    try {
+      render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+      await user.click(screen.getByRole("button", {name: "Show notes"}));
+      await user.click(await screen.findByRole("button", {name: "New note"}));
+      await user.type(screen.getByRole("textbox", {name: "Note title"}), "A question during our call");
+      await user.click(screen.getByRole("button", {name: "Show chat"}));
+      await user.click(screen.getByRole("button", {name: "Show notes"}));
+      expect(screen.getByRole("textbox", {name: "Note title"})).toHaveValue("A question during our call");
+      await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+      await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
+      expect(screen.getByRole("textbox", {name: "Note title"})).toHaveValue("A question during our call");
+      expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+      expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+      expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+    } finally { global.fetch = previousFetch; sessionStorage.clear(); }
+  });
+
+  it("keeps task drafts and the same call mounted while switching tools and minimizing", async () => {
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({ok: true, json: async () => ({ok: true, actorUserId: "coach", canCreate: true, entries: [], assignmentContext: null})})) as unknown as typeof fetch;
+    const user = userEvent.setup();
+    try {
+      render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+      await user.click(screen.getByRole("button", {name: "Show tasks"}));
+      await user.click(await screen.findByRole("button", {name: "Add task or goal"}));
+      await user.type(await screen.findByRole("textbox", {name: "Task title"}), "A next step during our call");
+      await user.click(screen.getByRole("button", {name: "Show chat"}));
+      await user.click(screen.getByRole("button", {name: "Show tasks"}));
+      expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("A next step during our call");
+      await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+      await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
+      expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("A next step during our call");
+      expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+      expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+      expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+    } finally { global.fetch = previousFetch; }
+  });
+
+  it("reveals the after-call surface without discarding an unfinished chat message", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("button", {name: "Simulate saved sources"}));
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    await user.type(screen.getByRole("textbox", {name: "Message"}), "A thought after our call");
+    await user.click(screen.getByRole("button", {name: "Simulate ended call"}));
+    expect(screen.getByRole("button", {name: "Show chat"})).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-panel-open", "false");
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    expect(screen.getByRole("textbox", {name: "Message"})).toHaveValue("A thought after our call");
     expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
   });
 
@@ -133,7 +294,34 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
   });
 
-  it.each(["Notes", "Transcript", "Goals & tasks", "Episode Room"])("reveals %s while retaining the connected room", async (name) => {
+  it("removes the ended-call overlay after source protection finishes without unmounting recovery", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("button", {name: "Simulate ended call"}));
+    await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+    expect(screen.getByLabelText("Minimized live call")).toBeInTheDocument();
+    await user.click(within(screen.getByLabelText("Minimized live call")).getByRole("button", {name: "Open live call"}));
+    await user.click(screen.getByRole("button", {name: "Simulate saved sources"}));
+    await user.click(screen.getByRole("button", {name: "Minimize live call"}));
+    expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
+    expect(screen.getByTestId("live-room-coaching-session-2")).toBeInTheDocument();
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+  });
+
+  it("opens the session workspace from the lobby without joining or discarding the prepared room", async () => {
+    mockRoomLifecycle.initialStatus = "ready";
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    const link = screen.getByRole("link", {name: "Session workspace"});
+    expect(link).toHaveAttribute("href", "/sessions/coaching-session-2?mode=overview");
+    await user.click(link);
+    expect(screen.getByLabelText("Minimized live call")).toHaveTextContent("Ready to join");
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+  });
+
+  it.each(["Session workspace", "Notes", "Transcript", "Goals & tasks", "Episode Room"])("reveals %s while retaining the connected room", async (name) => {
     const user = userEvent.setup();
     render(<LiveSessionDockProvider><LiveSessionDockLauncher config={episodeConfig} autoOpen /></LiveSessionDockProvider>);
     await user.click(screen.getByRole("link", { name }));
@@ -160,11 +348,12 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.getByTestId("live-room-episode-session-1")).toBeInTheDocument();
   });
 
-  it("respects leaving the call when the remembered browser entry screen remounts", async () => {
+  it.each([null, "BROWSER"])("respects leaving the call when entry remounts with preference %s", async (preference) => {
     const user = userEvent.setup();
     const previousFetch = global.fetch;
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
-    localStorage.setItem("quipsly.session-entry-preference.v1", "BROWSER");
+    if (preference) localStorage.setItem("quipsly.session-entry-preference.v1", preference);
+    else localStorage.removeItem("quipsly.session-entry-preference.v1");
     function Entrance() {
       const dock = useLiveSessionDock();
       return dock.activeCallRoomId ? null : <CaptureAppHandoff roomId={coachingConfig.callRoomId}
@@ -177,7 +366,7 @@ describe("LiveSessionDockProvider", () => {
       await user.click(screen.getByRole("button", { name: "Close live call" }));
       await user.click(screen.getByRole("button", { name: "Leave & close" }));
       expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
-      expect(screen.getByText("Open the lobby whenever you’re ready to join.")).toBeInTheDocument();
+      expect(screen.getByText("Check your microphone and camera, then join when you’re ready.")).toBeInTheDocument();
       expect(localStorage.getItem("quipsly.session-entry-preference.v1")).toBe("BROWSER");
       await user.click(screen.getByRole("button", { name: "Open call lobby" }));
       expect(await screen.findByTestId("live-room-coaching-session-2")).toBeInTheDocument();

@@ -1,0 +1,118 @@
+.surface {
+  container: quipsly-call / inline-size;
+}
+
+.workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stage {
+  container: quipsly-call-stage / inline-size;
+}
+
+.workspace[data-panel-open="true"] .stage {
+  display: none;
+}
+
+/* Keep the same mounted camera elements while a phone user writes or chats.
+   The gallery selects one useful tile; transport and recording never move. */
+.workspace[data-companion="true"] {
+  grid-template-rows: 104px minmax(0, 1fr);
+  gap: 8px;
+}
+.workspace[data-companion="true"] .stage {
+  display: block;
+  overflow: hidden;
+}
+.stage [data-call-companion="true"] {
+  width: calc(100% - 120px);
+  max-width: 220px;
+}
+.stage [data-call-companion="true"] [data-call-heading] {
+  display: none;
+}
+.stage [data-call-companion="true"] [data-call-stage-content] { gap: 0; }
+.stage [data-call-companion="true"] [data-call-stage-content] > :not([data-testid="call-video-stage"]) {
+  display: none;
+}
+
+/* Two useful working panes fit on a landscape tablet as well as a desktop.
+   Query the room itself so browser zoom and embedded layouts stay honest. */
+@container quipsly-call (min-width: 56rem) {
+  .workspace[data-panel-open="true"] {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 23rem);
+  }
+  .workspace[data-panel-open="true"] .stage {
+    display: block;
+  }
+}
+
+.lobby {
+  display: grid;
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "heading" "preview" "setup";
+  align-content: center;
+  gap: 1rem;
+  padding-block: 0.5rem;
+}
+
+.lobbyHeading { grid-area: heading; min-width: 0; }
+.lobbyPreview { grid-area: preview; min-width: 0; }
+.lobbySetup { grid-area: setup; min-width: 0; }
+
+/* Opening chat must not leave the lobby trapped in a desktop two-column
+   layout inside a narrow stage. No media element is moved or remounted. */
+@container quipsly-call-stage (min-width: 44rem) {
+  .lobby {
+    grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 1fr);
+    grid-template-areas: "preview heading" "preview setup";
+    column-gap: 2rem;
+    padding-block: 1.5rem;
+  }
+  .lobbyPreview { align-self: center; }
+}
+
+/* Short landscape windows need a single control row. Text remains in the
+   accessible name; tooltips retain the labels for pointer users. */
+@media (max-height: 500px) and (min-width: 600px) {
+  .surface > header { padding-block: 4px; }
+  .surface > header > details { margin-top: 0; }
+  .surface [data-testid="live-call-workspace"] { padding-block: 8px; gap: 8px; }
+  .surface [data-testid="call-control-rows"] {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .surface [data-testid="call-primary-controls"],
+  .surface [data-testid="call-secondary-controls"] {
+    display: flex;
+    gap: 4px;
+    border: 0;
+    padding: 0;
+  }
+  .surface [data-testid="call-primary-controls"] > button,
+  .surface [data-testid="call-primary-controls"] > span,
+  .surface [data-testid="call-secondary-controls"] button {
+    font-size: 0;
+    line-height: 0;
+    gap: 0;
+    width: 44px;
+    flex: none;
+    padding-inline: 10px;
+  }
+  .surface [data-testid="call-secondary-controls"] button span { font-size: 0; }
+  .surface [data-testid="live-call-controls-slot"] { padding-block: 6px; }
+  .surface [data-testid="call-microphone-status"][data-routine="true"],
+  .surface [data-testid="call-gallery-waiting"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}

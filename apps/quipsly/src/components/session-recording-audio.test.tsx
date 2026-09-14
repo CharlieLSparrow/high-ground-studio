@@ -1,0 +1,61 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { SessionRecordingAudio } from "./session-recording-audio";
+
+const src = "/api/sessions/room-1/recordings/recording-1/media";
+const endpoint = src.replace(/\/media$/, "/audition");
+const response = (body: unknown) => Promise.resolve({ ok: true, json: async () => body } as Response);
+
+afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+test("CAF playback automatically prepares a private listening copy", async () => {
+  global.fetch = jest.fn(() => response({ ok: true, state: "READY", derivative: { url: `${endpoint}/media` } }));
+  render(<SessionRecordingAudio aria-label="Recording" src={src} contentType="audio/x-caf" controls />);
+  await waitFor(() => expect(screen.getByLabelText("Recording").getAttribute("src")).toBe(`${endpoint}/media`));
+  expect(fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ method: "POST", credentials: "same-origin" }));
+});
+
+test.each(["FAILED", "HELD"])("does not promise source retention or automatic recovery for %s preparation", async (state) => {
+  global.fetch = jest.fn(() => response({ ok: true, state }));
+  render(<SessionRecordingAudio aria-label="Recording" src={src} contentType="audio/caf" />);
+  expect(await screen.findByText(/Check recording details/i)).toBeTruthy();
+  expect(screen.queryByText(/original recording is saved|try again shortly/i)).toBeNull();
+  expect(screen.getByLabelText("Recording").getAttribute("src")).toBeNull();
+});
+
+test("ordinary audio stays direct, with automatic fallback for unsupported source formats", async () => {
+  global.fetch = jest.fn(() => response({ ok: true, state: "READY", derivative: { url: `${endpoint}/media` } }));
+  render(<SessionRecordingAudio aria-label="Recording" src={src} controls />);
+  expect(fetch).not.toHaveBeenCalled();
+  fireEvent.error(screen.getByLabelText("Recording"));
+  await waitFor(() => expect(screen.getByLabelText("Recording").getAttribute("src")).toBe(`${endpoint}/media`));
+});
+
+test("changing sources cancels stale preparation and refuses a different recording", async () => {
+  let resolve!: (value: Response) => void;
+  global.fetch = jest.fn(() => new Promise<Response>((done) => { resolve = done; }));
+  const view = render(<SessionRecordingAudio aria-label="Recording" src={src} contentType="audio/caf" />);
+  const options = (fetch as jest.Mock).mock.calls[0][1];
+  view.rerender(<SessionRecordingAudio aria-label="Recording" src="/audio/other.m4a" />);
+  expect(options.signal.aborted).toBe(true);
+  resolve(await response({ ok: true, state: "READY", derivative: { url: `${endpoint}/media` } }));
+  await waitFor(() => expect(screen.getByLabelText("Recording").getAttribute("src")).toBe("/audio/other.m4a"));
+});
+
+test("unexpected derivative identity offers retry instead of playing another recording", async () => {
+  global.fetch = jest.fn(() => response({ ok: true, state: "READY", derivative: { url: "/other/media" } }));
+  render(<SessionRecordingAudio aria-label="Recording" src={src} contentType="audio/caf" />);
+  expect(await screen.findByRole("button", { name: "Retry playback" })).toBeTruthy();
+  expect(screen.getByLabelText("Recording").getAttribute("src")).toBeNull();
+});
+
+test("an unresponsive preparation request times out into retry instead of spinning forever", async () => {
+  jest.useFakeTimers();
+  global.fetch = jest.fn((_url, options) => new Promise((_resolve, reject) => {
+    options?.signal?.addEventListener("abort", () => reject(new DOMException("Canceled", "AbortError")));
+  }));
+  render(<SessionRecordingAudio aria-label="Recording" src={src} contentType="audio/caf" controls />);
+  await act(async () => { jest.advanceTimersByTime(20_000); });
+  expect(screen.getByText(/taking longer than expected/)).toBeInTheDocument();
+  expect(screen.getByRole("button", {name: "Retry playback"})).toBeEnabled();
+  expect(screen.queryByText("Preparing playback…")).toBeNull();
+});

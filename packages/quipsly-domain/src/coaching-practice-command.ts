@@ -498,13 +498,13 @@ export function buildQuipslyCoachingPracticeCommand(
     generatedAt: new Date(now).toISOString(),
     headline:
       counts.live > 0
-        ? "A client is waiting in a live Session."
+        ? "You have an open session."
         : allCaughtUp
           ? "You are caught up."
           : `${actionableCount} ${actionableCount === 1 ? "thing needs" : "things need"} your attention.`,
     detail:
       counts.live > 0
-        ? "Join first. Quipsly will keep preparation and follow-through waiting safely."
+        ? "Open the room when you’re ready. Your preparation and follow-up stay here."
         : allCaughtUp
           ? nextBooking
             ? "Your next Session is ready whenever you want to review it."

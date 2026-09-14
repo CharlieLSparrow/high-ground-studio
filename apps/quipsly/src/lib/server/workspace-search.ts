@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import {
@@ -7,13 +7,17 @@ import {
 } from "@/lib/server/session-note-access";
 import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import { personalOrSharedWorkspaceTaskAccessWhere } from "@/lib/server/task-access";
+import { sessionActorAccessWhere } from "./session-access";
+import { personalOrSharedCoachingGoalAccessWhere } from "./coaching-work-access";
 
 const RESULT_LIMIT = 10;
+const TAG_MATCH_ID_LIMIT = 500;
 const TAG_RESULT_SELECT = {
   id: true,
   projectId: true,
   slug: true,
   label: true,
+  hexColor: true,
   description: true,
   category: true,
   isPrivate: true,
@@ -25,16 +29,6 @@ const TAG_RESULT_SELECT = {
   },
   project: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.StudioTagSelect;
-
-function roomAccessWhere(userId: string, projectIds: string[] = []) {
-  return [
-    { createdByUserId: userId },
-    { participants: { some: { userId, accessStatus: "ACTIVE" as const } } },
-    { booking: { clientUserId: userId } },
-    { booking: { coachUserId: userId } },
-    ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
-  ];
-}
 
 function tagTextWhere(query: string): Prisma.StudioTagWhereInput {
   return {
@@ -105,9 +99,10 @@ function emptyWorkspaceResult({
 }
 
 export async function searchWorkspace(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   input: {
     actorUserId: string;
+    actorEmail?: string;
     query?: string;
     exactTagId?: string;
     visibleProjects: Array<{
@@ -124,13 +119,26 @@ export async function searchWorkspace(
     return emptyWorkspaceResult({ query, projectCount: 0 });
   }
   const projects = input.visibleProjects;
+  const sessionAccess = sessionActorAccessWhere({ id: input.actorUserId, primaryEmail: input.actorEmail });
   const projectIds = projects.map((project) => project.id);
   const projectTeamProjectIds = projects
     .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
     .map((project) => project.id);
-  const requestedTag = requestedTagId && projectIds.length
+  const taskAccess: Prisma.ActionItemWhereInput = { OR: personalOrSharedWorkspaceTaskAccessWhere(input.actorUserId, projectIds) };
+  const goalAccess: Prisma.GoalWhereInput = { OR: [
+    ...personalOrSharedCoachingGoalAccessWhere(input.actorUserId),
+    { AND: [{ sourceJson: { path: ["visibility"], equals: "SESSION_SHARED" } }, { room: sessionAccess }] },
+  ] };
+  // A client can follow a label on authorized work without being admitted to
+  // the coach's entire Nest. Every result still has its own access predicate.
+  const visibleTagAccess: Prisma.StudioTagWhereInput = { OR: [
+    { projectId: { in: projectIds } },
+    { actionItems: { some: { actionItem: taskAccess } } },
+    { goals: { some: { goal: goalAccess } } },
+  ] };
+  const requestedTag = requestedTagId
     ? await prisma.studioTag.findFirst({
-        where: { id: requestedTagId, projectId: { in: projectIds } },
+        where: { id: requestedTagId, ...visibleTagAccess },
         select: TAG_RESULT_SELECT,
       })
     : null;
@@ -140,6 +148,7 @@ export async function searchWorkspace(
       where: {
         id: requestedTag.mergedIntoTagId,
         projectId: requestedTag.projectId,
+        ...visibleTagAccess,
       },
       select: TAG_RESULT_SELECT,
     });
@@ -160,13 +169,39 @@ export async function searchWorkspace(
         redirected: requestedTag.id !== resolvedTag.id,
         requestedLabel: requestedTag.label,
         resolvedLabel: resolvedTag.label,
-        project: resolvedTag.project,
+        project: projectIds.includes(resolvedTag.projectId) ? resolvedTag.project : null,
       }
     : null;
   if (resolvedTag) query = resolvedTag.label;
-  const visibleTagMatch: Prisma.StudioTagWhereInput = {
-    projectId: { in: projectIds },
-    ...tagTextWhere(query),
+  const visibleTagTextMatch: Prisma.StudioTagWhereInput = {
+    OR: [
+      { AND: [{ projectId: { in: projectIds } }, tagTextWhere(query)] },
+      { AND: [visibleTagAccess, { OR: [
+        { label: { contains: query, mode: "insensitive" } },
+        { slug: { contains: query, mode: "insensitive" } },
+      ] }] },
+    ],
+  };
+  // Resolve this independent predicate once, instead of expanding the same
+  // membership joins inside every record's text/tag OR. Bound the ID list;
+  // broad searches fall back to the predicate, never a truncated set of tags.
+  const matchingTags = focusedTagId ? null : await prisma.studioTag.findMany({
+    where: visibleTagTextMatch,
+    select: { id: true },
+    take: TAG_MATCH_ID_LIMIT + 1,
+  });
+  const visibleTagMatch: Prisma.StudioTagWhereInput = matchingTags && matchingTags.length <= TAG_MATCH_ID_LIMIT
+    ? { id: { in: matchingTags.map(tag => tag.id) } }
+    : visibleTagTextMatch;
+  // For a task/goal that already passed its own access check, an attached tag
+  // is visible by definition. Do not recursively re-run task and goal access
+  // through that same tag. Catalog-only metadata still requires Nest access.
+  const assignedWorkTagMatch: Prisma.StudioTagWhereInput = {
+    OR: [
+      { AND: [{ projectId: { in: projectIds } }, tagTextWhere(query)] },
+      { label: { contains: query, mode: "insensitive" } },
+      { slug: { contains: query, mode: "insensitive" } },
+    ],
   };
   const exactTaskTagMatch = focusedTagId
     ? [{ tagLinks: { some: { tagId: focusedTagId } } } satisfies Prisma.ActionItemWhereInput]
@@ -174,14 +209,14 @@ export async function searchWorkspace(
   const taskContentMatches: Prisma.ActionItemWhereInput[] = exactTaskTagMatch ?? [
     { title: { contains: query, mode: "insensitive" } },
     { detail: { contains: query, mode: "insensitive" } },
-    ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.ActionItemWhereInput] : []),
+    { tagLinks: { some: { tag: assignedWorkTagMatch } } },
   ];
   const goalContentMatches: Prisma.GoalWhereInput[] = focusedTagId ? [
     { tagLinks: { some: { tagId: focusedTagId } } },
   ] : [
     { title: { contains: query, mode: "insensitive" } },
     { description: { contains: query, mode: "insensitive" } },
-    ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.GoalWhereInput] : []),
+    { tagLinks: { some: { tag: assignedWorkTagMatch } } },
   ];
   const sessionContentMatches: Prisma.CallRoomWhereInput[] = focusedTagId ? [
     { tagLinks: { some: { tagId: focusedTagId } } },
@@ -215,35 +250,35 @@ export async function searchWorkspace(
     ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentWhereInput] : []),
     ...(projectIds.length ? [{ taggedSpans: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentWhereInput] : []),
   ];
-  const visibleAssignedTags = {
-    where: { tag: { projectId: { in: projectIds } } },
+  const assignedWorkTags = {
     orderBy: { createdAt: "asc" as const },
     take: 12,
-    select: { tag: { select: { id: true, slug: true, label: true, isActive: true } } },
+    select: { tag: { select: { id: true, slug: true, label: true, hexColor: true, isActive: true } } },
   };
-  const [taskRows, goals, sessions, noteRows, sources, documents, annotations, mediaClips, tags] = await Promise.all([
+  const visibleAssignedTags = { ...assignedWorkTags, where: { tag: visibleTagAccess } };
+  const [taskRows, goalRows, sessionRows, noteRows, sources, documents, annotations, mediaClips, tagRows] = await Promise.all([
     prisma.actionItem.findMany({
-      where: { AND: [{ OR: personalOrSharedWorkspaceTaskAccessWhere(input.actorUserId, projectIds) }, { OR: taskContentMatches }] },
+      where: { AND: [taskAccess, { OR: taskContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT + 10,
       select: {
         id: true, title: true, detail: true, status: true, dueAt: true, sourceJson: true,
         room: { select: { id: true, title: true } },
         project: { select: { id: true, name: true, slug: true } },
-        tagLinks: visibleAssignedTags,
+        tagLinks: assignedWorkTags,
       },
     }),
     prisma.goal.findMany({
-      where: { AND: [{ OR: [{ ownerUserId: input.actorUserId }, { room: { OR: roomAccessWhere(input.actorUserId, projectIds) } }, { booking: { OR: [{ clientUserId: input.actorUserId }, { coachUserId: input.actorUserId }] } }] }, { OR: goalContentMatches }] },
+      where: { AND: [goalAccess, { OR: goalContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
       select: {
         id: true, title: true, description: true, status: true,
         project: { select: { id: true, name: true, slug: true } },
         room: { select: { title: true } },
-        tagLinks: visibleAssignedTags,
+        tagLinks: assignedWorkTags,
       },
     }),
     prisma.callRoom.findMany({
-      where: { AND: [{ OR: roomAccessWhere(input.actorUserId, projectIds) }, { OR: sessionContentMatches }] },
+      where: { AND: [sessionAccess, { OR: sessionContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
       select: {
         id: true, title: true, purpose: true, status: true, projectSlug: true, scheduledStart: true,
@@ -254,7 +289,7 @@ export async function searchWorkspace(
     prisma.coachingNote.findMany({
       where: {
         AND: [
-          { room: { OR: roomAccessWhere(input.actorUserId, projectIds) } },
+          { room: sessionAccess },
           { kind: { in: [...SESSION_NOTE_VISIBLE_KINDS] } },
           workspaceNoteVisibilityWhere({
             actorUserId: input.actorUserId,
@@ -340,7 +375,7 @@ export async function searchWorkspace(
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
       select: { id: true, kind: true, body: true, exactText: true, visibility: true, sourceUnit: { select: { title: true } }, project: { select: { name: true, slug: true } } },
     }) : Promise.resolve([]),
-    focusedTagId && resolvedTag ? prisma.mediaClip.findMany({
+    focusedTagId && resolvedTag && projectIds.includes(resolvedTag.projectId) ? prisma.mediaClip.findMany({
       where: {
         tags: { some: { id: focusedTagId } },
         mediaAsset: {
@@ -370,18 +405,25 @@ export async function searchWorkspace(
         },
       },
     }) : Promise.resolve([]),
-    resolvedTag ? Promise.resolve([resolvedTag]) : projectIds.length ? prisma.studioTag.findMany({
+    resolvedTag ? Promise.resolve([resolvedTag]) : prisma.studioTag.findMany({
       where: {
-        projectId: { in: projectIds },
         isActive: true,
-        ...tagTextWhere(query),
+        AND: [visibleTagMatch],
       },
       orderBy: [{ label: "asc" }, { updatedAt: "desc" }],
       take: RESULT_LIMIT,
       select: TAG_RESULT_SELECT,
-    }) : Promise.resolve([]),
+    }),
   ]);
-  const tasks = taskRows.filter((task) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).slice(0, RESULT_LIMIT);
+  const redactNest = <T extends { project: { id: string } | null }>(row: T) => ({
+    ...row, project: row.project && projectIds.includes(row.project.id) ? row.project : null,
+  });
+  const tasks = taskRows.filter((task) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).slice(0, RESULT_LIMIT).map(redactNest);
+  const goals = goalRows.map(redactNest);
+  const sessions = sessionRows.map(redactNest);
+  const tags = tagRows.map(tag => projectIds.includes(tag.projectId) ? tag : {
+    ...tag, project: null, description: null, aliases: [],
+  });
   const notes = noteRows.filter((note): note is typeof note & { room: NonNullable<typeof note.room> } => Boolean(note.room));
   return {
     query,

@@ -28,6 +28,15 @@ export const SESSION_NOTE_VIEWS = [
 
 export type SessionNoteView = typeof SESSION_NOTE_VIEWS[number]["id"];
 
+export function sessionNoteCreationDefaults(view: SessionNoteView, canUseProjectTeamNotes: boolean): {
+  kind: EditableSessionNoteKind; visibility: SessionNoteVisibility;
+} {
+  if (view === "private") return {kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE"};
+  if (view === "client-safe") return {kind: "SESSION_NOTE", visibility: "CLIENT_SAFE"};
+  if (view === "production" && canUseProjectTeamNotes) return {kind: "PRODUCTION", visibility: "PROJECT_TEAM"};
+  return {kind: view === "decisions" ? "DECISION" : "SESSION_NOTE", visibility: "SESSION_SHARED"};
+}
+
 export type SessionWorkspaceNote = {
   id: string;
   title: string | null;
@@ -45,8 +54,9 @@ export type SessionWorkspaceNote = {
   revisionCount: number;
   createdAt: string;
   updatedAt: string;
-  tags: Array<{ id: string; label: string; slug: string }>;
+  tags: Array<{ id: string; label: string; slug: string; hexColor?: string | null }>;
   sourceAnchor?: TranscriptDerivedNoteSourceAnchor | null;
+  sourceHref?: string | null;
   lastMergedSource?: TranscriptMergedNoteSource | null;
 };
 
@@ -71,6 +81,8 @@ export function sessionNoteVisibilityLabel(visibility: SessionNoteVisibility) {
 }
 
 export function sessionNoteKindLabel(kind: SessionNoteKind) {
+  if (kind === "SUMMARY") return "Recap";
+  if (kind === "HIGHLIGHT") return "Key moment";
   if (kind === "FOLLOW_UP") return "Continuity brief";
   if (kind === "DECISION") return "Decision";
   if (kind === "PRODUCTION") return "Production note";

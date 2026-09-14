@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { SessionRecordingHealthListeningNavigator } from "./session-recording-health-listening-navigator";
 import type { SessionRecordingHealth } from "./session-recording-health";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { OriginalRecordings } from "./session-recordings-workspace";
 
 function signal(observations: Array<{ kind: "possible-dropout"; severity: "attention"; startSeconds: number; endSeconds: number; detail: string; requiresListening: true }> = []) {
   return {
@@ -111,6 +112,27 @@ function evidence(): SessionSourceEvidence {
 }
 
 describe("SessionRecordingHealthListeningNavigator", () => {
+  it("loads an original only while its disclosure is open and retains its selected position", () => {
+    const view = render(<OriginalRecordings><SessionRecordingHealthListeningNavigator roomId="room"
+      health={health()} evidence={evidence()} preferredSourceId="master" initialPlaybackSeconds={8} /></OriginalRecordings>);
+    const details = screen.getByText("Original recordings").closest("details")!;
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const first = view.container.querySelector("audio")!;
+    expect(first).not.toBeNull();
+    expect(first).toHaveAttribute("data-flight-deck-audition-media", "master");
+    details.open = false;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const reopened = view.container.querySelector("audio")!;
+    expect(reopened).not.toBe(first);
+    Object.defineProperty(reopened, "readyState", {value: 1});
+    fireEvent.loadedMetadata(reopened);
+    expect(reopened.currentTime).toBe(8);
+  });
   beforeEach(() => {
     jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
@@ -131,7 +153,7 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     expect(screen.getByText(/No configured complete-decode threshold flagged a range/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open in Transcript at 00:00" })).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript&source=master&at=0#transcript-audio-review",
+      "/sessions/room-1?mode=transcript&source=master&at=0",
     );
   });
 
@@ -139,10 +161,36 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace" />);
     expect(screen.getByRole("heading", { name: "Listen to your recording" })).toBeVisible();
     expect(screen.getByLabelText("Protected source MV7i master.wav")).toHaveAttribute("src", "/api/ingest/media/source-master");
-    expect(screen.getByRole("img", { name: "Complete-decode waveform overview" })).toBeVisible();
+    expect(screen.getByRole("img", { name: "Source waveform overview" })).toBeVisible();
     expect(screen.queryByText(/no heard\/approved claim|proof-listen receipt/)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole("slider", { name: "Selected source time" }), { target: { value: "7.25" } });
-    expect(screen.getByRole("link", { name: "Open in Transcript at 00:07" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=master&at=7.25#transcript-audio-review");
+    expect(screen.queryByRole("slider", {name: "Selected source time"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Play from selected time"})).not.toBeInTheDocument();
+    const audio = screen.getByLabelText("Protected source MV7i master.wav") as HTMLAudioElement;
+    audio.currentTime = 7.25;
+    fireEvent.seeked(audio);
+    expect(screen.getByRole("link", { name: "Open in Transcript at 00:07" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=master&at=7.25");
+  });
+  it("gives generated track names a readable workspace label without renaming user files or technical evidence", () => {
+    const generated = health();
+    generated.sources[1]!.label = "Mobile audio master · df145491";
+    const view = render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={generated} evidence={evidence()} presentation="workspace" />);
+    expect(screen.getByLabelText("Protected source Microphone recording")).toHaveAttribute("src", "/api/ingest/media/source-master");
+    expect(screen.getByText("Historical browser.wav")).toBeVisible();
+    view.rerender(<SessionRecordingHealthListeningNavigator roomId="room-1" health={generated} evidence={evidence()} presentation="technical" />);
+    expect(screen.getByLabelText("Protected source Mobile audio master · df145491")).toHaveAttribute("src", "/api/ingest/media/source-master");
+  });
+  it("restores a source-local moment and reports explicit seek and participant changes", () => {
+    const selected = jest.fn();
+    render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace"
+      preferredSourceId="master" initialPlaybackSeconds={7.25} onMediaFocusChange={selected} />);
+    expect(screen.getByRole("link", {name: "Open in Transcript at 00:07"})).toBeInTheDocument();
+    const audio = screen.getByLabelText("Protected source MV7i master.wav") as HTMLAudioElement;
+    audio.currentTime = 12.5;
+    fireEvent.seeked(audio);
+    expect(selected).toHaveBeenLastCalledWith("master", 12.5);
+    fireEvent.click(screen.getByRole("button", {name: /Historical browser.wav/}));
+    expect(selected).toHaveBeenLastCalledWith("historical", 0);
+    expect(screen.getByRole("link", {name: "Open in Transcript at 00:00"})).toBeInTheDocument();
   });
 
   it("switches source identity and plays exact-time observations without claiming playback review", async () => {
@@ -156,9 +204,27 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/source check from 00:04/i));
     expect(screen.getByRole("link", { name: "Open in Transcript at 00:04" })).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript&source=historical&at=4#transcript-audio-review",
+      "/sessions/room-1?mode=transcript&source=historical&at=4",
     );
     expect(screen.getByText(/no heard\/approved claim is written/i)).toBeInTheDocument();
+  });
+
+  it("honors a source link and reports playback independently of processing health", () => {
+    const sourceHealth = health();
+    sourceHealth.sources[0]!.state = "BLOCKED";
+    const view = render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={sourceHealth}
+      evidence={evidence()} presentation="workspace" preferredSourceId="historical" />);
+    const audio = screen.getByLabelText("Protected source Historical browser.wav");
+    fireEvent.loadedMetadata(audio);
+    expect(screen.getByText("Charlie · Ready to play")).toBeInTheDocument();
+    expect(screen.queryByText(/Charlie · BLOCKED/)).not.toBeInTheDocument();
+    (audio as HTMLAudioElement).currentTime = 7;
+    fireEvent.seeked(audio);
+    view.rerender(<SessionRecordingHealthListeningNavigator roomId="room-1"
+      health={{...sourceHealth, sources: sourceHealth.sources.slice(1)}} evidence={evidence()} presentation="workspace" />);
+    expect(screen.queryByLabelText("Protected source Historical browser.wav")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Protected source MV7i master.wav")).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Open in Transcript at 00:00"})).toBeInTheDocument();
   });
 
   it("fails visibly when no authorized protected source is attached", () => {
@@ -169,5 +235,48 @@ describe("SessionRecordingHealthListeningNavigator", () => {
 
     expect(screen.getByRole("heading", { name: "Protected playback is not attached" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Check up to 10 seconds/ })).not.toBeInTheDocument();
+  });
+
+  it("marks the actual media playhead and only offers edit actions for included tracks", () => {
+    const mark = jest.fn();
+    render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace"
+      trimControls={{selectedSourceIds: ["master"], startSeconds: 2, endSeconds: 18, disabled: false, onTrimBoundary: mark}} />);
+    expect(screen.getByRole("status", {name: "Recording trim range"})).toHaveTextContent("Keep 00:02 – 00:18 of the session");
+    expect(screen.getByRole("button", {name: "Set start here"})).toBeDisabled();
+    const audio = screen.getByLabelText("Protected source MV7i master.wav") as HTMLAudioElement;
+    fireEvent.loadedMetadata(audio);
+    // No timeupdate has fired yet: the mark still uses the real media clock.
+    audio.currentTime = 6.125;
+    fireEvent.click(screen.getByRole("button", {name: "Set start here"}));
+    expect(mark).toHaveBeenLastCalledWith("start", "master", 6.125);
+    audio.currentTime = 15.375;
+    fireEvent.click(screen.getByRole("button", {name: "Set end here"}));
+    expect(mark).toHaveBeenLastCalledWith("end", "master", 15.375);
+    fireEvent.click(screen.getByRole("button", {name: /Historical browser.wav/}));
+    fireEvent.loadedMetadata(screen.getByLabelText("Protected source Historical browser.wav"));
+    expect(screen.getByRole("button", {name: "Set start here"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Set end here"})).toBeDisabled();
+  });
+
+  it("maps session trims and transcript cuts onto a late participant's source clock", async () => {
+    const mark = jest.fn();
+    const {container} = render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace"
+      trimControls={{selectedSourceIds: ["master"], sourceOffsets: {master: 10}, removedRanges: [{startSeconds: 15, endSeconds: 17}], startSeconds: 12, endSeconds: 28, disabled: false, onTrimBoundary: mark}} />);
+    const audio = screen.getByLabelText("Protected source MV7i master.wav") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", {value: 1, configurable: true});
+    fireEvent.loadedMetadata(audio);
+    expect(container.querySelector("[data-trimmed-range]")).toHaveStyle({width: "10%"});
+    expect(container.querySelector("[data-removed-range]")).toHaveStyle({left: "25%", width: "10%"});
+    fireEvent.change(screen.getByRole("slider", {name: "Seek recording waveform"}), {target: {value: "7.25"}});
+    expect(audio.currentTime).toBe(7.25);
+    fireEvent.click(screen.getByRole("button", {name: "Set start here"}));
+    expect(mark).toHaveBeenCalledWith("start", "master", 7.25);
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Check trim start"}));});
+    expect(audio.currentTime).toBe(2);
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Check trim end"}));});
+    expect(audio.currentTime).toBe(13);
+    audio.currentTime = 18;
+    fireEvent.timeUpdate(audio);
+    expect(audio.pause).toHaveBeenCalled();
   });
 });

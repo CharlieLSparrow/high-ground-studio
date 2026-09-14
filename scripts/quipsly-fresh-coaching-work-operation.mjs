@@ -39,6 +39,24 @@ const titles = {
   goal: `Coaching relationship goal ${nonce}`,
 };
 
+async function openSection(page, name) {
+  const tab = page.getByRole("tablist", { name: "Client space", exact: true })
+    .getByRole("tab", { name, exact: true });
+  await tab.click();
+  await page.getByRole("tabpanel", { name, exact: true }).waitFor({ timeout: 30_000 });
+  assert.equal(await tab.getAttribute("aria-selected"), "true");
+}
+
+async function showWorkList(page) {
+  const back = page.getByRole("button", { name: "Back to work", exact: true });
+  if (await back.isVisible()) await back.click();
+  await page.getByRole("searchbox", { name: "Search this work", exact: true }).waitFor();
+}
+
+function workItem(page, kind, title) {
+  return page.getByRole("button", { name: `Open ${kind.toLowerCase()}: ${title}`, exact: true });
+}
+
 async function openCreateForm(page) {
   const work = page.getByRole("region", { name: "Notes, tasks, and goals" });
   await work.waitFor({ timeout: 30_000 });
@@ -48,15 +66,16 @@ async function openCreateForm(page) {
 }
 
 async function createWork(page, { kind, title, body, visibility = "SHARED" }) {
+  await showWorkList(page);
   const { work, form } = await openCreateForm(page);
-  const existing = work.getByText(title, { exact: true });
+  const existing = workItem(page, kind, title);
   if (!(await existing.count())) {
     await form.locator('select[name="kind"]').selectOption(kind);
     if (kind === "NOTE") await form.locator('select[name="visibility"]').selectOption(visibility);
     await form.locator('input[name="title"]').fill(title);
     await form.locator('textarea[name="body"]').fill(body);
     await form.getByRole("button", { name: "Save to coaching home", exact: true }).click();
-    await work.getByText(title, { exact: true }).waitFor({ timeout: 30_000 }).catch(async (error) => {
+    await work.getByRole("heading", { name: title, exact: true }).waitFor({ timeout: 30_000 }).catch(async (error) => {
       const notices = await work.getByRole("status").allInnerTexts();
       throw new Error(`${kind} did not appear after rendered save. Notices: ${JSON.stringify(notices)}. ${error.message}`);
     });
@@ -74,10 +93,12 @@ try {
   const clientPassword = readRetainedQAPassword({ service: target.keychainService, account: target.identities.client.email });
   assert(clientPassword, "Fresh client Keychain password is unavailable.");
   await signInThroughRenderedLogin({ page: clientPage, baseURL, identity: target.identities.client, password: clientPassword, callbackPath: engagementPath });
-  await clientPage.getByText("Private to the people shown here", { exact: true }).waitFor({ timeout: 30_000 });
-  await clientPage.getByRole("heading", { name: "Session history", exact: true }).waitFor();
-  await clientPage.getByRole("link", { name: /^(Prepare|Join|Review) session$/ }).first().waitFor();
+  await openSection(clientPage, "Sessions");
+  const sessions = clientPage.getByRole("tabpanel", { name: "Sessions", exact: true });
+  await sessions.getByRole("heading", { name: "Sessions", exact: true }).waitFor();
+  await sessions.locator(`a[href^="/sessions/${target.roomId}"]`).first().waitFor();
   await assertNoHorizontalOverflow(clientPage.locator("main").last(), "fresh client coaching home at phone width");
+  await openSection(clientPage, "Work");
 
   const sharedNoteId = await createWork(clientPage, { kind: "NOTE", title: titles.sharedNote, body: "Keep this reflection visible to both people across Sessions." });
   const privateNoteId = await createWork(clientPage, { kind: "NOTE", title: titles.privateNote, body: "This must remain visible only to its author.", visibility: "PRIVATE" });
@@ -85,6 +106,7 @@ try {
   const goalId = await createWork(clientPage, { kind: "GOAL", title: titles.goal, body: "Keep one durable outcome visible across the relationship." });
 
   const chatMessage = `Fresh relationship message ${nonce}: keep the next step visible.`;
+  await openSection(clientPage, "Chat");
   const clientConversation = clientPage.getByRole("region", { name: "Conversation" });
   const clientMessage = clientConversation.locator("article").filter({ hasText: chatMessage });
   if (!(await clientMessage.count())) {
@@ -96,14 +118,19 @@ try {
   const coachPassword = readRetainedQAPassword({ service: target.keychainService, account: target.identities.coach.email });
   assert(coachPassword, "Fresh coach Keychain password is unavailable.");
   await signInThroughRenderedLogin({ page: coachPage, baseURL, identity: target.identities.coach, password: coachPassword, callbackPath: engagementPath });
+  await openSection(coachPage, "Work");
   const coachWork = coachPage.getByRole("region", { name: "Notes, tasks, and goals" });
   await coachWork.waitFor({ timeout: 30_000 });
-  await coachWork.getByText(titles.sharedNote, { exact: true }).waitFor();
-  await coachWork.getByText(titles.task, { exact: true }).waitFor();
-  await coachWork.getByText(titles.goal, { exact: true }).waitFor();
+  await showWorkList(coachPage);
+  await workItem(coachPage, "NOTE", titles.sharedNote).waitFor();
+  await workItem(coachPage, "TASK", titles.task).waitFor();
+  await workItem(coachPage, "GOAL", titles.goal).waitFor();
   assert.equal(await coachWork.getByText(titles.privateNote, { exact: true }).count(), 0, "Coach saw the client's private note.");
+  await openSection(coachPage, "Chat");
   await coachPage.getByRole("region", { name: "Conversation" }).locator("article").filter({ hasText: chatMessage }).first().waitFor();
   await assertNoHorizontalOverflow(coachPage.locator("main").last(), "fresh coach coaching home at phone width");
+  await openSection(coachPage, "Work");
+  await workItem(coachPage, "TASK", titles.task).click();
 
   const taskCard = coachWork.locator("article").filter({ hasText: titles.task });
   const completeButton = taskCard.getByRole("button", { name: "Complete", exact: true });
@@ -117,9 +144,14 @@ try {
   }
   await taskCard.getByText("done", { exact: true }).waitFor();
   await clientPage.reload({ waitUntil: "domcontentloaded" });
+  await openSection(clientPage, "Work");
+  await showWorkList(clientPage);
+  await workItem(clientPage, "TASK", titles.task).click();
   const refreshedClientWork = clientPage.getByRole("region", { name: "Notes, tasks, and goals" });
   await refreshedClientWork.locator("article").filter({ hasText: titles.task }).getByText("done", { exact: true }).waitFor({ timeout: 20_000 });
-  await refreshedClientWork.getByText(titles.privateNote, { exact: true }).waitFor();
+  await showWorkList(clientPage);
+  await workItem(clientPage, "NOTE", titles.privateNote).click();
+  await refreshedClientWork.getByRole("heading", { name: titles.privateNote, exact: true }).waitFor();
 
   const readback = await prisma.coachingEngagement.findUniqueOrThrow({
     where: { id: target.engagementId },
@@ -156,6 +188,15 @@ try {
     workIds: { sharedNoteId, privateNoteId, taskId, goalId },
     boundaries: { productFormsOnlyForWrites: true, directDatabaseWrites: false, externalSideEffects: false, humanNoviceAcceptanceProven: false },
   }, null, 2));
+} catch (error) {
+  for (const [role, page] of [["client", clientPage], ["coach", coachPage]]) {
+    console.error(JSON.stringify({ role, navigation: await page.evaluate(() => ({
+      work: new URL(location.href).searchParams.get("work"), section: location.hash,
+      tabs: [...document.querySelectorAll('[role="tab"]')].map((tab) => ({label: tab.textContent, selected: tab.getAttribute("aria-selected")})),
+      items: [...document.querySelectorAll('article[data-work-id]')].map((item) => ({id: item.dataset.workId, hidden: item.hidden, visible: Boolean(item.getClientRects().length)})),
+    })).catch(() => null) }));
+  }
+  throw error;
 } finally {
   await clearRenderedSession(clientPage, baseURL, "fresh client").catch(() => undefined);
   await clearRenderedSession(coachPage, baseURL, "fresh coach").catch(() => undefined);

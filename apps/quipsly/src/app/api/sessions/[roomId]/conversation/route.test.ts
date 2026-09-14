@@ -77,6 +77,7 @@ function row(
 
 function prismaBase() {
   const prisma: any = {
+    actionItem: {findMany: jest.fn().mockResolvedValue([])},
     callRoom: {
       findFirst: jest.fn().mockResolvedValue({ id: roomId, title: "Session" }),
     },
@@ -106,6 +107,27 @@ describe("Session conversation route", () => {
     jest
       .mocked(getQuipslySessionFromRequest)
       .mockResolvedValue({ user: actor } as any);
+  });
+
+  it("returns private unread activity without loading message bodies or marking them read", async () => {
+    const prisma = prismaBase();
+    prisma.sessionConversationMessage.count.mockResolvedValue(3);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+    const response = await GET(new Request(`http://localhost/api/sessions/${roomId}/conversation?view=activity`), context());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ok: true, room: {id: roomId, title: "Session"}, unreadCount: 3});
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(prisma.sessionConversationMessage.findMany).not.toHaveBeenCalled();
+    expect(prisma.sessionConversationReadCursor.upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not leak even unread counts to an unrelated account", async () => {
+    const prisma = prismaBase();
+    prisma.callRoom.findFirst.mockResolvedValue(null);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+    const response = await GET(new Request(`http://localhost/api/sessions/${roomId}/conversation?view=activity`), context());
+    expect(response.status).toBe(404);
+    expect(prisma.sessionConversationMessage.count).not.toHaveBeenCalled();
   });
 
   it("rejects signed-out reads before querying Session data", async () => {
@@ -182,7 +204,7 @@ describe("Session conversation route", () => {
     expect(prisma.sessionConversationMessage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: 200,
+        take: 201,
       }),
     );
   });
@@ -218,10 +240,11 @@ describe("Session conversation route", () => {
     expect(response.status).toBe(200);
     expect(prisma.sessionConversationMessage.count).toHaveBeenCalledWith({
       where: expect.objectContaining({
-        OR: [
+        OR: [{authorUserId: null}, {authorUserId: {not: actor.id}}],
+        AND: [{ OR: [
           { createdAt: { gt: lastReadAt } },
           { createdAt: lastReadAt, id: { gt: "message-b" } },
-        ],
+        ] }],
       }),
     });
   });
@@ -401,6 +424,18 @@ describe("Session conversation route", () => {
         }),
       }),
     );
+  });
+
+  it("retries a conflicting read acknowledgement in a serializable transaction", async () => {
+    const prisma = prismaBase();
+    prisma.sessionConversationMessage.findFirst.mockResolvedValue({id: "message-1", createdAt: new Date("2026-08-24T19:00:00Z")});
+    prisma.$transaction.mockRejectedValueOnce(Object.assign(new Error("Concurrent cursor update"), {code: "P2034"}));
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+    const response = await POST(request("POST", {action: "MARK_READ", lastReadMessageId: "message-1"}), context());
+    expect(response.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenLastCalledWith(expect.any(Function), {isolationLevel: "Serializable"});
+    expect(prisma.sessionConversationReadCursor.upsert).toHaveBeenCalledTimes(1);
   });
 
   it("never moves a read cursor backward when an older tab reports later", async () => {

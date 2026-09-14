@@ -11,12 +11,6 @@ extension Notification.Name {
         Notification.Name("quipslyCaptureAccountIdentityDidChange")
 }
 
-struct MobileCaptureWorkNoteBlock {
-    let id: String
-    let stableId: String
-    let order: Int
-    let body: String
-}
 #endif
 
 @main
@@ -200,6 +194,73 @@ private struct DocumentNoteEditOutboxHarness {
             "Acknowledging one account must never remove another account's edit."
         )
 
-        print("DocumentNoteEditOutboxHarness: PASS")
+        let draftDirectory = directory.appendingPathComponent("new-session-notes")
+        require(MobileQuickEntryDestination(selection: "NEST:uncached-project")?.projectID == "uncached-project",
+                "A missing cached workspace must keep its exact ID, not fall back to the current session.")
+        require(MobileQuickEntryDestination(selection: "SESSION") == .session, "Session selection must be explicit.")
+        require(MobileQuickEntryDestination(selection: "HOME_NEST") == .home, "Personal filing must remain explicit.")
+        require(MobileQuickEntryDestination(selection: "NEST:") == nil
+                && MobileQuickEntryDestination(selection: "unknown") == nil,
+                "Invalid saved destinations must not turn into a different filing choice.")
+        AuthManager.ownerAccountID = ownerA
+        let draftID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-1", origin: "https://nest.quipsly.com", audience: .authorPrivate)
+        let otherAudienceID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-1", origin: "https://nest.quipsly.com", audience: .sessionShared)
+        let otherOriginID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-1", origin: "http://localhost:3012", audience: .authorPrivate)
+        let otherRoomID = SessionNoteWorkingDraftStore.compositionID(
+            roomID: "session-2", origin: "https://nest.quipsly.com", audience: .authorPrivate)
+        require(Set([draftID, otherAudienceID, otherOriginID, otherRoomID]).count == 4,
+                "Draft recovery must not cross environment, session, or initial audience.")
+        let drafts = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerA, observeAccountChanges: false)
+        require(drafts.save(roomID: "session-1", noteID: draftID, title: "An unfinished idea",
+            body: "Keep this exact text when closing the composer.", noteKind: .sessionNote,
+            noteVisibility: .authorPrivate, tagIDs: ["tag-1"], baseUpdatedAt: "",
+            destination: "SESSION", newTagLabels: ["Research"]), "New notes must be durable before dismissal.")
+        let recovered = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerA, observeAccountChanges: false)
+        let recoveredDraft = recovered.draft(for: draftID)
+        require(recoveredDraft?.body == "Keep this exact text when closing the composer.", "Relaunch must restore exact text.")
+        require(recoveredDraft?.noteVisibility == .authorPrivate, "Relaunch must retain private sharing.")
+        require(recoveredDraft?.newTagLabels == ["Research"] && recoveredDraft?.tagIDs == ["tag-1"], "Both new and canonical tags must survive.")
+        require(recoveredDraft?.destination == "SESSION", "The original filing destination must survive.")
+
+        AuthManager.ownerAccountID = ownerB
+        require(!recovered.save(roomID: "session-1", noteID: draftID, title: "Wrong account",
+            body: "Must not save", noteKind: .sessionNote, noteVisibility: .sessionShared,
+            tagIDs: [], baseUpdatedAt: ""), "An old account's store cannot save after sign-in changes.")
+        let otherOwnerDrafts = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerB, observeAccountChanges: false)
+        require(otherOwnerDrafts.draft(for: draftID) == nil, "A second account must not see the first account's unfinished note.")
+        require(otherOwnerDrafts.save(roomID: "session-1", noteID: draftID, title: "Owner B",
+            body: "A separate thought", noteKind: .sessionNote, noteVisibility: .authorPrivate,
+            tagIDs: [], baseUpdatedAt: ""), "A second account can keep its own draft in the same session.")
+        otherOwnerDrafts.remove(noteID: draftID)
+        AuthManager.ownerAccountID = ownerA
+        let afterOtherDiscard = SessionNoteWorkingDraftStore(directoryURL: draftDirectory,
+            initialOwnerAccountID: ownerA, observeAccountChanges: false)
+        require(afterOtherDiscard.draft(for: draftID) == recoveredDraft, "Discard must not erase another account's draft.")
+        afterOtherDiscard.remove(noteID: draftID)
+        require(afterOtherDiscard.draft(for: draftID) == nil, "Explicit discard must clear the current draft.")
+
+        var textEdit = PendingSessionNoteEdit(id: UUID(), ownerAccountID: ownerA,
+            roomID: "session-1", noteID: "shared-note", title: "A thought", body: "Our next step",
+            noteKind: .sessionNote, noteVisibility: .sessionShared, tagIDs: [], preserveTags: true,
+            expectedUpdatedAt: "2026-09-13T12:00:00.000Z", capturedAt: capturedAt,
+            disposition: .pending, attemptCount: 0, lastAttemptAt: nil, lastErrorCode: nil, lastErrorMessage: nil)
+        let textWire = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MobileSessionNoteEditRequest(edit: textEdit))) as! [String: Any]
+        require(textWire["tagIds"] == nil, "A text-only edit must not remove unseen or archived tags.")
+        let restoredText = try JSONDecoder().decode(PendingSessionNoteEdit.self, from: JSONEncoder().encode(textEdit))
+        require(restoredText.preserveTags == true, "Offline recovery must retain text-only intent.")
+        textEdit.preserveTags = nil
+        let legacyData = try JSONEncoder().encode(textEdit)
+        let legacy = try JSONDecoder().decode(PendingSessionNoteEdit.self, from: legacyData)
+        require(legacy.preserveTags == nil, "Existing queued edits must keep their original intent.")
+        let legacyWire = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MobileSessionNoteEditRequest(edit: legacy))) as! [String: Any]
+        require((legacyWire["tagIds"] as? [String]) == [], "A legacy request still explicitly submits its original tags.")
+
+        print("DocumentNoteEditOutboxHarness: PASS (document edits, Session recovery, and text-only tag preservation)")
     }
 }

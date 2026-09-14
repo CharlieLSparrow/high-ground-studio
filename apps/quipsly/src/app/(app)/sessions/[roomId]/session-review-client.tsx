@@ -1,6 +1,7 @@
 "use client";
 
-import { SessionWorkControls } from "./session-work-controls";
+import { SessionWorkWorkspace } from "./session-work-workspace";
+import type { SessionWorkAssignmentContext } from "@/lib/session-work-assignment";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -27,7 +28,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Tags,
-  Target,
   Users,
 } from "lucide-react";
 import { buildQuipslySessionEntryReadiness } from "@high-ground/quipsly-domain/session-entry-readiness";
@@ -62,6 +62,9 @@ import {
 import { SessionCoachingQuickPath } from "./session-coaching-quick-path";
 import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import { SessionRecordingShareCard } from "./session-recording-share-card";
+import { useSessionMediaNavigation } from "./use-session-media-navigation";
+import { sessionResultSourceHref } from "@/lib/session-work-source-link";
+import type { SessionMediaFocus } from "./session-workspace-model";
 import type { SessionContinuityState } from "./session-continuity-model";
 import { SessionEpisodeBindingRepair } from "./session-episode-binding-repair";
 import { SessionEntryReadinessLive } from "./session-entry-readiness-live";
@@ -72,7 +75,7 @@ import { SessionRecordingImportCard } from "./session-recording-import-card";
 import { SessionRecordingHealthCard } from "./session-recording-health-card";
 import { SessionRecordingHealthListeningNavigator } from "./session-recording-health-listening-navigator";
 import { buildSessionRecordingHealth } from "./session-recording-health";
-import { OriginalRecordings, RecordingDetails, RecordingUploadStatus } from "./session-recordings-workspace";
+import { OriginalRecordings, RecordingDetails, RecordingDisclosure, RecordingUploadStatus } from "./session-recordings-workspace";
 import { SessionAudioMasteryCard } from "./session-audio-mastery-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
@@ -84,7 +87,7 @@ import { SessionSourceClockAttentionCard } from "./session-source-clock-attentio
 import { SessionSourceAlignmentCard } from "./session-source-alignment-card";
 import type { SessionSourceClockAttention } from "./session-source-clock-attention";
 import { SessionVersionedOutputGraphCard } from "./session-versioned-output-graph-card";
-import { SessionConversationThread } from "./session-conversation-thread";
+import { SessionThread } from "@/components/session-thread";
 import { CoachingSessionPlanCard } from "./coaching-session-plan-card";
 import type { SessionVersionedOutputGraph } from "./session-versioned-output-graph";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
@@ -112,6 +115,7 @@ import {
   type SessionCollaborationContext,
 } from "./session-collaboration-model";
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
+import { TranscriptRecordingPicker } from "@/components/transcript-recording-picker";
 
 function humanize(value: string | null | undefined) {
   return (value || "not set")
@@ -439,6 +443,16 @@ function packetBrief(summary: PacketSummary) {
 }
 
 function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
+  return <div className="mt-3 space-y-4">
+    <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">{summary.body}</p>
+    {packetBrief(summary) ? <details className="rounded-xl border border-border p-4">
+      <summary className="cursor-pointer text-sm font-medium">Source passages</summary>
+      <ReviewPacketSourceDetails summary={summary} />
+    </details> : null}
+  </div>;
+}
+
+function ReviewPacketSourceDetails({ summary }: { summary: PacketSummary }) {
   const brief = packetBrief(summary);
   if (!brief)
     return (
@@ -535,22 +549,14 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
       <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold leading-relaxed text-emerald-950">
         {brief.sourceTruth}
       </p>
-      <details className="rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]">
-        <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-          Inspect exact saved packet text
-        </summary>
-        <p className="mt-4 whitespace-pre-wrap font-semibold leading-relaxed">
-          {summary.body}
-        </p>
-      </details>
     </div>
   );
 }
 
 export type SessionTaxonomy = {
   project: { id: string; name: string; slug: string };
-  tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
-  catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
+  tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string; hexColor?: string | null }>;
+  catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string; hexColor?: string | null }>;
   canManage: boolean;
   canManageVocabulary: boolean;
   updatedAt: string;
@@ -586,8 +592,11 @@ export type SessionQuickEntry = {
   ownedByCurrentActor?: boolean;
   canEdit?: boolean;
   ownerLabel?: string;
+  ownerUserId?: string | null;
+  engagementId?: string | null;
   dueAt?: string | null;
   fromTranscript?: boolean;
+  fromConversation?: boolean;
   sourceHref?: string | null;
 };
 
@@ -2167,7 +2176,9 @@ function SessionSourceEvidenceCard({
           </ul>
         ) : verified ? (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-black leading-5 text-emerald-950">
-            {source.boundaryAuthority === "STAFF_REVIEWED_EXTERNAL_IMPORT"
+            {source.boundaryAuthority === "AUTHORIZED_EXTERNAL_IMPORT"
+              ? "The original file matches its verified upload and import authorization. Live-call START/STOP receipts are not required for imported recordings."
+              : source.boundaryAuthority === "STAFF_REVIEWED_EXTERNAL_IMPORT"
               ? "Nest independently matched the immutable receipt, RecordingAsset, exact server SHA-256 and byte count, cloud object generation, and durable staff release audit. No phone boundary is inferred."
               : source.boundaryAuthority === "AUDITED_RECOVERY_REPLICA"
                 ? "Nest independently matched the recovery request, immutable original identity, imported-source hash, durable replica hash, byte count, storage identity, cloud generation, plan expectation, and release receipt. No native phone boundary is inferred."
@@ -2331,552 +2342,6 @@ function SessionSourceEvidenceCard({
           No recording has arrived for this Session yet.
         </div>
       ) : null}
-    </section>
-  );
-}
-
-function SessionQuickEntryCard({
-  roomId,
-  entries,
-  taxonomy,
-  scope,
-}: {
-  roomId: string;
-  entries: SessionQuickEntry[];
-  taxonomy: SessionTaxonomy | null;
-  scope: "notes" | "work";
-}) {
-  const router = useRouter();
-  const entriesForScope = entries.filter((entry) =>
-    scope === "notes"
-      ? entry.kind === "NOTE"
-      : entry.kind === "TASK" || entry.kind === "GOAL",
-  );
-  const [currentEntries, setCurrentEntries] = useState(entriesForScope);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [createKind, setCreateKind] = useState<"TASK" | "GOAL">("TASK");
-  const createWorkFormRef = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    setCurrentEntries(
-      entries.filter((entry) =>
-        scope === "notes"
-          ? entry.kind === "NOTE"
-          : entry.kind === "TASK" || entry.kind === "GOAL",
-      ),
-    );
-  }, [entries, scope]);
-  const icon = (kind: SessionQuickEntry["kind"]) =>
-    kind === "NOTE" ? MessageSquareText : kind === "TASK" ? ListTodo : Target;
-  function updateEntry(noteId: string, update: Partial<SessionQuickEntry>) {
-    setCurrentEntries((current) =>
-      current.map((entry) =>
-        entry.id === noteId ? { ...entry, ...update } : entry,
-      ),
-    );
-  }
-  async function createWork(formData: FormData) {
-    const requestId = crypto.randomUUID();
-    setBusyId("create-work");
-    setNotice(null);
-    try {
-      const rawTargetAt = String(formData.get("targetAt") || "");
-      const response = await fetch(
-        `/api/sessions/${encodeURIComponent(roomId)}/work`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            clientRequestId: requestId,
-            kind: createKind,
-            title: String(formData.get("title") || ""),
-            body: String(formData.get("body") || ""),
-            visibility: String(formData.get("visibility") || "SESSION_SHARED"),
-            targetAt: rawTargetAt
-              ? new Date(`${rawTargetAt}T12:00:00`).toISOString()
-              : null,
-          }),
-        },
-      );
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        entry?: SessionQuickEntry;
-        nextAction?: string;
-      };
-      if (!response.ok || !payload.ok || !payload.entry)
-        throw new Error(payload.error || "The Session work was not saved.");
-      setCurrentEntries((current) => [
-        payload.entry!,
-        ...current.filter((entry) => entry.id !== payload.entry!.id),
-      ]);
-      createWorkFormRef.current?.reset();
-      setCreateKind("TASK");
-      setNotice(`${createKind === "TASK" ? "Task" : "Goal"} saved.`);
-      router.refresh();
-    } catch (error) {
-      setNotice(
-        error instanceof Error
-          ? error.message
-          : "The Session work was not saved.",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-  async function saveNote(entry: SessionQuickEntry, formData: FormData) {
-    setBusyId(entry.id);
-    setNotice(null);
-    try {
-      const response = await fetch(
-        `/api/notes/${encodeURIComponent(entry.id)}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            title: String(formData.get("title") || ""),
-            body: String(formData.get("body") || ""),
-            expectedUpdatedAt: entry.updatedAt,
-          }),
-        },
-      );
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        note?: {
-          title: string | null;
-          body: string;
-          updatedAt: string;
-          tags: SessionQuickEntry["tags"];
-        };
-      };
-      if (!response.ok || !payload.ok || !payload.note)
-        throw new Error(payload.error || "The note was not saved.");
-      updateEntry(entry.id, {
-        title: payload.note.title,
-        body: payload.note.body,
-        updatedAt: payload.note.updatedAt,
-        tags: payload.note.tags,
-      });
-      setNotice(
-        "Note saved to its original Session identity. No copy, message, calendar event, or publication action was created.",
-      );
-    } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : "The note was not saved.",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-  async function saveNoteTags(entry: SessionQuickEntry, formData: FormData) {
-    setBusyId(entry.id);
-    setNotice(null);
-    try {
-      const tagIds = formData.getAll("noteTagId").map(String);
-      const response = await fetch("/api/work/tags", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          entityKind: "note",
-          entityId: entry.id,
-          tagIds,
-          expectedUpdatedAt: entry.updatedAt,
-        }),
-      });
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        updatedAt?: string;
-      };
-      if (!response.ok || !payload.ok || !payload.updatedAt)
-        throw new Error(payload.error || "The note tags were not saved.");
-      const catalog = taxonomy?.catalog ?? [];
-      updateEntry(entry.id, {
-        tags: catalog
-          .filter((tag) => tagIds.includes(tag.id))
-          .map(({ id, label, slug }) => ({ id, label, slug })),
-        updatedAt: payload.updatedAt,
-      });
-      setNotice("Canonical Nest tags saved on the same note identity.");
-    } catch (error) {
-      setNotice(
-        error instanceof Error
-          ? error.message
-          : "The note tags were not saved.",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-  async function createNoteTag(entry: SessionQuickEntry, formData: FormData) {
-    setBusyId(entry.id);
-    setNotice(null);
-    try {
-      const response = await fetch("/api/work/tags", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          entityKind: "note",
-          entityId: entry.id,
-          operation: "CREATE_AND_ASSIGN",
-          label: String(formData.get("label") || ""),
-          expectedUpdatedAt: entry.updatedAt,
-        }),
-      });
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        updatedAt?: string;
-        tag?: { id: string; label: string; slug: string };
-      };
-      if (!response.ok || !payload.ok || !payload.updatedAt || !payload.tag)
-        throw new Error(payload.error || "The reusable tag was not created.");
-      updateEntry(entry.id, {
-        tags: [
-          ...entry.tags.filter((tag) => tag.id !== payload.tag!.id),
-          payload.tag,
-        ],
-        updatedAt: payload.updatedAt,
-      });
-      setNotice(
-        `#${payload.tag.label} is now reusable in this Nest and attached to the note.`,
-      );
-    } catch (error) {
-      setNotice(
-        error instanceof Error
-          ? error.message
-          : "The reusable tag was not created.",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-  const noteScope = scope === "notes";
-  const taskCount = currentEntries.filter(
-    (entry) => entry.kind === "TASK",
-  ).length;
-  const goalCount = currentEntries.filter(
-    (entry) => entry.kind === "GOAL",
-  ).length;
-  const title = noteScope
-    ? `${currentEntries.length} deliberate Session note${currentEntries.length === 1 ? "" : "s"}`
-    : "Tasks and goals";
-  return (
-    <section
-      className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5"
-      aria-labelledby={`quick-entry-${scope}-heading`}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
-            {noteScope
-              ? "Actor-owned Session context"
-              : "Session follow-through"}
-          </p>
-          <h2
-            id={`quick-entry-${scope}-heading`}
-            className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
-          >
-            {title}
-          </h2>
-          <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">
-            {noteScope
-              ? "These notes were deliberately captured for this Session. They are not transcript suggestions or copied phone drafts."
-              : `${taskCount} task${taskCount === 1 ? "" : "s"} · ${goalCount} goal${goalCount === 1 ? "" : "s"}. Add the next step here or continue it in Work.`}
-          </p>
-        </div>
-        {noteScope ? null : (
-          <Link
-            href="/work"
-            className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-900"
-          >
-            Open my Work
-          </Link>
-        )}
-      </div>
-      {!noteScope && (
-        <details
-          open={currentEntries.length === 0}
-          className="mt-4 rounded-xl border border-emerald-200 bg-white p-4"
-        >
-          <summary className="cursor-pointer text-sm font-black text-emerald-950">
-            Add task or goal
-          </summary>
-          <form
-            ref={createWorkFormRef}
-            action={(formData) => void createWork(formData)}
-            className="mt-4 grid gap-3 md:grid-cols-2"
-          >
-            <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">
-              Type
-              <select
-                name="kind"
-                value={createKind}
-                onChange={(event) =>
-                  setCreateKind(event.target.value as "TASK" | "GOAL")
-                }
-                className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal"
-              >
-                <option value="TASK">Task</option>
-                <option value="GOAL">Goal</option>
-              </select>
-            </label>
-            <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">
-              Who can see it
-              <select
-                name="visibility"
-                defaultValue="SESSION_SHARED"
-                className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal"
-              >
-                <option value="SESSION_SHARED">Everyone in this Session</option>
-                <option value="AUTHOR_PRIVATE">Only me</option>
-              </select>
-            </label>
-            <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900 md:col-span-2">
-              {createKind === "TASK" ? "Task" : "Goal"} title
-              <input
-                name="title"
-                required
-                maxLength={500}
-                placeholder={
-                  createKind === "TASK"
-                    ? "What happens next?"
-                    : "What are we working toward?"
-                }
-                className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal"
-              />
-            </label>
-            <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900 md:col-span-2">
-              Context{" "}
-              <span className="normal-case tracking-normal text-emerald-700">
-                (optional)
-              </span>
-              <textarea
-                name="body"
-                maxLength={5_000}
-                rows={3}
-                placeholder="Add enough detail that this still makes sense next time."
-                className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal"
-              />
-            </label>
-            <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">
-              {createKind === "TASK" ? "Due date" : "Target date"}{" "}
-              <span className="normal-case tracking-normal text-emerald-700">
-                (optional)
-              </span>
-              <input
-                name="targetAt"
-                type="date"
-                className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={busyId === "create-work"}
-              className="min-h-11 self-end rounded-full bg-emerald-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {busyId === "create-work"
-                ? "Saving…"
-                : `Save ${createKind.toLowerCase()}`}
-            </button>
-          </form>
-          <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">
-            Saved here and in Work, ready to update anytime.
-          </p>
-        </details>
-      )}
-      {notice && (
-        <p
-          role="status"
-          className="mt-4 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950"
-        >
-          {notice}
-        </p>
-      )}
-      {currentEntries.length ? (
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {currentEntries.map((entry) => {
-            const Icon = icon(entry.kind);
-            const href =
-              entry.ownedByCurrentActor === false
-                ? null
-                : entry.kind === "TASK"
-                  ? `/work?task=${encodeURIComponent(entry.id)}`
-                  : entry.kind === "GOAL"
-                    ? `/work?goal=${encodeURIComponent(entry.id)}`
-                    : null;
-            return (
-              <article
-                id={`quick-entry-${entry.id}`}
-                key={entry.id}
-                tabIndex={-1}
-                className="scroll-mt-24 rounded-xl border border-emerald-200 bg-white p-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-black text-[#3d3122]">
-                        {entry.title ||
-                          (entry.kind === "NOTE"
-                            ? "Quick note"
-                            : `Untitled ${entry.kind.toLowerCase()}`)}
-                      </p>
-                      <span
-                        className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusTone(entry.status)}`}
-                      >
-                        {humanize(entry.status)}
-                      </span>
-                    </div>
-                    {entry.body && (
-                      <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#765f40]">
-                        {entry.body}
-                      </p>
-                    )}
-                    <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-                      {humanize(entry.kind)} ·{" "}
-                      {entry.visibility === "ENGAGEMENT_SHARED"
-                        ? "Shared client space"
-                        : entry.visibility === "SESSION_SHARED"
-                        ? "Everyone in this Session"
-                        : "Only me"}{" "}
-                      ·{" "}
-                      {entry.ownerLabel || (entry.ownedByCurrentActor === false
-                        ? "Created by another participant"
-                        : "Mine")}{" "}
-                      · {new Date(entry.createdAt).toLocaleString()}
-                    </p>
-                    {href && (
-                      <Link
-                        href={href}
-                        className="mt-3 inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900"
-                      >
-                        Open same {entry.kind.toLowerCase()} in Work
-                      </Link>
-                    )}
-                  </div>
-                </div>
-                <TagSearchChips
-                  tags={entry.tags}
-                  label={`${entry.title || entry.kind} tags`}
-                />
-                {entry.sourceHref && <Link href={entry.sourceHref} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[#435847] underline">From recording</Link>}
-                <SessionWorkControls entry={entry} onUpdate={(update) => updateEntry(entry.id, update)} />
-                {entry.kind === "NOTE" && (
-                  <details className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
-                    <summary className="cursor-pointer text-xs font-black text-emerald-950">
-                      Edit note and tags
-                    </summary>
-                    <form
-                      action={(formData) => void saveNote(entry, formData)}
-                      className="mt-3 grid gap-3"
-                    >
-                      <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">
-                        Title
-                        <input
-                          name="title"
-                          maxLength={500}
-                          defaultValue={entry.title ?? ""}
-                          className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal"
-                        />
-                      </label>
-                      <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">
-                        Note
-                        <textarea
-                          name="body"
-                          required
-                          maxLength={20_000}
-                          defaultValue={entry.body ?? ""}
-                          rows={5}
-                          className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal"
-                        />
-                      </label>
-                      <button
-                        type="submit"
-                        disabled={busyId === entry.id}
-                        className="min-h-11 justify-self-start rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"
-                      >
-                        Save note
-                      </button>
-                    </form>
-                    {taxonomy?.canManageVocabulary && (
-                      <div className="mt-4 border-t border-emerald-100 pt-4">
-                        <form
-                          action={(formData) =>
-                            void saveNoteTags(entry, formData)
-                          }
-                        >
-                          <fieldset className="grid gap-2 sm:grid-cols-2">
-                            <legend className="mb-2 text-[10px] font-black uppercase tracking-wide text-sky-900">
-                              Canonical {taxonomy.project.name} tags
-                            </legend>
-                            {taxonomy.catalog.map((tag) => (
-                              <label
-                                key={tag.id}
-                                className="flex min-h-11 items-center gap-2 rounded-lg border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-sky-950"
-                              >
-                                <input
-                                  name="noteTagId"
-                                  value={tag.id}
-                                  type="checkbox"
-                                  defaultChecked={entry.tags.some(
-                                    (selected) => selected.id === tag.id,
-                                  )}
-                                />
-                                #{tag.label}
-                              </label>
-                            ))}
-                          </fieldset>
-                          <button
-                            type="submit"
-                            disabled={busyId === entry.id}
-                            className="mt-3 min-h-11 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black text-sky-950 disabled:opacity-50"
-                          >
-                            Save tags
-                          </button>
-                        </form>
-                        <form
-                          action={(formData) =>
-                            void createNoteTag(entry, formData)
-                          }
-                          className="mt-3 flex flex-col gap-2 sm:flex-row"
-                        >
-                          <label className="flex-1 text-[10px] font-black uppercase tracking-wide text-violet-900">
-                            New reusable tag
-                            <input
-                              name="label"
-                              required
-                              maxLength={80}
-                              placeholder="e.g. Opening craft"
-                              className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal"
-                            />
-                          </label>
-                          <button
-                            type="submit"
-                            disabled={busyId === entry.id}
-                            className="min-h-11 self-end rounded-full border border-violet-300 bg-violet-50 px-4 py-2 text-xs font-black text-violet-950 disabled:opacity-50"
-                          >
-                            Create and attach
-                          </button>
-                        </form>
-                      </div>
-                    )}
-                  </details>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">
-          {noteScope
-            ? "No deliberate Session note has been added yet. Quipsly does not substitute transcript text or an Inbox count."
-            : "No tasks or goals yet. Add one now, or let Quipsly create editable next steps from the transcript."}
-        </div>
-      )}
     </section>
   );
 }
@@ -3196,27 +2661,38 @@ function SessionWorkspaceNavigation({
   roomId,
   mode,
   purpose,
+  mediaFocus,
 }: {
   roomId: string;
   mode: SessionWorkspaceMode;
   purpose: string;
+  mediaFocus?: SessionMediaFocus;
 }) {
   const modes = sessionWorkspaceModesForPurpose(purpose);
+  const router = useRouter();
   return (
-    <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-2 shadow-sm sm:p-3">
-      <nav aria-label="Session workspace modes">
-        <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 xl:grid-cols-9">
+      <nav aria-label="Session workspace modes" className="mt-3 border-t border-quipsly-divider pt-2">
+        <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-quipsly-ink sm:hidden">
+          <span>Session section</span>
+          <select aria-label="Session section" value={mode} onChange={event => {
+            const next = modes.find(item => item.id === event.target.value);
+            if (next) router.push(sessionWorkspaceHref(roomId, next.id, mediaFocus));
+          }} className="min-h-11 min-w-0 flex-1 rounded-lg border border-quipsly-divider bg-quipsly-surface px-3 text-quipsly-ink">
+            {modes.map(definition => <option key={definition.id} value={definition.id}>{definition.label}</option>)}
+          </select>
+        </label>
+        <div className="hidden min-w-0 flex-wrap gap-1 sm:flex">
           {modes.map((definition) => {
             const selected = definition.id === mode;
             return (
               <Link
                 key={definition.id}
-                href={sessionWorkspaceHref(roomId, definition.id)}
+                href={sessionWorkspaceHref(roomId, definition.id, mediaFocus)}
                 aria-current={selected ? "page" : undefined}
-                className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition sm:min-h-12 sm:shrink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${selected ? "order-first sm:order-none" : ""} ${
+                className={`flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-quipsly-peacock-700 ${
                   selected
-                    ? "border-violet-300 bg-violet-800 text-white shadow-sm"
-                    : "border-transparent bg-white text-[#5f4d37] hover:border-violet-200 hover:bg-violet-50"
+                    ? "bg-quipsly-peacock-800 text-white"
+                    : "text-quipsly-muted hover:bg-quipsly-surface-muted hover:text-quipsly-ink"
                 }`}
               >
                 <WorkspaceModeIcon mode={definition.id} />
@@ -3226,7 +2702,6 @@ function SessionWorkspaceNavigation({
           })}
         </div>
       </nav>
-    </section>
   );
 }
 
@@ -3757,7 +3232,6 @@ export function SessionReviewClient({
   readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY,
   canManageSourcePlan = false,
   recordingWorkspaceAudience = "producer",
-  canViewEntryChoiceMetrics = false,
   canReleaseHeldMedia = false,
   sessionTaxonomy = null,
   studioHandoff = null,
@@ -3774,6 +3248,7 @@ export function SessionReviewClient({
   sessionNotes = [],
   canUseProjectTeamNotes = false,
   sessionQuickEntries = [],
+  workAssignmentContext = null,
   captureReceipts = { captures: [] },
   sessionContinuity = null,
   collaborationContext = {
@@ -3808,7 +3283,6 @@ export function SessionReviewClient({
   readinessTopology?: SessionReadinessTopology;
   canManageSourcePlan?: boolean;
   recordingWorkspaceAudience?: "producer" | "participant";
-  canViewEntryChoiceMetrics?: boolean;
   canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
@@ -3821,6 +3295,7 @@ export function SessionReviewClient({
   sessionNotes?: SessionWorkspaceNote[];
   canUseProjectTeamNotes?: boolean;
   sessionQuickEntries?: SessionQuickEntry[];
+  workAssignmentContext?: SessionWorkAssignmentContext | null;
   captureReceipts?: SessionCaptureReceipts;
   sessionContinuity?: SessionContinuityState | null;
   collaborationContext?: SessionCollaborationContext;
@@ -3831,11 +3306,24 @@ export function SessionReviewClient({
   const [buildingPacket, setBuildingPacket] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const automaticPacketAttempts = useRef(new Set<string>());
+  const activeRead = useRef<AbortController | null>(null);
+  const readGeneration = useRef(0);
+  const readScope = `${roomId}:${focusedRecordingAssetId || ""}`;
+  const mediaNavigation = useSessionMediaNavigation(roomId, focusedRecordingAssetId, focusedPlaybackSeconds);
+  const currentReadScope = useRef(readScope);
+  currentReadScope.current = readScope;
   const liveDock = useLiveSessionDock();
 
   const load = useCallback(
     async (options?: { background?: boolean }) => {
       const background = options?.background === true;
+      if (currentReadScope.current !== readScope || (background && activeRead.current)) return;
+      activeRead.current?.abort();
+      const controller = new AbortController();
+      const generation = ++readGeneration.current;
+      activeRead.current = controller;
+      let timedOut = false;
+      const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 30_000);
       if (!background) {
         setLoading(true);
         setMessage(null);
@@ -3846,27 +3334,51 @@ export function SessionReviewClient({
           packetParams.set("recordingAssetId", focusedRecordingAssetId);
         const response = await fetch(
           `/api/mobile/capture/transcripts/packet?${packetParams.toString()}`,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
         );
+        if (generation !== readGeneration.current || currentReadScope.current !== readScope) return;
+        if ([401, 403, 404].includes(response.status)) {
+          setPacket(null);
+          throw new Error("This transcript is no longer available. Return to your session workspace.");
+        }
         const body = (await response.json()) as SessionReviewPacket;
+        if (generation !== readGeneration.current || currentReadScope.current !== readScope) return;
+        if (response.ok && body.ok && body.room?.id !== roomId) {
+          setPacket(null);
+          throw new Error("This transcript is no longer available. Return to your session workspace.");
+        }
         if (!response.ok || !body.ok)
           throw new Error(
             body.error || "Quipsly could not read this session packet.",
           );
         setPacket(body);
       } catch (error) {
-        if (!background) setPacket(null);
+        if ((controller.signal.aborted && !timedOut) || generation !== readGeneration.current || currentReadScope.current !== readScope) return;
         setMessage(
-          error instanceof Error
+          timedOut ? "The transcript is taking too long to load. Try Refresh transcript again."
+          : error instanceof Error
             ? error.message
             : "Quipsly could not read this session packet.",
         );
       } finally {
-        if (!background) setLoading(false);
+        window.clearTimeout(timeout);
+        if (generation === readGeneration.current) {
+          activeRead.current = null;
+          if (!background) setLoading(false);
+        }
       }
     },
-    [focusedRecordingAssetId, roomId],
+    [focusedRecordingAssetId, roomId, readScope],
   );
+
+  useEffect(() => {
+    setPacket(null);
+    return () => {
+      ++readGeneration.current;
+      activeRead.current?.abort();
+      activeRead.current = null;
+    };
+  }, [readScope]);
 
   useEffect(() => {
     if (mode !== "transcript") {
@@ -3877,10 +3389,12 @@ export function SessionReviewClient({
   }, [load, mode]);
 
   const transcriptJobStatus = packet?.transcriptJob?.status || "";
+  const generation = packet?.packet?.generation;
+  const generatingWork = generation?.state === "PROCESSING" || generation?.state === "RETRYING";
   useEffect(() => {
     if (
       mode !== "transcript" ||
-      !["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptJobStatus)
+      (!generatingWork && !["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptJobStatus))
     ) {
       return;
     }
@@ -3888,7 +3402,7 @@ export function SessionReviewClient({
       void load({ background: true });
     }, 2_500);
     return () => window.clearInterval(interval);
-  }, [load, mode, transcriptJobStatus]);
+  }, [load, mode, transcriptJobStatus, generatingWork]);
 
   const buildPacket = useCallback(
     async (options?: { automatic?: boolean }) => {
@@ -3900,18 +3414,21 @@ export function SessionReviewClient({
         const response = await fetch("/api/mobile/capture/transcripts/packet", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ transcriptJobId, force: false }),
+          body: JSON.stringify({ transcriptJobId, force: false, retryAnalysis: options?.automatic !== true }),
         });
         const body = (await response.json()) as {
           ok?: boolean;
           error?: string;
           idempotentReplay?: boolean;
+          analysisQueued?: boolean;
         };
         if (!response.ok || !body.ok)
           throw new Error(body.error || "Session follow-through was not created.");
         await load();
         setMessage(
-          options?.automatic
+          body.analysisQueued
+            ? "Automatic notes are being prepared. Your saved work stays available."
+            : options?.automatic
             ? "Your Session recap, notes, tasks, and goals are ready. Everything stays editable and linked to the recording."
             : body.idempotentReplay
               ? "Your current Session follow-through is already up to date."
@@ -4034,7 +3551,7 @@ export function SessionReviewClient({
         : "Not shared yet"
     : followUpReadyForReview
       ? "Ready to use"
-      : buildingPacket && canPrepareReviewMaterial
+      : generatingWork || (buildingPacket && canPrepareReviewMaterial)
         ? "Preparing"
         : packetStale
           ? "Refreshing"
@@ -4043,6 +3560,7 @@ export function SessionReviewClient({
   useEffect(() => {
     if (
       !canPrepareReviewMaterial ||
+      (generation && generation.state !== "READY") ||
       !packetAttemptKey ||
       buildingPacket ||
       automaticPacketAttempts.current.has(packetAttemptKey)
@@ -4051,7 +3569,7 @@ export function SessionReviewClient({
     }
     automaticPacketAttempts.current.add(packetAttemptKey);
     void buildPacket({ automatic: true });
-  }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey]);
+  }, [buildPacket, buildingPacket, canPrepareReviewMaterial, packetAttemptKey, generation]);
 
   const reviewLanes = packet?.packet?.reviewLanes ?? [];
   const actionableReviewLanes = reviewLanes.filter(
@@ -4067,7 +3585,6 @@ export function SessionReviewClient({
     sourceEvidence.sources.find(
       (source) => source.recordingAssetId === transcriptRecordingAssetId,
     )?.audioMastery ?? null;
-  const activeMode = sessionWorkspaceDefinitionForPurpose(mode, purpose);
   const liveProjectSlug =
     collaborationContext.project?.slug ||
     collaborationContext.engagement?.projectSlug ||
@@ -4077,13 +3594,11 @@ export function SessionReviewClient({
     episodeRoomHref(collaborationContext) ||
     coachingEngagementHref(collaborationContext) ||
     (liveProjectSlug ? `/nests/${encodeURIComponent(liveProjectSlug)}` : null);
-  const liveParentLabel = collaborationContext.episode
-    ? "Episode Room"
-    : collaborationContext.engagement
-      ? "Shared space"
-      : liveProjectSlug
-        ? "Nest"
-        : null;
+  const liveParentLabel = collaborationContext.episode?.title
+    || collaborationContext.engagement?.title
+    || collaborationContext.project?.name
+    || preparation?.project?.name
+    || (liveProjectSlug ? "Nest" : null);
   const parentWorkspaceHref = episodeRoomHref(collaborationContext)
     || coachingEngagementHref(collaborationContext)
     || (collaborationContext.project ? `/nests/${encodeURIComponent(collaborationContext.project.slug)}` : null);
@@ -4157,15 +3672,26 @@ export function SessionReviewClient({
               </div>
             </section>
           ) : (
+            <>
+            <nav aria-label="Session work" className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+              {parentWorkspaceHref ? <Link href={parentWorkspaceHref}
+                className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-quipsly-ink underline underline-offset-4">
+                <ArrowLeft size={16} aria-hidden="true" /> {parentWorkspaceTitle}
+              </Link> : null}
+              <Link href={sessionWorkspaceHref(roomId, "overview")}
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-quipsly-ink underline underline-offset-4">
+                Session workspace
+              </Link>
+            </nav>
             <CaptureAppHandoff
               roomId={roomId}
               sessionTitle={sessionTitle}
               joinedFromInvitation={joinedFromInvitation}
               captureOpenFallback={captureOpenFallback}
-              canViewChoiceMetrics={canViewEntryChoiceMetrics}
               onContinueInBrowser={() => liveDock.open(liveDockConfig)}
               allowAutomaticBrowserEntry={liveDock.dismissedCallRoomId !== roomId}
             />
+            </>
           )}
 
         </div>
@@ -4174,28 +3700,22 @@ export function SessionReviewClient({
   }
 
   return (
-    <div className="min-w-0 space-y-4 overflow-x-hidden sm:space-y-8">
-      <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-4 shadow-sm sm:p-6">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
+      <section aria-label="Session heading and navigation" className="min-w-0 rounded-2xl border border-quipsly-divider bg-quipsly-surface px-4 py-3 sm:px-5">
         {parentWorkspaceHref ? (
-          <nav aria-label="Parent workspace" className="mb-2">
+          <nav aria-label="Parent workspace">
             <Link href={parentWorkspaceHref} aria-label={`Back to ${parentWorkspaceTitle}`}
-              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg px-1 text-sm font-bold text-[#41624b] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg text-sm font-semibold text-quipsly-peacock-700 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
               <ArrowLeft size={16} className="shrink-0" aria-hidden="true" />
               <span className="break-words">{parentWorkspaceTitle}</span>
             </Link>
           </nav>
         ) : null}
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#987443] sm:text-xs sm:tracking-[0.22em]">
-              Session workspace · {activeMode.eyebrow}
-            </p>
-            <h1 className="mt-1 font-serif text-2xl font-black tracking-tight text-[#3d3122] sm:mt-2 sm:text-4xl">
+          <div className="min-w-0 flex-1">
+            <h1 className="font-serif text-xl font-bold tracking-tight text-quipsly-ink [overflow-wrap:anywhere] sm:text-2xl">
               {sessionTitle}
             </h1>
-            <p className="mt-1 hidden max-w-3xl text-xs font-semibold leading-5 text-[#765f40] sm:mt-2 sm:block sm:text-sm sm:leading-relaxed">
-              {activeMode.description}
-            </p>
           </div>
           {mode === "transcript" ? (
             <button
@@ -4224,13 +3744,13 @@ export function SessionReviewClient({
             {message}
           </p>
         ) : null}
-      </section>
-
       <SessionWorkspaceNavigation
         roomId={roomId}
         mode={mode}
         purpose={purpose}
+        mediaFocus={mediaNavigation.focus}
       />
+      </section>
 
       {mode === "overview" && purpose === "COACHING" ? (
         <SessionCoachingQuickPath
@@ -4320,19 +3840,32 @@ export function SessionReviewClient({
       {mode === "recordings" ? (
         <>
           {purpose === "COACHING" && recordingWorkspaceAudience === "participant" ? <SessionRecordingShareCard roomId={roomId} /> : null}
-          <RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} />
+          {purpose !== "COACHING" || recordingWorkspaceAudience !== "producer" ? <RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} /> : null}
           {purpose === "COACHING" && recordingWorkspaceAudience === "participant" ? (
             <OriginalRecordings>
               <SessionRecordingHealthListeningNavigator roomId={roomId}
                 health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
-                evidence={sourceEvidence} presentation="workspace" />
+                evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
+                onMediaFocusChange={mediaNavigation.select} presentation="workspace" />
             </OriginalRecordings>
-          ) : (
+          ) : purpose !== "COACHING" ? (
             <SessionRecordingHealthListeningNavigator roomId={roomId}
               health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
-              evidence={sourceEvidence} presentation="workspace" />
-          )}
-          {purpose === "COACHING" && recordingWorkspaceAudience === "producer" ? <SessionRecordingShareCard roomId={roomId} /> : null}
+              evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
+              onMediaFocusChange={mediaNavigation.select} presentation="workspace" />
+          ) : null}
+          {purpose === "COACHING" && recordingWorkspaceAudience === "producer" ? <SessionRecordingShareCard
+            key={`${roomId}|${focusedRecordingAssetId || "latest"}`} roomId={roomId}
+            initialSourceId={focusedRecordingAssetId}
+            onTakeSourcesChange={mediaNavigation.selectTake}
+            renderOriginalRecordings={(sourceIds, trimControls) => {
+              const health = buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence });
+              return <><RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} sourceIds={sourceIds} />
+              <SessionRecordingHealthListeningNavigator key={sourceIds.join("|")} roomId={roomId}
+                health={{...health, sources: health.sources.filter(source => sourceIds.includes(source.recordingAssetId || ""))}}
+                evidence={sourceEvidence} preferredSourceId={mediaNavigation.focus.sourceId} initialPlaybackSeconds={mediaNavigation.focus.seconds}
+                onMediaFocusChange={mediaNavigation.select} trimControls={trimControls} presentation="workspace" /></>;
+            }} /> : null}
           <details className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
             <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Import a recording</summary>
             <div className="mt-4"><SessionRecordingImportCard roomId={roomId} preparation={preparation} /></div>
@@ -4388,6 +3921,7 @@ export function SessionReviewClient({
 
       {mode === "notes" ? (
         <SessionNotesWorkspace
+          key={roomId}
           roomId={roomId}
           initialNotes={sessionNotes}
           activeView={notesView}
@@ -4397,16 +3931,17 @@ export function SessionReviewClient({
       ) : null}
 
       {mode === "conversation" ? (
-        <SessionConversationThread roomId={roomId} />
+        <SessionThread roomId={roomId} sessionTitle={sessionTitle} heading="Conversation" />
       ) : null}
 
       {mode === "work" ? (
         <>
-          <SessionQuickEntryCard
+          <SessionWorkWorkspace
+            key={roomId}
             roomId={roomId}
             entries={sessionQuickEntries}
-            taxonomy={sessionTaxonomy}
-            scope="work"
+            assignmentContext={workAssignmentContext}
+            canCreate={canManageSourcePlan}
           />
           {sessionContinuity ? (
             <SessionContinuityCard
@@ -4494,8 +4029,10 @@ export function SessionReviewClient({
         </div>
       ) : null}
 
+      {mode === "transcript" ? <TranscriptRecordingPicker roomId={roomId}
+        sources={sourceEvidence.sources} selectedSourceId={focusedRecordingAssetId} /> : null}
       {mode === "transcript" ? (
-        loading ? (
+        loading && !packet ? (
           <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]">
             <LoaderCircle
               className="mr-2 inline animate-spin"
@@ -4525,6 +4062,7 @@ export function SessionReviewClient({
               sessionTitle={sessionTitle}
               recordingAssetId={focusedRecordingAssetId}
               initialPlaybackSeconds={focusedPlaybackSeconds}
+              onMediaFocusChange={mediaNavigation.select}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
               canEditRecording={purpose === "COACHING"}
               recordingEditor={
@@ -4570,7 +4108,7 @@ export function SessionReviewClient({
                   reviewMaterialReady={Boolean(packet.packet?.summary)}
                   packetStale={packetStale}
                   preparingReviewMaterial={
-                    buildingPacket && canPrepareReviewMaterial
+                    generatingWork || (buildingPacket && canPrepareReviewMaterial)
                   }
                   held={held}
                   followUpReady={clientFollowUpReady}
@@ -4646,7 +4184,7 @@ export function SessionReviewClient({
                     </p>
                   </details>
                 ) : null}
-                {!["QUEUED", "RUNNING", "PROCESSING"].includes(
+                {packet.transcriptJob?.failureCode !== "NO_AUDIO_SIGNAL" && !["QUEUED", "RUNNING", "PROCESSING"].includes(
                   packet.transcriptJob?.status || "",
                 ) &&
                 packet.packet?.safeActions?.find(
@@ -4678,8 +4216,8 @@ export function SessionReviewClient({
                           : "Start transcription"}
                     </button>
                     <p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">
-                      Uses this recording to create timed text. It does not
-                      create or send notes, tasks, goals, or messages.
+                      Creates timed text and editable Session notes, tasks, and goals.
+                      Nothing is emailed or published automatically.
                     </p>
                   </div>
                 ) : null}
@@ -4706,7 +4244,7 @@ export function SessionReviewClient({
                         : "Nothing has been shared yet. Your transcript and shared Session tools remain available."
                     : followUpReadyForReview
                       ? "Your recap, notes, tasks, and goals are ready to use."
-                      : buildingPacket && canPrepareReviewMaterial
+                      : generatingWork || (buildingPacket && canPrepareReviewMaterial)
                         ? "Quipsly is organizing the transcript into editable Session work."
                         : "Quipsly will organize the transcript into editable Session work when it is ready."}
                 </p>
@@ -4720,6 +4258,16 @@ export function SessionReviewClient({
                   aria-labelledby="summary-heading"
                   className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
                 >
+                  {generation && generation.state !== "READY" ? (
+                    <div role="status" className="mb-4 rounded-xl border border-border bg-muted/40 p-3 text-sm text-foreground">
+                      <p>{generation.message}</p>
+                      {generation.canRetry ? <button type="button" disabled={buildingPacket}
+                        onClick={() => void buildPacket()}
+                        className="mt-2 min-h-11 rounded-lg bg-primary px-3 font-semibold text-primary-foreground disabled:opacity-50">
+                        {buildingPacket ? "Retrying…" : "Retry automatic notes"}
+                      </button> : null}
+                    </div>
+                  ) : null}
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
                     Session recap
                   </p>
@@ -4733,6 +4281,10 @@ export function SessionReviewClient({
                   {packet.packet?.summary ? (
                     <>
                       <ReviewPacketSummary summary={packet.packet.summary} />
+                      <Link href={`${sessionWorkspaceHref(roomId, "notes")}#session-note-${encodeURIComponent(packet.packet.summary.id)}`}
+                        className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">
+                        Edit recap in Notes
+                      </Link>
                       {packetStale ? (
                         <div
                           className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4"
@@ -4746,7 +4298,7 @@ export function SessionReviewClient({
                             Your existing work remains editable while the
                             refreshed version is prepared.
                           </p>
-                          <button
+                          {!generation || generation.state === "READY" ? <button
                             type="button"
                             onClick={() => void buildPacket()}
                             disabled={buildingPacket || loading}
@@ -4764,7 +4316,7 @@ export function SessionReviewClient({
                             {buildingPacket
                               ? "Refreshing results…"
                               : "Try again"}
-                          </button>
+                          </button> : null}
                         </div>
                       ) : null}
                     </>
@@ -4774,7 +4326,7 @@ export function SessionReviewClient({
                         Quipsly prepares the recap and follow-through
                         automatically from the completed transcript.
                       </p>
-                      {packetBuildAction ? (
+                      {packetBuildAction && (!generation || generation.state === "READY") ? (
                         <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
                           <button
                             type="button"
@@ -4797,8 +4349,9 @@ export function SessionReviewClient({
                           </button>
                           <p className="mt-3 text-xs font-bold leading-relaxed text-violet-900">
                             Quipsly normally prepares this automatically from
-                            the exact transcript. Retrying creates no task or
-                            goal and sends or publishes nothing.
+                            the transcript. Retrying updates generated notes,
+                            tasks, and goals without duplicating them or replacing
+                            your edits. Nothing is sent or published.
                           </p>
                         </div>
                       ) : null}
@@ -4898,7 +4451,7 @@ export function SessionReviewClient({
                                 <Link href={`${sessionWorkspaceHref(roomId, "notes")}#session-note-${encodeURIComponent(note.id)}`} className="font-black text-[#3d3122] hover:underline">{note.title || "Session note"}</Link>
                                 <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{note.body}</p>
                                 {note.source.startSeconds !== null && note.source.endSeconds !== null ? (
-                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(note.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{note.source.speakerLabel ? `${note.source.speakerLabel} · ` : ""}{timestampForSeconds(note.source.startSeconds)}–{timestampForSeconds(note.source.endSeconds)}</Link>
+                                  <Link href={sessionResultSourceHref(roomId, note.source)} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{note.source.speakerLabel ? `${note.source.speakerLabel} · ` : ""}{timestampForSeconds(note.source.startSeconds)}–{timestampForSeconds(note.source.endSeconds)}</Link>
                                 ) : null}
                               </li>
                             ))}
@@ -4916,7 +4469,7 @@ export function SessionReviewClient({
                                 <Link href={`/work?task=${encodeURIComponent(task.id)}`} className="font-black text-[#3d3122] hover:underline">{task.title}</Link>
                                 {task.detail ? <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{task.detail}</p> : null}
                                 {task.source.startSeconds !== null && task.source.endSeconds !== null ? (
-                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(task.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{task.source.speakerLabel ? `${task.source.speakerLabel} · ` : ""}{timestampForSeconds(task.source.startSeconds)}–{timestampForSeconds(task.source.endSeconds)}</Link>
+                                  <Link href={sessionResultSourceHref(roomId, task.source)} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{task.source.speakerLabel ? `${task.source.speakerLabel} · ` : ""}{timestampForSeconds(task.source.startSeconds)}–{timestampForSeconds(task.source.endSeconds)}</Link>
                                 ) : null}
                               </li>
                             ))}
@@ -4934,7 +4487,7 @@ export function SessionReviewClient({
                                 <Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="font-black text-[#3d3122] hover:underline">{goal.title}</Link>
                                 {goal.description ? <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-[#765f40]">{goal.description}</p> : null}
                                 {goal.source.startSeconds !== null && goal.source.endSeconds !== null ? (
-                                  <Link href={`${sessionWorkspaceHref(roomId, "transcript")}#transcript-segment-${encodeURIComponent(goal.source.segmentId || "")}`} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{goal.source.speakerLabel ? `${goal.source.speakerLabel} · ` : ""}{timestampForSeconds(goal.source.startSeconds)}–{timestampForSeconds(goal.source.endSeconds)}</Link>
+                                  <Link href={sessionResultSourceHref(roomId, goal.source)} className="mt-2 inline-flex min-h-11 items-center text-xs font-black text-sky-800 hover:underline">{goal.source.speakerLabel ? `${goal.source.speakerLabel} · ` : ""}{timestampForSeconds(goal.source.startSeconds)}–{timestampForSeconds(goal.source.endSeconds)}</Link>
                                 ) : null}
                               </li>
                             ))}
@@ -5038,10 +4591,7 @@ export function SessionReviewClient({
             </details>
 
             {sourceClockAttention || audibleEventSources.length ? (
-              <details className="rounded-3xl border border-cyan-200 bg-cyan-50/35 p-4 shadow-sm sm:p-5">
-                <summary className="cursor-pointer text-sm font-black text-cyan-950">
-                  Audio details
-                </summary>
+              <RecordingDisclosure id="session-transcript-audio-details" label="Audio details">
                 <p className="mt-2 max-w-4xl text-xs font-semibold leading-5 text-[#765f40]">
                   Optional signal maps and detector details for closer listening.
                   Your transcript, automatic audio result, and ordinary editing
@@ -5096,7 +4646,7 @@ export function SessionReviewClient({
                     </section>
                   ) : null}
                 </div>
-              </details>
+              </RecordingDisclosure>
             ) : null}
           </>
         )

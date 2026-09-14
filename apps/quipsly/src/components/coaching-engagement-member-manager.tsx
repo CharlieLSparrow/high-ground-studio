@@ -31,6 +31,7 @@ type Boundary = {
   members: Member[];
   invitations: Invitation[];
   receipts: Receipt[];
+  pendingCallDisconnectionUserIds?: string[];
 };
 
 function label(member: Member) {
@@ -61,6 +62,12 @@ export function CoachingEngagementMemberManager({ engagementId }: { engagementId
   useEffect(() => {
     refresh().catch((failure) => setError(failure instanceof Error ? failure.message : "Membership could not be loaded."));
   }, [refresh]);
+
+  useEffect(() => {
+    if (!boundary?.pendingCallDisconnectionUserIds?.length) return;
+    const timer = window.setInterval(() => { refresh().catch(() => {}); }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [boundary?.pendingCallDisconnectionUserIds?.length, refresh]);
 
   async function mutate(payload: Record<string, unknown>) {
     setBusy(true);
@@ -146,6 +153,7 @@ export function CoachingEngagementMemberManager({ engagementId }: { engagementId
 
     {inviteUrl ? <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4"><div className="flex items-center gap-2 font-black text-amber-950"><Link2 size={18} /> Invitation ready</div><div className="mt-3 flex gap-2"><input readOnly value={inviteUrl} aria-label="Private invitation URL" className="min-w-0 flex-1 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs" /><button type="button" onClick={copyInvite} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-900 px-4 py-2 text-xs font-black text-white">{copied ? <Check size={15} /> : <Clipboard size={15} />}{copied ? "Copied" : "Copy"}</button><button type="button" aria-label="Dismiss invitation link" onClick={() => setInviteUrl("")} className="min-h-11 min-w-11 rounded-xl border border-amber-300 p-2 text-amber-900"><X size={17} /></button></div></div> : null}
 
+    {boundary?.pendingCallDisconnectionUserIds?.length ? <p role="status" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">Space access is updated. Live call disconnection hasn’t been confirmed yet.</p> : null}
     <div className="mt-7 grid gap-3 sm:grid-cols-2">
       {boundary?.members.map((member) => <article key={member.id} className={`rounded-2xl border p-4 ${member.status === "ACTIVE" ? "border-[#eadfc9] bg-white" : "border-slate-200 bg-slate-50"}`}><div className="flex items-start justify-between gap-3"><div><p className="font-black text-[#3d3122]">{label(member)}</p><p className="mt-1 text-xs text-[#8a7354]">{member.role.toLowerCase()}{member.status === "REMOVED" ? " · access removed" : ""}</p></div><button disabled={busy} onClick={() => change(member)} type="button" className={`inline-flex min-h-11 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold ${member.status === "ACTIVE" ? "border border-red-200 text-red-800" : "border border-emerald-300 text-emerald-900"}`}>{member.status === "ACTIVE" ? <UserMinus size={14} /> : <RotateCcw size={14} />}{member.status === "ACTIVE" ? "Remove" : "Restore"}</button></div></article>)}
     </div>

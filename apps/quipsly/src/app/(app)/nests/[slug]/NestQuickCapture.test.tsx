@@ -40,6 +40,12 @@ function renderCapture() {
 }
 
 describe("Nest project quick capture", () => {
+  it("starts with a task when opened from Work without stealing page focus", () => {
+    render(<NestQuickCapture projectId="project-1" projectSlug="high-ground" projectName="High Ground" tags={tags} initialKind="TASK" />);
+    expect(screen.getByRole("tab", { name: "Task" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Your own task in this Nest.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Action" })).not.toHaveFocus();
+  });
   beforeEach(() => {
     jest.clearAllMocks();
   });

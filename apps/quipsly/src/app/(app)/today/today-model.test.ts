@@ -3,6 +3,22 @@ import { buildTodayView } from "./today-model";
 const now = "2026-07-19T15:00:00.000Z";
 
 describe("Nest Today model", () => {
+  it("uses a real session source rather than a review flag to surface transcript work", () => {
+    const source = {
+      schema: "quipsly-transcript-derived-task-v1", roomId: "room-1",
+      transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3, endSeconds: 4,
+      providerTextSha256: "a".repeat(64), effectiveTextSnapshot: "Write the first paragraph.",
+      recordingAssetId: "asset-1", playbackSourceId: "source-1",
+    };
+    const result = buildTodayView({ now, sessions: [], goals: [], planBlocks: [], tasks: [
+      { id: "transcript", title: "Write the first paragraph", createdAt: now, sourceJson: source, room: { id: "room-1" } },
+      { id: "wrong-room", title: "Unrelated session", createdAt: now, sourceJson: source, room: { id: "room-2" } },
+      { id: "incomplete", title: "Incomplete source", createdAt: now, sourceJson: { schema: source.schema }, room: { id: "room-1" } },
+      { id: "flag-only", title: "Not transcript evidence", createdAt: now, sourceJson: { humanAccepted: true } },
+    ] });
+    expect(result.tasks).toEqual([expect.objectContaining({ id: "transcript", reason: "From session transcript" })]);
+  });
+
   it("keeps Today deliberate, bounded, and free of unreviewed transcript candidates", () => {
     const result = buildTodayView({
       now,

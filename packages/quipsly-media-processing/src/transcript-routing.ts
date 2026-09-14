@@ -16,6 +16,32 @@ export type TranscriptSourceTopology =
       kind: "unknown";
     };
 
+export function isExternallyImportedRecording(asset: { localManifestJson?: unknown }) {
+  const manifest = asset.localManifestJson && typeof asset.localManifestJson === "object"
+    ? asset.localManifestJson as Record<string, unknown> : {};
+  const profile = manifest.reportedSourceProfile && typeof manifest.reportedSourceProfile === "object"
+    ? manifest.reportedSourceProfile as Record<string, unknown> : {};
+  return profile.kind === "quipsly-nest-external-recording-import-v1";
+}
+
+/** Upload ownership is not speaker identity for externally recorded media. */
+export function recordingTranscriptSourceTopology(asset: {
+  kind?: unknown;
+  participantId?: string | null;
+  participant?: { displayName?: string | null; email?: string | null } | null;
+  localManifestJson?: unknown;
+}): TranscriptSourceTopology {
+  if (isExternallyImportedRecording(asset)) return { kind: "unknown" };
+  if (["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(String(asset.kind)) && asset.participantId) {
+    return {
+      kind: "participant-isolated",
+      participantId: asset.participantId,
+      participantLabel: (asset.participant?.displayName?.trim() || asset.participant?.email?.trim() || asset.participantId).slice(0, 160),
+    };
+  }
+  return asset.kind === "SERVER_MIX" ? { kind: "mixed-room", expectedSpeakerCount: null } : { kind: "unknown" };
+}
+
 export type TranscriptRoutingProvider =
   | "apple-speech-on-device"
   | "deepgram"

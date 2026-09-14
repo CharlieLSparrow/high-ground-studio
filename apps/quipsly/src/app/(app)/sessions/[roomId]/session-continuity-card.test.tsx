@@ -132,7 +132,7 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByText(/passed without a completion, skip, or cancellation decision/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /rehearse follow-through/i })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getAllByRole("link", { name: "Return to 1:03–1:11" }).some((link) => (
-      link.getAttribute("href") === "/sessions/room-1?mode=transcript#transcript-segment-segment-1"
+      link.getAttribute("href") === "/sessions/room-1?mode=transcript&source=asset-1&at=63.2#transcript-segment-segment-1"
     ))).toBe(true);
     expect(screen.getByText(/evidence was appended without changing task definition/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toBeInTheDocument();
@@ -211,7 +211,7 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByRole("heading", { name: "Return to what was actually said" })).toBeInTheDocument();
     expect(screen.getAllByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toHaveLength(2);
     expect(screen.getAllByRole("link", { name: "Return to 1:03–1:11" }).some((link) => (
-      link.getAttribute("href") === "/sessions/room-1?mode=transcript#transcript-segment-segment-1"
+      link.getAttribute("href") === "/sessions/room-1?mode=transcript&source=asset-1&at=63.2#transcript-segment-segment-1"
     ))).toBe(true);
     expect(screen.getByRole("link", { name: "Open source Session" })).toHaveAttribute("href", "/sessions/room-previous?mode=work");
     expect(screen.getByText(/current Session unchanged · no AI or external side effects/i)).toBeInTheDocument();

@@ -1,4 +1,6 @@
 "use client";
+import { SessionRecordingAudio } from "@/components/session-recording-audio";
+import { RecordingWaveformTimeline } from "@/components/recording-waveform-timeline";
 
 import { AudioLines, CircleAlert, Clock3, Pause, Play, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -7,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { timestampForSeconds } from "./session-review-model";
 import type { SessionRecordingHealth } from "./session-recording-health";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { useRecordingToolsActive } from "./session-recordings-workspace";
 
 type EvidenceSource = SessionSourceEvidence["sources"][number];
 
@@ -17,6 +20,7 @@ type AuditionSource = {
   state: SessionRecordingHealth["state"];
   url: string;
   kind: "audio" | "video";
+  contentType?: string | null;
   durationSeconds: number;
   signal: NonNullable<NonNullable<EvidenceSource["captureRuntime"]["audioFormat"]>["signal"]> | null;
 };
@@ -57,13 +61,31 @@ export function SessionRecordingHealthListeningNavigator({
   health,
   evidence,
   presentation = "technical",
+  preferredSourceId = null,
+  initialPlaybackSeconds = null,
+  onMediaFocusChange,
+  trimControls,
 }: {
   roomId: string;
   health: SessionRecordingHealth;
   evidence: SessionSourceEvidence;
   presentation?: "technical" | "workspace";
+  preferredSourceId?: string | null;
+  initialPlaybackSeconds?: number | null;
+  onMediaFocusChange?: (sourceId: string, seconds: number | null) => void;
+  trimControls?: {
+    selectedSourceIds: string[];
+    sourceOffsets?: Record<string, number>;
+    removedRanges?: Array<{startSeconds: number; endSeconds: number}>;
+    startSeconds: number;
+    endSeconds: number;
+    disabled: boolean;
+    onTrimBoundary: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
+    onCutBoundary?: (boundary: "start" | "end", sourceId: string, sourceSeconds: number) => void;
+  };
 }) {
   const workspace = presentation === "workspace";
+  const active = useRecordingToolsActive();
   const sources = useMemo<AuditionSource[]>(() => {
     const evidenceByAsset = new Map(evidence.sources.map((source) => [source.recordingAssetId, source]));
     return health.sources.flatMap((source) => {
@@ -82,28 +104,44 @@ export function SessionRecordingHealthListeningNavigator({
       if (!durationSeconds) return [];
       return [{
         recordingAssetId: source.recordingAssetId,
-        label: source.label,
+        label: workspace && /^(?:Mobile|Browser) (?:audio|video) master\s*·\s*[a-f0-9-]+$/i.test(source.label)
+          ? (playback.kind === "video" ? "Camera recording" : "Microphone recording") : source.label,
         participantLabel: source.participantLabel,
         state: source.state,
         url: playback.url,
         kind: playback.kind,
+        contentType: playback.contentType,
         durationSeconds,
         signal,
       }];
     });
-  }, [evidence.sources, health.sources]);
-  const initialId = sources.find((source) => source.state === "READY")?.recordingAssetId ?? sources[0]?.recordingAssetId ?? null;
+  }, [evidence.sources, health.sources, workspace]);
+  const initialId = sources.find(source => source.recordingAssetId === preferredSourceId)?.recordingAssetId
+    ?? sources.find((source) => source.state === "READY")?.recordingAssetId ?? sources[0]?.recordingAssetId ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(initialId);
-  const [selectedSeconds, setSelectedSeconds] = useState(0);
+  const [selectedSeconds, setSelectedSeconds] = useState(initialId === preferredSourceId && initialPlaybackSeconds !== null && Number.isFinite(initialPlaybackSeconds)
+    ? Math.max(0, Math.min(initialPlaybackSeconds, sources.find(source => source.recordingAssetId === initialId)?.durationSeconds || 0)) : 0);
+  const previousSourceId = useRef(initialId);
   const [playbackState, setPlaybackState] = useState<"loading" | "ready" | "playing" | "paused" | "error">("loading");
   const [message, setMessage] = useState<string | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const stopAtRef = useRef<number | null>(null);
   const selected = sources.find((source) => source.recordingAssetId === selectedId) ?? sources[0] ?? null;
   const waveform = useMemo(() => compactWaveform(selected?.signal ?? null), [selected?.signal]);
+  const sourceOffset = selected ? trimControls?.sourceOffsets?.[selected.recordingAssetId] : undefined;
+  const hasEditClock = selected && trimControls?.selectedSourceIds.includes(selected.recordingAssetId) && typeof sourceOffset === "number" && Number.isFinite(sourceOffset);
+  const keptStart = hasEditClock && trimControls ? Math.max(0, trimControls.startSeconds - sourceOffset!) : 0;
+  const keptEnd = hasEditClock && trimControls && selected ? Math.min(selected.durationSeconds, trimControls.endSeconds - sourceOffset!) : 0;
   const transcriptHref = selected
-    ? `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(selected.recordingAssetId)}&at=${encodeURIComponent(String(Number(selectedSeconds.toFixed(3))))}#transcript-audio-review`
+    ? `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(selected.recordingAssetId)}&at=${encodeURIComponent(String(Number(selectedSeconds.toFixed(3))))}`
     : null;
+
+  useEffect(() => {
+    if (!active) {
+      stopAtRef.current = null;
+      setPlaybackState("loading");
+    }
+  }, [active]);
 
   useEffect(() => {
     if (!selected && selectedId !== null) setSelectedId(null);
@@ -111,8 +149,11 @@ export function SessionRecordingHealthListeningNavigator({
   }, [selected, selectedId]);
 
   useEffect(() => {
+    if (previousSourceId.current === selected?.recordingAssetId) return;
+    previousSourceId.current = selected?.recordingAssetId ?? null;
     setSelectedSeconds(0);
     setMessage(null);
+    setPlaybackState("loading");
     stopAtRef.current = null;
   }, [selected?.recordingAssetId]);
 
@@ -120,12 +161,14 @@ export function SessionRecordingHealthListeningNavigator({
     mediaRef.current?.pause();
     setPlaybackState("loading");
     setSelectedId(recordingAssetId);
+    onMediaFocusChange?.(recordingAssetId, 0);
   }
 
   function seek(seconds: number) {
     if (!selected) return;
     const bounded = Math.max(0, Math.min(selected.durationSeconds, Number.isFinite(seconds) ? seconds : 0));
     setSelectedSeconds(bounded);
+    onMediaFocusChange?.(selected.recordingAssetId, bounded);
     const media = mediaRef.current;
     if (media && media.readyState >= 1) {
       try { media.currentTime = bounded; } catch { /* metadata remains the authority for seek availability */ }
@@ -135,7 +178,7 @@ export function SessionRecordingHealthListeningNavigator({
   async function play(checkSeconds: number | null, requestedStartSeconds = selectedSeconds) {
     const media = mediaRef.current;
     if (!media || !selected || playbackState === "error") {
-      setMessage("Protected source bytes are not ready for audition.");
+      setMessage(workspace ? "This recording is not ready to play. Try refreshing the recording tools." : "Protected source bytes are not ready for audition.");
       return;
     }
     try {
@@ -151,7 +194,7 @@ export function SessionRecordingHealthListeningNavigator({
         ? `Playing ${selected.label} from ${timestampForSeconds(playStart)}.`
         : `Playing a bounded ${Math.max(1, Math.ceil((stopAt ?? playStart) - playStart))}-second source check from ${timestampForSeconds(playStart)}.`);
     } catch {
-      setMessage("Playback needs a direct browser interaction. Use the native source controls, then retry the selected time.");
+      setMessage("Press Play in the recording controls to start listening, then try again.");
     }
   }
 
@@ -166,56 +209,93 @@ export function SessionRecordingHealthListeningNavigator({
     }
   }
 
-  if (!sources.length) return <section className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5" data-flight-deck-listening="unavailable" aria-labelledby="flight-deck-listening-heading">
-    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700"><AudioLines size={16} aria-hidden="true" />{workspace ? "Recordings" : "Source audition"}</p>
-    <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{workspace ? "No recording ready to play yet" : "Protected playback is not attached"}</h3>
-    <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{workspace ? "Your recordings will appear here once they finish uploading and processing." : "Health evidence remains inspectable, but Quipsly will not turn a private storage locator into browser playback. Promote or repair an authorized protected source first."}</p>
+  if (!sources.length) return <section className="rounded-2xl border border-dashed border-border bg-card p-5" data-flight-deck-listening="unavailable" aria-labelledby="flight-deck-listening-heading">
+    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground"><AudioLines size={16} aria-hidden="true" />{workspace ? "Recordings" : "Source audition"}</p>
+    <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-foreground">{workspace ? "No recording ready to play yet" : "Protected playback is not attached"}</h3>
+    <p className="mt-2 text-sm font-semibold leading-6 text-muted-foreground">{workspace ? "Your recordings will appear here once they finish uploading and processing." : "Health evidence remains inspectable, but Quipsly will not turn a private storage locator into browser playback. Promote or repair an authorized protected source first."}</p>
   </section>;
 
-  return <section className="min-w-0 rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5" data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
+  return <section className={`min-w-0 ${workspace ? "" : "rounded-2xl border border-border bg-card p-4 sm:p-5"}`} data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="max-w-3xl">
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#41624b]"><AudioLines size={16} aria-hidden="true" />{workspace ? "Your recordings" : "Source audition"}</p>
-        <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{workspace ? "Listen to your recording" : "Open the actual master"}</h3>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{workspace ? "Choose a track, listen, or jump to the same moment in the transcript." : "Choose an independently identified source, scrub its complete-decode clock, or run a bounded ten-second check. Playback navigation creates no proof-listen receipt and changes no media."}</p>
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-primary"><AudioLines size={16} aria-hidden="true" />{workspace ? "Your recordings" : "Source audition"}</p>
+        <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-foreground">{workspace ? "Listen to your recording" : "Open the actual master"}</h3>
+        <p className="mt-2 text-sm font-semibold leading-6 text-muted-foreground">{workspace ? "Choose a track, listen, or jump to the same moment in the transcript." : "Choose an independently identified source, scrub its complete-decode clock, or run a bounded ten-second check. Playback navigation creates no proof-listen receipt and changes no media."}</p>
       </div>
-      <span className="inline-flex items-center gap-2 rounded-full border border-[#ccd4bf] bg-[#f3f5eb] px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-[#41624b]"><ShieldCheck size={13} aria-hidden="true" />{workspace ? "Original recording" : "Protected route"}</span>
+      <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-primary"><ShieldCheck size={13} aria-hidden="true" />{workspace ? "Original recording" : "Protected route"}</span>
     </div>
 
     <ul className="mt-4 flex gap-2 overflow-x-auto pb-2" aria-label="Protected recording sources">
-      {sources.map((source) => <li key={source.recordingAssetId}><button type="button" aria-pressed={selected?.recordingAssetId === source.recordingAssetId} onClick={() => choose(source.recordingAssetId)} data-flight-deck-audition-source={source.recordingAssetId} className={`min-h-16 min-w-52 rounded-xl border px-3 py-2 text-left transition ${stateTone(source.state)} ${selected?.recordingAssetId === source.recordingAssetId ? "ring-2 ring-cyan-500 ring-offset-2" : ""}`}>
+      {sources.map((source) => <li key={source.recordingAssetId}><button type="button" aria-pressed={selected?.recordingAssetId === source.recordingAssetId} onClick={() => choose(source.recordingAssetId)} data-flight-deck-audition-source={source.recordingAssetId} className={`min-h-16 min-w-52 rounded-xl border px-3 py-2 text-left transition ${workspace ? "border-border bg-muted text-foreground" : stateTone(source.state)} ${selected?.recordingAssetId === source.recordingAssetId ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}>
         <span className="block text-[9px] font-black uppercase tracking-wide">{workspace ? source.participantLabel : `${source.state} · ${source.participantLabel}`}</span>
         <span className="mt-1 block max-w-64 truncate text-xs font-black">{source.label}</span>
         <span className="mt-1 block font-mono text-[9px] font-bold">{timestampForSeconds(source.durationSeconds)}</span>
       </button></li>)}
     </ul>
 
-    {selected ? <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]">
-      <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 p-4 text-white">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-wide text-cyan-200">{selected.participantLabel} · {selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className="inline-flex items-center gap-1 font-mono text-xs font-black text-cyan-100"><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
-        {selected.kind === "video"
+    {selected ? <div className={`mt-3 grid gap-4 ${workspace ? "" : "xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]"}`}>
+      <div className={`min-w-0 rounded-xl border ${workspace ? "border-border bg-background p-3 text-foreground sm:p-4" : "border-slate-800 bg-slate-950 p-4 text-white"}`} onSeekedCapture={event => {
+        const media = event.target;
+        if (!(media instanceof HTMLMediaElement)) return;
+        observe(media);
+        onMediaFocusChange?.(selected.recordingAssetId, media.currentTime);
+      }}>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className={`text-[9px] font-black uppercase tracking-wide ${workspace ? "text-muted-foreground" : "text-cyan-200"}`}>{selected.participantLabel} · {workspace ? ({loading: "Loading audio", ready: "Ready to play", playing: "Playing", paused: "Paused", error: "Playback unavailable"}[playbackState]) : selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className={`inline-flex items-center gap-1 font-mono text-xs font-black ${workspace ? "text-muted-foreground" : "text-cyan-100"}`}><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
+        {active ? selected.kind === "video"
           ? <video key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 max-h-80 w-full rounded-lg bg-black" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />
-          : <audio key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 w-full" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />}
+          : <SessionRecordingAudio contentType={selected.contentType ?? undefined} key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 w-full" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} /> : null}
 
-        {waveform.length ? <div className="mt-4 flex h-24 items-end gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-900 px-2 pt-2" aria-label="Complete-decode waveform overview" role="img">{waveform.map((point, index) => <span key={`${point.startSeconds}-${index}`} className="min-w-px flex-1 rounded-t-sm bg-cyan-300/80" style={{ height: `${waveformHeight(point.rmsDbfs)}%` }} />)}</div> : <p className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-slate-300">No waveform overview is attached. Native playback remains available, but Quipsly does not invent a visual signal trace.</p>}
+        {workspace ? <div className="mt-4"><RecordingWaveformTimeline key={selected.recordingAssetId} duration={selected.durationSeconds} position={selectedSeconds}
+          points={selected.signal?.waveform || []} disabled={playbackState === "loading" || playbackState === "error"} onSeek={seek}
+          keptRange={hasEditClock && trimControls ? {startSeconds: trimControls.startSeconds - sourceOffset!, endSeconds: trimControls.endSeconds - sourceOffset!} : null}
+          removedRanges={hasEditClock ? trimControls?.removedRanges?.map(range => ({startSeconds: range.startSeconds - sourceOffset!, endSeconds: range.endSeconds - sourceOffset!})) : []} />
+        </div> : waveform.length ? <div className="mt-4 flex h-24 items-end gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-900 px-2 pt-2" aria-label="Complete-decode waveform overview" role="img">{waveform.map((point, index) => <span key={`${point.startSeconds}-${index}`} className="min-w-px flex-1 rounded-t-sm bg-cyan-300/80" style={{ height: `${waveformHeight(point.rmsDbfs)}%` }} />)}</div> : <p className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-slate-300">No waveform overview is attached. Native playback remains available, but Quipsly does not invent a visual signal trace.</p>}
 
-        <label htmlFor="flight-deck-source-clock" className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-100">Selected source time</label>
+        {!workspace ? <><label htmlFor="flight-deck-source-clock" className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-100">Selected source time</label>
         <input id="flight-deck-source-clock" type="range" min={0} max={selected.durationSeconds} step={0.01} value={Math.min(selectedSeconds, selected.durationSeconds)} onChange={(event) => seek(Number(event.target.value))} className="mt-2 w-full accent-cyan-300" />
+        </> : null}
         <div className="mt-3 flex flex-wrap gap-2">
+          {!workspace ? <>
           <button type="button" onClick={() => void play(null)} disabled={playbackState === "error"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-cyan-200 px-4 text-xs font-black text-slate-950 disabled:opacity-50"><Play size={14} fill="currentColor" aria-hidden="true" />Play from selected time</button>
           <button type="button" onClick={() => void play(10)} disabled={playbackState === "error"} data-flight-deck-ten-second-check className="inline-flex min-h-11 items-center gap-2 rounded-full border border-cyan-300 bg-slate-900 px-4 text-xs font-black text-cyan-100 disabled:opacity-50"><Clock3 size={14} aria-hidden="true" />Check up to 10 seconds</button>
           <button type="button" onClick={() => { mediaRef.current?.pause(); stopAtRef.current = null; setPlaybackState("paused"); }} disabled={playbackState !== "playing"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-600 bg-slate-900 px-4 text-xs font-black text-slate-200 disabled:opacity-50"><Pause size={14} aria-hidden="true" />Pause</button>
-          {transcriptHref ? <Link href={transcriptHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-100 px-4 text-xs font-black text-violet-950">Open in Transcript at {timestampForSeconds(selectedSeconds)}</Link> : null}
+          </> : null}
+          {trimControls ? (["start", "end"] as const).map(boundary => <button key={boundary} type="button"
+            disabled={trimControls.disabled || !trimControls.selectedSourceIds.includes(selected.recordingAssetId) || playbackState === "loading" || playbackState === "error"}
+            onClick={() => trimControls.onTrimBoundary(boundary, selected.recordingAssetId, mediaRef.current?.currentTime ?? selectedSeconds)}
+            className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">
+            Set {boundary} here
+          </button>) : null}
+          {trimControls?.onCutBoundary ? (["start", "end"] as const).map(boundary => <button key={`cut-${boundary}`} type="button"
+            disabled={trimControls.disabled || !trimControls.selectedSourceIds.includes(selected.recordingAssetId) || playbackState === "loading" || playbackState === "error"}
+            onClick={() => trimControls.onCutBoundary?.(boundary, selected.recordingAssetId, mediaRef.current?.currentTime ?? selectedSeconds)}
+            className="inline-flex min-h-11 items-center rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50">Mark cut {boundary}</button>) : null}
+          {hasEditClock && keptEnd > keptStart ? <>
+            <button type="button" disabled={playbackState === "loading" || playbackState === "error"}
+              onClick={() => void play(Math.min(5, keptEnd - keptStart), keptStart)}
+              className="inline-flex min-h-11 items-center rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50">Check trim start</button>
+            <button type="button" disabled={playbackState === "loading" || playbackState === "error"}
+              onClick={() => void play(Math.min(5, keptEnd - keptStart), Math.max(keptStart, keptEnd - 5))}
+              className="inline-flex min-h-11 items-center rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50">Check trim end</button>
+          </> : null}
+          {transcriptHref ? <Link href={transcriptHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground">Open in Transcript at {timestampForSeconds(selectedSeconds)}</Link> : null}
         </div>
-        {message ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-cyan-100">{message}</p> : null}
+        {trimControls ? <p role="status" aria-label="Recording trim range" className={`mt-3 text-sm tabular-nums ${workspace ? "text-muted-foreground" : "text-slate-200"}`}>
+          Keep {timestampForSeconds(trimControls.startSeconds)} – {timestampForSeconds(trimControls.endSeconds)} of the session
+        </p> : null}
+        {message ? <p role="status" className="mt-3 rounded-lg border border-border bg-muted p-3 text-xs font-semibold text-foreground">{message}</p> : null}
         {!workspace ? <p className="mt-3 text-[9px] font-black uppercase tracking-wide text-slate-500">Client playback is navigation only · no heard/approved claim is written</p> : null}
       </div>
 
-      <aside className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4" aria-label="Signal observations for selected source">
+      <details open={workspace ? undefined : true} className="rounded-xl border border-border bg-muted/40 p-4 text-foreground">
+        <summary className="min-h-11 cursor-pointer content-center text-sm font-bold">Audio details</summary>
+      <aside aria-label="Signal observations for selected source">
+        {workspace ? <button type="button" onClick={() => void play(10)} disabled={playbackState === "error"} data-flight-deck-ten-second-check className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-cyan-300 px-4 text-xs font-bold text-cyan-950 disabled:opacity-50"><Clock3 size={14} aria-hidden="true" />Check up to 10 seconds</button> : null}
         <p className="text-[10px] font-black uppercase tracking-wide text-cyan-900">Exact-time observations</p>
-        {selected.signal?.observations.length ? <ol className="mt-3 space-y-2">{selected.signal.observations.map((observation, index) => <li key={`${observation.kind}-${observation.startSeconds}-${index}`}><button type="button" onClick={() => { seek(observation.startSeconds); void play(10, observation.startSeconds); }} className="min-h-11 w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs font-bold leading-5 text-amber-950"><span className="block font-black uppercase tracking-wide">{timestampForSeconds(observation.startSeconds)} · {observation.kind.replaceAll("-", " ")}</span><span className="mt-1 block">{observation.detail}</span></button></li>)}</ol> : <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><ShieldCheck size={15} className="mr-1 inline" aria-hidden="true" />No configured complete-decode threshold flagged a range. Use the source controls for a representative listen; this is not proof of subjective quality.</p>}
-        {playbackState === "error" ? <p className="mt-3 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950"><CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />Playback failed closed. Health evidence remains visible, but no listening claim is available.</p> : null}
+        {selected.signal?.observations.length ? <ol className="mt-3 space-y-2">{selected.signal.observations.map((observation, index) => <li key={`${observation.kind}-${observation.startSeconds}-${index}`}><button type="button" onClick={() => { seek(observation.startSeconds); void play(10, observation.startSeconds); }} className="min-h-11 w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs font-bold leading-5 text-amber-950"><span className="block font-black uppercase tracking-wide">{timestampForSeconds(observation.startSeconds)} · {observation.kind.replaceAll("-", " ")}</span><span className="mt-1 block">{observation.detail}</span></button></li>)}</ol> : <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><ShieldCheck size={15} className="mr-1 inline" aria-hidden="true" />{workspace ? (selected.signal ? "No audio issues flagged by the available analysis." : "Audio analysis is not available yet.") : "No configured complete-decode threshold flagged a range. Use the source controls for a representative listen; this is not proof of subjective quality."}</p>}
+        {playbackState === "error" ? <p className="mt-3 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950"><CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{workspace ? "This recording could not play. Refresh to try again, or choose another track." : "Playback failed closed. Health evidence remains visible, but no listening claim is available."}</p> : null}
       </aside>
+      </details>
     </div> : null}
   </section>;
 }

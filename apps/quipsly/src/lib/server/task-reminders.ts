@@ -1,4 +1,5 @@
 import type { TaskReminderOperation, TaskReminderStatus } from "@prisma/client";
+import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
 
 type ReminderRow = {
   id: string;
@@ -62,6 +63,19 @@ export async function setTaskReminderInTransaction(input: {
     requestedLocalDateTime,
   } = input;
 
+  // Even a retry must lose access after its Nest membership is removed.
+  const task = await tx.actionItem.findFirst({
+    where: { id: taskId, assignedUserId: actorUserId, OR: personalOrSharedSessionTaskAccessWhere(actorUserId, "write") },
+    select: {
+      id: true, status: true, updatedAt: true,
+      recurrenceOccurrence: { select: { id: true } },
+      reminder: { select: {
+        id: true, actionItemId: true, ownerUserId: true, remindAt: true,
+        status: true, sourceJson: true, updatedAt: true,
+      } },
+    },
+  });
+  if (!task) return { kind: "not-found" };
   const priorRevision = await tx.taskReminderRevision.findUnique({
     where: { id: revisionId },
     select: {
@@ -104,25 +118,6 @@ export async function setTaskReminderInTransaction(input: {
     };
   }
 
-  const task = await tx.actionItem.findFirst({
-    where: { id: taskId, assignedUserId: actorUserId },
-    select: {
-      id: true,
-      status: true,
-      updatedAt: true,
-      recurrenceOccurrence: { select: { id: true } },
-      reminder: { select: {
-        id: true,
-        actionItemId: true,
-        ownerUserId: true,
-        remindAt: true,
-        status: true,
-        sourceJson: true,
-        updatedAt: true,
-      } },
-    },
-  });
-  if (!task) return { kind: "not-found" };
   if (task.recurrenceOccurrence) return { kind: "recurring" };
   if (task.status !== "OPEN") return { kind: "closed" };
   if (!sameInstant(task.updatedAt, expectedTaskUpdatedAt)) return { kind: "conflict" };

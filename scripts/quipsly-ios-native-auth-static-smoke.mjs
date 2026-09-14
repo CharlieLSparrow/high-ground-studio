@@ -70,5 +70,5 @@ console.log(JSON.stringify({
     path.relative(root, authManagerPath),
     path.relative(root, loginViewPath),
   ],
-  invariant: "iOS capture uses Firebase email/password REST sign-in plus Quipsly bearer session-check; only transport failure, not feature HTTP 5xx, enters protected offline access.",
+  invariant: "iOS capture uses Firebase email/password REST sign-in plus Quipsly bearer session-check; feature HTTP failures preserve the workspace and connectivity classification is exercised by the Swift auth response tests.",
 }, null, 2));

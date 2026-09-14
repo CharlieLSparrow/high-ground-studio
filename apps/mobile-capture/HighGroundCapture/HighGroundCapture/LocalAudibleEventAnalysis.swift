@@ -62,7 +62,7 @@ struct LocalAudibleEventRawResult: Equatable, Sendable {
     let classifications: [LocalAudibleEventRawClassification]
 }
 
-enum LocalAudibleEventReducer {
+nonisolated enum LocalAudibleEventReducer {
     static let algorithm = "apple-sound-classifier-file-v1"
     static let classifierIdentifier = "SNClassifierIdentifierVersion1"
     static let requestedWindowDurationSeconds = 1.5
@@ -70,7 +70,7 @@ enum LocalAudibleEventReducer {
     static let minimumCandidateConfidence = 0.35
     static let maximumSuggestions = 500
 
-    private struct ClassificationRule {
+    private struct ClassificationRule: Sendable {
         let displayLabel: String
         let family: String
         let minimumConfidence: Double
@@ -216,7 +216,7 @@ enum LocalAudibleEventReducer {
     }
 }
 
-enum LocalAudibleEventAnalyzer {
+nonisolated enum LocalAudibleEventAnalyzer {
     static func analyze(
         fileURL: URL,
         durationSeconds: Double,
@@ -245,10 +245,12 @@ enum LocalAudibleEventAnalyzer {
             request.overlapFactor = LocalAudibleEventReducer.overlapFactor
             let observer = LocalSoundClassificationObserver()
             try analyzer.add(request, withObserver: observer)
-            let reachedEnd = await withCheckedContinuation { continuation in
-                analyzer.analyze { didReachEndOfFile in
-                    continuation.resume(returning: didReachEndOfFile)
-                }
+            let operation = LocalSoundFileAnalysisOperation(analyzer: analyzer)
+            let reachedEnd = await withTaskCancellationHandler {
+                await operation.run(timeout: max(30, min(1_800, durationSeconds * 2)))
+            } onCancel: {
+                digestTask.cancel()
+                operation.cancel()
             }
             let snapshot = observer.snapshot()
             let digest = try await digestTask.value
@@ -379,6 +381,7 @@ enum LocalAudibleEventAnalyzer {
         var hasher = SHA256()
         var sizeBytes: Int64 = 0
         while true {
+            try Task.checkCancellation()
             let data = try handle.read(upToCount: 1024 * 1024) ?? Data()
             guard !data.isEmpty else { break }
             hasher.update(data: data)
@@ -396,7 +399,56 @@ enum LocalAudibleEventAnalyzer {
     }
 }
 
-private final class LocalSoundClassificationObserver: NSObject, SNResultsObserving, @unchecked Sendable {
+/// All framework start/cancel and continuation state is confined to one queue.
+/// A missing framework callback cannot keep the local analysis queue forever.
+nonisolated final class LocalSoundFileAnalysisOperation: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.quipsly.sound-file-analysis", qos: .utility)
+    private var startAnalysis: ((@escaping @Sendable (Bool) -> Void) -> Void)?
+    private var cancelAnalysis: (() -> Void)?
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private var finished = false
+
+    convenience init(analyzer: SNAudioFileAnalyzer) {
+        self.init(start: { completion in analyzer.analyze(completionHandler: completion) },
+                  cancel: { analyzer.cancelAnalysis() })
+    }
+
+    // Keeping the callback boundary injectable lets tests exercise a missing,
+    // late, or duplicate framework completion without waiting on ML execution.
+    init(start: @escaping (@escaping @Sendable (Bool) -> Void) -> Void,
+         cancel: @escaping () -> Void) {
+        startAnalysis = start
+        cancelAnalysis = cancel
+    }
+
+    func run(timeout: TimeInterval) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                guard !finished, let startAnalysis else { continuation.resume(returning: false); return }
+                self.continuation = continuation
+                startAnalysis { [weak self] reachedEnd in
+                    self?.queue.async { [weak self] in self?.finish(reachedEnd) }
+                }
+                queue.asyncAfter(deadline: .now() + timeout) { [weak self] in self?.finish(false, cancel: true) }
+            }
+        }
+    }
+
+    func cancel() { queue.async { [weak self] in self?.finish(false, cancel: true) } }
+
+    private func finish(_ success: Bool, cancel: Bool = false) {
+        guard !finished else { return }
+        finished = true
+        let cancelActive = cancelAnalysis
+        startAnalysis = nil
+        cancelAnalysis = nil
+        if cancel { cancelActive?() }
+        continuation?.resume(returning: success)
+        continuation = nil
+    }
+}
+
+nonisolated private final class LocalSoundClassificationObserver: NSObject, SNResultsObserving, @unchecked Sendable {
     private let lock = NSLock()
     private var storedResults: [LocalAudibleEventRawResult] = []
     private var storedFailureCode: String?

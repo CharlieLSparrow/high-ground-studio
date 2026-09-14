@@ -11,3 +11,15 @@ xcrun swiftc \
   "${capture_root}/Testing/OnDeviceTranscriptDeliveryPolicyHarness.swift" \
   -o "${binary}"
 "${binary}"
+
+xcrun swiftc -swift-version 6 -strict-concurrency=complete \
+  "${capture_root}/HighGroundCapture/CaptureTranscriptProgress.swift" \
+  "${capture_root}/Testing/CaptureTranscriptProgressHarness.swift" \
+  -o "${binary}"
+"${binary}"
+
+xcrun swiftc -swift-version 6 -strict-concurrency=complete \
+  "${capture_root}/HighGroundCapture/CaptureAsyncDeadline.swift" \
+  "${capture_root}/Testing/CaptureAsyncDeadlineHarness.swift" \
+  -o "${binary}"
+"${binary}"

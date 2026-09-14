@@ -943,9 +943,9 @@ final class VideoCaptureController: ObservableObject {
             sourceType: recording.effectiveMediaKind.uploadSourceType,
             captureGroupId: recording.captureGroupId,
             sourceProfileJson: recording.encodedSourceProfileJSON,
-            startedAt: ISO8601DateFormatter().string(from: recording.startedAt),
+            startedAt: CaptureDateCoding.string(from: recording.startedAt),
             stoppedAt: recording.stoppedAt.map {
-                ISO8601DateFormatter().string(from: $0)
+                CaptureDateCoding.string(from: $0)
             },
             recordingSegmentsJson: recording.recordingSegmentsJson,
             localRecordingID: recording.id,

@@ -157,8 +157,9 @@ enum OnDeviceTranscriptDeliveryPolicy {
     /// SFSpeechRecognizer documents a one-minute request limit. The modern
     /// SpeechTranscriber path does not use these windows; they exist only for
     /// older OS versions and the compatibility fallback. Fifty-second owned
-    /// windows leave headroom for the framework limit, while 750 ms of prior
-    /// context lets recognition recover words that cross a seam.
+    /// windows leave headroom for two seconds of context on either side.
+    /// Context after the owned window matters too: a crossing word whose
+    /// midpoint belongs to this window still needs its complete trailing audio.
     static func compatibleRecognitionWindows(
         sourceDurationSeconds: Double
     ) -> [OnDeviceTranscriptRecognitionWindow] {
@@ -175,7 +176,7 @@ enum OnDeviceTranscriptDeliveryPolicy {
         }
 
         let ownedWindowSeconds = 50.0
-        let priorContextSeconds = 0.75
+        let contextSeconds = 2.0
         var result: [OnDeviceTranscriptRecognitionWindow] = []
         var sourceStart = 0.0
         while sourceStart < sourceDurationSeconds {
@@ -183,8 +184,8 @@ enum OnDeviceTranscriptDeliveryPolicy {
             result.append(OnDeviceTranscriptRecognitionWindow(
                 sourceStartSeconds: sourceStart,
                 sourceEndSeconds: sourceEnd,
-                extractionStartSeconds: max(0, sourceStart - priorContextSeconds),
-                extractionEndSeconds: sourceEnd
+                extractionStartSeconds: max(0, sourceStart - contextSeconds),
+                extractionEndSeconds: min(sourceDurationSeconds, sourceEnd + contextSeconds)
             ))
             sourceStart = sourceEnd
         }

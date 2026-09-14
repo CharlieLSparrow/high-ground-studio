@@ -2,6 +2,8 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 
 import { auth } from "@/auth";
+import { listSharedClientSpaces } from "@/lib/server/shared-client-spaces";
+jest.mock("@/lib/server/shared-client-spaces", () => ({ listSharedClientSpaces: jest.fn() }));
 import { getPrismaClient } from "@/lib/prisma";
 import { canAccessPrivateFictionNest } from "@/lib/fiction/private-fiction-access";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
@@ -83,6 +85,7 @@ describe("Nest registry degraded-state UX", () => {
     (listAccessibleStudioProjectSummariesForEmail as jest.Mock).mockResolvedValue([]);
     (canAccessPrivateFictionNest as jest.Mock).mockResolvedValue(false);
     (hasPlatformOwnerRole as jest.Mock).mockReturnValue(false);
+    jest.mocked(listSharedClientSpaces).mockResolvedValue({ spaces: [], hasMore: false });
   });
 
   afterEach(() => {
@@ -169,6 +172,35 @@ describe("Nest registry degraded-state UX", () => {
     );
     expect(screen.getByText(/You have not created any Nests yet/i)).toBeInTheDocument();
     expect(screen.getByText(/No shared Nests yet/i)).toBeInTheDocument();
+  });
+
+  it("shows a client relationship without granting or requiring its parent Nest membership", async () => {
+    jest.mocked(listSharedClientSpaces).mockResolvedValue({ spaces: [{ id: "client-space", title: "Our coaching space", people: ["Morgan Ellis"], href: "/coaching/engagements/client-space" }], hasMore: false });
+    render(await ProjectsHub({}));
+    expect(listSharedClientSpaces).toHaveBeenCalledWith(expect.objectContaining({ kind: "mock-prisma" }), "user-1");
+    expect(screen.getByRole("link", { name: "Open Our coaching space" })).toHaveAttribute("href", "/coaching/engagements/client-space");
+    expect(screen.getByText("With Morgan Ellis")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View all coaching spaces" })).not.toBeInTheDocument();
+  });
+
+  it("keeps confirmed Nests usable when the independent client-space read fails", async () => {
+    jest.mocked(listSharedClientSpaces).mockRejectedValue(new Error("database unavailable"));
+    render(await ProjectsHub({}));
+    expect(screen.getByText("Couldn’t load your coaching spaces.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Create a Nest" })).toBeInTheDocument();
+    expect(screen.queryByText("database unavailable")).not.toBeInTheDocument();
+  });
+
+  it("keeps confirmed coaching spaces and their full list usable when the Nest registry fails", async () => {
+    (listProjectsVisibleToEmail as jest.Mock).mockRejectedValue(new Error("registry unavailable"));
+    jest.mocked(listSharedClientSpaces).mockResolvedValue({
+      spaces: [{ id: "client-space", title: "Our coaching space", people: ["Morgan Ellis"], href: "/coaching/engagements/client-space" }],
+      hasMore: true,
+    });
+    render(await ProjectsHub({}));
+    expect(screen.getByRole("link", { name: "Open Our coaching space" })).toHaveAttribute("href", "/coaching/engagements/client-space");
+    expect(screen.getByRole("link", { name: "View all coaching spaces" })).toHaveAttribute("href", "/coaching/engagements");
+    expect(screen.getByRole("heading", { name: "Your Nest list could not be loaded" })).toBeInTheDocument();
   });
 
   it("distinguishes an unavailable private document from a missing Nest", async () => {

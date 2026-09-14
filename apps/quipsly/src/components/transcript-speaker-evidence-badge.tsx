@@ -14,7 +14,7 @@ export function transcriptSpeakerEvidenceCopy(authority?: TranscriptSourceSpeake
     return { label: "Automatic speaker label", detail: "This speaker name still comes from transcription processing." };
   }
   if (authority === "unresolved") {
-    return { label: "Speaker needs review", detail: "Quipsly has not identified this speaker yet." };
+    return { label: "Speaker not named", detail: "You can add a speaker name whenever it is useful." };
   }
   return null;
 }

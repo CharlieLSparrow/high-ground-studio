@@ -15,6 +15,7 @@ export async function loadSessionWork(input: {
   prisma: any;
   roomId: string;
   actor: SessionAccessActor;
+  entryId?: string;
 }) {
   const { prisma, roomId, actor } = input;
   const room = await prisma.callRoom.findFirst({
@@ -24,17 +25,17 @@ export async function loadSessionWork(input: {
   if (!room) return [];
   const shared = { sourceJson: { path: ["visibility"], equals: "SESSION_SHARED" } };
   const relationship = { sourceJson: { path: ["visibility"], equals: "engagement-shared" } };
-  const taskWhere = { roomId, OR: [
+  const taskWhere = { roomId, ...(input.entryId ? { id: input.entryId } : {}), OR: [
     { assignedUserId: actor.id }, shared,
     { AND: [relationship, { OR: coachingTaskCollaborationAccessWhere(actor.id) }] },
   ] };
-  const goalWhere = { roomId, OR: [
+  const goalWhere = { roomId, ...(input.entryId ? { id: input.entryId } : {}), OR: [
     { ownerUserId: actor.id }, shared,
     { AND: [relationship, { OR: personalOrSharedCoachingGoalAccessWhere(actor.id) }] },
   ] };
   const common = {
-    id: true, title: true, status: true, sourceJson: true, createdAt: true, updatedAt: true,
-    tagLinks: { select: { tag: { select: { id: true, label: true, slug: true, isActive: true, projectId: true } } } },
+    id: true, engagementId: true, title: true, status: true, sourceJson: true, createdAt: true, updatedAt: true,
+    tagLinks: { select: { tag: { select: { id: true, label: true, slug: true, isActive: true, projectId: true, hexColor: true } } } },
   };
   const [tasks, goals, writableTasks, writableGoals] = await Promise.all([
     prisma.actionItem.findMany({ where: taskWhere, orderBy: { createdAt: "desc" }, take: 100,
@@ -55,7 +56,8 @@ export async function loadSessionWork(input: {
     .map((row) => {
       const source = object(row.sourceJson);
       const sourceHref = sessionWorkSourceHref(roomId, source);
-      const fromTranscript = sourceHref !== null;
+      const fromConversation = sourceHref !== null && source.schema === "quipsly-session-work-entry-v1" && typeof source.sourceMessageId === "string";
+      const fromTranscript = sourceHref !== null && !fromConversation;
       const visibility = source.visibility === "engagement-shared"
         ? "ENGAGEMENT_SHARED" as const
         : source.visibility === "SESSION_SHARED" ? "SESSION_SHARED" as const : "AUTHOR_PRIVATE" as const;
@@ -64,12 +66,14 @@ export async function loadSessionWork(input: {
         createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
         dueAt: row.dueAt?.toISOString() ?? null, visibility,
         ownedByCurrentActor: row.userId === actor.id,
+        ownerUserId: row.userId,
+        engagementId: row.engagementId ?? null,
         ownerLabel: row.user?.name || row.user?.primaryEmail || "Unassigned",
-        canEdit: writable.has(row.id), fromTranscript,
+        canEdit: writable.has(row.id), fromTranscript, fromConversation,
         sourceHref,
         tags: (row.tagLinks || []).map((link: any) => link.tag)
           .filter((tag: any) => tag.isActive && tag.projectId === room.projectId)
-          .map(({ id, label, slug }: any) => ({ id, label, slug })),
+          .map(({ id, label, slug, hexColor }: any) => ({ id, label, slug, hexColor })),
       };
     }).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }

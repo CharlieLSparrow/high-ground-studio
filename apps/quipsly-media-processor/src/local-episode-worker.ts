@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { LocalMediaJobStorage } from "@high-ground/quipsly-media-processing/local-media-job-storage";
+import { FfmpegSessionAudioAuditionEngine } from "./session-audio-audition-ffmpeg.js";
+import { runSessionAudioAuditionWorker } from "./session-audio-audition-worker.js";
 import { mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
+import { defaultLocalMediaRoot, dedicatedLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -529,17 +533,10 @@ export class PostgresLocalEpisodeProxyStore implements LocalEpisodeProxyStore {
 }
 
 async function authorizedLocalRoot(configuredRoot: string) {
-  const temporaryRoot = await realpath(tmpdir());
-  const resolved = path.resolve(configuredRoot);
+  const resolved = dedicatedLocalMediaRoot(configuredRoot);
   await mkdir(resolved, { recursive: true, mode: 0o700 });
   const canonical = await realpath(resolved);
-  if (!pathIsInside(temporaryRoot, canonical) || canonical === temporaryRoot) {
-    throw new TerminalLocalEpisodeProxyError(
-      "episode-proxy-root-rejected",
-      "Local media worker root must be a dedicated directory below the operating-system temporary directory.",
-    );
-  }
-  return canonical;
+  return dedicatedLocalMediaRoot(canonical);
 }
 
 async function authorizedExistingPath(root: string, candidate: string) {
@@ -644,13 +641,17 @@ async function main() {
   const localMediaRoot = path.resolve(
     durableLocalMediaRoot ||
       process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT ||
-      path.join(tmpdir(), "quipsly-media-ingest"),
+      defaultLocalMediaRoot(),
   );
   const once = process.argv.includes("--once");
   const pool = new Pool({ connectionString: databaseUrl, max: 2 });
   const store = new PostgresLocalEpisodeProxyStore(pool);
   const transcoder = new FfmpegCaptureProxyTranscoder();
   const executionId = randomUUID();
+  const sessionAuditionStorage = new LocalMediaJobStorage(
+    process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT?.trim() || path.join(localMediaRoot, "capture-vault"),
+  );
+  const sessionAuditionEngine = new FfmpegSessionAudioAuditionEngine();
   const executionIdentity = await resolveLocalExecutionIdentity(localMediaRoot);
   const options: LocalEpisodeProxyWorkerOptions = {
     executionId,
@@ -929,6 +930,13 @@ async function main() {
       sessionRecordingShare.renderer,
       sessionRecordingShare.options,
     ),
+    async () => {
+      const results = await runSessionAudioAuditionWorker(sessionAuditionStorage, sessionAuditionEngine, {
+        executionId, buildId: options.buildId, imageDigest: null,
+        leaseDurationMs: options.leaseMs, now: () => new Date(),
+      }, 1);
+      return results[0] ?? { disposition: "idle" };
+    },
     () => runOneLocalEpisodeAudioMixJob(
       episodeAudioMix.store,
       episodeAudioMix.renderer,

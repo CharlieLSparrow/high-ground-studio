@@ -50,7 +50,7 @@ function check(name, condition) {
 
 const armCall = model.indexOf("try audioCapture.armNextCapture(");
 const recorderStart = model.indexOf("audioCapture.handleCommand(command)", armCall);
-const postStartGuard = model.indexOf("audioCapture.captureState == .recording", recorderStart);
+const postStartGuard = model.indexOf("guard audioStarted,", recorderStart);
 check("model preallocates capture UUID", model.includes("let captureID = UUID()"));
 check("model arms before issuing recorder start", armCall >= 0 && armCall < recorderStart);
 check("model checks recorder state only after start command", recorderStart < postStartGuard);
@@ -92,14 +92,20 @@ check(
     && audio.includes("waitUntilRecordingOrTerminal"),
 );
 check(
-  "the reachable native session surface waits for confirmed PCM before claiming recording",
+  "native start wiring awaits a confirmed source and retains an immediately interrupted take",
   model.includes(
-    "let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()",
+    "let audioStarted = await audioCapture.waitUntilRecordingOrTerminal(includingPausedSource: true)",
   )
     && model.includes(
-      "guard audioStarted, audioCapture.captureState == .recording else",
-    ),
+      "guard audioStarted, [.recording, .paused].contains(audioCapture.captureState) else",
+    )
+    && audio.includes("includingPausedSource: Bool = false")
+    && audio.includes("if includingPausedSource && activeLocalRecordingID != nil { return true }"),
 );
+// This is a source-wiring check, not PCM or interruption proof. The native
+// testAudioInterruptionPausesAndRequiresExplicitResume test forces the source
+// to pause before a deliberately late startup observer wakes past its deadline,
+// then resumes and saves. Do not substitute this string check for that runtime test.
 check(
   "provider start failure takes the terminal media cleanup path",
   audio.includes("if activeLocalRecordingID != nil {")
@@ -133,7 +139,9 @@ check(
   "provider-backed master uses LiveKit local PCM instead of a second microphone client",
   providerAudio.includes("AudioManager.shared.add(localAudioRenderer: self)")
     && providerAudio.includes("AudioMixRecorder(")
-    && providerAudio.includes("source.render(pcmBuffer: pcmBuffer)")
+    && providerAudio.includes("ProviderAudioPrivacyBuffer.silence(matching: pcmBuffer)")
+    && providerAudio.includes("source.render(pcmBuffer: retainedBuffer)")
+    && providerAudio.includes("liveTranscriptPCMConsumer?(retainedBuffer)")
     && !providerAudio.includes("AVAudioRecorder("),
 );
 check(
@@ -455,6 +463,39 @@ check(
     && !phoneShell.includes('Button("Retry preserved uploads")')
     && !phoneShell.includes('Button("Try again now")'),
 );
+
+const nativeStart = providerRoom.slice(providerRoom.indexOf("private func startNativeCallPresentation("), providerRoom.indexOf("private func reportNativeCallConnected("));
+check("CallKit identity exists before transaction callbacks can activate audio",
+  nativeStart.indexOf("activeCallUUID = uuid") < nativeStart.indexOf("try await requestCallKitTransaction(transaction)")
+    && nativeStart.includes("guard activeCallUUID == uuid else")
+    && nativeStart.includes("guard activeCallUUID == uuid else { return false }"));
+const startAction = providerRoom.slice(providerRoom.indexOf("perform action: CXStartCallAction"), providerRoom.indexOf("perform action: CXEndCallAction"));
+check("the current authenticated CallKit start configures audio before fulfillment",
+  startAction.includes("self.activeCallUUID == action.callUUID")
+    && startAction.includes("matchesStableOwnerSnapshot(owner)")
+    && startAction.indexOf("prepareCallKitStart()") < startAction.indexOf("action.fulfill()")
+    && startAction.includes("action.fail()"));
+check("call activation teardown preserves an earlier actionable failure",
+  providerRoom.includes("let activationFailure = lastTechnicalError")
+    && providerRoom.includes('technical: activationFailure)'));
+
+const nativeEnd = providerRoom.slice(providerRoom.indexOf("private func endNativeCallPresentation("), providerRoom.indexOf("private func clearNativeCallPresentation("));
+check("programmatic cleanup reports the ended call without scheduling a duplicate person-ended action",
+  nativeEnd.includes("callKitProvider.reportCall(with: uuid")
+    && !nativeEnd.includes("requestCallKitTransaction")
+    && !nativeEnd.includes("CXEndCallAction")
+    && nativeEnd.indexOf("if protectLocalSource") < nativeEnd.indexOf("guard let uuid"));
+const endAction = providerRoom.slice(providerRoom.indexOf("perform action: CXEndCallAction"), providerRoom.indexOf("didActivate audioSession:"));
+check("a system hangup consumes only its own call identity before protecting the source",
+  endAction.includes("guard self.activeCallUUID == action.callUUID else")
+    && endAction.indexOf("self.clearNativeCallPresentation()") < endAction.indexOf("await self.protectLocalSourceBeforeNativeCallEnd")
+    && endAction.includes("self.callLifecycle.beginTeardown()"));
+check("suspended connection phases revalidate operation ownership",
+  providerRoom.split("guard callLifecycle.isCurrentConnection(connectionID) else { return }").length >= 7
+    && providerRoom.includes("defer { callLifecycle.finishConnection(connectionID) }"));
+const clearCall = providerRoom.slice(providerRoom.indexOf("private func clearNativeCallPresentation("), providerRoom.indexOf("private func clearEpisodeWatchBridge("));
+check("a new call cannot inherit a stale activated-audio flag",
+  clearCall.includes("isCallAudioSessionActive = false") && clearCall.includes("activeCallUUID = nil"));
 
 console.log(`quipsly iOS capture durability contract: ${checks.length}/${checks.length} checks passed`);
 for (const name of checks) console.log(`  ✓ ${name}`);

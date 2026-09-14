@@ -46,6 +46,69 @@ function reviewedPlacement(input: {
 }
 
 describe("Session transcript program clock", () => {
+  const source = (id: string, seconds: number, calibrated = true) => ({
+    recordingAssetId: id,
+    transcriptJobId: `transcript-${id}`,
+    captureGroupId: "take-1",
+    recordedStartedAt: new Date(Date.parse("2026-08-24T15:00:00Z") + (seconds + (calibrated ? 90 : 0)) * 1_000),
+    alignment: calibrated ? alignment(new Date(Date.parse("2026-08-24T15:00:00Z") + seconds * 1_000).toISOString()) : undefined,
+  });
+
+  it("keeps measured sync usable when a reconnect has only a capture clock", () => {
+    const inputs = [source("coach", 0), source("client", 9), source("reconnect", 1200)];
+    const before = structuredClone(inputs);
+    const placements = [reviewedPlacement({spine: "coach", target: "client", offset: 0.35})];
+    const clock = assembleSessionTranscriptProgramClock(inputs, {reviewedPlacements: placements});
+    expect(clock).toMatchObject({authority: "mixed-waveform-clock-placement", waveformReviewRequired: true, sampleAccurateClaimed: false});
+    expect(clock.sources.map(row => row.programOffsetSeconds)).toEqual([0, 0.35, 1200]);
+    expect(clock.sources.every(row => row.timingReviewRequired && row.timingUncertaintyMilliseconds === null)).toBe(true);
+    expect(inputs).toEqual(before);
+    // Resetting the measured adjustment retains the original device clocks.
+    expect(assembleSessionTranscriptProgramClock(inputs).sources.map(row => row.programOffsetSeconds)).toEqual([0, 9, 1200]);
+  });
+
+  it("does not let source or placement query order move disconnected measured groups", () => {
+    const inputs = [source("a", 0), source("b", 9), source("c", 1200), source("d", 1209), source("e", 1800, false)];
+    const placements = [reviewedPlacement({spine: "a", target: "b", offset: -0.35}), reviewedPlacement({spine: "c", target: "d", offset: 0.5})];
+    const offsets = (rows: typeof inputs, edges: typeof placements) => Object.fromEntries(
+      assembleSessionTranscriptProgramClock(rows, {reviewedPlacements: edges}).sources.map(row => [row.recordingAssetId, row.programOffsetSeconds]),
+    );
+    const expected = {a: 0.35, b: 0, c: 1200.35, d: 1200.85, e: 1800.35};
+    expect(offsets(inputs, placements)).toEqual(expected);
+    expect(offsets([...inputs].reverse(), [...placements].reverse())).toEqual(expected);
+    expect(offsets([inputs[3]!, inputs[1]!, inputs[4]!, inputs[0]!, inputs[2]!], placements)).toEqual(expected);
+  });
+
+  it("prefers a calibrated anchor over a skewed wall clock within a measured group", () => {
+    const clock = assembleSessionTranscriptProgramClock(
+      [source("uncalibrated", -90, false), source("calibrated", 0), source("reconnect", 1200)],
+      {reviewedPlacements: [reviewedPlacement({spine: "calibrated", target: "uncalibrated", offset: 0.25})]},
+    );
+    expect(clock.sources.map(row => row.programOffsetSeconds)).toEqual([0.25, 0, 1200]);
+  });
+
+  it("checks conflicting cycles in disconnected groups too", () => {
+    expect(() => assembleSessionTranscriptProgramClock(
+      [source("unconnected", 0), source("a", 1), source("b", 2), source("c", 3)],
+      {reviewedPlacements: [reviewedPlacement({spine: "a", target: "b", offset: 0.1}), reviewedPlacement({spine: "b", target: "c", offset: 0.1}), reviewedPlacement({spine: "a", target: "c", offset: 0.3})]},
+    )).toThrow(expect.objectContaining({code: "TRANSCRIPT_REVIEWED_PLACEMENT_CONFLICT"}));
+  });
+
+  it("does not accept an unrelated source or another take as partial sync", () => {
+    for (const placement of [reviewedPlacement({spine: "a", target: "outside", offset: 1}), reviewedPlacement({spine: "a", target: "b", offset: 1, group: "other-take"})]) {
+      expect(() => assembleSessionTranscriptProgramClock([source("a", 0), source("b", 1), source("c", 2)], {reviewedPlacements: [placement]}))
+        .toThrow(expect.objectContaining({code: "TRANSCRIPT_REVIEWED_PLACEMENT_CONFLICT"}));
+    }
+  });
+
+  it("returns to a fully measured clock when the reconnect becomes connected", () => {
+    const clock = assembleSessionTranscriptProgramClock([source("a", 0), source("b", 9), source("c", 1200)], {
+      reviewedPlacements: [reviewedPlacement({spine: "a", target: "b", offset: 0.35}), reviewedPlacement({spine: "b", target: "c", offset: 1199.4})],
+    });
+    expect(clock.authority).toBe("reviewed-waveform-placement");
+    expect(clock.sources.map(row => row.programOffsetSeconds)).toEqual([0, 0.35, 1199.75]);
+  });
+
   it("uses an approved measured placement as the Session clock authority", () => {
     const clock = assembleSessionTranscriptProgramClock(
       [

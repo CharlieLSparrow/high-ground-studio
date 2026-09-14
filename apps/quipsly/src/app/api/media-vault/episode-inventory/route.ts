@@ -315,7 +315,9 @@ function importedMediaPublic(
   const reportedSourceProfile = Object.keys(nestedRecord(syncRecordingSync, "reportedSourceProfile")).length > 0
     ? nestedRecord(syncRecordingSync, "reportedSourceProfile")
     : nestedRecord(metadataRecordingSync, "reportedSourceProfile");
-  const audibleEventAnalysis = parseAudibleEventDetectorReceipt(reportedSourceProfile.audibleEventAnalysis);
+  const currentProfile = nestedRecord(jsonObject(recording?.localManifestJson), "reportedSourceProfile");
+  const audibleEventAnalysis = parseAudibleEventDetectorReceipt(currentProfile.audibleEventAnalysis)
+    ?? parseAudibleEventDetectorReceipt(reportedSourceProfile.audibleEventAnalysis);
   const importedContext = publicSessionContext(itemMetadata.sessionContext);
   const attachmentContext = assetView?.attachments
     ?.map((attachment: any) => publicSessionContext(jsonObject(attachment.metadataJson).sessionContext))

@@ -10,6 +10,7 @@ import {
   compileDeepgramTerminologyKeyterms,
   newCaptureTranscriptManifest,
   planTranscriptRouting,
+  recordingTranscriptSourceTopology,
   parseCaptureTranscriptManifest,
   parseCaptureTranscriptQueueReceipt,
   type CaptureTranscriptManifest,
@@ -425,23 +426,7 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
 }
 
 export function captureTranscriptSourceTopology(asset: any) {
-  if (
-    ["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(String(asset?.kind))
-    && asset?.participantId
-  ) {
-    const label = (text(asset.participant?.displayName)
-      || text(asset.participant?.email)
-      || String(asset.participantId)).slice(0, 160);
-    return {
-      kind: "participant-isolated" as const,
-      participantId: String(asset.participantId),
-      participantLabel: label,
-    };
-  }
-  if (String(asset?.kind) === "SERVER_MIX") {
-    return { kind: "mixed-room" as const, expectedSpeakerCount: null };
-  }
-  return { kind: "unknown" as const };
+  return recordingTranscriptSourceTopology(asset ?? {});
 }
 
 export type CaptureTranscriptProcessingSource = {

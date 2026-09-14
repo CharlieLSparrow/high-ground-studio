@@ -45,7 +45,8 @@ const base = () =>
     updatedAt: "2026-08-25T01:00:00.000Z",
   });
 
-test("contract completes only an exact-source-bound AAC result", () => {
+for (const bitRate of [128_000, 2_277]) {
+test(`contract completes exact-source-bound AAC at ${bitRate} observed bits per second`, () => {
   const manifest = base();
   const processing = claimSessionAudioAuditionManifest({
     manifest,
@@ -75,7 +76,7 @@ test("contract completes only an exact-source-bound AAC result", () => {
           audioCodec: "aac",
           sampleRateHz: 48_000,
           channelCount: 2,
-          bitRate: 128_000,
+          bitRate,
           hasVideo: false,
           decodedToEnd: true,
         },
@@ -101,6 +102,7 @@ test("contract completes only an exact-source-bound AAC result", () => {
   assert.equal(result.source.sha256, "a".repeat(64));
   assert.equal(result.output.hasOwnProperty("video"), false);
 });
+}
 
 test("contract rejects a derivative that drifts to another source generation", () => {
   const manifest = base();

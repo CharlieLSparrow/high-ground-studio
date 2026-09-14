@@ -66,7 +66,7 @@ describe("buildSessionSourceClockAttention", () => {
     const result = buildSessionSourceClockAttention(evidence());
     const transcript = result.items.find((item) => item.authority === "TRANSCRIPT_ATTEMPT")!;
     const edit = result.items.find((item) => item.authority === "EDIT_PROPOSAL")!;
-    expect(transcript.transcriptHref).toBe("/sessions/room-1?mode=transcript#transcript-segment-segment-1");
+    expect(transcript.transcriptHref).toBe("/sessions/room-1?mode=transcript&source=recording-1&at=12#transcript-segment-segment-1");
     expect(transcript.audioStudioHref).toContain("project=high-ground-odyssey");
     expect(transcript.audioStudioHref).toContain("at=12.000");
     expect(edit.editorHref).toContain("/editor?");

@@ -427,6 +427,33 @@ export function browserSourceNextReviewAction(
   };
 }
 
+export type BrowserRecordingHandoff = {
+  phase: "recording" | "saving" | "uploading" | "attention" | "ready";
+  recordingHref: string | null;
+  transcriptHref: string | null;
+};
+
+/** The call's next step follows its actual source, never the room's older edit. */
+export function browserRecordingHandoff(
+  roomId: string,
+  status: BrowserRetainedSourceStatus,
+  ledger: BrowserSourceCaptureLedger | null,
+): BrowserRecordingHandoff | null {
+  if (!ledger) return null;
+  const recordingHref = browserSourceReviewHref(roomId, ledger);
+  const next = browserSourceNextReviewAction(roomId, ledger);
+  const phase: BrowserRecordingHandoff["phase"] = status === "recording" || status === "starting" ? "recording"
+    : status === "stopping" ? "saving"
+      : recordingHref ? "ready"
+        : status === "error" || ledger.state === "held" && Boolean(ledger.failureReason) ? "attention"
+          : "uploading";
+  return {
+    phase,
+    recordingHref: phase === "ready" ? recordingHref : null,
+    transcriptHref: phase === "ready" && recordingHref && ledger.serverTranscriptJobId?.trim() ? next?.href ?? null : null,
+  };
+}
+
 export function browserSourceReceiptExitStatus(
   receipt: BrowserSourcePostStopReceipt,
   exitSafety: BrowserSourceExitSafety,

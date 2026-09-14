@@ -1,7 +1,8 @@
 import "server-only";
 
 import { realpath, stat } from "node:fs/promises";
-import { hostname, tmpdir } from "node:os";
+import { hostname } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import type { PrismaClient } from "@prisma/client";
@@ -161,7 +162,7 @@ export async function readCurrentLocalExecutorIdentity(): Promise<CurrentLocalEx
   const configuredRoot = path.resolve(
     process.env.QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT?.trim()
       || process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT?.trim()
-      || path.join(tmpdir(), "quipsly-media-ingest"),
+      || defaultLocalMediaRoot(),
   );
   try {
     const [canonicalRoot, details] = await Promise.all([

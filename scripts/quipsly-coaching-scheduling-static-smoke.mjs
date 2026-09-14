@@ -246,12 +246,12 @@ addCheck(
   includesAll(route, [
     "status: \"reschedule-planned\"",
     "externalCalendarUpdated: false",
-    "Booking rescheduled in Quipsly. Update external calendar/invite evidence",
     "status: \"cancel-planned\"",
     "externalCalendarCanceled: false",
-    "Booking canceled in Quipsly. Cancel external calendar/invite/payment evidence separately",
+    "await tx.coachingBooking.update({",
+    "await tx.callRoom.update({",
   ]),
-  "Reschedule/cancel update app-owned booking and room truth first, then create external-calendar work-to-do evidence.",
+  "Scheduling source retains canonical booking/room writes and separate external-calendar status. Transaction order and persistence are covered by the runway integration suite, not UI wording.",
 );
 
 addCheck(

@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import type { Prisma } from "@prisma/client";
@@ -229,7 +229,7 @@ export async function reconcileAudioMastery(input: {
   }
   let playbackUrl: string | null = null;
   if (result.derivative) {
-    const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+    const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
     const candidate = path.resolve(root, result.derivative.locator);
     const outputPath = await resolveAllowedLocalStudioMediaPath(candidate);
     if (!outputPath) throw new Error("Audio mastery output escaped the authorized local media root.");

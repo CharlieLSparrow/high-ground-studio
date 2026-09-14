@@ -28,6 +28,7 @@ struct CapturePhoneShell: View {
     @State private var requestedLibrarySection: CaptureLibrarySection?
     @State private var recordNavigationResetID = UUID()
     @State private var showsGlobalNestSwitcher = false
+    @State private var iPadColumnVisibility: NavigationSplitViewVisibility = .all
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -116,10 +117,11 @@ struct CapturePhoneShell: View {
             // validate. Let its canonical fixtures become ready immediately
             // instead of making every cold UI flight wait on an unrelated
             // device-library pass.
-            if !model.usesPreviewData {
+            if !model.usesPreviewData || CaptureLaunchConfiguration.forcesLocalVoiceNoteUITest {
                 await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
             }
             await model.load()
+            LocalRecordingLibrary.shared.resumePendingSoundAnalysis()
             _ = await subscriptionLoad
             if !model.usesPreviewData {
                 await VoiceWritingRecognitionSyncClient.shared.synchronize()
@@ -179,6 +181,7 @@ struct CapturePhoneShell: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active { LocalRecordingLibrary.shared.resumePendingSoundAnalysis() }
             guard phase == .active,
                   !model.usesPreviewData,
                   deepLinkRouter.pendingSession == nil,
@@ -429,7 +432,7 @@ struct CapturePhoneShell: View {
     }
 
     private var captureIPadWorkspace: AnyView {
-        AnyView(NavigationSplitView {
+        AnyView(NavigationSplitView(columnVisibility: $iPadColumnVisibility) {
             List {
                 Section("Quipsly") {
                     ForEach(CaptureRootTab.allCases) { tab in
@@ -539,7 +542,12 @@ struct CapturePhoneShell: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureIPadWorkspace")
         }
-        .navigationSplitViewStyle(.balanced))
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: visibleTab == .record && model.providerRoom.isConnected, initial: true) { _, focusedCall in
+            // Start calls with room for the people. The ordinary sidebar toggle
+            // remains available, and leaving restores workspace navigation.
+            iPadColumnVisibility = focusedCall ? .detailOnly : .all
+        })
     }
 
     private func selectGlobalNest(_ project: MobileCaptureWorkProject) {
@@ -935,6 +943,7 @@ private struct CaptureTopNavigationEdgeEffect: ViewModifier {
 }
 
 private struct CaptureTodayView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var model: CaptureExperienceModel
     @Binding var showsNewSession: Bool
     @Binding var visibleTab: CaptureRootTab
@@ -979,6 +988,25 @@ private struct CaptureTodayView: View {
                     onNewSession: { showsNewSession = true }
                 )
 
+                NavigationLink {
+                    CaptureAcrossNestsFollowThroughView(model: model, visibleTab: $visibleTab)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checklist").foregroundStyle(CapturePalette.accent)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Tasks & goals").font(.headline)
+                            Text("Your tasks, goals, and reminders")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 6)
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .captureCard()
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("CaptureHomeWorkOpen")
+
                 if let draft = writingStore.drafts.first {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -1016,6 +1044,7 @@ private struct CaptureTodayView: View {
                 if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
                     Label("Preview data — no server actions", systemImage: "hammer.fill")
+                        .accessibilityValue("Text size: \(String(describing: dynamicTypeSize))")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(CapturePalette.brass)
                         .padding(.horizontal, 12)
@@ -2008,7 +2037,7 @@ private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
             return "Coaching · Ready to plan"
         }
         guard let nextScheduledStart,
-              let date = ISO8601DateFormatter().date(from: nextScheduledStart) else {
+              let date = CaptureDateCoding.date(from: nextScheduledStart) else {
             return "\(kind.title) · \(count)"
         }
         let timing = Calendar.current.isDateInToday(date)
@@ -2393,6 +2422,9 @@ private struct CaptureWorkView: View {
     @State private var selectedTagID: String?
     @State private var showsCompletedTasks = false
     @State private var showsTagVocabulary = false
+    @State private var conversationProject: MobileCaptureWorkProject?
+    @State private var conversationTaskID: String?
+    @State private var conversationTaskError: String?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var showsNewProject = false
     @State private var showsCoachingSetup = false
@@ -2602,7 +2634,7 @@ private struct CaptureWorkView: View {
                                 .background(CapturePalette.accent.opacity(0.1), in: Circle())
                                 .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Across your Nests")
+                                Text("Tasks & goals")
                                     .font(.headline)
                                     .foregroundStyle(.primary)
                                 Text("See tasks, goals, reminders, and Session follow-through together.")
@@ -2701,6 +2733,24 @@ private struct CaptureWorkView: View {
                 .presentationDetents([.large])
             }
         }
+        .sheet(item: $conversationProject, onDismiss: {
+            guard let taskID = conversationTaskID else { return }
+            conversationTaskID = nil
+            guard let projectID = selectedProject?.id else { return }
+            Task {
+                let task = await client.task(id: taskID, projectID: projectID)
+                guard selectedProject?.id == projectID else { return }
+                if let task { taskToEdit = task }
+                else { conversationTaskError = "This task is no longer available in this Nest. Refresh to try again." }
+            }
+        }) { project in
+            MobileNestChatView(project: project, tags: (workspace?.tags ?? []).map {
+                MobileWorkTagLabel(id: $0.id, label: $0.label, hexColor: $0.hexColor, isActive: $0.isActive)
+            }, previewOnly: CaptureLaunchConfiguration.usesPreviewData, onOpenTask: { taskID in
+                conversationTaskID = taskID
+                conversationProject = nil
+            }, onWorkChanged: { await client.load(projectID: project.id) })
+        }
         .sheet(item: $taskToEdit) { task in
             CaptureTaskEditSheet(
                 client: model.todayClient,
@@ -2723,7 +2773,10 @@ private struct CaptureWorkView: View {
             )
         }
         .sheet(item: $taskTagsToEdit) { task in
-            if let project = task.project {
+            if let scope = task.tagScope {
+                SharedWorkTagSheet(client: model.todayClient, kind: .task, entityID: task.id,
+                    entityTitle: task.title, scope: scope, onSaved: reloadSelectedWork)
+            } else if let project = task.project {
                 TodayWorkTagSheet(
                     client: model.todayClient,
                     kind: .task,
@@ -2739,7 +2792,10 @@ private struct CaptureWorkView: View {
             }
         }
         .sheet(item: $goalTagsToEdit) { goal in
-            if let project = goal.project {
+            if let scope = goal.tagScope {
+                SharedWorkTagSheet(client: model.todayClient, kind: .goal, entityID: goal.id,
+                    entityTitle: goal.title, scope: scope, onSaved: reloadSelectedWork)
+            } else if let project = goal.project {
                 TodayWorkTagSheet(
                     client: model.todayClient,
                     kind: .goal,
@@ -3269,6 +3325,15 @@ private struct CaptureWorkView: View {
         let openTaskCount = workspace.tasks.filter { $0.status == "OPEN" }.count
         let activeGoalCount = workspace.goals.filter { $0.status == "ACTIVE" }.count
         return VStack(alignment: .leading, spacing: 14) {
+            Button {
+                conversationTaskError = nil
+                conversationProject = workspace.project
+            } label: {
+                Label("Conversation", systemImage: "bubble.left.and.bubble.right")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("CaptureNestConversationOpenButton")
+            if let conversationTaskError { Text(conversationTaskError).font(.caption).foregroundStyle(CapturePalette.brass) }
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text("At a glance")
@@ -3312,6 +3377,7 @@ private struct CaptureWorkView: View {
             RoundedRectangle(cornerRadius: 22)
                 .stroke(.primary.opacity(0.09))
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureWorkProjectSummary")
     }
 
@@ -3967,10 +4033,11 @@ private struct CaptureWorkView: View {
     @ViewBuilder
     private func workTagLabels(_ labels: [String]) -> some View {
         if !labels.isEmpty {
-            Text(labels.map { "#\($0)" }.joined(separator: "  "))
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(CapturePalette.accent)
-                .lineLimit(2)
+            CaptureWorkTags(tags: labels.map { label in
+                let tag = workspace?.tags.first { $0.label == label }
+                return MobileWorkTagLabel(id: tag?.id ?? label, label: label,
+                    hexColor: tag?.hexColor, isActive: tag?.isActive ?? true)
+            }, workID: "workspace-tags")
         }
     }
 
@@ -4053,7 +4120,7 @@ private struct CaptureAcrossNestsFollowThroughView: View {
             .padding(.bottom, 96)
         }
         .background(CaptureCanvas())
-        .navigationTitle("Across your Nests")
+        .navigationTitle("Tasks & goals")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             await model.todayClient.load()
@@ -4510,6 +4577,7 @@ struct TodayFollowThroughCard: View {
     @State private var taskToPlan: MobileCaptureTodayTask?
     @State private var showsWeeklyPlanEditor = false
     @State private var showsAllCommittedTasks = false
+    @State private var expandedTaskSchedules: Set<String> = []
 
     private var nextFocus: MobileCaptureTodayFocusBlock? {
         client.focusBlocks.first(where: { $0.status.uppercased() == "PLANNED" })
@@ -4554,13 +4622,384 @@ struct TodayFollowThroughCard: View {
         return tasks
     }
 
+    private func taskScheduleExpansion(_ task: MobileCaptureTodayTask) -> Binding<Bool> {
+        Binding(
+            get: {
+                expandedTaskSchedules.contains(task.id)
+                    || client.pendingFocusPlan(for: task.id) != nil
+                    || client.pendingReminderDecision(for: task.id) != nil
+            },
+            set: { expanded in
+                if expanded { expandedTaskSchedules.insert(task.id) }
+                else { expandedTaskSchedules.remove(task.id) }
+            }
+        )
+    }
+
+    private func taskRow(_ task: MobileCaptureTodayTask) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "circle")
+                    .foregroundStyle(CapturePalette.brass)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    let pendingTags = client.pendingWorkTagDecision(kind: .task, entityID: task.id)
+                    Text(task.title)
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityIdentifier("CaptureTodayTask_\(task.id)")
+                    if let sessionTitle = task.sessionTitle {
+                        Text(sessionTitle).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let dueLabel = captureTaskDueLabel(task) {
+                        Label(dueLabel, systemImage: task.isOverdue == true ? "exclamationmark.circle.fill" : "calendar")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(task.isOverdue == true ? CapturePalette.brass : Color.secondary)
+                            .accessibilityIdentifier("CaptureTodayTaskDue_\(task.id)")
+                    }
+                    if let project = task.tagEditorProject {
+                        TodayProjectTagLine(
+                            project: project,
+                            tagLabels: client.effectiveTagLabels(
+                                kind: .task,
+                                entityID: task.id,
+                                projectID: project.id,
+                                canonicalTagIDs: task.tagIds ?? [],
+                                canonicalTagLabels: task.tagLabels ?? []
+                            ),
+                            identifier: "CaptureTodayTaskTags_\(task.id)",
+                            availableTags: client.tags(for: project.id)
+                        )
+                        if let pendingTags {
+                            Label(
+                                pendingTags.disposition == .held ? "Tags need attention" : "Tags waiting to sync",
+                                systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
+                            )
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(pendingTags.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
+                            .accessibilityIdentifier("CaptureTodayTaskTagsPending_\(task.id)")
+                            .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
+                            if pendingTags.disposition == .held {
+                                Button("Discard changes") {
+                                    Task {
+                                        await client.discardHeldWorkTagDecision(kind: .task, entityID: task.id)
+                                    }
+                                }
+                                .font(.caption.weight(.bold))
+                                .buttonStyle(.bordered)
+                                .accessibilityIdentifier("CaptureTodayTaskTagsDiscard_\(task.id)")
+                            }
+                        }
+                        if task.canEditTags == true {
+                            Button {
+                                taskTagsToEdit = task
+                            } label: {
+                                Label("Edit tags", systemImage: "tag")
+                                    .frame(minHeight: 44)
+                            }
+                            .font(.caption.weight(.bold))
+                            .buttonStyle(.bordered)
+                            .disabled(previewOnly || client.isMutating || pendingTags != nil)
+                            .accessibilityIdentifier("CaptureTodayTaskTagsEdit_\(task.id)")
+                            .accessibilityHint("Choose the tags for this task.")
+                        }
+                    } else if !(task.tagLabels ?? []).isEmpty {
+                        TodayProjectTagLine(project: nil, tagLabels: task.tagLabels ?? [], identifier: "CaptureTodayTaskTags_\(task.id)")
+                    }
+                    if let todayReason = task.todayReason?.nonempty {
+                        Text(todayReason)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(CapturePalette.ink)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(CapturePalette.ink.opacity(0.08), in: Capsule())
+                    }
+                    if task.canEdit == true, task.recurrence == nil, task.status == "OPEN" {
+                        Button {
+                            taskToEdit = task
+                        } label: {
+                            Label("Edit task", systemImage: "pencil")
+                                .frame(minHeight: 44)
+                        }
+                        .font(.caption.weight(.bold))
+                        .buttonStyle(.bordered)
+                        .disabled(decisionsDisabled)
+                        .accessibilityIdentifier("CaptureTodayTaskEdit_\(task.id)")
+                        .accessibilityHint("Edit this task's title, detail, or due date.")
+
+                    }
+                    DisclosureGroup(isExpanded: taskScheduleExpansion(task)) {
+                        if task.status == "OPEN" {
+                            if let pendingPlan = client.pendingFocusPlan(for: task.id) {
+                                Label(
+                                    pendingPlan.disposition == .held
+                                        ? "Focus plan needs attention"
+                                        : "Focus plan saved · waiting to sync",
+                                    systemImage: pendingPlan.disposition == .held
+                                        ? "exclamationmark.triangle.fill"
+                                        : "lock.doc.fill"
+                                )
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(pendingPlan.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
+                                .accessibilityIdentifier("CaptureTodayFocusPlanPending_\(task.id)")
+                                HStack {
+                                    Button("Retry plan") {
+                                        Task { await client.retryFocusPlan(for: task.id) }
+                                    }
+                                    .captureProminentButton()
+                                    .disabled(previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed)
+                                    .accessibilityIdentifier("CaptureTodayFocusPlanRetry_\(task.id)")
+                                    if pendingPlan.disposition == .held {
+                                        Button("Discard", role: .destructive) {
+                                            Task { await client.discardHeldFocusPlan(for: task.id) }
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .disabled(previewOnly || client.isMutating)
+                                        .accessibilityIdentifier("CaptureTodayFocusPlanDiscard_\(task.id)")
+                                    }
+                                }
+                            } else {
+                                Button {
+                                    taskToPlan = task
+                                } label: {
+                                    Label("Plan focus", systemImage: "timer")
+                                        .frame(minHeight: 44)
+                                }
+                                .font(.caption.weight(.bold))
+                                .buttonStyle(.bordered)
+                                .disabled(
+                                    client.isMutating
+                                        || client.brief?.boundaries?.focusBlockPlanningAvailable != true
+                                )
+                                .accessibilityIdentifier("CaptureTodayTaskPlanFocus_\(task.id)")
+                                .accessibilityHint("Set aside private focus time for this task.")
+                            }
+                        }
+                        if let reminder = task.reminder,
+                           reminder.status == "ACTIVE" {
+                            Label(
+                                "Reminder \(reminderTime(reminder))",
+                                systemImage: "bell.badge"
+                            )
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CapturePalette.plum)
+                            .accessibilityIdentifier("CaptureTodayTaskReminder_\(task.id)")
+                            .accessibilityHint("This reminder is saved in Nest. Alerts use \(CaptureDeviceVocabulary.thisDevicePossessive) notification settings.")
+                        }
+                        if task.recurrence == nil, task.status == "OPEN" {
+                            if let pending = client.pendingReminderDecision(for: task.id) {
+                                Label(
+                                    pending.remindAt.map { "Waiting to sync: \($0.formatted(date: .abbreviated, time: .shortened))" }
+                                        ?? "Reminder removal waiting to sync",
+                                    systemImage: pending.disposition == .held
+                                        ? "exclamationmark.triangle.fill"
+                                        : "arrow.triangle.2.circlepath"
+                                )
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
+                                .accessibilityIdentifier("CaptureTodayTaskReminderPending_\(task.id)")
+                                if pending.disposition == .held {
+                                    Button("Discard changes") {
+                                        Task {
+                                            await client.discardHeldReminderDecision(for: task.id)
+                                        }
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .buttonStyle(.bordered)
+                                    .accessibilityHint("Discard this change and restore the reminder currently saved in Nest.")
+                                    .accessibilityIdentifier("CaptureTodayTaskReminderDiscard_\(task.id)")
+                                }
+                            }
+                            HStack {
+                                Button {
+                                    reminderToEdit = task
+                                } label: {
+                                    Label(
+                                        task.reminder?.status == "ACTIVE" ? "Change reminder" : "Add reminder",
+                                        systemImage: "bell"
+                                    )
+                                    .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(
+                                    reminderDecisionsDisabled
+                                        || client.pendingReminderDecision(for: task.id) != nil
+                                )
+                                .accessibilityIdentifier("CaptureTodayTaskReminderEdit_\(task.id)")
+                                .accessibilityHint("Saves this reminder and syncs it with Nest.")
+
+                                if task.reminder?.status == "ACTIVE" {
+                                    Button(role: .destructive) {
+                                        reminderToCancel = task
+                                    } label: {
+                                        Label("Cancel", systemImage: "bell.slash")
+                                            .frame(minHeight: 44)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(
+                                        reminderDecisionsDisabled
+                                            || client.pendingReminderDecision(for: task.id) != nil
+                                    )
+                                    .accessibilityIdentifier("CaptureTodayTaskReminderCancel_\(task.id)")
+                                }
+                            }
+                            .font(.caption.weight(.bold))
+                        }
+                        if let recurrence = task.recurrence {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label(recurrenceSummary(recurrence), systemImage: "repeat")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(CapturePalette.plum)
+                                Text("Due \(recurrence.scheduledLocalDate) · \(recurrence.status.capitalized)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                if recurrence.ownerCanManage && recurrenceManagerTaskIDs.contains(task.id) && recurrence.status != "ENDED" {
+                                    Menu {
+                                        Button("Edit repeat…", systemImage: "pencil") {
+                                            recurrenceToEdit = task
+                                        }
+                                        if recurrence.status == "ACTIVE" {
+                                            Button("Pause repeat", systemImage: "pause.circle") {
+                                                Task { _ = await client.setRecurrenceStatus(recurrence, status: "PAUSED") }
+                                            }
+                                        } else {
+                                            Button("Resume repeat", systemImage: "play.circle") {
+                                                Task { _ = await client.setRecurrenceStatus(recurrence, status: "ACTIVE") }
+                                            }
+                                        }
+                                        Button("End repeat…", systemImage: "stop.circle", role: .destructive) {
+                                            recurrenceToEnd = recurrence
+                                        }
+                                    } label: {
+                                        Label("Manage repeat", systemImage: "ellipsis.circle")
+                                            .frame(minHeight: 44)
+                                    }
+                                    .disabled(decisionsDisabled)
+                                    .accessibilityIdentifier("CaptureTodayRecurrenceMenu_\(recurrence.seriesId)")
+                                    .accessibilityHint("Pause, resume, edit, or end this repeating task.")
+                                }
+                            }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("CaptureTodayRecurrence_\(recurrence.seriesId)_\(task.id)")
+                        }
+                        if task.isOverdue == true, task.recurrence != nil, recurrenceManagerTaskIDs.contains(task.id) {
+                            Button(role: .destructive) {
+                                missedOccurrenceToSkip = task
+                            } label: {
+                                Label("Skip missed occurrence…", systemImage: "forward.end")
+                                    .font(.caption.weight(.bold))
+                                    .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(decisionsDisabled)
+                            .accessibilityIdentifier("CaptureTodaySkipMissed_\(task.id)")
+                            .accessibilityHint("Marks this occurrence skipped and continues the repeating task.")
+                        }
+                    } label: {
+                        Label("Schedule & reminders", systemImage: "calendar.badge.clock")
+                            .font(.caption.weight(.semibold))
+                            .frame(minHeight: 44)
+                            .accessibilityIdentifier("CaptureTodayTaskSchedule_\(task.id)")
+                    }
+                }
+                Spacer(minLength: 8)
+                if task.canEdit == true {
+                    Button("Done") {
+                        Task { _ = await client.setTaskStatus(task, status: "DONE") }
+                    }
+                    .font(.caption.weight(.bold))
+                    .buttonStyle(.bordered)
+                    .disabled(decisionsDisabled)
+                    .accessibilityIdentifier("CaptureTodayTaskDone_\(task.id)")
+                    .accessibilityHint(task.recurrence == nil ? "Marks this task done." : "Completes this occurrence and schedules the next one.")
+                }
+            }
+            if let source = task.sourceAnchor, source.roomId == task.roomId {
+                CaptureTranscriptSpeakerEvidenceBadge(
+                    authority: source.speakerAuthority,
+                    identifier: "CaptureTodayTaskSpeakerEvidence_\(task.id)"
+                )
+                NavigationLink {
+                    CaptureTranscriptReviewView(
+                        roomID: source.roomId,
+                        sessionTitle: task.sessionTitle ?? "Capture session",
+                        recording: matchingRecording(
+                            roomID: source.roomId,
+                            recordingAssetID: source.recordingAssetId
+                        ),
+                        previewOnly: previewOnly,
+                        focusSegmentID: source.segmentId
+                    )
+                } label: {
+                    Label(
+                        "Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)",
+                        systemImage: "waveform.and.magnifyingglass"
+                    )
+                    .font(.caption.weight(.bold))
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureTodayTaskSourceLink_\(task.id)")
+                .accessibilityLabel("Task source: Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)")
+                .accessibilityHint("Opens the exact transcript segment and retained recording source behind this task without starting playback.")
+            }
+            if let evidence = task.lastMergedTranscriptEvidence {
+                DisclosureGroup {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Added from your session")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(CapturePalette.ink)
+                    Text(evidence.sourceAnchor.effectiveTextSnapshot)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                    CaptureTranscriptSpeakerEvidenceBadge(
+                        authority: evidence.sourceAnchor.speakerAuthority,
+                        identifier: "CaptureTodayTaskMergedSpeakerEvidence_\(task.id)"
+                    )
+                    if evidence.governance != nil {
+                        Label("Source linked", systemImage: "link.circle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CapturePalette.ink)
+                            .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceGovernance_\(task.id)")
+                    }
+                    NavigationLink {
+                        CaptureTranscriptReviewView(
+                            roomID: evidence.sourceAnchor.roomId,
+                            sessionTitle: task.sessionTitle ?? "Capture session",
+                            recording: matchingRecording(
+                                roomID: evidence.sourceAnchor.roomId,
+                                recordingAssetID: evidence.sourceAnchor.recordingAssetId
+                            ),
+                            previewOnly: previewOnly,
+                            focusSegmentID: evidence.sourceAnchor.segmentId
+                        )
+                    } label: {
+                        Label("Return to \(evidence.sourceAnchor.startSeconds.captureDurationLabel)–\(evidence.sourceAnchor.endSeconds.captureDurationLabel)", systemImage: "waveform.and.magnifyingglass")
+                            .font(.caption.weight(.bold))
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceSource_\(task.id)")
+                }
+                .padding(10)
+                .background(CapturePalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                } label: {
+                    Label("Additional source context", systemImage: "text.quote")
+                        .font(.caption.weight(.semibold))
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("CaptureTodayTaskSourceDetails_\(task.id)")
+                }
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Follow-through")
+                    Text("Your work")
                         .font(.title3.weight(.bold))
-                    Text("Notes, tasks, and goals from your sessions")
+                    Text("Tasks and goals across your spaces")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -4569,475 +5008,13 @@ struct TodayFollowThroughCard: View {
             }
             .accessibilityIdentifier("CaptureTodayFollowThroughCard")
 
-            if let followUp = client.clientFollowUpAttention {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("New coaching follow-up", systemImage: "person.crop.circle.badge.checkmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(CapturePalette.success)
-                    Text(followUp.title)
-                        .font(.headline)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("From \(followUp.coachLabel) · \(followUp.sessionTitle)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 6) {
-                        Text("Revision \(followUp.revision)")
-                        Text("·")
-                        Text("\(followUp.selectedCount) shared item\(followUp.selectedCount == 1 ? "" : "s")")
-                    }
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    if let released = captureTaskDate(followUp.releasedAt) {
-                        Text("Released \(released.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Button {
-                        onOpenClientFollowUp(followUp.roomId)
-                    } label: {
-                        Label("Open follow-up", systemImage: "arrow.right.circle.fill")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .captureProminentButton(fill: CapturePalette.successFill)
-                    .accessibilityIdentifier("CaptureTodayClientFollowUpOpen_\(followUp.outputId)")
-                    .accessibilityHint("Opens the follow-up in its Session. No task or goal is completed automatically.")
-                    Text("Open the shared notes, tasks, goals, and next steps in this Session.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("CaptureTodayClientFollowUp_\(followUp.outputId)")
-            }
-
-            if let focus = nextFocus {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Next focus", systemImage: "timer")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(CapturePalette.ink)
-                        .accessibilityIdentifier("CaptureTodayFocusBlock_\(focus.id)")
-                    Text(focus.title)
-                        .font(.headline)
-                    Text(focusWindow(focus))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button {
-                        focusToComplete = focus
-                    } label: {
-                        Label("Record work", systemImage: "checkmark.circle")
-                    }
-                    .captureProminentButton()
-                    .disabled(focusDecisionDisabled(focus))
-                    .accessibilityHint("Record the time you spent on this focus block.")
-                    .accessibilityIdentifier("CaptureTodayFocusDoneButton")
-                }
-                .padding(12)
-                .background(CapturePalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-
-            if !client.focusDecisions.isEmpty {
-                VStack(alignment: .leading, spacing: 9) {
-                    Label("Focus updates", systemImage: "iphone.and.arrow.forward")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(client.heldFocusDecisionCount > 0 ? CapturePalette.brass : CapturePalette.plum)
-                    ForEach(client.focusDecisions) { decision in
-                        let title = client.focusBlocks.first(where: { $0.id == decision.blockID })?.title
-                            ?? "Focus block \(decision.blockID.prefix(8))"
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(title).font(.subheadline.weight(.semibold))
-                            Label(
-                                decision.disposition == .held
-                                    ? "Needs attention"
-                                    : "Saved on \(CaptureDeviceVocabulary.thisDevice) · waiting to sync",
-                                systemImage: decision.disposition == .held
-                                    ? "exclamationmark.triangle.fill"
-                                    : "lock.doc.fill"
-                            )
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(decision.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
-                            if let minutes = decision.actualMinutes {
-                                Text("\(minutes) actual minute\(minutes == 1 ? "" : "s") · linked work unchanged")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let message = decision.lastErrorMessage, !message.isEmpty {
-                                Text(message).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
-                            }
-                            HStack(spacing: 8) {
-                                Button("Retry") {
-                                    Task { await client.retryFocusDecision(for: decision.blockID) }
-                                }
-                                .captureProminentButton()
-                                .disabled(previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed)
-                                .accessibilityIdentifier("CaptureTodayFocusDecisionRetry_\(decision.blockID)")
-                                if decision.disposition == .held {
-                                    Button("Discard", role: .destructive) {
-                                        Task { await client.discardHeldFocusDecision(for: decision.blockID) }
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .disabled(previewOnly || client.isMutating)
-                                    .accessibilityIdentifier("CaptureTodayFocusDecisionDiscard_\(decision.blockID)")
-                                }
-                            }
-                        }
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("CaptureTodayFocusDecision_\(decision.blockID)")
-                    }
-                }
-                .padding(12)
-                .background(CapturePalette.plum.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-
             if !client.tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 9) {
-                    Text("Committed tasks")
+                    Text("Tasks")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                     ForEach(visibleCommittedTasks, id: \MobileCaptureTodayTask.id) { (task: MobileCaptureTodayTask) in
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: "circle")
-                                    .foregroundStyle(CapturePalette.brass)
-                                    .padding(.top, 2)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    let pendingTags = client.pendingWorkTagDecision(kind: .task, entityID: task.id)
-                                    Text(task.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .accessibilityIdentifier("CaptureTodayTask_\(task.id)")
-                                    if let sessionTitle = task.sessionTitle {
-                                        Text(sessionTitle).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    if let dueLabel = captureTaskDueLabel(task) {
-                                        Label(dueLabel, systemImage: task.isOverdue == true ? "exclamationmark.circle.fill" : "calendar")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(task.isOverdue == true ? CapturePalette.brass : Color.secondary)
-                                            .accessibilityIdentifier("CaptureTodayTaskDue_\(task.id)")
-                                    }
-                                    if let project = task.project {
-                                        TodayProjectTagLine(
-                                            project: project,
-                                            tagLabels: client.effectiveTagLabels(
-                                                kind: .task,
-                                                entityID: task.id,
-                                                projectID: project.id,
-                                                canonicalTagIDs: task.tagIds ?? [],
-                                                canonicalTagLabels: task.tagLabels ?? []
-                                            ),
-                                            identifier: "CaptureTodayTaskTags_\(task.id)"
-                                        )
-                                        if let pendingTags {
-                                            Label(
-                                                pendingTags.disposition == .held ? "Tags need attention" : "Tags waiting to sync",
-                                                systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
-                                            )
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(pendingTags.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
-                                            .accessibilityIdentifier("CaptureTodayTaskTagsPending_\(task.id)")
-                                            .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
-                                            if pendingTags.disposition == .held {
-                                                Button("Discard changes") {
-                                                    Task {
-                                                        await client.discardHeldWorkTagDecision(kind: .task, entityID: task.id)
-                                                    }
-                                                }
-                                                .font(.caption.weight(.bold))
-                                                .buttonStyle(.bordered)
-                                                .accessibilityIdentifier("CaptureTodayTaskTagsDiscard_\(task.id)")
-                                            }
-                                        }
-                                        if task.canEditTags == true {
-                                            Button {
-                                                taskTagsToEdit = task
-                                            } label: {
-                                                Label("Edit tags", systemImage: "tag")
-                                                    .frame(minHeight: 44)
-                                            }
-                                            .font(.caption.weight(.bold))
-                                            .buttonStyle(.bordered)
-                                            .disabled(previewOnly || client.isMutating || pendingTags != nil)
-                                            .accessibilityIdentifier("CaptureTodayTaskTagsEdit_\(task.id)")
-                                            .accessibilityHint("Choose the tags for this task.")
-                                        }
-                                    } else if !(task.tagLabels ?? []).isEmpty {
-                                        TodayProjectTagLine(project: nil, tagLabels: task.tagLabels ?? [], identifier: "CaptureTodayTaskTags_\(task.id)")
-                                    }
-                                    if let todayReason = task.todayReason?.nonempty {
-                                        Text(todayReason)
-                                            .font(.caption2.weight(.bold))
-                                            .foregroundStyle(CapturePalette.ink)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(CapturePalette.ink.opacity(0.08), in: Capsule())
-                                    }
-                                    if task.canEdit == true, task.recurrence == nil, task.status == "OPEN" {
-                                        Button {
-                                            taskToEdit = task
-                                        } label: {
-                                            Label("Edit task", systemImage: "pencil")
-                                                .frame(minHeight: 44)
-                                        }
-                                        .font(.caption.weight(.bold))
-                                        .buttonStyle(.bordered)
-                                        .disabled(decisionsDisabled)
-                                        .accessibilityIdentifier("CaptureTodayTaskEdit_\(task.id)")
-                                        .accessibilityHint("Edit this task's title, detail, or due date.")
-
-                                    }
-                                    if task.status == "OPEN" {
-                                        if let pendingPlan = client.pendingFocusPlan(for: task.id) {
-                                            Label(
-                                                pendingPlan.disposition == .held
-                                                    ? "Focus plan needs attention"
-                                                    : "Focus plan saved · waiting to sync",
-                                                systemImage: pendingPlan.disposition == .held
-                                                    ? "exclamationmark.triangle.fill"
-                                                    : "lock.doc.fill"
-                                            )
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(pendingPlan.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
-                                            .accessibilityIdentifier("CaptureTodayFocusPlanPending_\(task.id)")
-                                            HStack {
-                                                Button("Retry plan") {
-                                                    Task { await client.retryFocusPlan(for: task.id) }
-                                                }
-                                                .captureProminentButton()
-                                                .disabled(previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed)
-                                                .accessibilityIdentifier("CaptureTodayFocusPlanRetry_\(task.id)")
-                                                if pendingPlan.disposition == .held {
-                                                    Button("Discard", role: .destructive) {
-                                                        Task { await client.discardHeldFocusPlan(for: task.id) }
-                                                    }
-                                                    .buttonStyle(.bordered)
-                                                    .disabled(previewOnly || client.isMutating)
-                                                    .accessibilityIdentifier("CaptureTodayFocusPlanDiscard_\(task.id)")
-                                                }
-                                            }
-                                        } else {
-                                            Button {
-                                                taskToPlan = task
-                                            } label: {
-                                                Label("Plan focus", systemImage: "timer")
-                                                    .frame(minHeight: 44)
-                                            }
-                                            .font(.caption.weight(.bold))
-                                            .buttonStyle(.bordered)
-                                            .disabled(
-                                                client.isMutating
-                                                    || client.brief?.boundaries?.focusBlockPlanningAvailable != true
-                                            )
-                                            .accessibilityIdentifier("CaptureTodayTaskPlanFocus_\(task.id)")
-                                            .accessibilityHint("Set aside private focus time for this task.")
-                                        }
-                                    }
-                                    if let reminder = task.reminder,
-                                       reminder.status == "ACTIVE" {
-                                        Label(
-                                            "Reminder \(reminderTime(reminder))",
-                                            systemImage: "bell.badge"
-                                        )
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(CapturePalette.plum)
-                                        .accessibilityIdentifier("CaptureTodayTaskReminder_\(task.id)")
-                                        .accessibilityHint("This reminder is saved in Nest. Alerts use \(CaptureDeviceVocabulary.thisDevicePossessive) notification settings.")
-                                    }
-                                    if task.recurrence == nil, task.status == "OPEN" {
-                                        if let pending = client.pendingReminderDecision(for: task.id) {
-                                            Label(
-                                                pending.remindAt.map { "Waiting to sync: \($0.formatted(date: .abbreviated, time: .shortened))" }
-                                                    ?? "Reminder removal waiting to sync",
-                                                systemImage: pending.disposition == .held
-                                                    ? "exclamationmark.triangle.fill"
-                                                    : "arrow.triangle.2.circlepath"
-                                            )
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
-                                            .accessibilityIdentifier("CaptureTodayTaskReminderPending_\(task.id)")
-                                            if pending.disposition == .held {
-                                                Button("Discard changes") {
-                                                    Task {
-                                                        await client.discardHeldReminderDecision(for: task.id)
-                                                    }
-                                                }
-                                                .font(.caption.weight(.bold))
-                                                .buttonStyle(.bordered)
-                                                .accessibilityHint("Discard this change and restore the reminder currently saved in Nest.")
-                                                .accessibilityIdentifier("CaptureTodayTaskReminderDiscard_\(task.id)")
-                                            }
-                                        }
-                                        HStack {
-                                            Button {
-                                                reminderToEdit = task
-                                            } label: {
-                                                Label(
-                                                    task.reminder?.status == "ACTIVE" ? "Change reminder" : "Add reminder",
-                                                    systemImage: "bell"
-                                                )
-                                                .frame(minHeight: 44)
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .disabled(
-                                                reminderDecisionsDisabled
-                                                    || client.pendingReminderDecision(for: task.id) != nil
-                                            )
-                                            .accessibilityIdentifier("CaptureTodayTaskReminderEdit_\(task.id)")
-                                            .accessibilityHint("Saves this reminder and syncs it with Nest.")
-
-                                            if task.reminder?.status == "ACTIVE" {
-                                                Button(role: .destructive) {
-                                                    reminderToCancel = task
-                                                } label: {
-                                                    Label("Cancel", systemImage: "bell.slash")
-                                                        .frame(minHeight: 44)
-                                                }
-                                                .buttonStyle(.bordered)
-                                                .disabled(
-                                                    reminderDecisionsDisabled
-                                                        || client.pendingReminderDecision(for: task.id) != nil
-                                                )
-                                                .accessibilityIdentifier("CaptureTodayTaskReminderCancel_\(task.id)")
-                                            }
-                                        }
-                                        .font(.caption.weight(.bold))
-                                    }
-                                    if let recurrence = task.recurrence {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Label(recurrenceSummary(recurrence), systemImage: "repeat")
-                                                .font(.caption2.weight(.semibold))
-                                                .foregroundStyle(CapturePalette.plum)
-                                            Text("Due \(recurrence.scheduledLocalDate) · \(recurrence.status.capitalized)")
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                            if recurrence.ownerCanManage && recurrenceManagerTaskIDs.contains(task.id) && recurrence.status != "ENDED" {
-                                                Menu {
-                                                    Button("Edit repeat…", systemImage: "pencil") {
-                                                        recurrenceToEdit = task
-                                                    }
-                                                    if recurrence.status == "ACTIVE" {
-                                                        Button("Pause repeat", systemImage: "pause.circle") {
-                                                            Task { _ = await client.setRecurrenceStatus(recurrence, status: "PAUSED") }
-                                                        }
-                                                    } else {
-                                                        Button("Resume repeat", systemImage: "play.circle") {
-                                                            Task { _ = await client.setRecurrenceStatus(recurrence, status: "ACTIVE") }
-                                                        }
-                                                    }
-                                                    Button("End repeat…", systemImage: "stop.circle", role: .destructive) {
-                                                        recurrenceToEnd = recurrence
-                                                    }
-                                                } label: {
-                                                    Label("Manage repeat", systemImage: "ellipsis.circle")
-                                                        .frame(minHeight: 44)
-                                                }
-                                                .disabled(decisionsDisabled)
-                                                .accessibilityIdentifier("CaptureTodayRecurrenceMenu_\(recurrence.seriesId)")
-                                                .accessibilityHint("Pause, resume, edit, or end this repeating task.")
-                                            }
-                                        }
-                                        .accessibilityElement(children: .contain)
-                                        .accessibilityIdentifier("CaptureTodayRecurrence_\(recurrence.seriesId)_\(task.id)")
-                                    }
-                                }
-                                Spacer(minLength: 8)
-                                if task.canEdit == true {
-                                    Button("Done") {
-                                        Task { _ = await client.setTaskStatus(task, status: "DONE") }
-                                    }
-                                    .font(.caption.weight(.bold))
-                                    .buttonStyle(.bordered)
-                                    .disabled(decisionsDisabled)
-                                    .accessibilityIdentifier("CaptureTodayTaskDone_\(task.id)")
-                                    .accessibilityHint(task.recurrence == nil ? "Marks this task done." : "Completes this occurrence and schedules the next one.")
-                                }
-                            }
-                            if task.isOverdue == true, task.recurrence != nil, recurrenceManagerTaskIDs.contains(task.id) {
-                                Button(role: .destructive) {
-                                    missedOccurrenceToSkip = task
-                                } label: {
-                                    Label("Skip missed occurrence…", systemImage: "forward.end")
-                                        .font(.caption.weight(.bold))
-                                        .frame(minHeight: 44)
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(decisionsDisabled)
-                                .accessibilityIdentifier("CaptureTodaySkipMissed_\(task.id)")
-                                .accessibilityHint("Marks this occurrence skipped and continues the repeating task.")
-                            }
-                            if let source = task.sourceAnchor, source.roomId == task.roomId {
-                                CaptureTranscriptSpeakerEvidenceBadge(
-                                    authority: source.speakerAuthority,
-                                    identifier: "CaptureTodayTaskSpeakerEvidence_\(task.id)"
-                                )
-                                NavigationLink {
-                                    CaptureTranscriptReviewView(
-                                        roomID: source.roomId,
-                                        sessionTitle: task.sessionTitle ?? "Capture session",
-                                        recording: matchingRecording(
-                                            roomID: source.roomId,
-                                            recordingAssetID: source.recordingAssetId
-                                        ),
-                                        previewOnly: previewOnly,
-                                        focusSegmentID: source.segmentId
-                                    )
-                                } label: {
-                                    Label(
-                                        "Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)",
-                                        systemImage: "waveform.and.magnifyingglass"
-                                    )
-                                    .font(.caption.weight(.bold))
-                                    .frame(minHeight: 44)
-                                }
-                                .buttonStyle(.bordered)
-                                .accessibilityIdentifier("CaptureTodayTaskSourceLink_\(task.id)")
-                                .accessibilityLabel("Task source: Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)")
-                                .accessibilityHint("Opens the exact transcript segment and retained recording source behind this task without starting playback.")
-                            }
-                            if let evidence = task.lastMergedTranscriptEvidence {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("Added from your session")
-                                        .font(.caption2.weight(.bold))
-                                        .foregroundStyle(CapturePalette.ink)
-                                    Text(evidence.sourceAnchor.effectiveTextSnapshot)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(3)
-                                    CaptureTranscriptSpeakerEvidenceBadge(
-                                        authority: evidence.sourceAnchor.speakerAuthority,
-                                        identifier: "CaptureTodayTaskMergedSpeakerEvidence_\(task.id)"
-                                    )
-                                    if evidence.governance != nil {
-                                        Label("Source linked", systemImage: "link.circle.fill")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(CapturePalette.ink)
-                                            .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceGovernance_\(task.id)")
-                                    }
-                                    NavigationLink {
-                                        CaptureTranscriptReviewView(
-                                            roomID: evidence.sourceAnchor.roomId,
-                                            sessionTitle: task.sessionTitle ?? "Capture session",
-                                            recording: matchingRecording(
-                                                roomID: evidence.sourceAnchor.roomId,
-                                                recordingAssetID: evidence.sourceAnchor.recordingAssetId
-                                            ),
-                                            previewOnly: previewOnly,
-                                            focusSegmentID: evidence.sourceAnchor.segmentId
-                                        )
-                                    } label: {
-                                        Label("Return to \(evidence.sourceAnchor.startSeconds.captureDurationLabel)–\(evidence.sourceAnchor.endSeconds.captureDurationLabel)", systemImage: "waveform.and.magnifyingglass")
-                                            .font(.caption.weight(.bold))
-                                            .frame(minHeight: 44)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceSource_\(task.id)")
-                                    Text("Task state, owner, schedule, recurrence, reminder, tags, goals, and project were not changed.")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(10)
-                                .background(CapturePalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                            }
-                        }
+                        taskRow(task)
                     }
                     if client.tasks.count > 3 {
                         Button {
@@ -5048,7 +5025,7 @@ struct TodayFollowThroughCard: View {
                             }
                         } label: {
                             Label(
-                                showsAllCommittedTasks ? "Show today’s top 3" : "Show \(client.tasks.count - 3) more committed tasks",
+                                showsAllCommittedTasks ? "Show fewer tasks" : "Show \(client.tasks.count - 3) more tasks",
                                 systemImage: showsAllCommittedTasks ? "chevron.up" : "chevron.down"
                             )
                             .frame(minHeight: 44)
@@ -5057,58 +5034,9 @@ struct TodayFollowThroughCard: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(CapturePalette.ink)
                         .accessibilityIdentifier("CaptureTodayShowMoreTasks")
-                        .accessibilityHint(showsAllCommittedTasks ? "Collapses the committed work list." : "Shows the remaining committed work already loaded from Nest.")
+                        .accessibilityHint(showsAllCommittedTasks ? "Shows the first three tasks." : "Shows the remaining tasks.")
                     }
                 }
-            }
-
-            if !client.transcriptReviews.isEmpty {
-                VStack(alignment: .leading, spacing: 9) {
-                    Label("Transcripts", systemImage: "waveform.and.magnifyingglass")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(CapturePalette.plum)
-                    Text("Transcript suggestions are saved with the Session. Open one to listen, correct, or edit.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    ForEach(client.transcriptReviews.prefix(3)) { review in
-                        NavigationLink {
-                            CaptureTranscriptReviewView(
-                                roomID: review.roomId,
-                                sessionTitle: review.sessionTitle,
-                                recording: matchingRecording(for: review),
-                                previewOnly: previewOnly
-                            )
-                        } label: {
-                            VStack(alignment: .leading, spacing: 5) {
-                                HStack {
-                                    Text(review.sessionTitle)
-                                        .font(.subheadline.weight(.semibold))
-                                    Spacer()
-                                    Text(review.startSeconds.captureDurationLabel)
-                                        .font(.caption.monospacedDigit().weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Text(review.proposedSpeakerLabel.map { "Speaker suggestion: \($0)" } ?? review.proposedText ?? "Open transcript suggestion")
-                                    .font(.caption)
-                                    .foregroundStyle(CapturePalette.plum)
-                                Label(
-                                    matchingRecording(for: review) == nil ? "Transcript available — recording is in Nest" : "Exact local source ready",
-                                    systemImage: matchingRecording(for: review) == nil ? "lock.fill" : "checkmark.shield.fill"
-                                )
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(matchingRecording(for: review) == nil ? CapturePalette.brass : CapturePalette.success)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("CaptureTodayTranscriptReviewLink_\(review.id)")
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Transcripts")
-                .accessibilityIdentifier("CaptureTodayTranscriptReviews")
             }
 
             if !client.goals.isEmpty {
@@ -5158,7 +5086,7 @@ struct TodayFollowThroughCard: View {
                                 .accessibilityIdentifier("CaptureTodayGoalEdit_\(goal.id)")
                                 .accessibilityHint("Edit this goal's title, description, or target date.")
                             }
-                            if let project = goal.project {
+                            if let project = goal.tagEditorProject {
                                 TodayProjectTagLine(
                                     project: project,
                                     tagLabels: client.effectiveTagLabels(
@@ -5168,7 +5096,8 @@ struct TodayFollowThroughCard: View {
                                         canonicalTagIDs: goal.tagIds ?? [],
                                         canonicalTagLabels: goal.tagLabels ?? []
                                     ),
-                                    identifier: "CaptureTodayGoalTags_\(goal.id)"
+                                    identifier: "CaptureTodayGoalTags_\(goal.id)",
+                                    availableTags: client.tags(for: project.id)
                                 )
                                 if let pendingTags {
                                     Label(
@@ -5254,6 +5183,160 @@ struct TodayFollowThroughCard: View {
                         }
                     }
                 }
+            }
+
+            if let followUp = client.clientFollowUpAttention {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("New coaching follow-up", systemImage: "person.crop.circle.badge.checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(CapturePalette.success)
+                    Text(followUp.title)
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("From \(followUp.coachLabel) · \(followUp.sessionTitle)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        onOpenClientFollowUp(followUp.roomId)
+                    } label: {
+                        Label("Open follow-up", systemImage: "arrow.right.circle.fill")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .captureProminentButton(fill: CapturePalette.successFill)
+                    .accessibilityIdentifier("CaptureTodayClientFollowUpOpen_\(followUp.outputId)")
+                    .accessibilityHint("Opens the shared notes, tasks, and goals in this Session.")
+                }
+                .padding(12)
+                .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureTodayClientFollowUp_\(followUp.outputId)")
+            }
+
+            if let focus = nextFocus {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Next focus", systemImage: "timer")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(CapturePalette.ink)
+                        .accessibilityIdentifier("CaptureTodayFocusBlock_\(focus.id)")
+                    Text(focus.title)
+                        .font(.headline)
+                    Text(focusWindow(focus))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        focusToComplete = focus
+                    } label: {
+                        Label("Record work", systemImage: "checkmark.circle")
+                    }
+                    .captureProminentButton()
+                    .disabled(focusDecisionDisabled(focus))
+                    .accessibilityHint("Record the time you spent on this focus block.")
+                    .accessibilityIdentifier("CaptureTodayFocusDoneButton")
+                }
+                .padding(12)
+                .background(CapturePalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            if !client.focusDecisions.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Label("Focus updates", systemImage: "iphone.and.arrow.forward")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(client.heldFocusDecisionCount > 0 ? CapturePalette.brass : CapturePalette.plum)
+                    ForEach(client.focusDecisions) { decision in
+                        let title = client.focusBlocks.first(where: { $0.id == decision.blockID })?.title
+                            ?? "Focus block \(decision.blockID.prefix(8))"
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(title).font(.subheadline.weight(.semibold))
+                            Label(
+                                decision.disposition == .held
+                                    ? "Needs attention"
+                                    : "Saved on \(CaptureDeviceVocabulary.thisDevice) · waiting to sync",
+                                systemImage: decision.disposition == .held
+                                    ? "exclamationmark.triangle.fill"
+                                    : "lock.doc.fill"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(decision.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
+                            if let minutes = decision.actualMinutes {
+                                Text("\(minutes) actual minute\(minutes == 1 ? "" : "s") · linked work unchanged")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let message = decision.lastErrorMessage, !message.isEmpty {
+                                Text(message).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+                            }
+                            HStack(spacing: 8) {
+                                Button("Retry") {
+                                    Task { await client.retryFocusDecision(for: decision.blockID) }
+                                }
+                                .captureProminentButton()
+                                .disabled(previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed)
+                                .accessibilityIdentifier("CaptureTodayFocusDecisionRetry_\(decision.blockID)")
+                                if decision.disposition == .held {
+                                    Button("Discard", role: .destructive) {
+                                        Task { await client.discardHeldFocusDecision(for: decision.blockID) }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(previewOnly || client.isMutating)
+                                    .accessibilityIdentifier("CaptureTodayFocusDecisionDiscard_\(decision.blockID)")
+                                }
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("CaptureTodayFocusDecision_\(decision.blockID)")
+                    }
+                }
+                .padding(12)
+                .background(CapturePalette.plum.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            if !client.transcriptReviews.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Label("Transcripts", systemImage: "waveform.and.magnifyingglass")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(CapturePalette.plum)
+                    Text("Transcript suggestions are saved with the Session. Open one to listen, correct, or edit.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    ForEach(client.transcriptReviews.prefix(3)) { review in
+                        NavigationLink {
+                            CaptureTranscriptReviewView(
+                                roomID: review.roomId,
+                                sessionTitle: review.sessionTitle,
+                                recording: matchingRecording(for: review),
+                                previewOnly: previewOnly
+                            )
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text(review.sessionTitle)
+                                        .font(.subheadline.weight(.semibold))
+                                    Spacer()
+                                    Text(review.startSeconds.captureDurationLabel)
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(review.proposedSpeakerLabel.map { "Speaker suggestion: \($0)" } ?? review.proposedText ?? "Open transcript suggestion")
+                                    .font(.caption)
+                                    .foregroundStyle(CapturePalette.plum)
+                                Label(
+                                    matchingRecording(for: review) == nil ? "Transcript available — recording is in Nest" : "Exact local source ready",
+                                    systemImage: matchingRecording(for: review) == nil ? "lock.fill" : "checkmark.shield.fill"
+                                )
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(matchingRecording(for: review) == nil ? CapturePalette.brass : CapturePalette.success)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("CaptureTodayTranscriptReviewLink_\(review.id)")
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Transcripts")
+                .accessibilityIdentifier("CaptureTodayTranscriptReviews")
             }
 
             if !activeSourceAnnotations.isEmpty || !recentlyResolvedSourceAnnotations.isEmpty {
@@ -5723,7 +5806,10 @@ struct TodayFollowThroughCard: View {
             TodayTaskReminderSheet(client: client, task: task)
         }
         .sheet(item: $taskTagsToEdit) { task in
-            if let project = task.project {
+            if let scope = task.tagScope {
+                SharedWorkTagSheet(client: client, kind: .task, entityID: task.id,
+                    entityTitle: task.title, scope: scope)
+            } else if let project = task.project {
                 TodayWorkTagSheet(
                     client: client,
                     kind: .task,
@@ -5736,7 +5822,10 @@ struct TodayFollowThroughCard: View {
             }
         }
         .sheet(item: $goalTagsToEdit) { goal in
-            if let project = goal.project {
+            if let scope = goal.tagScope {
+                SharedWorkTagSheet(client: client, kind: .goal, entityID: goal.id,
+                    entityTitle: goal.title, scope: scope)
+            } else if let project = goal.project {
                 TodayWorkTagSheet(
                     client: client,
                     kind: .goal,
@@ -6275,6 +6364,8 @@ private struct CaptureTagVocabularySheet: View {
     @State private var searchText = ""
     @State private var showsRetired = false
     @State private var createLabel = ""
+    @State private var createColor: String? = "#506b46"
+    @State private var colorTag: MobileCaptureWorkTag?
     @State private var renameTagID: String?
     @State private var renameLabel = ""
     @State private var archiveCandidate: MobileCaptureWorkTag?
@@ -6384,6 +6475,9 @@ private struct CaptureTagVocabularySheet: View {
                             Text("#\(normalizedCreateLabel) will join this Nest’s private vocabulary without being attached to a record.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            CaptureTagColorField(hexColor: $createColor)
+                            CaptureWorkTags(tags: [MobileWorkTagLabel(id: "new", label: normalizedCreateLabel,
+                                hexColor: createColor, isActive: true)], workID: "new-tag-preview")
                         }
                         if normalizedCreateLabel.utf16.count > 80 {
                             Label(
@@ -6395,13 +6489,16 @@ private struct CaptureTagVocabularySheet: View {
                         }
                         Button {
                             let requestedLabel = normalizedCreateLabel
+                            let requestedColor = createColor
                             focusedField = nil
                             Task {
                                 if await client.createTagVocabulary(
                                     projectID: project.id,
-                                    label: requestedLabel
+                                    label: requestedLabel,
+                                    hexColor: requestedColor
                                 ) {
                                     createLabel = ""
+                                    createColor = "#506b46"
                                 }
                             }
                         } label: {
@@ -6505,6 +6602,9 @@ private struct CaptureTagVocabularySheet: View {
             }
         }
         .accessibilityIdentifier("CaptureTagVocabularySheet")
+        .sheet(item: $colorTag) { tag in
+            CaptureTagColorEditor(client: client, tag: tag)
+        }
     }
 
     @ViewBuilder
@@ -6512,8 +6612,8 @@ private struct CaptureTagVocabularySheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("#\(tag.label)")
-                        .font(.body.weight(.semibold))
+                    CaptureWorkTags(tags: [MobileWorkTagLabel(id: tag.id, label: tag.label,
+                        hexColor: tag.hexColor, isActive: tag.isActive)], workID: "vocabulary")
                     Text("\(tag.usageCount) assignment\(tag.usageCount == 1 ? "" : "s") · \(tag.slug)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -6525,6 +6625,9 @@ private struct CaptureTagVocabularySheet: View {
                         .foregroundStyle(.secondary)
                 } else if tag.isActive {
                     Menu {
+                        Button { colorTag = tag } label: {
+                            Label("Change color", systemImage: "paintpalette")
+                        }
                         Button {
                             renameTagID = tag.id
                             renameLabel = tag.label
@@ -7268,6 +7371,58 @@ private struct TodayTaskReminderSheet: View {
     }
 }
 
+private struct SharedWorkTagSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: CaptureTodayClient
+    let kind: PendingWorkTagDecision.EntityKind
+    let entityID: String
+    let entityTitle: String
+    let scope: MobileCaptureWorkTagScope
+    var onSaved: (() -> Void)? = nil
+    @State private var context: MobileCaptureWorkTagContext?
+    @State private var error: String?
+
+    var body: some View {
+        Group {
+            if let context, let tags = context.tags, let updatedAt = context.updatedAt {
+                TodayWorkTagSheet(client: client, kind: kind, entityID: entityID,
+                    entityTitle: entityTitle, project: scope.displayProject,
+                    canonicalTagIDs: context.selectedTagIds ?? [], expectedUpdatedAt: updatedAt,
+                    availableTags: tags.map { .init(id: $0.id, projectId: scope.projectId,
+                        slug: $0.id, label: $0.label, isActive: $0.isActive, hexColor: $0.hexColor) },
+                    canCreateTags: context.canCreateTags == true, onSaved: onSaved)
+            } else {
+                NavigationStack {
+                    VStack(spacing: 16) {
+                        if let error {
+                            Text(error).multilineTextAlignment(.center)
+                            Button("Try again") { Task { await load() } }.buttonStyle(.bordered)
+                        } else {
+                            ProgressView("Loading tags…")
+                        }
+                    }
+                    .padding()
+                    .navigationTitle("Edit tags")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        error = nil
+        do {
+            let result = try await client.loadSharedTagContext(kind: kind, entityID: entityID, projectID: scope.projectId)
+            try Task.checkCancellation()
+            context = result
+        } catch is CancellationError {
+        } catch {
+            self.error = "Tags couldn't load. Please try again."
+        }
+    }
+}
+
 private struct TodayWorkTagSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var client: CaptureTodayClient
@@ -7280,6 +7435,7 @@ private struct TodayWorkTagSheet: View {
     let expectedTagRevision: Int?
     let readOnlyPreview: Bool
     let availableTags: [MobileCaptureTodayTag]?
+    let canCreateTags: Bool
     let onSaved: (() -> Void)?
 
     @State private var selectedTagIDs: Set<String>
@@ -7297,6 +7453,7 @@ private struct TodayWorkTagSheet: View {
         expectedTagRevision: Int? = nil,
         readOnlyPreview: Bool = false,
         availableTags: [MobileCaptureTodayTag]? = nil,
+        canCreateTags: Bool = true,
         onSaved: (() -> Void)? = nil
     ) {
         self.client = client
@@ -7309,6 +7466,7 @@ private struct TodayWorkTagSheet: View {
         self.expectedTagRevision = expectedTagRevision
         self.readOnlyPreview = readOnlyPreview
         self.availableTags = availableTags
+        self.canCreateTags = canCreateTags
         self.onSaved = onSaved
         _selectedTagIDs = State(initialValue: Set(canonicalTagIDs))
     }
@@ -7332,12 +7490,6 @@ private struct TodayWorkTagSheet: View {
 
     private var selectionChanged: Bool {
         selectedTagIDs != Set(canonicalTagIDs)
-    }
-
-    private var archivedSelection: [MobileCaptureTodayTag] {
-        tagCatalog.filter {
-            !$0.isActive && selectedTagIDs.contains($0.id)
-        }
     }
 
     private var normalizedNewTagLabel: String {
@@ -7383,7 +7535,6 @@ private struct TodayWorkTagSheet: View {
 
     private var saveDisabled: Bool {
         (!selectionChanged && !newTagRequested)
-            || !archivedSelection.isEmpty
             || newTagError != nil
             || readOnlyPreview
             || client.isMutating
@@ -7414,13 +7565,13 @@ private struct TodayWorkTagSheet: View {
                     .accessibilityElement(children: .combine)
                 }
 
-                Section("Tags in this Nest") {
+                Section(canCreateTags ? "Tags in this Nest" : "Shared tags") {
                     if visibleTags.isEmpty {
                         ContentUnavailableView(
                             searchText.isEmpty ? "No reusable tags yet" : "No matching tags",
                             systemImage: "tag.slash",
                             description: Text(searchText.isEmpty
-                                ? "Create the first reusable label below."
+                                ? (canCreateTags ? "Create the first reusable label below." : "Tags from shared work will appear here.")
                                 : "Try another search.")
                         )
                     } else {
@@ -7428,16 +7579,16 @@ private struct TodayWorkTagSheet: View {
                             Button {
                                 if selectedTagIDs.contains(tag.id) {
                                     selectedTagIDs.remove(tag.id)
-                                } else if tag.isActive && selectedTagIDs.count < 24 {
+                                } else if (tag.isActive || canonicalTagIDs.contains(tag.id)) && selectedTagIDs.count < 24 {
                                     selectedTagIDs.insert(tag.id)
                                 }
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(tag.label)
-                                            .foregroundStyle(.primary)
+                                        CaptureWorkTags(tags: [MobileWorkTagLabel(id: tag.id, label: tag.label,
+                                            hexColor: tag.hexColor, isActive: tag.isActive)], workID: "selection")
                                         if !tag.isActive {
-                                            Text("Archived · remove to save another change")
+                                            Text("Archived")
                                                 .font(.caption2)
                                                 .foregroundStyle(CapturePalette.brass)
                                         }
@@ -7451,47 +7602,43 @@ private struct TodayWorkTagSheet: View {
                                 .frame(minHeight: 44)
                             }
                             .accessibilityIdentifier("CaptureTodayWorkTag_\(tag.id)")
+                            .accessibilityLabel(tag.label)
                             .accessibilityValue(selectedTagIDs.contains(tag.id) ? "Selected" : "Not selected")
                             .accessibilityHint(tag.isActive ? "Active reusable Nest tag." : "Archived tag. It can be removed but not newly applied.")
+                            .disabled(!tag.isActive && !canonicalTagIDs.contains(tag.id))
                         }
                     }
                 }
 
-                Section("Create or reuse a tag") {
-                    TextField("e.g. Recording day", text: $newTagLabel)
-                        .textInputAutocapitalization(.sentences)
-                        .accessibilityLabel("New reusable tag")
-                        .accessibilityIdentifier("CaptureTodayWorkTagNewLabel")
-                    if let matchingExistingTag {
-                        Label(
-                            "Existing #\(matchingExistingTag.label) will be reused—no duplicate.",
-                            systemImage: "arrow.triangle.2.circlepath"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CapturePalette.ink)
-                    } else if newTagRequested, newTagError == nil {
-                        Text("#\(normalizedNewTagLabel) will be private to \(project.name) and selected on this record.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let newTagError {
-                        Label(newTagError, systemImage: "exclamationmark.triangle.fill")
+                if canCreateTags {
+                    Section("Create or reuse a tag") {
+                        TextField("e.g. Recording day", text: $newTagLabel)
+                            .textInputAutocapitalization(.sentences)
+                            .accessibilityLabel("New reusable tag")
+                            .accessibilityIdentifier("CaptureTodayWorkTagNewLabel")
+                        if let matchingExistingTag {
+                            Label(
+                                "Existing #\(matchingExistingTag.label) will be reused—no duplicate.",
+                                systemImage: "arrow.triangle.2.circlepath"
+                            )
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(CapturePalette.brass)
-                            .accessibilityIdentifier("CaptureTodayWorkTagNewLabelError")
+                            .foregroundStyle(CapturePalette.ink)
+                        } else if newTagRequested, newTagError == nil {
+                            Text("#\(normalizedNewTagLabel) will be private to \(project.name) and selected on this record.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let newTagError {
+                            Label(newTagError, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(CapturePalette.brass)
+                                .accessibilityIdentifier("CaptureTodayWorkTagNewLabelError")
+                        }
                     }
                 }
 
                 Section {
-                    if !archivedSelection.isEmpty {
-                        Label(
-                            "Remove archived selections before saving a new tag set.",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CapturePalette.brass)
-                    }
-                    Text("Tags help you find related notes, recordings, tasks, and goals across this Nest.")
+                    Text("Tags help you find related notes, recordings, tasks, and goals.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -7541,7 +7688,7 @@ private struct TodayWorkTagSheet: View {
                 newTagLabels: newTagLabels,
                 expectedUpdatedAt: expectedUpdatedAt,
                 expectedTagRevision: expectedTagRevision,
-                availableTagIDs: Set(tagCatalog.filter(\.isActive).map(\.id))
+                availableTagIDs: Set(tagCatalog.filter(\.isActive).map(\.id)).union(canonicalTagIDs)
             )
             if saved {
                 dismiss()
@@ -7569,7 +7716,7 @@ private func captureGoalTargetLabel(_ goal: MobileCaptureTodayGoal) -> String? {
     return "Target \(date.formatted(date: .abbreviated, time: .omitted))"
 }
 
-private struct CaptureTaskEditSheet: View {
+struct CaptureTaskEditSheet: View {
     @ObservedObject var client: CaptureTodayClient
     let task: MobileCaptureTodayTask
     var onSaved: (() -> Void)? = nil
@@ -7622,6 +7769,19 @@ private struct CaptureTaskEditSheet: View {
                     TextField("Optional detail", text: $detail, axis: .vertical)
                         .lineLimit(2...8)
                         .accessibilityIdentifier("CaptureTaskEditDetail")
+                }
+
+                Section {
+                    Button(task.status == "DONE" ? "Reopen task" : "Mark done") {
+                        Task {
+                            if await client.setTaskStatus(task, status: task.status == "DONE" ? "OPEN" : "DONE") {
+                                dismiss()
+                                onSaved?()
+                            }
+                        }
+                    }
+                    .disabled(client.isMutating)
+                    .accessibilityIdentifier("CaptureTaskEditCompletion")
                 }
 
                 Section("Due date") {
@@ -7707,7 +7867,7 @@ private struct CaptureTaskEditSheet: View {
     }
 }
 
-private struct CaptureGoalEditSheet: View {
+struct CaptureGoalEditSheet: View {
     @ObservedObject var client: CaptureTodayClient
     let goal: MobileCaptureTodayGoal
     var onSaved: (() -> Void)? = nil
@@ -8065,24 +8225,20 @@ private struct TodayProjectTagLine: View {
     let project: MobileCaptureTodayProject?
     let tagLabels: [String]
     let identifier: String
+    var availableTags: [MobileCaptureTodayTag] = []
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                if let project {
-                    Label(project.name, systemImage: "tray.full")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(CapturePalette.ink)
-                }
-                ForEach(tagLabels, id: \.self) { label in
-                    Text("#\(label)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(CapturePalette.ink)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(CapturePalette.ink.opacity(0.08), in: Capsule())
-                }
+        VStack(alignment: .leading, spacing: 6) {
+            if let project {
+                Label(project.name, systemImage: "tray.full")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CapturePalette.ink)
             }
+            CaptureWorkTags(tags: tagLabels.map { label in
+                let tag = availableTags.first { $0.label == label }
+                return MobileWorkTagLabel(id: tag?.id ?? label, label: label,
+                    hexColor: tag?.hexColor, isActive: tag?.isActive ?? true)
+            }, workID: identifier)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(([project?.name].compactMap { $0 } + tagLabels.map { "Tag \($0)" }).joined(separator: ", "))
@@ -8496,6 +8652,14 @@ private enum CaptureCoordinatedRecordingEndpoint {
     ) async {
         guard directive.action == .stop || model.providerRoom.isConnected else { return }
         guard coordinator.claim(directive) else { return }
+        if directive.action == .stop,
+           !isActive(audioCapture: audioCapture, videoCapture: videoCapture) {
+            // A room retains its latest directive across joins and relaunches.
+            // An idle endpoint must not replay an old STOP as a new recording
+            // event with a nil capture ID (or replace its original receipt).
+            coordinator.markIdleStopHandled(directive)
+            return
+        }
         if directive.action == .start {
             await coordinator.acknowledge(
                 roomID: session.callRoomId,
@@ -8630,6 +8794,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     let recording: LocalRecording
     let fileURL: URL?
@@ -8742,6 +8907,14 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(CapturePalette.brass)
+                if transcriptManager.storedTranscript(for: recording.id) != nil {
+                    Button("Retry saving writing") {
+                        seedWritingIfAvailable()
+                        openFreshWritingIfReady()
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("CaptureVoiceWritingRetryLocalSave")
+                }
             }
         }
         .captureCard()
@@ -8762,6 +8935,12 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         .onChange(of: transcriptManager.phases[recording.id]) { _, _ in
             seedWritingIfAvailable()
             openFreshWritingIfReady()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, writingStore.persistenceError != nil {
+                seedWritingIfAvailable()
+                openFreshWritingIfReady()
+            }
         }
         .navigationDestination(isPresented: $opensWriting) {
             if let draft {
@@ -8847,25 +9026,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     }
 
     private func performTranscriptAction() {
-        guard !recording.needsClearSpeechRetry
-            || transcriptManager.storedTranscript(for: recording.id) != nil else {
-            return
-        }
-        switch phase {
-        case .modelDownloadRequired:
-            guard let fileURL else { return }
-            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
-        case .savedLocally, .waitingForVerifiedUpload:
-            transcriptManager.submitSavedTranscript(recording: recording)
-        case .failed where canRecoverLocallyAfterSpeechPermission:
-            guard let fileURL else { return }
-            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
-        case .failed where recording.cloudTranscriptFallbackRequestId != nil:
-            transcriptManager.submitPendingCloudFallback(recording: recording)
-        default:
-            guard let fileURL else { return }
-            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
-        }
+        transcriptManager.retryTranscript(recording: recording, fileURL: fileURL)
     }
 
     private func seedWritingIfAvailable() {
@@ -8882,6 +9043,10 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
 
     private var statusTitle: String {
         if draft != nil { return "Writing ready" }
+        if writingStore.persistenceError != nil,
+           transcriptManager.storedTranscript(for: recording.id) != nil {
+            return "Writing hasn’t saved yet"
+        }
         switch phase {
         case .idle, .checkingSupport: return "Preparing transcript…"
         case .modelDownloadRequired: return "One-time speech download"
@@ -8906,6 +9071,10 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
             return draft.isSynced
                 ? "Edit this like a note on \(CaptureDeviceVocabulary.yourDevice) or continue on the web. The timed transcript and original audio stay connected."
                 : "Your editable draft is saved on \(CaptureDeviceVocabulary.thisDevice). Quipsly will keep syncing it privately to its Nest."
+        }
+        if writingStore.persistenceError != nil,
+           transcriptManager.storedTranscript(for: recording.id) != nil {
+            return "Your transcript is available. Retry saving the editable note."
         }
         switch phase {
         case .idle, .checkingSupport:
@@ -9092,10 +9261,6 @@ private struct CaptureVoiceWritingEditor: View {
                     .pickerStyle(.segmented)
                     .accessibilityHint("Switch between editable writing and the time-linked source transcript.")
                     .accessibilityIdentifier("CaptureVoiceWritingSurfacePicker")
-                } footer: {
-                    Text(selectedSurface == .writing
-                        ? "Shape your words here. Quipsly saves as you type."
-                        : "Tap a passage to hear the exact moment in the original audio.")
                 }
             }
 
@@ -9123,7 +9288,7 @@ private struct CaptureVoiceWritingEditor: View {
                         .font(.caption)
                         .foregroundStyle(CapturePalette.brass)
                     Button("Try saving again") {
-                        saveImmediately()
+                        guard saveImmediately() != nil else { return }
                         writingSync.syncNow(draftID: draftID)
                     }
                     .frame(minHeight: 44)
@@ -9135,10 +9300,11 @@ private struct CaptureVoiceWritingEditor: View {
                     Label(localSaveError, systemImage: "externaldrive.badge.exclamationmark")
                         .font(.caption)
                         .foregroundStyle(CapturePalette.brass)
-                    Button("Try saving on \(CaptureDeviceVocabulary.thisDevice) again") {
+                    Button("Retry save") {
                         saveImmediately()
                     }
                     .frame(minHeight: 44)
+                    .accessibilityIdentifier("CaptureVoiceWritingRetryEditSave")
                 }
             }
         }
@@ -9229,7 +9395,10 @@ private struct CaptureVoiceWritingEditor: View {
         .onChange(of: bodyText) { _, _ in scheduleSave() }
         .onChange(of: richText) { _, _ in scheduleSave() }
         .onChange(of: scenePhase) { _, phase in
-            guard phase != .active else { return }
+            if phase == .active {
+                if localSaveError != nil { saveImmediately() }
+                return
+            }
             // onDisappear is not guaranteed when iOS suspends or terminates
             // the process. Flush the protected local copy at the lifecycle
             // boundary so a phone call, app switch, or memory pressure cannot
@@ -9520,11 +9689,11 @@ private struct CaptureVoiceWritingEditor: View {
             }
 
             if !canonicalTags.isEmpty {
-                TodayProjectTagLine(
-                    project: nil,
-                    tagLabels: canonicalTags.map(\.label),
-                    identifier: "CaptureVoiceWritingTags"
-                )
+                CaptureWorkTags(tags: canonicalTags.map {
+                    MobileWorkTagLabel(id: $0.id, label: $0.label, hexColor: $0.hexColor, isActive: $0.isActive != false)
+                }, workID: "writing")
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureVoiceWritingTags")
             }
 
             Button {
@@ -9865,20 +10034,22 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private var canonicalTags: [MobileCaptureTag] {
-        (currentDraft?.canonicalTags ?? []).filter { $0.isActive != false }
+        currentDraft?.canonicalTags ?? []
     }
 
     private var availableVoiceTags: [MobileCaptureTodayTag] {
         guard let projectID = currentDraft?.canonicalProjectID?.nonempty
                 ?? writingSync.homeProject?.id.nonempty else { return [] }
-        let tags = currentDraft?.canonicalAvailableTags ?? writingSync.availableTags
+        let available = currentDraft?.canonicalAvailableTags ?? writingSync.availableTags
+        let tags = available + canonicalTags.filter { selected in !available.contains { $0.id == selected.id } }
         return tags.map {
             MobileCaptureTodayTag(
                 id: $0.id,
                 projectId: projectID,
                 slug: $0.slug,
                 label: $0.label,
-                isActive: $0.isActive != false
+                isActive: $0.isActive != false,
+                hexColor: $0.hexColor
             )
         }
     }
@@ -9923,7 +10094,7 @@ private struct CaptureVoiceWritingEditor: View {
         titleIsFocused = false
         bodyIsFocused = false
         saveTask?.cancel()
-        saveImmediately()
+        guard saveImmediately() != nil else { return }
         do {
             try await writingSync.move(draftID: draftID, to: destination)
         } catch {
@@ -9941,7 +10112,7 @@ private struct CaptureVoiceWritingEditor: View {
         titleIsFocused = false
         bodyIsFocused = false
         saveTask?.cancel()
-        saveImmediately()
+        guard saveImmediately() != nil else { return }
         do {
             try await writingSync.move(
                 draftID: draftID,
@@ -9957,7 +10128,10 @@ private struct CaptureVoiceWritingEditor: View {
     @ViewBuilder
     private var syncStatus: some View {
         Group {
-            if writingSync.syncingDraftIDs.contains(draftID) {
+            if localSaveError != nil {
+                Label("Not saved", systemImage: "exclamationmark.icloud")
+                    .foregroundStyle(CapturePalette.brass)
+            } else if writingSync.syncingDraftIDs.contains(draftID) {
                 Label("Saving…", systemImage: "icloud.and.arrow.up")
             } else if currentDraft?.pendingRemote != nil {
                 Label("Two copies", systemImage: "arrow.triangle.branch")
@@ -10008,8 +10182,7 @@ private struct CaptureVoiceWritingEditor: View {
         let insertionUtf16 = voiceContinuationInsertionUtf16
         titleIsFocused = false
         bodyIsFocused = false
-        saveImmediately()
-        guard let draft = currentDraft else { return }
+        guard let draft = saveImmediately() else { return }
         onContinueByVoice(draft, insertionUtf16)
         dismiss()
     }
@@ -10409,7 +10582,8 @@ private struct CaptureVoiceWritingEditor: View {
         }
     }
 
-    private func saveImmediately() {
+    @discardableResult
+    private func saveImmediately() -> VoiceWritingDraft? {
         do {
             let draft = try writingStore.update(
                 draftID: draftID,
@@ -10419,8 +10593,10 @@ private struct CaptureVoiceWritingEditor: View {
             )
             localSaveError = nil
             writingSync.schedule(draft)
+            return draft
         } catch {
-            localSaveError = "This edit is still open, but \(CaptureDeviceVocabulary.deviceName) storage has not confirmed it yet. \(error.localizedDescription)"
+            localSaveError = "Couldn’t save this edit. Keep this note open and try again."
+            return nil
         }
     }
 
@@ -11284,12 +11460,14 @@ private struct CaptureStructuredWritingBody: View {
 
 private enum CaptureRecorderFocusedTool: String, Identifiable {
     case deviceSoundCheck
+    case episodeScript
     case episodeWatch
 
     var id: String { rawValue }
 }
 
 private struct CaptureRecorderView: View {
+    @Environment(\.scenePhase) private var conversationScenePhase
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @Binding var localOnlyRecordingSessionID: String?
@@ -11303,15 +11481,23 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
+    @State private var activeCallPanel: CaptureCallPanel?
+    private var showsCallTools: Bool { activeCallPanel == .tools }
+    @State private var showsCallChat = false
+    @State private var sessionWorkSession: MobileCaptureSession?
+    @StateObject private var sessionWork = MobileSessionWorkClient()
     @State private var focusedTool: CaptureRecorderFocusedTool?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
     @State private var sessionClientSpace: MobileCaptureCoachingEngagement?
+    @State private var sessionPreparationSession: MobileCaptureSession?
     @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode(for: nil)
     @State private var cameraPosition: VideoCaptureCameraPosition = CaptureCallPreferences.cameraPosition
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
     @State private var isRunningRehearsalCheck = false
     @State private var isSafelyLeavingRoom = false
+    @State private var showsCompletedSessionWork = false
+    @State private var selectedRecordingTranscript: CaptureSessionRecordingTranscriptDestination?
     #if DEBUG && !targetEnvironment(simulator)
     @State private var didRunPhysicalVoiceWritingAcceptance = false
     #endif
@@ -11328,7 +11514,7 @@ private struct CaptureRecorderView: View {
     /// cards. Returning their full nested generic type from `body` overflowed
     /// the smaller main-thread stack on physical iPhones before SwiftUI could
     /// render either Sessions or Speak to write.
-    private var recorderScrollableSurface: AnyView {
+    private var recorderDocumentSurface: AnyView {
         AnyView(ScrollView {
             Group {
                 if let session = model.selectedSession,
@@ -11340,6 +11526,30 @@ private struct CaptureRecorderView: View {
                     // SwiftUI's AttributeGraph at 100% CPU. Personal writing
                     // needs only its source, transcript, and recorder controls.
                     personalVoiceWritingWorkspace(session)
+                } else if let session = model.selectedSession,
+                          let completed = model.completedCall,
+                          completed.roomID == session.callRoomId,
+                          !model.providerRoom.isConnected,
+                          !captureIsActive {
+                    CapturePostCallWorkspace(
+                        model: model, session: session, completedCall: completed,
+                        onNotes: { sessionNotesSession = session },
+                        onConversation: { showsCallChat = true },
+                        onTasks: { sessionWorkSession = session },
+                        onSession: { showsCompletedSessionWork = true },
+                        onLibrary: {
+                            requestedLibrarySection = .recordings
+                            visibleTab = .library
+                        }
+                    )
+                } else if let session = model.selectedSession,
+                          !model.providerRoom.isConnected,
+                          !localRecordingWorkspaceIsOpen(for: session) {
+                    if CaptureSessionScheduling.isClosed(status: session.status) {
+                        savedSessionWorkspace(session)
+                    } else {
+                        prejoinWorkspace(session)
+                    }
                 } else {
                     // This surface can project a full Episode workspace. Lazy
                     // layout remains a correctness boundary for collaborative
@@ -11348,7 +11558,8 @@ private struct CaptureRecorderView: View {
                     // the smaller main-thread stack on physical iPhones.
                     LazyVStack(spacing: 16) {
                 AnyView(Group {
-                if model.selectedSession?.isPersonalVoiceNote != true {
+                if model.selectedSession?.isPersonalVoiceNote != true,
+                   !model.providerRoom.isConnected {
                     SessionChooserButton(session: model.selectedSession) {
                         showsSessionPicker = true
                     }
@@ -11391,6 +11602,7 @@ private struct CaptureRecorderView: View {
                 })
 
                 if let session = model.selectedSession {
+                    if !model.providerRoom.isConnected || !showsCallTools {
                     AnyView(Group {
                     if session.isPersonalVoiceNote {
                         CapturePersonalVoiceNoteHeader(
@@ -11409,6 +11621,12 @@ private struct CaptureRecorderView: View {
                             )
                         }
                     } else {
+                    if localOnlyRecordingSessionID == session.id,
+                       !model.providerRoom.isConnected {
+                        CaptureLocalRecordingHeader {
+                            localOnlyRecordingSessionID = nil
+                        }
+                    } else {
                     ProviderRoomControls(
                         model: model,
                         session: session,
@@ -11424,18 +11642,29 @@ private struct CaptureRecorderView: View {
                             || model.activeVideoCaptureSession?.id == session.id
                             || session.providerCanJoin == false,
                         onToggleLocalRecordingWorkspace: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                localOnlyRecordingSessionID =
-                                    localOnlyRecordingSessionID == session.id
-                                    ? nil
-                                    : session.id
-                            }
+                            localOnlyRecordingSessionID = session.id
                         }
                     )
                     .captureCard()
                     }
+                    }
                     })
+                    }
 
+                    if !session.isPersonalVoiceNote && !model.providerRoom.isConnected {
+                        AnyView(callWorkspaceActions(session))
+                    }
+
+                    if model.providerRoom.isConnected {
+                        if !showsCallTools, let notice = model.captureSafetyNotice {
+                            CaptureInlineWarning(text: notice)
+                        }
+                    }
+
+                    // Transport and recorders belong to the model, not these
+                    // tools. Opening a note or hiding the workspace never tears
+                    // down the live call or its participant-local source.
+                    if !model.providerRoom.isConnected || showsCallTools {
                     AnyView(Group {
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
@@ -11468,6 +11697,7 @@ private struct CaptureRecorderView: View {
                         CaptureRecordingCoordinationStatus(
                             message: coordinationMessage,
                             isRecording: captureIsActive,
+                            recordingRequested: recordingCoordinator.currentDirective?.shouldRecord ?? captureIsActive,
                             joinConfirmationRequired: recordingCoordinator.joinConfirmationRequired,
                             participantStatuses: recordingCoordinator.currentDirective?.participantStatuses ?? [],
                             recordingHealth: recordingCoordinator.currentDirective?.recordingHealth,
@@ -11753,6 +11983,31 @@ private struct CaptureRecorderView: View {
                     }
                     })
 
+                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
+                        Button {
+                            sessionClientSpace = engagement
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.circle.fill")
+                                    .foregroundStyle(CapturePalette.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text("Shared notes, tasks, goals, and conversation")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
+                    }
+
                     if model.providerRoom.isConnected
                         || localRecordingWorkspaceIsOpen(for: session) {
                         // These are separate LazyVStack children, not one giant
@@ -11765,7 +12020,6 @@ private struct CaptureRecorderView: View {
                         AnyView(episodeChatTool(session))
                         AnyView(episodeWatchTool(session))
                         sessionQuickEntrySurface(session)
-                        sessionConversationSurface(session)
                     }
 
                     AnyView(Group {
@@ -11782,11 +12036,14 @@ private struct CaptureRecorderView: View {
                         }
 
                     if session.isCoachingSession && !sessionHasPostCallWork(session) {
-                        MobileCoachingSessionPreparationCard(
-                            client: sessionPreparation,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
+                        Button {
+                            sessionPreparationSession = session
+                        } label: {
+                            Label("Session plan", systemImage: "list.bullet.clipboard")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureSessionPreparationOpen")
                     }
 
                     // Transcript correction and text editing are the first
@@ -11795,7 +12052,8 @@ private struct CaptureRecorderView: View {
                     CaptureSessionTranscriptReviewCard(
                         session: session,
                         sessionClient: model.sessionClient,
-                        previewOnly: model.usesPreviewData
+                        previewOnly: model.usesPreviewData,
+                        onSelectSource: { selectedRecordingTranscript = $0 }
                     )
 
                     // Generated notes, tasks, and goals are the primary outcome
@@ -11982,31 +12240,6 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
-                        Button {
-                            sessionClientSpace = engagement
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.2.circle.fill")
-                                    .foregroundStyle(CapturePalette.accent)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    Text("Shared notes, tasks, goals, and conversation")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .captureCard()
-                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
-                    }
-
                     Button {
                         showsSessionContext = true
                     } label: {
@@ -12031,6 +12264,7 @@ private struct CaptureRecorderView: View {
                         SourceTruthFootnote(mode: recordingMode)
                     }
                     })
+                    }
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading capture sessions…")
                 } else {
@@ -12048,6 +12282,19 @@ private struct CaptureRecorderView: View {
             .padding(.horizontal, 18)
             .padding(.top, 14)
             .padding(.bottom, 96)
+        })
+    }
+
+    private var recorderScrollableSurface: AnyView {
+        AnyView(Group {
+            if let session = model.selectedSession,
+               !session.isPersonalVoiceNote, model.providerRoom.isConnected {
+                CaptureCallViewport { stageHeight in
+                    liveCallWorkspace(session, minimumStageHeight: stageHeight)
+                }
+            } else {
+                recorderDocumentSurface
+            }
         }
         .accessibilityIdentifier("CaptureRecorderView")
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -12080,51 +12327,19 @@ private struct CaptureRecorderView: View {
             // Keep the dock for collaborative sessions, where call controls
             // must remain reachable while people move through the workspace.
             if let session = model.selectedSession,
-               !session.isPersonalVoiceNote {
+               !session.isPersonalVoiceNote,
+               model.completedCall?.roomID != session.callRoomId || model.providerRoom.isConnected || captureIsActive {
                 if model.providerRoom.isConnected {
                     VStack(spacing: 0) {
-                        CapturePersistentRecorderDock(
-                            session: session,
-                            mode: recordingMode,
-                            audioState: audioCapture.captureState,
-                            videoState: videoCapture.state,
-                            duration: max(
-                                audioCapture.currentDuration,
-                                videoCapture.durationSeconds
-                            ),
-                            userMarkOffsets: audioCapture.userMarkOffsets,
-                            isBusy:
-                                model.isChangingCapture
-                                || model.isCoordinatingPodcastCapture
-                                || recordingCoordinator.isSending,
-                            canStartRecording:
-                                session.canControlRecording == true
-                                || recordingCoordinator.joinConfirmationRequired,
-                            waitingForHost: waitsForRecordingController(
-                                session
-                            ),
-                            onRequestConsent: {
-                                showsConsentConfirmation = true
-                            },
-                            onPauseResume: {
-                                Task { await togglePersistentCapturePause() }
-                            },
-                            onMark: {
-                                model.markMoment(using: audioCapture)
-                            },
-                            onPrimaryAction: {
-                                Task {
-                                    if captureIsActive {
-                                        await requestCoordinatedStop(for: session)
-                                    } else {
-                                        await requestCoordinatedStart(for: session)
-                                    }
-                                }
-                            }
-                        )
+                        callWorkspaceActions(session)
+                        if !usesCompactCallRecordingControl(session) {
+                            sessionRecorderDock(session)
+                        }
 
                         ProviderRoomDock(
                             model: model,
+                            recordingControl: usesCompactCallRecordingControl(session)
+                                ? AnyView(sessionRecorderDock(session, compactControl: true)) : nil,
                             localRecordingActive: captureIsActive,
                             isSafelyLeaving: isSafelyLeavingRoom,
                             cameraPosition: cameraPosition,
@@ -12135,9 +12350,9 @@ private struct CaptureRecorderView: View {
                         )
                     }
                     .background(.bar)
-                } else if localRecordingWorkspaceIsOpen(for: session)
-                    || hasSelectedSessionRecording
-                {
+                } else if localRecordingWorkspaceIsOpen(for: session) {
+                    // Historical recordings belong below the lobby. They must
+                    // not add a second recording dock over the Join control.
                     CapturePersistentRecorderDock(
                         session: session,
                         mode: recordingMode,
@@ -12177,13 +12392,197 @@ private struct CaptureRecorderView: View {
                 }
             }
         }
-        // Rebuild the scroll container when the selected Session changes. This
-        // naturally starts the new workspace at its entry point without asking
+        // A deliberate lobby/recorder transition starts at its entry point,
+        // rather than inserting controls beneath a retained scroll offset.
+        // Capture and call engines live outside this presentation identity.
+        // This also handles Session changes without asking
         // ScrollViewReader to resolve a target through the entire lazy Session
         // surface. The proxy-driven version could trap SwiftUI's AttributeGraph
         // in repeated placement work at accessibility text sizes.
-        .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")")
+        .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")|\(localOnlyRecordingSessionID ?? "call")|\(model.completedCall?.id.uuidString ?? "active")")
         .background(CaptureCanvas()))
+    }
+
+    @ViewBuilder
+    private func liveCallWorkspace(_ session: MobileCaptureSession, minimumStageHeight: CGFloat) -> some View {
+        // A call is a bounded surface, not the full lazy session document.
+        // Scrolling the former mixed recorder/results tree while it received
+        // live updates could loop SwiftUI's lazy placement on iPad.
+        VStack(spacing: 16) {
+            ProviderRoomControls(
+                model: model, session: session,
+                inputRoute: audioCapture.inputRouteName,
+                cameraPosition: $cameraPosition,
+                videoQualityIntent: videoQualityIntent,
+                localRecordingWorkspaceOpen: true,
+                onToggleLocalRecordingWorkspace: {},
+                minimumStageHeight: minimumStageHeight
+            )
+            if let notice = model.captureSafetyNotice {
+                CaptureInlineWarning(text: notice)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureLiveCallWorkspace")
+    }
+
+    private func usesCompactCallRecordingControl(_ session: MobileCaptureSession) -> Bool {
+        recordingMode == .audio && !captureIsActive
+            && !model.isChangingCapture && !model.isCoordinatingPodcastCapture
+            && !recordingCoordinator.isSending
+            && session.canControlRecording == true
+            && (session.canRecordAudioNow ?? session.canRecordNow)
+    }
+
+    private func sessionRecorderDock(_ session: MobileCaptureSession, compactControl: Bool = false)
+        -> CapturePersistentRecorderDock
+    {
+        var dock = CapturePersistentRecorderDock(
+            session: session,
+            mode: recordingMode,
+            audioState: audioCapture.captureState,
+            videoState: videoCapture.state,
+            duration: max(
+                audioCapture.currentDuration,
+                videoCapture.durationSeconds
+            ),
+            userMarkOffsets: audioCapture.userMarkOffsets,
+            isBusy:
+                model.isChangingCapture
+                || model.isCoordinatingPodcastCapture
+                || recordingCoordinator.isSending,
+            canStartRecording:
+                session.canControlRecording == true
+                || recordingCoordinator.joinConfirmationRequired,
+            waitingForHost: waitsForRecordingController(
+                session
+            ),
+            onRequestConsent: {
+                showsConsentConfirmation = true
+            },
+            onPauseResume: {
+                Task { await togglePersistentCapturePause() }
+            },
+            onMark: {
+                model.markMoment(using: audioCapture)
+            },
+            onPrimaryAction: {
+                Task {
+                    if captureIsActive {
+                        await requestCoordinatedStop(for: session)
+                    } else {
+                        await requestCoordinatedStart(for: session)
+                    }
+                }
+            }
+        )
+        dock.compactControl = compactControl
+        return dock
+    }
+
+    private var callPanelIsPresented: Binding<Bool> {
+        Binding(get: { activeCallPanel != nil }, set: { if !$0 { activeCallPanel = nil } })
+    }
+
+    @ViewBuilder
+    private var consentConfirmationSurface: some View {
+        if let session = model.selectedSession {
+            CaptureConsentConfirmationSheet(
+                session: session, requiresStableOwner: !model.usesPreviewData
+            ) { audio, video, transcription, participantsAgreed, presentedAt in
+                await model.grantConsent(
+                    for: session.id, canRecordAudio: audio, canRecordVideo: video,
+                    canTranscribe: transcription,
+                    allAudibleParticipantsNotifiedAndAgreed: participantsAgreed,
+                    presentedAt: presentedAt
+                )
+            } onDecline: {
+                await model.declineConsent(for: session.id)
+            }
+        }
+    }
+
+    private func callPanel(_ session: MobileCaptureSession) -> AnyView {
+        AnyView(Group {
+            switch activeCallPanel {
+            case .chat:
+                VStack(spacing: 0) {
+                    CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId) { activeCallPanel = nil }
+                    sessionConversationSurface(session, onDismiss: { activeCallPanel = nil }, embedded: true)
+                }
+            case .notes:
+                CaptureSessionNotesWorkspace(session: session, model: model, embedded: true) { activeCallPanel = nil }
+            case .tasks:
+                CaptureSessionWorkWorkspace(session: session, model: model, client: sessionWork, embedded: true) { activeCallPanel = nil }
+            case .people:
+                CaptureCallPeopleWorkspace(providerRoom: model.providerRoom) { activeCallPanel = nil }
+            case .tools:
+                liveCallSettings(session)
+            case nil:
+                EmptyView()
+            }
+        }
+        .inspectorColumnWidth(min: 340, ideal: 400, max: 480)
+        .presentationDetents([.large]))
+    }
+
+    private func liveCallSettings(_ session: MobileCaptureSession) -> AnyView {
+        AnyView(
+            VStack(spacing: 0) {
+                CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId) {
+                    activeCallPanel = nil
+                }
+                CaptureWorkspaceNavigation(
+                    title: "Recording tools", embedded: true,
+                    onDismiss: { activeCallPanel = nil }, actions: { EmptyView() }
+                ) {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            ConsentStrip(
+                                session: session, isBusy: model.isChangingConsent,
+                                isCaptureActive: captureIsActive,
+                                onGrant: { showsConsentConfirmation = true },
+                                onRevoke: { Task { await model.revokeConsent() } }
+                            )
+                            CaptureRecordingModePicker(
+                                selection: $recordingMode,
+                                isLocked: captureIsActive || model.isChangingCapture
+                            )
+                            if let message = recordingCoordinator.statusMessage {
+                                CaptureInlineMessage(text: message)
+                            }
+                            Button {
+                                focusedTool = .deviceSoundCheck
+                            } label: {
+                                Label("Devices and sound check", systemImage: "slider.horizontal.3")
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CaptureDeviceSoundCheckOpen")
+                            if recordingMode.recordsVideo {
+                                Button {
+                                    Task { await model.switchVideoCamera(using: videoCapture) }
+                                } label: {
+                                    Label(
+                                        "Flip camera",
+                                        systemImage: "arrow.triangle.2.circlepath.camera"
+                                    )
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(!videoCapture.state.isActive)
+                            }
+                        }
+                        .padding(18)
+                    }
+                    .background(CaptureCanvas())
+                }
+            }
+            .sheet(isPresented: $showsConsentConfirmation) { consentConfirmationSurface }
+            .sheet(item: $focusedTool) { tool in focusedRecorderTool(tool, session: session) })
     }
 
     @ViewBuilder
@@ -12614,34 +13013,6 @@ private struct CaptureRecorderView: View {
             .accessibilityHint(
                 "Opens the shared episode clip and its familiar play, pause, and seek controls."
             )
-            .task(
-                id:
-                    "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
-            ) {
-                guard visibleTab == .record else { return }
-                if model.usesPreviewData {
-                    episodeWatch.loadPreview(session: session)
-                } else {
-                    await episodeWatch.load(session: session)
-                    await episodeWatch.poll(session: session)
-                }
-            }
-            .onDisappear { episodeWatch.stop() }
-            .onChange(of: episodeWatch.outboundLiveHint) { _, hint in
-                guard let hint else { return }
-                Task {
-                    await model.providerRoom.publishEpisodeWatchHint(hint)
-                }
-            }
-            .onChange(of: model.providerRoom.latestEpisodeWatchHint) { _, hint in
-                guard let hint else { return }
-                Task {
-                    await episodeWatch.receiveLiveHint(
-                        hint,
-                        session: session
-                    )
-                }
-            }
         }
     }
 
@@ -12663,14 +13034,18 @@ private struct CaptureRecorderView: View {
     }
 
     private func sessionConversationSurface(
-        _ session: MobileCaptureSession
+        _ session: MobileCaptureSession,
+        onDismiss: (() -> Void)? = nil,
+        embedded: Bool = false
     ) -> AnyView {
         AnyView(
-            MobileSessionConversationCard(
-                client: sessionConversation,
-                session: session,
-                previewOnly: model.usesPreviewData
-            )
+                MobileSessionConversationThread(
+                    client: sessionConversation,
+                    session: session,
+                    previewOnly: model.usesPreviewData,
+                    onDismiss: onDismiss,
+                    embedded: embedded
+                )
             .task(
                 id:
                     "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
@@ -12705,17 +13080,198 @@ private struct CaptureRecorderView: View {
         )
     }
 
-    var body: some View {
-        recorderScrollableSurface
-        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write" : "Sessions")
+    private func savedSessionWorkspace(_ session: MobileCaptureSession) -> AnyView {
+        AnyView(VStack(alignment: .leading, spacing: 16) {
+            SessionChooserButton(session: session) { showsSessionPicker = true }
+                .disabled(model.isSessionContextLocked)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(session.displayTitle).font(.title2.bold())
+                Text(session.captureScheduleLabel)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Text("Your session work, together in one place.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            callWorkspaceActions(session)
+            if sessionHasRecording(session) {
+                CaptureRecordingEditCard(session: session)
+            }
+            if sessionHasPostCallWork(session) {
+                Button { showsCompletedSessionWork = true } label: {
+                    Label("Recap and transcript", systemImage: "doc.text")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureOpenSessionWork")
+            } else {
+                Text("No recording was saved for this session. You can still work together in chat, notes, and tasks.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureSavedSessionWorkspace"))
+    }
+
+    private func prejoinWorkspace(_ session: MobileCaptureSession) -> AnyView {
+        // A lobby is a bounded destination, not a lazy projection of every
+        // transcript, recording, and follow-through card. That projection can
+        // enter a SwiftUI placement loop while scrolling a populated session.
+        // Work remains directly reachable without participating in lobby layout.
+        AnyView(VStack(spacing: 16) {
+            SessionChooserButton(session: session) { showsSessionPicker = true }
+                .disabled(model.isSessionContextLocked)
+            if model.sessionClient.sessionsAreStale {
+                Label("Offline copy · some actions unavailable", systemImage: "wifi.slash")
+                    .font(.caption).foregroundStyle(CapturePalette.brass)
+                    .accessibilityIdentifier("CaptureSessionAuthorityStatus")
+            }
+            if let message = model.message {
+                CaptureInlineMessage(text: message)
+                    .accessibilityIdentifier("CaptureSessionStatusMessage")
+            }
+            ProviderRoomControls(
+                model: model, session: session,
+                inputRoute: audioCapture.inputRouteName,
+                cameraPosition: $cameraPosition,
+                videoQualityIntent: videoQualityIntent,
+                localRecordingWorkspaceOpen: false,
+                onToggleLocalRecordingWorkspace: { localOnlyRecordingSessionID = session.id }
+            )
+            .captureCard()
+            callWorkspaceActions(session)
+            if sessionHasRecording(session) { CaptureRecordingEditCard(session: session) }
+            if sessionHasPostCallWork(session) {
+                Button { showsCompletedSessionWork = true } label: {
+                    Label("Recap and transcript", systemImage: "doc.text")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureOpenSessionWork")
+            } else if session.isCoachingSession {
+                Button { sessionPreparationSession = session } label: {
+                    Label("Session plan", systemImage: "list.bullet.clipboard")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureSessionPreparationOpen")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCallLobbyWorkspace"))
+    }
+
+    private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {
+        HStack(spacing: 6) {
+            Button { activeCallPanel = activeCallPanel == .chat ? nil : .chat } label: {
+                HStack(spacing: 4) {
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                    if sessionConversation.unreadCount > 0 {
+                        Text(sessionConversation.unreadCount > 99 ? "99+" : "\(sessionConversation.unreadCount)")
+                            .font(.caption2.bold()).padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(CapturePalette.ink.opacity(0.12), in: Capsule())
+                    }
+                }.frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .accessibilityLabel("Chat")
+            .accessibilityValue(sessionConversation.unreadCount > 0 ? "\(sessionConversation.unreadCount) unread messages" : "No unread messages")
+            .accessibilityIdentifier("CaptureCallOpenChat")
+            Button { activeCallPanel = activeCallPanel == .notes ? nil : .notes } label: {
+                Label("Notes", systemImage: "note.text")
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .accessibilityIdentifier("CaptureCallOpenNotes")
+            Button { activeCallPanel = activeCallPanel == .tasks ? nil : .tasks } label: {
+                Label("Tasks", systemImage: "checklist")
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .accessibilityIdentifier("CaptureCallOpenTasks")
+            if model.providerRoom.isConnected {
+            Button { activeCallPanel = activeCallPanel == .people ? nil : .people } label: {
+                Label("People", systemImage: "person.2")
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .accessibilityIdentifier("CaptureCallOpenPeople")
+            Button { activeCallPanel = showsCallTools ? nil : .tools } label: {
+                Label("Tools", systemImage: "slider.horizontal.3")
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .accessibilityIdentifier("CaptureCallToggleTools")
+            .accessibilityValue(showsCallTools ? "Expanded" : "Collapsed")
+            }
+        }
+        .labelStyle(CaptureCallToolLabelStyle())
+        .buttonStyle(CaptureCallWorkspaceButtonStyle())
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+    }
+
+    private var recorderPresentationSurface: AnyView {
+        AnyView(recorderScrollableSurface
+        .inspector(isPresented: callPanelIsPresented) {
+            if let session = model.selectedSession { callPanel(session) }
+        }
+        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write"
+            : model.providerRoom.isConnected ? (model.selectedSession?.displayTitle ?? "Call") : "Sessions")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(
-            model.selectedSession?.isPersonalVoiceNote == true ? .hidden : .visible,
+            model.selectedSession?.isPersonalVoiceNote == true || model.providerRoom.isConnected ? .hidden : .automatic,
             for: .tabBar
         )
         .toolbar {
             if let session = model.selectedSession,
                !session.isPersonalVoiceNote {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        if session.isCoachingSession {
+                            Button {
+                                sessionPreparationSession = session
+                            } label: {
+                                Label("Session plan", systemImage: "list.bullet.clipboard")
+                            }
+                            .accessibilityIdentifier("CaptureSessionPreparationToolbar")
+                        }
+                        if let engagement = model.coachingEngagements.first(where: {
+                            $0.id == session.coachingEngagementId
+                        }) {
+                            Button {
+                                sessionClientSpace = engagement
+                            } label: {
+                                Label("Client space", systemImage: "person.2")
+                            }
+                            .accessibilityHint("Opens shared conversation, notes, tasks, and goals without ending the call.")
+                            .accessibilityIdentifier("CaptureSessionClientSpaceToolbar")
+                        }
+                        Button {
+                            if model.usesPreviewData {
+                                episodeManuscript.loadPreview(session: session)
+                                episodeWatch.loadPreview(session: session)
+                            }
+                            focusedTool = .deviceSoundCheck
+                        } label: {
+                            Label("Devices and sound check", systemImage: "slider.horizontal.3")
+                        }
+                        .accessibilityIdentifier("CaptureDeviceSoundCheckToolbar")
+                        if !session.isCoachingSession,
+                           session.projectSlug?.nonempty != nil,
+                           session.episodeSlug?.nonempty != nil {
+                            Button {
+                                focusedTool = .episodeScript
+                            } label: {
+                                Label("Episode script", systemImage: "doc.richtext")
+                            }
+                            .accessibilityIdentifier("CaptureEpisodeScriptToolbar")
+                            Button {
+                                focusedTool = .episodeWatch
+                            } label: {
+                                Label("Watch together", systemImage: "play.rectangle.on.rectangle")
+                            }
+                            .accessibilityIdentifier("CaptureEpisodeWatchToolbar")
+                        }
+                    } label: {
+                        Label("Session tools", systemImage: "slider.horizontal.3")
+                    }
+                    .accessibilityIdentifier("CaptureSessionToolsMenu")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         ForEach(MobileQuickEntryKind.allCases) { kind in
@@ -12752,25 +13308,32 @@ private struct CaptureRecorderView: View {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
                 .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $showsConsentConfirmation) {
-            if let session = model.selectedSession {
-                CaptureConsentConfirmationSheet(
-                    session: session,
-                    requiresStableOwner: !model.usesPreviewData
-                ) { canRecordAudio, canRecordVideo, canTranscribe, allAudibleParticipantsNotifiedAndAgreed, presentedAt in
-                    await model.grantConsent(
-                        for: session.id,
-                        canRecordAudio: canRecordAudio,
-                        canRecordVideo: canRecordVideo,
-                        canTranscribe: canTranscribe,
-                        allAudibleParticipantsNotifiedAndAgreed: allAudibleParticipantsNotifiedAndAgreed,
-                        presentedAt: presentedAt
+        .sheet(item: $sessionPreparationSession) { session in
+            NavigationStack {
+                ScrollView {
+                    MobileCoachingSessionPreparationCard(
+                        client: sessionPreparation,
+                        session: session,
+                        previewOnly: model.usesPreviewData
                     )
-                } onDecline: {
-                    await model.declineConsent(for: session.id)
+                    .padding()
+                }
+                .background(CapturePalette.canvas)
+                .navigationTitle("Session plan")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { sessionPreparationSession = nil }
+                            .accessibilityIdentifier("CaptureSessionPreparationClose")
+                    }
                 }
             }
+            .presentationDetents([.large])
         }
+        .sheet(isPresented: Binding(
+            get: { showsConsentConfirmation && !showsCallTools },
+            set: { showsConsentConfirmation = $0 }
+        )) { consentConfirmationSurface }
         .sheet(item: $quickEntryKind) { kind in
             CaptureQuickEntrySheet(kind: kind, session: model.selectedSession, model: model)
                 .presentationDetents([.large])
@@ -12783,7 +13346,67 @@ private struct CaptureRecorderView: View {
             )
             .presentationDetents([.large])
         }
-        .sheet(item: $focusedTool) { tool in
+        .sheet(item: $sessionWorkSession) { session in
+            CaptureSessionWorkWorkspace(session: session, model: model, client: sessionWork) {
+                sessionWorkSession = nil
+            }
+            .presentationDetents([.large])
+        })
+    }
+
+    private var recorderWorkspaceDestinations: AnyView {
+        AnyView(recorderPresentationSurface
+        .navigationDestination(isPresented: $showsCompletedSessionWork) {
+            if let session = model.selectedSession {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        CaptureRecordingEditCard(session: session)
+                        CaptureSessionTranscriptReviewCard(
+                            session: session,
+                            sessionClient: model.sessionClient,
+                            previewOnly: model.usesPreviewData,
+                            onSelectSource: { selectedRecordingTranscript = $0 }
+                        )
+                        CaptureSessionResultsCard(
+                            session: session,
+                            onOpenNotes: { sessionNotesSession = session },
+                            onOpenTask: { task in
+                                if let projectID = session.projectId {
+                                    model.requestWorkNavigation(kind: .task, entityID: task.id, title: task.title, projectID: projectID)
+                                }
+                                visibleTab = .work
+                            },
+                            onOpenGoal: { goal in
+                                if let projectID = session.projectId {
+                                    model.requestWorkNavigation(kind: .goal, entityID: goal.id, title: goal.title, projectID: projectID)
+                                }
+                                visibleTab = .work
+                            }
+                        )
+                    }
+                    .padding(18)
+                }
+                .background(CaptureCanvas())
+                .navigationTitle("Session workspace")
+                .navigationBarTitleDisplayMode(.inline)
+                .accessibilityIdentifier("CaptureCompletedSessionWork")
+            }
+        }
+        .sheet(isPresented: $showsCallChat) {
+            if let session = model.selectedSession {
+                VStack(spacing: 0) {
+                    CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId) {
+                        showsCallChat = false
+                    }
+                    sessionConversationSurface(session)
+                }
+                .presentationDetents([.large])
+            }
+        }
+        .sheet(item: Binding<CaptureRecorderFocusedTool?>(
+            get: { showsCallTools ? nil : focusedTool },
+            set: { focusedTool = $0 }
+        )) { tool in
             if let session = model.selectedSession {
                 focusedRecorderTool(tool, session: session)
             }
@@ -12802,6 +13425,16 @@ private struct CaptureRecorderView: View {
                 focusSegmentID: destination.source.segmentId
             )
         }
+        .navigationDestination(item: $selectedRecordingTranscript) { destination in
+            CaptureTranscriptReviewView(
+                roomID: destination.roomID,
+                sessionTitle: destination.title,
+                recording: matchingRecording(roomID: destination.roomID, recordingAssetID: destination.recordingAssetID),
+                recordingAssetID: destination.recordingAssetID,
+                previewOnly: model.usesPreviewData,
+                canUseProjectTeamNotes: destination.canUseProjectTeamNotes
+            )
+        }
         .navigationDestination(isPresented: $showsSessionContext) {
             if let session = model.selectedSession {
                 ScrollView {
@@ -12816,7 +13449,25 @@ private struct CaptureRecorderView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
-        .interactiveDismissDisabled(captureIsActive)
+        .interactiveDismissDisabled(captureIsActive))
+    }
+
+    var body: some View {
+        recorderWorkspaceDestinations
+        .task(id: "chat-activity|\(model.selectedSession?.callRoomId ?? "")|\(visibleTab)|\(conversationScenePhase)") {
+            guard visibleTab == .record, conversationScenePhase == .active,
+                  let session = model.selectedSession, !session.isPersonalVoiceNote,
+                  !model.usesPreviewData else { return }
+            while !Task.isCancelled {
+                await sessionConversation.refreshActivity(session: session)
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+            }
+        }
+        .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+            guard hint != nil, conversationScenePhase == .active,
+                  let session = model.selectedSession, !model.usesPreviewData else { return }
+            Task { await sessionConversation.refreshActivity(session: session) }
+        }
         .onAppear {
             guard !captureIsActive else { return }
             recordingMode = CaptureCallPreferences.recordingMode(
@@ -12824,12 +13475,19 @@ private struct CaptureRecorderView: View {
             )
         }
         .onChange(of: model.selectedSession?.id) { oldSessionID, newSessionID in
+            if oldSessionID != newSessionID {
+                activeCallPanel = nil
+                showsCallChat = false
+            }
             guard oldSessionID != newSessionID,
                   !captureIsActive,
                   !model.isChangingCapture else { return }
             recordingMode = CaptureCallPreferences.recordingMode(
                 for: model.selectedSession?.purpose
             )
+        }
+        .onChange(of: model.completedCall?.id) { _, completedID in
+            if completedID != nil { activeCallPanel = nil }
         }
         .onChange(of: recordingMode) { oldMode, newMode in
             guard oldMode != newMode else { return }
@@ -12929,7 +13587,28 @@ private struct CaptureRecorderView: View {
         .task(id: personalVoiceTranscriptMonitorID) {
             await monitorPersonalVoiceTranscript()
         }
+        .task(id: activeEpisodeWatchContextID) {
+            // Shared playback belongs to the open Session, not a lazy card.
+            // Scrolling to the script must not stop the clip or its updates.
+            episodeWatch.stop()
+            guard let session = activeEpisodeWatchSession else { return }
+            if model.usesPreviewData {
+                episodeWatch.loadPreview(session: session)
+            } else {
+                await episodeWatch.load(session: session)
+                await episodeWatch.poll(session: session)
+            }
+        }
+        .onChange(of: episodeWatch.outboundLiveHint) { _, hint in
+            guard let hint, activeEpisodeWatchSession != nil else { return }
+            Task { await model.providerRoom.publishEpisodeWatchHint(hint) }
+        }
+        .onChange(of: model.providerRoom.latestEpisodeWatchHint) { _, hint in
+            guard let hint, let session = activeEpisodeWatchSession else { return }
+            Task { await episodeWatch.receiveLiveHint(hint, session: session) }
+        }
         .onDisappear {
+            episodeWatch.stop()
             soundCheck.discard()
             guard !videoCapture.state.isActive,
                   videoCapture.state != .paused,
@@ -12938,16 +13617,54 @@ private struct CaptureRecorderView: View {
         }
     }
 
+    private var activeEpisodeWatchSession: MobileCaptureSession? {
+        guard visibleTab == .record,
+              let session = model.selectedSession,
+              !session.isCoachingSession,
+              session.projectSlug?.nonempty != nil,
+              session.episodeSlug?.nonempty != nil,
+              model.providerRoom.isConnected
+                || localRecordingWorkspaceIsOpen(for: session)
+                || focusedTool == .episodeWatch else { return nil }
+        return session
+    }
+
+    private var activeEpisodeWatchContextID: String {
+        guard let session = activeEpisodeWatchSession else { return "inactive" }
+        return "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+    }
+
     @ViewBuilder
     private func focusedRecorderTool(
+        _ tool: CaptureRecorderFocusedTool,
+        session: MobileCaptureSession
+    ) -> some View {
+        if tool == .episodeScript {
+            MobileEpisodeManuscriptReader(
+                client: episodeManuscript,
+                session: session,
+                previewOnly: model.usesPreviewData
+            )
+            .task(id: session.id) {
+                if model.usesPreviewData {
+                    episodeManuscript.loadPreview(session: session)
+                } else {
+                    await episodeManuscript.load(session: session)
+                }
+            }
+        } else {
+            focusedRecorderUtility(tool, session: session)
+        }
+    }
+
+    private func focusedRecorderUtility(
         _ tool: CaptureRecorderFocusedTool,
         session: MobileCaptureSession
     ) -> some View {
         NavigationStack {
             ScrollView {
                 Group {
-                    switch tool {
-                    case .deviceSoundCheck:
+                    if tool == .deviceSoundCheck {
                         CaptureRehearsalReadinessCard(
                             audioCapture: audioCapture,
                             soundCheck: soundCheck,
@@ -12967,7 +13684,7 @@ private struct CaptureRecorderView: View {
                                 }
                             }
                         )
-                    case .episodeWatch:
+                    } else {
                         MobileEpisodeWatchCard(
                             client: episodeWatch,
                             session: session,
@@ -13046,7 +13763,6 @@ private struct CaptureRecorderView: View {
             || videoCapture.activeSessionID == session.id
             || model.activeCaptureSession?.id == session.id
             || model.activeVideoCaptureSession?.id == session.id
-            || session.providerCanJoin == false
     }
 
     private func shouldCoordinateRecording(for session: MobileCaptureSession) -> Bool {
@@ -13211,7 +13927,7 @@ private struct CaptureRecorderView: View {
         await model.leaveRoom()
         guard !model.providerRoom.isConnected else { return }
         model.message = protectedLocalSource
-            ? "Call ended. Your recording is saved on \(CaptureDeviceVocabulary.thisDevice). Keep Quipsly open until this Session says Safe to close."
+            ? "Call ended. Your recording is saved on \(CaptureDeviceVocabulary.thisDevice). Upload and transcription continue in Quipsly."
             : "You left the call."
         if shouldMonitorRecordingExit {
             model.monitorSourceExitReadiness(roomID: session.callRoomId)
@@ -14317,6 +15033,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
+    let onSelectSource: (CaptureSessionRecordingTranscriptDestination) -> Void
     @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var isRunningTranscript = false
@@ -14441,6 +15158,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
                 }
             }
         }
+        CaptureSessionTranscriptSourcePicker(session: session, previewOnly: previewOnly, onSelect: onSelectSource)
     }
 
     private var matchingTranscriptPhase: OnDeviceTranscriptPhase? {
@@ -14482,6 +15200,12 @@ private struct CaptureSessionTranscriptReviewCard: View {
         session.canRunTranscript
             && !transcriptIsAutomaticWorkInProgress
             && normalizedTranscriptStatus != "COMPLETED"
+            && latestSourceTranscript?.failureCode != "NO_AUDIO_SIGNAL"
+            && latestSourceTranscript?.retryable != false
+    }
+
+    private var latestSourceTranscript: MobileCaptureSourceTranscriptSummary? {
+        session.captureSources?.first(where: { $0.id == session.latestRecordingAssetId })?.transcript
     }
 
     private var transcriptRecoveryLabel: String {
@@ -14491,7 +15215,8 @@ private struct CaptureSessionTranscriptReviewCard: View {
     }
 
     private var transcriptLifecycleTitle: String {
-        switch normalizedTranscriptStatus {
+        if latestSourceTranscript?.failureCode == "NO_AUDIO_SIGNAL" { return "No audio was captured" }
+        return switch normalizedTranscriptStatus {
         case "QUEUED":
             "Transcript queued"
         case "RUNNING":
@@ -14504,7 +15229,10 @@ private struct CaptureSessionTranscriptReviewCard: View {
     }
 
     private var transcriptLifecycleDetail: String {
-        switch normalizedTranscriptStatus {
+        if latestSourceTranscript?.failureCode == "NO_AUDIO_SIGNAL" {
+            return "The recording is saved, but it contains no audio signal. Check the microphone before recording again. Earlier recordings are still available below."
+        }
+        return switch normalizedTranscriptStatus {
         case "QUEUED", "RUNNING":
             "Quipsly is processing the verified recording automatically. You can leave this screen and return later."
         case "HELD":
@@ -14907,30 +15635,135 @@ private struct CaptureSessionNotesCard: View {
     }
 }
 
+/// A workspace sheet never owns the call. Keep the same provider and recording
+/// session alive, and expose their controls without moving out of the work.
+struct CaptureCallWorkspaceBar: View {
+    @ObservedObject var model: CaptureExperienceModel
+    let roomID: String
+    var onReturn: (() -> Void)? = nil
+    @State private var changingMicrophone = false
+    @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
+
+    var body: some View {
+        if model.providerRoom.isConnected, model.selectedSession?.callRoomId == roomID {
+            HStack(spacing: 12) {
+                if let onReturn {
+                    Button(action: onReturn) {
+                    Label("Return to call", systemImage: "phone.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("CaptureWorkspaceReturnToCall")
+                } else {
+                    Label("In call", systemImage: "phone.fill")
+                        .font(.subheadline.weight(.semibold))
+                }
+                Spacer(minLength: 0)
+                if model.providerRoom.usesCallAudio {
+                    Button {
+                        guard !changingMicrophone else { return }
+                        changingMicrophone = true
+                        Task {
+                            await model.toggleRoomMute()
+                            joinMuted = model.providerRoom.isMuted
+                            changingMicrophone = false
+                        }
+                    } label: {
+                        Label(model.providerRoom.isMuted ? "Unmute" : "Mute",
+                              systemImage: model.providerRoom.isMuted ? "mic.slash.fill" : "mic.fill")
+                            .frame(minHeight: 44)
+                    }
+                    .disabled(changingMicrophone || model.isChangingRoom
+                              || model.providerRoom.isReconnecting
+                              || model.providerMuteControlLockedForLocalCapture)
+                    .accessibilityIdentifier("CaptureWorkspaceToggleMicrophone")
+                } else {
+                    Label("Audio on other device", systemImage: "speaker.slash.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureWorkspaceCompanionAudio")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+            .background(.bar)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureCallWorkspaceBar")
+        }
+    }
+}
+
 private struct CaptureSessionNotesWorkspace: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
+    var embedded = false
     let onDismiss: () -> Void
+    private struct NewNote: Identifiable {
+        let id = UUID()
+        let visibility: MobileSessionNoteVisibility
+    }
+    @State private var newNote: NewNote?
+    @State private var searchText = ""
+    @State private var audience = "all"
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        VStack(spacing: 0) {
+            CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId, onReturn: onDismiss)
+        CaptureWorkspaceNavigation(title: "Notes", embedded: embedded, onDismiss: onDismiss, actions: {
+            Button {
+                newNote = NewNote(visibility: audience == "private" ? .authorPrivate : .sessionShared)
+            } label: {
+                Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("New note")
+            .accessibilityIdentifier("CaptureSessionNotesCreate")
+        }) {
+            VStack(spacing: 0) {
+                if embedded {
+                    TextField("Search notes and tags", text: $searchText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("CaptureSessionNotesSearch")
+                }
+                Picker("Show notes", selection: $audience) {
+                    Text("All").tag("all")
+                    Text("Shared").tag("shared")
+                    Text("Only me").tag("private")
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .accessibilityIdentifier("CaptureSessionNotesAudience")
+                ScrollView {
                 CaptureSessionNotesSheetContent(
                     session: session,
                     model: model,
-                    initiallyExpanded: true
+                    initiallyExpanded: true,
+                    fullWorkspace: true,
+                    searchText: searchText,
+                    audience: audience
                 )
                 .padding(18)
-            }
-            .captureFormSurface()
-            .navigationTitle("Session Notes")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { onDismiss() }
                 }
             }
+            .captureFormSurface()
+            .searchable(text: $searchText, prompt: "Search notes and tags")
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureSessionNotesSheet")
+        }
+        }
+        .sheet(item: $newNote) { request in
+            VStack(spacing: 0) {
+                // Keep mic control while composing, but don't add a second
+                // dismissal path that would silently throw away this note.
+                CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId)
+            CaptureQuickEntrySheet(kind: .note, session: session, model: model,
+                                  initialNoteVisibility: request.visibility)
+                .id(request.id)
+            }
         }
     }
 }
@@ -14940,14 +15773,23 @@ private struct CaptureSessionNotesSheetContent: View {
     @ObservedObject var model: CaptureExperienceModel
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var isExpanded = false
+    let fullWorkspace: Bool
+    let searchText: String
+    let audience: String
 
     init(
         session: MobileCaptureSession,
         model: CaptureExperienceModel,
-        initiallyExpanded: Bool = false
+        initiallyExpanded: Bool = false,
+        fullWorkspace: Bool = false,
+        searchText: String = "",
+        audience: String = "all"
     ) {
         self.session = session
         self.model = model
+        self.fullWorkspace = fullWorkspace
+        self.searchText = searchText
+        self.audience = audience
         _isExpanded = State(initialValue: initiallyExpanded)
     }
 
@@ -14956,7 +15798,9 @@ private struct CaptureSessionNotesSheetContent: View {
     }
 
     private var canonicalNotes: [MobileCaptureSessionNote] {
-        session.sessionNotes ?? []
+        // A sheet retains its original presentation value. Read the current
+        // shared model so acknowledged edits appear without closing the sheet.
+        (model.sessions.first { $0.callRoomId == session.callRoomId } ?? session).sessionNotes ?? []
     }
 
     private var pendingNotes: [PendingMobileQuickEntry] {
@@ -14973,8 +15817,30 @@ private struct CaptureSessionNotesSheetContent: View {
         model.sessionNoteEditOutbox.entries.filter { $0.roomID == session.callRoomId }
     }
 
-    var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+    private func matches(title: String?, body: String, visibility: String, tags: [String] = []) -> Bool {
+        if audience == "private", visibility != "AUTHOR_PRIVATE" { return false }
+        if audience == "shared", visibility == "AUTHOR_PRIVATE" { return false }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty || ([title ?? "", body] + tags).contains {
+            $0.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var visibleNotes: [MobileCaptureSessionNote] {
+        let notes = canonicalNotes.filter {
+            matches(title: $0.title, body: $0.body, visibility: $0.visibility, tags: $0.tags.map(\.label))
+        }
+        return fullWorkspace ? notes : Array(notes.prefix(8))
+    }
+
+    private var visiblePendingNotes: [PendingMobileQuickEntry] {
+        let notes = pendingNotes.filter {
+            matches(title: $0.displayTitle, body: $0.body, visibility: $0.noteVisibility?.rawValue ?? "AUTHOR_PRIVATE")
+        }
+        return fullWorkspace ? notes : Array(notes.prefix(4))
+    }
+
+    private var notesContent: some View {
             VStack(alignment: .leading, spacing: 10) {
                 if model.sessionNoteEditMessageRoomID == session.callRoomId,
                    let message = model.sessionNoteEditMessage?.nonempty {
@@ -14992,14 +15858,14 @@ private struct CaptureSessionNotesSheetContent: View {
                         .accessibilityIdentifier("CaptureSessionNoteEditMessage")
                 }
 
-                if totalCount == 0 {
-                    Text("No notes yet. Use Quick Note to add one.")
+                if visibleNotes.isEmpty && visiblePendingNotes.isEmpty {
+                    Text(totalCount == 0 ? "No notes yet. Add a note to get started." : "No notes match this view.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                ForEach(pendingNotes.prefix(4)) { entry in
+                ForEach(visiblePendingNotes) { entry in
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 6) {
                             Label(entry.disposition == .held ? "Needs attention" : "Saving", systemImage: "iphone.gen3.radiowaves.left.and.right")
@@ -15026,7 +15892,7 @@ private struct CaptureSessionNotesSheetContent: View {
                     .accessibilityIdentifier("CaptureSessionNotePending_\(entry.clientRequestID)")
                 }
 
-                ForEach(canonicalNotes.prefix(8)) { note in
+                ForEach(visibleNotes) { note in
                     let protectedEdit = model.pendingSessionNoteEdit(for: note.id)
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -15185,6 +16051,14 @@ private struct CaptureSessionNotesSheetContent: View {
                     .accessibilityIdentifier("CaptureSessionNotesDeliveryBoundary")
             }
             .padding(.top, 10)
+    }
+
+    var body: some View {
+        if fullWorkspace {
+            notesContent
+        } else {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            notesContent
         } label: {
             HStack {
                 Label("Session Notes", systemImage: "note.text")
@@ -15199,6 +16073,7 @@ private struct CaptureSessionNotesSheetContent: View {
         }
         .captureCard()
         .accessibilityHint("Shows notes you can see for this Session.")
+        }
     }
 
     private func matchingRecording(_ source: MobileCaptureTodayTranscriptSourceAnchor) -> LocalRecording? {
@@ -15276,7 +16151,10 @@ private struct CaptureSessionNoteEditSheet: View {
     }
 
     private var availableKinds: [MobileSessionNoteKind] {
-        MobileSessionNoteKind.allCases.filter {
+        if let originalKind = MobileSessionNoteKind(rawValue: note.kind), originalKind.isGenerated {
+            return [originalKind]
+        }
+        return MobileSessionNoteKind.creatableCases.filter {
             $0 != .production || canUseProjectTeamNotes || $0 == noteKind
         }
     }
@@ -15619,6 +16497,13 @@ struct CaptureQuickEntrySheet: View {
     let initialProject: MobileCaptureProjectDestination?
     @ObservedObject var model: CaptureExperienceModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var compositionDraftID: String?
+    @State private var compositionOwner: AuthManager.StableOwnerSnapshot?
+    @State private var initialSessionID: String?
+    @State private var compositionSaveTask: Task<Void, Never>?
+    @State private var compositionError: String?
+    @State private var committedComposition = false
     @State private var title = ""
     @State private var entryBody = ""
     @State private var selectedTagIDs: Set<String> = []
@@ -15646,13 +16531,28 @@ struct CaptureQuickEntrySheet: View {
         kind: MobileQuickEntryKind,
         session: MobileCaptureSession?,
         model: CaptureExperienceModel,
-        initialProject: MobileCaptureProjectDestination? = nil
+        initialProject: MobileCaptureProjectDestination? = nil,
+        initialNoteVisibility: MobileSessionNoteVisibility = .sessionShared
     ) {
         self.kind = kind
         self.session = session
         self.initialProject = initialProject
         self.model = model
-        _destination = State(initialValue: initialProject.map { "NEST:\($0.id)" } ?? (session == nil ? "HOME_NEST" : "SESSION"))
+        _compositionOwner = State(initialValue: AuthManager.shared.stableOwnerSnapshot())
+        _initialSessionID = State(initialValue: session?.callRoomId)
+        let origin = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+        let draftID = kind == .note && initialProject == nil ? session.map {
+            SessionNoteWorkingDraftStore.compositionID(roomID: $0.callRoomId, origin: origin, audience: initialNoteVisibility)
+        } : nil
+        _compositionDraftID = State(initialValue: draftID)
+        let draft = draftID.flatMap { SessionNoteWorkingDraftStore.shared.draft(for: $0) }
+        _title = State(initialValue: draft?.title ?? "")
+        _entryBody = State(initialValue: draft?.body ?? "")
+        _noteKind = State(initialValue: draft?.noteKind ?? .sessionNote)
+        _noteVisibility = State(initialValue: draft?.noteVisibility ?? initialNoteVisibility)
+        _selectedTagIDs = State(initialValue: Set(draft?.tagIDs ?? []))
+        _newTagLabels = State(initialValue: draft?.newTagLabels ?? [])
+        _destination = State(initialValue: draft?.destination ?? initialProject.map { "NEST:\($0.id)" } ?? (session == nil ? "HOME_NEST" : "SESSION"))
     }
 
     private var homeNest: MobileCaptureProjectDestination? {
@@ -15693,8 +16593,8 @@ struct CaptureQuickEntrySheet: View {
 
     private var availableNoteKinds: [MobileSessionNoteKind] {
         canUseProjectTeamNotes
-            ? MobileSessionNoteKind.allCases
-            : MobileSessionNoteKind.allCases.filter { $0 != .production }
+            ? MobileSessionNoteKind.creatableCases
+            : MobileSessionNoteKind.creatableCases.filter { $0 != .production }
     }
 
     private var availableNoteVisibilities: [MobileSessionNoteVisibility] {
@@ -15831,7 +16731,7 @@ struct CaptureQuickEntrySheet: View {
     }
 
     private var destinationProjectID: String? {
-        selectedProject?.id
+        MobileQuickEntryDestination(selection: destination)?.projectID
     }
 
     private var destinationProjectName: String? {
@@ -15947,7 +16847,8 @@ struct CaptureQuickEntrySheet: View {
     }
 
     var contentIsValid: Bool {
-        kind == .note || kind == .source
+        guard MobileQuickEntryDestination(selection: destination) != nil else { return false }
+        return kind == .note || kind == .source
             ? !entryBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             : !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -15955,6 +16856,11 @@ struct CaptureQuickEntrySheet: View {
     var bodyView: some View {
         NavigationStack {
             Form {
+                if let compositionError {
+                    Text(compositionError)
+                        .foregroundStyle(CapturePalette.brass)
+                        .accessibilityIdentifier("CaptureQuickEntryDraftError")
+                }
                 Section {
                     if kind == .source {
                         LabeledContent("Save to", value: "Personal Inbox")
@@ -15979,18 +16885,17 @@ struct CaptureQuickEntrySheet: View {
                     Text(kind == .source
                         ? "Saved privately to Inbox until you file it."
                         : savesSessionNote
-                            ? "Shared with this Session. Choose Only me for a private note."
+                            ? (noteVisibility == .authorPrivate ? "Only you can see this note." : noteVisibility.boundary)
                             : "Saved privately. If you are offline, Quipsly syncs it when you reconnect.")
+                        .accessibilityIdentifier("CaptureQuickEntryAudienceSummary")
                 }
 
                 Section(kind == .note ? "Note" : kind.title) {
-                    if kind != .note || savesNoteToHomeNest || selectedProject != nil {
                         TextField(kind == .note ? "Title (optional)" : kind == .task ? "What needs doing?" : kind == .goal ? "What does better look like?" : "Source title (optional)", text: $title)
                             .submitLabel(.next)
                             .onSubmit { focusedField = .body }
                             .focused($focusedField, equals: .title)
                             .accessibilityIdentifier("CaptureQuickEntryTitle")
-                    }
                     TextField(
                         kind == .note ? "Capture the thought…" : kind == .task ? "Useful detail or definition of done (optional)" : kind == .goal ? "Why it matters or how progress will look (optional)" : "Paste a web link or quoted text…",
                         text: $entryBody,
@@ -16132,17 +17037,32 @@ struct CaptureQuickEntrySheet: View {
             .accessibilityIdentifier("CaptureQuickEntryForm")
             .scrollDismissesKeyboard(.interactively)
             .captureFormSurface()
-            .navigationTitle("Quick \(kind.title)")
+            .navigationTitle(kind == .note ? "New note" : "Quick \(kind.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(compositionDraftID == nil ? "Cancel" : "Close") { dismiss() }
+                }
+                ToolbarItem(placement: .secondaryAction) {
+                    if compositionDraftID != nil {
+                        Menu("Note options", systemImage: "ellipsis") {
+                            Button("Discard draft", role: .destructive) {
+                                guard let compositionOwner, AuthManager.shared.matchesStableOwnerSnapshot(compositionOwner) else { return }
+                                if let compositionDraftID { SessionNoteWorkingDraftStore.shared.remove(noteID: compositionDraftID) }
+                                committedComposition = true
+                                compositionSaveTask?.cancel()
+                                dismiss()
+                            }
+                        }
+                        .accessibilityIdentifier("CaptureQuickEntryNoteOptions")
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         // Let the focused sheet finish dismissing before its
                         // protected outbox and reminder projections update the
                         // much larger recorder hierarchy behind it.
+                        guard saveCompositionDraft() else { return }
                         savesWhenDismissed = true
                         focusedField = nil
                         dismiss()
@@ -16177,11 +17097,24 @@ struct CaptureQuickEntrySheet: View {
                 if !availableNoteKinds.contains(noteKind) { noteKind = .sessionNote }
                 noteVisibility = .sessionShared
             }
+            scheduleCompositionDraftSave()
+        }
+        .onChange(of: title) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: entryBody) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: noteKind) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: noteVisibility) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: selectedTagIDs) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: newTagLabels) { _, _ in scheduleCompositionDraftSave() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { _ = saveCompositionDraft() }
         }
         .onDisappear {
+            compositionSaveTask?.cancel()
+            _ = saveCompositionDraft()
             guard savesWhenDismissed else { return }
             savesWhenDismissed = false
-            model.saveQuickEntry(
+            guard model.usesPreviewData || compositionOwner.map({ AuthManager.shared.matchesStableOwnerSnapshot($0) }) == true else { return }
+            let saved = model.saveQuickEntry(
                 kind: kind,
                 title: title,
                 body: entryBody,
@@ -16190,17 +17123,51 @@ struct CaptureQuickEntrySheet: View {
                 destinationProjectName: destinationProjectName,
                 noteKind: savesSessionNote ? noteKind : nil,
                 noteVisibility: savesSessionNote ? noteVisibility : nil,
+                sessionID: initialSessionID,
                 tagIDs: Array(selectedTagIDs).sorted(),
                 newTagLabels: newTagLabels,
                 dueAt: dueAt,
                 reminderAt: reminderAt,
                 recurrence: recurrence
             )
+            if saved, let compositionDraftID {
+                committedComposition = true
+                SessionNoteWorkingDraftStore.shared.remove(noteID: compositionDraftID)
+            }
         }
         .accessibilityIdentifier("CaptureQuickEntrySheet_\(kind.rawValue)")
     }
 
     var body: some View { bodyView }
+
+    private func scheduleCompositionDraftSave() {
+        guard compositionDraftID != nil else { return }
+        compositionSaveTask?.cancel()
+        compositionSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            _ = saveCompositionDraft()
+        }
+    }
+
+    @discardableResult
+    private func saveCompositionDraft() -> Bool {
+        guard let compositionDraftID, let initialSessionID, !model.usesPreviewData else { return true }
+        guard !committedComposition else { return true }
+        guard let compositionOwner, AuthManager.shared.matchesStableOwnerSnapshot(compositionOwner) else { return false }
+        if title.isEmpty && entryBody.isEmpty && selectedTagIDs.isEmpty && newTagLabels.isEmpty {
+            SessionNoteWorkingDraftStore.shared.remove(noteID: compositionDraftID)
+            return true
+        }
+        let saved = SessionNoteWorkingDraftStore.shared.save(
+            roomID: initialSessionID, noteID: compositionDraftID,
+            title: title, body: entryBody, noteKind: noteKind, noteVisibility: noteVisibility,
+            tagIDs: selectedTagIDs.sorted(), baseUpdatedAt: "",
+            destination: destination, newTagLabels: newTagLabels
+        )
+        compositionError = saved ? nil : "Your draft couldn't be saved on this device. Keep this note open and try again."
+        return saved
+    }
 }
 
 private struct CaptureTimeZonePickerSheet: View {
@@ -17444,7 +18411,13 @@ private struct CaptureLibraryPreviewWritingCard: View {
         canonicalProjectSlug: "home-preview",
         canonicalVisibility: "personal",
         canonicalTagRevision: 0,
-        canonicalTags: [],
+        canonicalTags: [
+            MobileCaptureTag(id: "preview-writing-research", slug: "research", label: "Research", isActive: true, hexColor: "#506b46"),
+            MobileCaptureTag(id: "preview-writing-earlier", slug: "earlier-focus", label: "Earlier focus", isActive: false, hexColor: "#866c52"),
+        ],
+        canonicalAvailableTags: [
+            MobileCaptureTag(id: "preview-writing-research", slug: "research", label: "Research", isActive: true, hexColor: "#506b46"),
+        ],
         canonicalUpdatedAt: "2026-08-27T17:00:00Z",
         lastSyncedAt: Date(timeIntervalSince1970: 1_787_820_300),
         lastSyncError: nil,
@@ -17490,7 +18463,7 @@ private struct CaptureLibraryPreviewWritingCard: View {
                     }
                     Spacer()
                 }
-                Text("The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters…")
+                Text("Connect the opening story to the research question.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
@@ -18336,7 +19309,7 @@ private struct NextCaptureCard: View {
 
     private var sessionIdentity: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("UP NEXT")
+            Text(CaptureSessionScheduling.heading(startsAt: session.scheduledStart, status: session.status))
                 .font(.caption2.weight(.bold))
                 .tracking(1.2)
                 .foregroundStyle(CapturePalette.accent)
@@ -18418,19 +19391,29 @@ private struct SessionListRow: View {
 }
 
 private struct SessionChooserButton: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let session: MobileCaptureSession?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: session?.capturePurposeIcon ?? "calendar")
-                    .foregroundStyle(CapturePalette.accent)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: session?.capturePurposeIcon ?? "calendar")
+                        .foregroundStyle(CapturePalette.accent)
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("SESSION")
-                        .font(.caption2.weight(.bold))
-                        .tracking(1)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("SESSION")
+                            .font(.caption2.weight(.bold))
+                            .tracking(1)
+                            .foregroundStyle(.secondary)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            Spacer(minLength: 8)
+                            chooserIndicator
+                        }
+                    }
                     Text(session?.displayTitle ?? "Choose a session")
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -18450,16 +19433,24 @@ private struct SessionChooserButton: View {
                             .accessibilityIdentifier("CaptureSessionProject_\(session.id)")
                     }
                 }
-                Spacer()
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    chooserIndicator
+                }
             }
             .padding(14)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("CaptureSessionChooser")
+    }
+
+    private var chooserIndicator: some View {
+        Image(systemName: "chevron.up.chevron.down")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
     }
 }
 
@@ -18887,6 +19878,7 @@ private struct CaptureRecordingModePicker: View {
 private struct CaptureRecordingCoordinationStatus: View {
     let message: String
     let isRecording: Bool
+    let recordingRequested: Bool
     let joinConfirmationRequired: Bool
     let participantStatuses: [CaptureRecordingParticipantStatus]
     let recordingHealth: CaptureRecordingHealth?
@@ -18923,7 +19915,8 @@ private struct CaptureRecordingCoordinationStatus: View {
                             .font(.caption)
                             .lineLimit(2)
                         Spacer()
-                        Text(participantLabel(participant.state))
+                        Text(participant.state == .waiting && !recordingRequested && (participant.endpointCount == 0 || participant.noRecordingReported == true)
+                            ? "No recording reported" : participantLabel(participant.state))
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(participantTint(participant.state))
                     }
@@ -18946,7 +19939,7 @@ private struct CaptureRecordingCoordinationStatus: View {
                                         .font(.caption)
                                         .lineLimit(2)
                                     Spacer()
-                                    Text(endpointLabel(receipt.state))
+                                    Text(receipt.state == .stopped && receipt.captureId == nil ? "Stopped — no file confirmed" : endpointLabel(receipt.state))
                                         .font(.caption2.weight(.bold))
                                         .foregroundStyle(endpointTint(receipt.state))
                                 }
@@ -18980,10 +19973,13 @@ private struct CaptureRecordingCoordinationStatus: View {
         if health.allParticipantsStoppedSafely {
             return selfOnly ? "Your recording is saved locally" : "Everyone’s recording is saved locally"
         }
-        if selfOnly {
-            return isRecording ? "Starting your recording" : "Saving your recording"
+        if !recordingRequested && health.waitingParticipantCount == 0 && unreportedCount > 0 {
+            return hasSavedRecording ? "Available recordings saved locally" : "No recording reported"
         }
-        if isRecording {
+        if selfOnly {
+            return recordingRequested ? "Starting your recording" : "Saving your recording"
+        }
+        if recordingRequested {
             return health.waitingParticipantCount == 1
                 ? "Waiting for 1 person"
                 : "Waiting for \(health.waitingParticipantCount) people"
@@ -19009,12 +20005,17 @@ private struct CaptureRecordingCoordinationStatus: View {
                 ? "\(CaptureDeviceVocabulary.thisDeviceCapitalized) confirmed that your local recording stopped."
                 : "Each expected recorder confirmed its local stop."
         }
+        if !recordingRequested && health.waitingParticipantCount == 0 && unreportedCount > 0 {
+            return hasSavedRecording
+                ? "\(unreportedCount) \(unreportedCount == 1 ? "participant has" : "participants have") no recording reported for this take. Any offline recording can still upload when that device reconnects."
+                : "No device has reported a recording for this take. If you recorded offline, reopen Quipsly on that device to resume syncing."
+        }
         if selfOnly {
-            return isRecording
+            return recordingRequested
                 ? "Keep this Session open while your recorder gets ready."
                 : "Keep this Session open while your recording finishes saving."
         }
-        return isRecording
+        return recordingRequested
             ? "The call can continue while Quipsly gets every recorder ready."
             : "Keep this Session open while the recordings finish saving."
     }
@@ -19022,6 +20023,14 @@ private struct CaptureRecordingCoordinationStatus: View {
     private var selfOnly: Bool {
         participantStatuses.count == 1
             && participantStatuses.first?.participantLabel == "You"
+    }
+
+    private var unreportedCount: Int {
+        participantStatuses.filter { $0.endpointCount == 0 || $0.noRecordingReported == true }.count
+    }
+
+    private var hasSavedRecording: Bool {
+        participantStatuses.contains { $0.state == .stoppedSafely }
     }
 
     private func healthSymbol(_ health: CaptureRecordingHealth) -> String {
@@ -19045,7 +20054,7 @@ private struct CaptureRecordingCoordinationStatus: View {
         case .needsAttention: "Needs attention"
         case .stopping: "Saving recording"
         case .stoppedSafely: "Saved locally"
-        case .waiting: isRecording ? "Waiting for recorder" : "Waiting to save"
+        case .waiting: recordingRequested ? "Waiting for recorder" : "Waiting to save"
         }
     }
 
@@ -19648,7 +20657,7 @@ private struct VideoRecorderHero: View {
                 coordinatedAudioState == .recording
                     ? "Recording two local sources"
                     : "Camera started · preparing microphone"
-            case .podcastCamera: "Podcast camera recording"
+            case .podcastCamera: "Video-only recording"
             case .soloVideo: "Solo video recording"
             case .audio: "Video recording"
             }
@@ -20868,6 +21877,32 @@ private struct CaptureSystemAudioInputPicker: UIViewRepresentable {
     }
 }
 
+private struct CaptureLocalRecordingHeader: View {
+    let onReturnToCall: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onReturnToCall) {
+                Label("Back to call", systemImage: "chevron.left")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CapturePalette.accent)
+            .accessibilityIdentifier("CaptureReturnToCallButton")
+            Text("Record here")
+                .font(.title2.bold())
+            Text("Call not joined")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureLocalRecordingHeader")
+    }
+}
+
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
@@ -20879,16 +21914,23 @@ private struct ProviderRoomControls: View {
     let videoQualityIntent: VideoCaptureQualityIntent
     let localRecordingWorkspaceOpen: Bool
     let onToggleLocalRecordingWorkspace: () -> Void
+    var minimumStageHeight: CGFloat = 190
     // Keep the existing storage key so upgrades preserve the person's choice.
     @AppStorage("quipsly.call.join-muted.v1") private var callAudioOnAnotherDevice = false
     @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
     @AppStorage("quipsly.call.camera-off.v1") private var joinCameraOff = true
+    @State private var showsDevices = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(
-                    callPermanentlyClosed
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Image(systemName: model.providerRoom.isConnected
+                            ? "person.2.wave.2.fill" : "person.2.wave.2")
+                            .accessibilityHidden(true)
+                    }
+                    Text(callPermanentlyClosed
                         ? "Call ended"
                         : model.providerRoom.isReconnecting
                         ? "Reconnecting"
@@ -20896,18 +21938,14 @@ private struct ProviderRoomControls: View {
                             ? "Call in progress"
                             : canRejoinSession
                                 ? "Call disconnected"
-                                : "Ready to join",
-                    systemImage: model.providerRoom.isConnected
-                        ? "person.2.wave.2.fill"
-                        : "person.2.wave.2"
-                )
+                                : "Ready to join")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                     .font(.headline)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureProviderRoomState")
-                Spacer()
-                Text("Call")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(model.providerRoom.isConnected ? CapturePalette.success : Color.secondary)
+                Spacer(minLength: 8)
+                devicesControl
             }
 
             if canRejoinSession {
@@ -20922,52 +21960,20 @@ private struct ProviderRoomControls: View {
                 .accessibilityIdentifier("CaptureCallRejoinRecoveryStatus")
             }
 
-            if usesCallAudioForPresentation {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Image(systemName: "mic.fill")
-                            Text("Microphone · \(inputRoute)")
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("Microphone, \(inputRoute)")
-                            .accessibilityIdentifier("CaptureCallInputRoute")
-                        HStack {
-                            Text("Output · \(callAudioSession.currentOutputRouteName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(.vertical, 3)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Output, \(callAudioSession.currentOutputRouteName)")
-                        .accessibilityIdentifier("CaptureCallOutputRoute")
-                    }
-                    Spacer(minLength: 8)
-                    if #available(iOS 26.0, *) {
-                        CaptureSystemAudioInputPicker()
-                            .frame(width: 44, height: 44)
-                    }
-                    CaptureSystemAudioRoutePicker()
-                        .frame(width: 44, height: 44)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("CaptureCallAudioRouteSummary")
-            } else {
-                Label("Using another device for call audio", systemImage: "iphone.and.arrow.forward")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("CaptureCallInputRoute")
-            }
 
             if model.providerRoom.isConnected {
-                if model.providerRoom.hasRemoteVideo
+                if model.providerRoom.remoteParticipants.count > 1,
+                   model.providerRoom.hasRemoteVideo || model.providerRoom.isLocalVideoPublished {
+                    ProviderRoomParticipantGallery(providerRoom: model.providerRoom,
+                        videoCapture: videoCapture, minimumHeight: minimumStageHeight,
+                        canSwitchCamera: model.providerRoom.isLocalVideoPublished
+                            && !model.isChangingCapture && !model.providerRoom.isChangingLocalVideo
+                            && !model.providerRoom.isReconnecting,
+                        onSwitchCamera: {
+                            Task { await model.switchRoomCamera(using: videoCapture,
+                                qualityIntent: CaptureCallPreferences.videoQualityIntent) }
+                        })
+                } else if model.providerRoom.hasRemoteVideo
                     || model.providerRoom.isLocalVideoPublished {
                     ProviderRoomVideoStage(
                         providerRoom: model.providerRoom,
@@ -20984,8 +21990,11 @@ private struct ProviderRoomControls: View {
                                     qualityIntent: CaptureCallPreferences.videoQualityIntent
                                 )
                             }
-                        }
+                        },
+                        minimumStageHeight: minimumStageHeight
                     )
+                } else {
+                    ProviderRoomAudioStage(providerRoom: model.providerRoom, minimumHeight: minimumStageHeight)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -21003,7 +22012,19 @@ private struct ProviderRoomControls: View {
                     )
                     .accessibilityIdentifier("CaptureCallParticipantPresence")
 
-                    if model.providerRoom.usesCallAudio {
+                    if let videoError = model.providerRoom.remoteVideoReceiveError {
+                        HStack {
+                            Text(videoError).font(.caption).foregroundStyle(.secondary)
+                            Button("Retry video") {
+                                Task { await model.providerRoom.receiveCompanionVideo() }
+                            }
+                            .font(.caption.weight(.semibold))
+                        }
+                        .accessibilityIdentifier("CaptureCallVideoRetry")
+                    }
+
+                    if model.providerRoom.usesCallAudio,
+                       model.providerRoom.callAudioHealth.needsVisibleGuidance {
                         Label(
                             model.providerRoom.callAudioHealth.title,
                             systemImage: model.providerRoom.callAudioHealth.systemImage
@@ -21020,19 +22041,13 @@ private struct ProviderRoomControls: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("CaptureCallMicrophoneGuidance")
                         }
-                    } else {
+                    } else if !model.providerRoom.usesCallAudio {
                         Label("Second device · no call audio", systemImage: "speaker.slash.fill")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("CaptureCompanionModeStatus")
                     }
                 }
-            }
-
-            if providerControlsLocked {
-                Label("Your recording will be saved before you leave", systemImage: "checkmark.shield.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
 
             if model.providerRoom.isConnected {
@@ -21089,7 +22104,20 @@ private struct ProviderRoomControls: View {
                             .accessibilityLabel("Switch camera")
                             .accessibilityIdentifier("CaptureJoinSwitchCameraButton")
                         }
+                    } else {
+                        CaptureCallIdentityTile(
+                            name: "You",
+                            detail: "Camera off",
+                            systemImage: "video.slash.fill"
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 160)
+                        .accessibilityIdentifier("CaptureJoinAudioPreview")
                     }
+
+                    CaptureCallAudioDestinationPicker(
+                        audioOnAnotherDevice: $callAudioOnAnotherDevice,
+                        disabled: providerControlsLocked || model.isChangingRoom
+                    )
 
                     Group {
                         if dynamicTypeSize.isAccessibilitySize {
@@ -21153,31 +22181,12 @@ private struct ProviderRoomControls: View {
                     .accessibilityHint(providerControlHint)
                     .accessibilityIdentifier("ProviderJoinRoomButton")
 
-                    DisclosureGroup("Using another device?") {
-                        Toggle(isOn: Binding(
-                            get: { !callAudioOnAnotherDevice },
-                            set: { callAudioOnAnotherDevice = !$0 }
-                        )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Use \(CaptureDeviceVocabulary.thisDevice) for call audio")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Turn this off when another device owns the call audio.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-                        .disabled(providerControlsLocked || model.isChangingRoom)
-                        .accessibilityIdentifier("CaptureUseCallAudioToggle")
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
                 }
 
                 Button(action: onToggleLocalRecordingWorkspace) {
                     Text(
                         localRecordingWorkspaceOpen
-                            ? "Hide recording controls"
+                            ? "Open recorder"
                             : "Record without a call"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -21189,7 +22198,7 @@ private struct ProviderRoomControls: View {
                 .disabled(providerControlsLocked || model.isChangingRoom)
                 .accessibilityHint(
                     localRecordingWorkspaceOpen
-                        ? "Returns to the call lobby without changing any recording."
+                        ? "Opens this session's recording controls without changing the call or an active recording."
                         : "Shows recording controls for solo work or when the call is unavailable."
                 )
                 .accessibilityIdentifier("CaptureRecordWithoutJoiningButton")
@@ -21245,7 +22254,10 @@ private struct ProviderRoomControls: View {
 
     private var prejoinMicrophoneButton: some View {
         Button {
-            guard !callAudioOnAnotherDevice else { return }
+            guard !callAudioOnAnotherDevice else {
+                showsDevices = true
+                return
+            }
             joinMuted.toggle()
         } label: {
             prejoinControlLabel(
@@ -21260,8 +22272,7 @@ private struct ProviderRoomControls: View {
         }
         .buttonStyle(.plain)
         .disabled(
-            callAudioOnAnotherDevice
-                || providerControlsLocked
+            providerControlsLocked
                 || model.isChangingRoom
         )
         .accessibilityLabel(
@@ -21271,7 +22282,7 @@ private struct ProviderRoomControls: View {
         )
         .accessibilityHint(
             callAudioOnAnotherDevice
-                ? "Turn off the another-device option to use this microphone."
+                ? "Opens audio settings. Choose This device to talk and listen here."
                 : joinMuted ? "Turns the microphone on before joining." : "Turns the microphone off before joining."
         )
         .accessibilityIdentifier("CaptureJoinMicrophoneToggle")
@@ -21365,6 +22376,106 @@ private struct ProviderRoomControls: View {
         model.providerRoom.canRejoin(callRoomID: session.callRoomId)
     }
 
+    private var devicesControl: some View {
+        Button {
+            showsDevices = true
+        } label: {
+            Label("Devices", systemImage: "slider.horizontal.3")
+                .font(.subheadline.weight(.semibold))
+                .frame(minHeight: 44)
+        }
+        .accessibilityIdentifier("CaptureCallOpenDevices")
+        .sheet(isPresented: $showsDevices) {
+            NavigationStack {
+                Form {
+                    if usesCallAudioForPresentation {
+                        audioRouteLayout {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    if !dynamicTypeSize.isAccessibilitySize {
+                                        Image(systemName: "mic.fill")
+                                            .accessibilityHidden(true)
+                                    }
+                                    Text("Microphone · \(inputRoute)")
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Microphone, \(inputRoute)")
+                                .accessibilityIdentifier("CaptureCallInputRoute")
+                                HStack {
+                                    Text("Output · \(callAudioSession.currentOutputRouteName)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.vertical, 3)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Output, \(callAudioSession.currentOutputRouteName)")
+                                .accessibilityIdentifier("CaptureCallOutputRoute")
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 12) {
+                                if #available(iOS 26.0, *) {
+                                    CaptureSystemAudioInputPicker()
+                                        .frame(width: 44, height: 44)
+                                }
+                                CaptureSystemAudioRoutePicker()
+                                    .frame(width: 44, height: 44)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(
+                            .secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("CaptureCallAudioRouteSummary")
+                    } else {
+                        Label("Using another device for call audio", systemImage: "iphone.and.arrow.forward")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureCallInputRoute")
+                    }
+                    Toggle(
+                        "Use this device for call audio",
+                        isOn: Binding(
+                            get: { !callAudioOnAnotherDevice },
+                            set: { callAudioOnAnotherDevice = !$0 }
+                        )
+                    )
+                    .disabled(
+                        model.providerRoom.isConnected || providerControlsLocked || model.isChangingRoom
+                    )
+                    .accessibilityIdentifier("CaptureUseCallAudioToggle")
+                    if !model.providerRoom.isConnected {
+                        Text("Turn off when you’re listening and talking on another device.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .navigationTitle("Devices")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showsDevices = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var audioRouteLayout: AnyLayout {
+        // Route names need the full line at accessibility sizes. Keep the
+        // system device controls together below them instead of forcing
+        // microphone names into a narrow column beside two fixed buttons.
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+    }
+
     private var usesCallAudioForPresentation: Bool {
         model.providerRoom.isConnected ? model.providerRoom.usesCallAudio : !callAudioOnAnotherDevice
     }
@@ -21381,9 +22492,7 @@ private struct ProviderRoomControls: View {
     }
 
     private var participantPresenceLabel: String {
-        ProviderRoomParticipantPresence.label(
-            remoteParticipantCount: model.providerRoom.remoteParticipantCount
-        )
+        model.providerRoom.participantPresenceLabel
     }
 
     private var providerControlHint: String {
@@ -21402,11 +22511,138 @@ private struct ProviderRoomControls: View {
 /// Familiar near/far call composition: the other person owns the stage and
 /// this device appears as a movable mental model in the corner. With nobody
 /// else publishing video, the local preview uses the full stage for framing.
+private struct CaptureCallIdentityTile: View {
+    let name: String
+    let detail: String
+    let systemImage: String
+    var isSpeaking = false
+
+    private var initials: String {
+        name.split(whereSeparator: \.isWhitespace).prefix(2)
+            .compactMap(\.first).map(String.init).joined().uppercased()
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(initials)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(CapturePalette.ink)
+                .frame(width: 64, height: 64)
+                .background(CapturePalette.accent.opacity(0.18), in: Circle())
+                .accessibilityHidden(true)
+            Text(name)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            Label(detail, systemImage: systemImage)
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(CapturePalette.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(isSpeaking ? CapturePalette.success : .clear, lineWidth: 2)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ProviderRoomAudioStage: View {
+    @ObservedObject var providerRoom: ProviderRoomController
+    var minimumHeight: CGFloat = 190
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        CaptureParticipantGrid(minimumHeight: minimumHeight, accessibility: dynamicTypeSize.isAccessibilitySize) {
+            ForEach(providerRoom.remoteParticipants) { participant in
+                CaptureRemoteIdentityTile(participant: participant, displayName: providerRoom.participantDisplayName(participant))
+            }
+            CaptureCallIdentityTile(
+                name: "You",
+                detail: providerRoom.usesCallAudio
+                    ? (providerRoom.isMuted ? "Muted" : "Microphone on")
+                    : "Audio on another device",
+                systemImage: providerRoom.usesCallAudio && !providerRoom.isMuted
+                    ? "mic.fill" : "mic.slash.fill"
+            )
+            .accessibilityIdentifier("ProviderLocalParticipantTile")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ProviderCallAudioStage")
+    }
+}
+
+private struct CaptureRemoteIdentityTile: View {
+    let participant: ProviderCallParticipant
+    var displayName: String? = nil
+
+    var body: some View {
+        CaptureCallIdentityTile(name: displayName ?? participant.name,
+            detail: participant.endpoint?.isCompanion == true ? "Audio on another device" : participant.microphoneEnabled ? (participant.isSpeaking ? "Speaking" : "Microphone on") : "Microphone off",
+            systemImage: participant.microphoneEnabled ? "mic.fill" : "mic.slash.fill",
+            isSpeaking: participant.microphoneEnabled && participant.isSpeaking)
+            .accessibilityIdentifier("ProviderParticipantTile-\(participant.id)")
+    }
+}
+
+/// More than two people retain a place in the conversation even if only one
+/// camera is on. Turning cameras on/off changes a tile, not the whole roster.
+private struct ProviderRoomParticipantGallery: View {
+    @ObservedObject var providerRoom: ProviderRoomController
+    @ObservedObject var videoCapture: VideoCaptureController
+    let minimumHeight: CGFloat
+    let canSwitchCamera: Bool
+    let onSwitchCamera: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        CaptureParticipantGrid(minimumHeight: minimumHeight, accessibility: dynamicTypeSize.isAccessibilitySize) {
+            ForEach(providerRoom.remoteParticipants) { participant in
+                if participant.hasVideo {
+                    ProviderRemoteVideoSurface(controller: providerRoom, participantID: participant.id)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(participant.isSpeaking ? CapturePalette.success : .clear, lineWidth: 2)
+                        }
+                        .accessibilityIdentifier("ProviderParticipantTile-\(participant.id)")
+                } else {
+                    CaptureRemoteIdentityTile(participant: participant, displayName: providerRoom.participantDisplayName(participant))
+                }
+            }
+            if providerRoom.isLocalVideoPublished {
+                CaptureVideoPreview(session: videoCapture.captureSession,
+                    cameraDeviceUniqueID: videoCapture.resolvedProfile?.cameraDeviceUniqueID)
+                    .overlay(alignment: .bottomLeading) {
+                        Text("You").font(.caption.weight(.semibold))
+                            .foregroundStyle(.white).padding(8)
+                            .background(.black.opacity(0.62), in: Capsule()).padding(10)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(alignment: .topTrailing) {
+                        CaptureCallCameraSwitchButton(enabled: canSwitchCamera, action: onSwitchCamera)
+                    }
+                    .accessibilityLabel("Your live camera preview")
+                    .accessibilityIdentifier("ProviderLocalParticipantTile")
+            } else {
+                CaptureCallIdentityTile(name: "You",
+                    detail: providerRoom.usesCallAudio ? (providerRoom.isMuted ? "Muted" : "Microphone on") : "Audio on another device",
+                    systemImage: providerRoom.usesCallAudio && !providerRoom.isMuted ? "mic.fill" : "mic.slash.fill")
+                    .accessibilityIdentifier("ProviderLocalParticipantTile")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ProviderCallParticipantGallery")
+    }
+}
+
 private struct ProviderRoomVideoStage: View {
     @ObservedObject var providerRoom: ProviderRoomController
     @ObservedObject var videoCapture: VideoCaptureController
     let canSwitchCamera: Bool
     let onSwitchCamera: () -> Void
+    var minimumStageHeight: CGFloat = 190
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -21434,24 +22670,11 @@ private struct ProviderRoomVideoStage: View {
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(16 / 9, contentMode: .fit)
+        .frame(minHeight: minimumStageHeight)
         .background(.black.opacity(0.88))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(alignment: .topTrailing) {
-            Button(action: onSwitchCamera) {
-                Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(.black.opacity(0.58), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSwitchCamera)
-            .padding(8)
-            .accessibilityLabel("Switch camera")
-            .accessibilityHint(
-                "Switches the live camera. During recording, Quipsly saves a new clip without losing your place."
-            )
-            .accessibilityIdentifier("ProviderSwitchCameraButton")
+            CaptureCallCameraSwitchButton(enabled: canSwitchCamera, action: onSwitchCamera)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ProviderCallVideoStage")
@@ -21478,6 +22701,24 @@ private struct ProviderRoomVideoStage: View {
     }
 }
 
+private struct CaptureCallCameraSwitchButton: View {
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
+                .font(.headline).foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.58), in: Circle())
+        }
+        .buttonStyle(.plain).disabled(!enabled).padding(8)
+        .accessibilityLabel("Switch camera")
+        .accessibilityHint("Switches the live camera. During recording, Quipsly saves a new clip without losing your place.")
+        .accessibilityIdentifier("ProviderSwitchCameraButton")
+    }
+}
+
 /// Recording is a primary call action, so it must not disappear when the
 /// Session workspace is scrolled through notes, follow-through, or chat. This
 /// compact dock owns no capture state; it projects the same controller-backed
@@ -21496,8 +22737,12 @@ private struct CapturePersistentRecorderDock: View {
     let onPauseResume: () -> Void
     let onMark: () -> Void
     let onPrimaryAction: () -> Void
+    var compactControl = false
 
     var body: some View {
+        if compactControl {
+            primaryActionButton
+        } else {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
                 statusCopy
@@ -21516,6 +22761,7 @@ private struct CapturePersistentRecorderDock: View {
         .overlay(alignment: .top) { Divider() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePersistentRecorderDock")
+        }
     }
 
     private var statusCopy: some View {
@@ -21523,15 +22769,17 @@ private struct CapturePersistentRecorderDock: View {
             Text(statusTitle)
                 .font(.subheadline.weight(.bold))
                 .fixedSize(horizontal: false, vertical: true)
-            Text(statusDetail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier(
-                    latestMark == nil
-                        ? "CapturePersistentRecorderDetail"
-                        : "CaptureLatestMomentMark"
-                )
+            if !statusDetail.isEmpty {
+                Text(statusDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(
+                        latestMark == nil
+                            ? "CapturePersistentRecorderDetail"
+                            : "CaptureLatestMomentMark"
+                    )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .layoutPriority(1)
@@ -21631,6 +22879,17 @@ private struct CapturePersistentRecorderDock: View {
 
     private var primaryActionButton: some View {
         Button(action: onPrimaryAction) {
+            if compactControl {
+                VStack(spacing: 4) {
+                    Image(systemName: actionSystemImage)
+                        .font(.headline).frame(width: 44, height: 32)
+                        .background(actionTint.opacity(0.12), in: Capsule())
+                    Text(actionTitle).font(.caption.weight(.semibold)).lineLimit(1)
+                }
+                .foregroundStyle(actionTint)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .contentShape(Rectangle())
+            } else {
             Label(actionTitle, systemImage: actionSystemImage)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
@@ -21638,6 +22897,7 @@ private struct CapturePersistentRecorderDock: View {
                 .frame(minHeight: 50)
                 .fixedSize(horizontal: true, vertical: true)
                 .background(actionTint, in: Capsule())
+            }
         }
         .buttonStyle(.plain)
         .disabled(actionDisabled)
@@ -21722,7 +22982,7 @@ private struct CapturePersistentRecorderDock: View {
                 ? "Waiting for consent"
                 : "Allow recording"
         }
-        return mode == .audio ? "Ready to record" : "Ready for \(mode.title.lowercased())"
+        return "Ready to record"
     }
 
     private var statusDetail: String {
@@ -21757,7 +23017,7 @@ private struct CapturePersistentRecorderDock: View {
                     ? "Update your choice for this source"
                     : "Choose once for this Session"
         }
-        return "Primary control stays within reach"
+        return ""
     }
 
     private var sourceIsReady: Bool {
@@ -21882,7 +23142,9 @@ private struct CaptureReadyForHostIndicator: View {
 /// recording, notes, and transcript workspace scrolls independently above.
 private struct ProviderRoomDock: View {
     @ObservedObject var model: CaptureExperienceModel
+    var recordingControl: AnyView? = nil
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @AppStorage("quipsly.call.microphone-muted.v1") private var joinMuted = false
     @AppStorage("quipsly.call.camera-off.v1") private var joinCameraOff = true
@@ -21893,8 +23155,10 @@ private struct ProviderRoomDock: View {
     let onLeave: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            Spacer(minLength: 0)
+        LazyVGrid(columns: Array(
+            repeating: GridItem(.flexible(), spacing: 10),
+            count: dynamicTypeSize.isAccessibilitySize ? 2 : (model.providerRoom.usesCallAudio ? 4 : 3) + (recordingControl == nil ? 0 : 1)
+        ), spacing: 10) {
             if model.providerRoom.usesCallAudio {
                 dockButton(
                     title: model.providerRoom.isMuted ? "Unmute" : "Mute",
@@ -21929,7 +23193,8 @@ private struct ProviderRoomDock: View {
                 Label("Audio on other device", systemImage: "speaker.slash.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(minWidth: 96, minHeight: 48)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 48)
                     .accessibilityIdentifier("ProviderCompanionAudioStatus")
             }
 
@@ -21959,6 +23224,8 @@ private struct ProviderRoomDock: View {
                 }
             }
 
+            if let recordingControl { recordingControl }
+
             dockButton(
                 title: isSafelyLeaving ? "Saving…" : "Leave",
                 systemImage: "phone.down.fill",
@@ -21970,8 +23237,9 @@ private struct ProviderRoomDock: View {
                 accessibilityIdentifier: "ProviderLeaveRoomButton",
                 action: onLeave
             )
-            Spacer(minLength: 0)
         }
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.top, 9)
         .padding(.bottom, 7)
@@ -21999,7 +23267,7 @@ private struct ProviderRoomDock: View {
                     .lineLimit(1)
             }
             .foregroundStyle(tint)
-            .frame(minWidth: 72, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -22138,6 +23406,8 @@ struct CaptureRecordingEditScreen: View {
         .background(CapturePalette.canvas)
         .navigationTitle("Edit recording")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .scrollBounceBehavior(.basedOnSize)
         .accessibilityLabel("Edit recording for \(sessionTitle)")
         .accessibilityIdentifier("CaptureRecordingEditScreen")
     }
@@ -23968,6 +25238,7 @@ private struct CaptureRecordButtonStyle: ButtonStyle {
 /// levels on iPhone: the Nest that controls people/access, and the Space where
 /// the current coaching, episode, lesson, writing, or research work lives.
 private struct CaptureWorkLocationBar: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let nestName: String
     let nestIsPrivate: Bool
     let spaceName: String
@@ -23977,39 +25248,52 @@ private struct CaptureWorkLocationBar: View {
     var body: some View {
         Button(action: onSwitch) {
             HStack(spacing: 10) {
-                Image(systemName: nestIsPrivate ? "house.fill" : "q.circle.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.accent)
-                    .frame(width: 30, height: 30)
-                    .background(CapturePalette.accent.opacity(0.12), in: Circle())
-                    .accessibilityHidden(true)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: nestIsPrivate ? "house.fill" : "q.circle.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 30, height: 30)
+                        .background(CapturePalette.accent.opacity(0.12), in: Circle())
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(nestName)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(CapturePalette.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 5) {
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .black))
                             .accessibilityHidden(true)
                         Text(spaceName)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CapturePalette.secondaryText)
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 8)
-                Text(switchDisabled ? "Recording" : "Switch")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Text(switchDisabled ? "In session" : "Switch")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
+                        .lineLimit(1)
+                }
                 Image(systemName: switchDisabled ? "lock.fill" : "chevron.down")
                     .font(.caption2.weight(.black))
                     .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 48)
-            .background(CapturePalette.locationBarBackground)
+            .contentShape(Rectangle())
+            // This is a control in the split-view detail, not a full-screen
+            // backdrop. Safe-area expansion otherwise gives its accessibility
+            // frame a hit point inside the iPad navigation bar.
+            .background(CapturePalette.locationBarBackground, ignoresSafeAreaEdges: [])
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(CapturePalette.divider)
@@ -24019,10 +25303,13 @@ private struct CaptureWorkLocationBar: View {
         .buttonStyle(.plain)
         .disabled(switchDisabled)
         .accessibilityLabel("Work location")
+        // Keep full names available without letting persistent navigation
+        // consume the work area. The switcher shows the unabridged names;
+        // Dynamic Type still scales both visible breadcrumb lines normally.
         .accessibilityValue("\(nestName), \(spaceName)")
         .accessibilityHint(
             switchDisabled
-                ? "Finish the active recording before switching Nests."
+                ? "Finish the current call or recording before switching Nests."
                 : "Choose a private, owned, or shared Nest."
         )
         .accessibilityIdentifier("CaptureGlobalWorkLocation")
@@ -24257,8 +25544,7 @@ private extension MobileCaptureSession {
         guard let scheduledStart, !scheduledStart.isEmpty else {
             return purpose?.replacingOccurrences(of: "_", with: " ").capitalized ?? "Capture session"
         }
-        let formatter = ISO8601DateFormatter()
-        guard let date = formatter.date(from: scheduledStart) else { return scheduledStart }
+        guard let date = CaptureDateCoding.date(from: scheduledStart) else { return "Scheduled time unavailable" }
         if Calendar.current.isDateInToday(date) {
             return "Today at \(date.formatted(date: .omitted, time: .shortened))"
         }
@@ -24269,7 +25555,7 @@ private extension MobileCaptureSession {
     }
 }
 
-private extension TimeInterval {
+extension TimeInterval {
     var captureDurationLabel: String {
         let total = max(0, Int(rounded(.down)))
         let hours = total / 3600

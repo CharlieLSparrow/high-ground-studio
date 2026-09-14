@@ -12,6 +12,7 @@ type RecordingAssetEvidenceRow = {
   id: string;
   roomId: string;
   fileName: string | null;
+  contentType?: string | null;
   kind: unknown;
   status: unknown;
   byteSize: bigint | number | string | null;
@@ -85,7 +86,7 @@ export type SessionSourceEvidence = {
     startBoundary: { receiptId: string; occurredAt: string } | null;
     stopBoundary: { receiptId: string; occurredAt: string } | null;
     sourceOrigin: "CAPTURE" | "NEST_EXTERNAL_IMPORT" | "NEST_RECOVERY_REPLICA";
-    boundaryAuthority?: "CAPTURE_RECEIPTS" | "STAFF_REVIEWED_EXTERNAL_IMPORT" | "AUDITED_RECOVERY_REPLICA" | null;
+    boundaryAuthority?: "CAPTURE_RECEIPTS" | "AUTHORIZED_EXTERNAL_IMPORT" | "STAFF_REVIEWED_EXTERNAL_IMPORT" | "AUDITED_RECOVERY_REPLICA" | null;
     cloud: {
       sha256: string | null;
       byteSize: string | null;
@@ -98,9 +99,11 @@ export type SessionSourceEvidence = {
       sourceId: string;
       url: string;
       kind: "audio" | "video";
+      contentType?: string | null;
       durationSeconds: number | null;
     } | null;
     audioMastery?: {
+      canManage: boolean;
       projectId: string;
       projectSlug: string;
       assetId: string;
@@ -341,6 +344,7 @@ function protectedPlayback(
     sourceId,
     url: `/api/sessions/${encodeURIComponent(recording.roomId)}/recordings/${encodeURIComponent(recording.id)}/media`,
     kind: String(recording.kind).includes("VIDEO") ? "video" as const : "audio" as const,
+    contentType: recording.contentType ?? null,
     durationSeconds,
   };
 }
@@ -348,8 +352,9 @@ function protectedPlayback(
 function audioMasteryCoordinates(
   recording: RecordingAssetEvidenceRow,
   project: { id: string; slug: string } | null | undefined,
+  access: "read" | "write" | undefined,
 ) {
-  if (!project) return null;
+  if (!project || !access) return null;
   const manifest = object(recording.localManifestJson);
   const promotion = object(manifest.promotion);
   const projectId = text(promotion.projectId);
@@ -366,6 +371,7 @@ function audioMasteryCoordinates(
     || sourceUrl !== `/api/ingest/media/${sourceId}`
   ) return null;
   return {
+    canManage: access === "write",
     projectId,
     projectSlug,
     assetId,
@@ -489,6 +495,7 @@ function isNestExternalRecordingImport(manifest: UnknownRecord) {
 export function buildSessionSourceEvidence(input: {
   roomId: string;
   project?: { id: string; slug: string } | null;
+  audioMasteryAccess?: "read" | "write";
   recordingAssets: RecordingAssetEvidenceRow[];
   finalizationReceipts: FinalizationEvidenceRow[];
   stateReceipts: StateReceiptEvidenceRow[];
@@ -541,6 +548,18 @@ export function buildSessionSourceEvidence(input: {
       const transcriptReleaseReason = text(finalization?.transcriptReleaseReason);
       const transcriptReleasedAt = iso(finalization?.transcriptReleasedAt);
       const externalImport = isNestExternalRecordingImport(manifest);
+      // The server finalizer binds an ordinary import authorization to these
+      // exact bytes. Importing a file does not manufacture live-call receipts.
+      const authorization = object(binding.processingAuthorization);
+      const authorizedExternalImport = Boolean(
+        externalImport
+        && authorization.kind === "source-import"
+        && text(authorization.authorizationId)
+        && authorization.attestationVersion === "quipsly-source-import-attestation-2026-09-01"
+        && text(authorization.consentVersion)
+        && authorization.consentVersion === binding.consentVersion
+        && finalization?.processingDisposition === "RELEASED",
+      );
       const durableStaffRelease = Boolean(
         externalImport
         && !start
@@ -579,10 +598,10 @@ export function buildSessionSourceEvidence(input: {
       if (!bindingBucket || !recording.storageBucket) missing.push("The storage-bucket comparison is absent.");
       if (!bindingObjectPath || !recording.storageObjectPath) missing.push("The storage-path comparison is absent.");
       if (!recoveryLineage && (!bindingGeneration || !manifestGeneration)) missing.push("The object-generation comparison is absent.");
-      if (!recoveryLineage && !durableStaffRelease && (!bindingStartReceiptId || !finalizationStartReceiptId || !start)) {
+      if (!recoveryLineage && !durableStaffRelease && !authorizedExternalImport && (!bindingStartReceiptId || !finalizationStartReceiptId || !start)) {
         missing.push("The applied START boundary is incomplete.");
       }
-      if (!recoveryLineage && !durableStaffRelease && !stop) missing.push("The applied STOP boundary is incomplete.");
+      if (!recoveryLineage && !durableStaffRelease && !authorizedExternalImport && !stop) missing.push("The applied STOP boundary is incomplete.");
       if (manifest.exactBytesVerified !== true) missing.push("The RecordingAsset manifest does not claim exact-byte verification.");
       if (
         !["VERIFIED", "HELD"].includes(String(recording.status))
@@ -604,6 +623,8 @@ export function buildSessionSourceEvidence(input: {
           : null
         : start && stop
           ? "CAPTURE_RECEIPTS" as const
+          : authorizedExternalImport
+          ? "AUTHORIZED_EXTERNAL_IMPORT" as const
           : durableStaffRelease
           ? "STAFF_REVIEWED_EXTERNAL_IMPORT" as const
           : null;
@@ -645,7 +666,7 @@ export function buildSessionSourceEvidence(input: {
           verifiedAt: iso(recording.verifiedAt),
         },
         protectedPlayback: protectedPlayback(recording, status),
-        audioMastery: audioMasteryCoordinates(recording, input.project),
+        audioMastery: audioMasteryCoordinates(recording, input.project, input.audioMasteryAccess),
         captureRuntime: sourceRuntime(manifest),
         analysis: audioSignalAnalysis(recording, input.audioSignalProfileJobs ?? []),
         processingDisposition,

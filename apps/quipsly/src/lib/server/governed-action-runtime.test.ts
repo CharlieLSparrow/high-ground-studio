@@ -58,7 +58,7 @@ describe("governed action capability and ledger runtime", () => {
       .toBe(GOVERNED_ACTION_CAPABILITIES.length);
     expect(governedCapabilityForAssistantToolKind("PROPOSE_REWRITE")).toMatchObject({
       id: "quipsly.writing.rewrite.propose",
-      decisionPolicy: "EXPLICIT_APPROVAL",
+      decisionPolicy: "DELEGATED",
       riskLevel: "HIGH",
       recovery: expect.arrayContaining(["UNDO"]),
     });
@@ -92,7 +92,7 @@ describe("governed action capability and ledger runtime", () => {
       .toBe(governedActionSha256({ a: { x: 3, y: 2 }, z: 1 }));
   });
 
-  it("adapts writing proposals into one project run with typed actions and immutable receipts", async () => {
+  it("makes requested writing ready without creating an approval queue", async () => {
     const tx = transaction();
     const result = await createGovernedAssistantProposalRun(tx as never, {
       projectId: "project-1",
@@ -119,19 +119,19 @@ describe("governed action capability and ledger runtime", () => {
         assistantActionId: "assistant-action-1",
         governedActionId: "governed-action-1",
         capabilityId: "quipsly.writing.rewrite.propose",
-        decisionPolicy: "EXPLICIT_APPROVAL",
-        decisionStatus: "PENDING",
-        status: "PROPOSED",
-        assistantStatus: "proposed",
+        decisionPolicy: "DELEGATED",
+        decisionStatus: "NOT_REQUIRED",
+        status: "READY",
+        assistantStatus: "ready",
       }],
     });
     expect(tx.governedActionRun.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: "project-1",
-        decisionPolicy: "EXPLICIT_APPROVAL",
+        decisionPolicy: "DELEGATED",
         riskLevel: "HIGH",
-        status: "AWAITING_DECISION",
-        consequenceJson: expect.objectContaining({ sourceTruthChanged: false }),
+        status: "READY",
+        consequenceJson: expect.objectContaining({ sourceTruthChanged: false, requiresExplicitApprovalBeforeMutation: false }),
       }),
       select: { id: true },
     });
@@ -139,19 +139,17 @@ describe("governed action capability and ledger runtime", () => {
       data: expect.objectContaining({
         capabilityId: "quipsly.writing.rewrite.propose",
         capabilityVersion: 1,
-        decisionStatus: "PENDING",
-        status: "PROPOSED",
+        decisionStatus: "NOT_REQUIRED",
+        status: "READY",
         payloadSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
         requestSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       }),
       select: { id: true },
     });
-    expect(tx.governedActionReceipt.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ kind: "PROPOSAL_RECORDED", newStatus: "PROPOSED" }),
-    });
+    expect(tx.governedActionReceipt.create).not.toHaveBeenCalled();
     expect(tx.studioAssistantAction.update).toHaveBeenCalledWith({
       where: { id: "assistant-action-1" },
-      data: { governedActionId: "governed-action-1", status: "proposed" },
+      data: { governedActionId: "governed-action-1", status: "ready" },
     });
   });
 

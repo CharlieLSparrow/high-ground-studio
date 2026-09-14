@@ -1,4 +1,6 @@
+import { transcriptSourceHref } from "@/lib/session-work-source-link";
 import Link from "next/link";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 import {
   CalendarDays,
   ChevronRight,
@@ -107,7 +109,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       where: { tag: { projectId: { in: projectIds } } },
       orderBy: { createdAt: "asc" },
       take: 12,
-      select: { tag: { select: { id: true, label: true, isActive: true } } },
+      select: { tag: { select: { id: true, label: true, isActive: true, hexColor: true } } },
     };
 
     const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview, calendarFeedRows, milestoneRows, episodeRows] = await Promise.all([
@@ -149,15 +151,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       prisma.actionItem.findMany({
             where: {
               status: "OPEN",
-              OR: [
-                { assignedUserId: userId },
-                { room: roomAccess },
-                {
-                  booking: {
-                    OR: [{ clientUserId: userId }, { coachUserId: userId }],
-                  },
-                },
-              ],
+              OR: personalOrSharedSessionTaskAccessWhere(userId),
             },
             orderBy: [{ status: "asc" }, { dueAt: "asc" }, { updatedAt: "desc" }],
             take: 100,
@@ -341,7 +335,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
             : null,
           sessionTitle: task.room?.title || task.booking?.callRoom?.title || null,
           provenance: sourceAnchor
-            ? "Reviewed transcript timestamp"
+            ? "Session transcript"
             : source.schema === "quipsly-mobile-quick-entry-v1"
               && source.surface === "ios-capture"
             ? "iPhone capture"
@@ -394,7 +388,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
             type: "task" as const,
             title: task.title,
             context: sourceAnchor
-              ? `reviewed transcript ${formatScheduleMediaTime(sourceAnchor.startSeconds)}–${formatScheduleMediaTime(sourceAnchor.endSeconds)}`
+              ? `transcript ${formatScheduleMediaTime(sourceAnchor.startSeconds)}–${formatScheduleMediaTime(sourceAnchor.endSeconds)}`
               : task.room?.title || task.booking?.callRoom?.title || (task.dueAt ? `due ${formatDateTime(task.dueAt.toISOString())}` : "no deadline"),
             roomId: task.room?.id ?? null,
             sourceAnchor,
@@ -408,7 +402,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
           type: "goal" as const,
           title: goal.title,
           context: sourceAnchor
-            ? `reviewed transcript ${formatScheduleMediaTime(sourceAnchor.startSeconds)}–${formatScheduleMediaTime(sourceAnchor.endSeconds)}`
+            ? `transcript ${formatScheduleMediaTime(sourceAnchor.startSeconds)}–${formatScheduleMediaTime(sourceAnchor.endSeconds)}`
             : goal.targetAt ? `target ${goal.targetAt.toISOString().slice(0, 10)}` : "no target date",
           roomId: goal.room?.id ?? null,
           sourceAnchor,
@@ -741,7 +735,7 @@ export default async function SchedulePage() {
                           <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Transcript source</p>
                           <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-sky-950">{task.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${task.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{task.sourceAnchor.effectiveTextSnapshot}</p>
                           <TranscriptSpeakerEvidenceBadge authority={task.sourceAnchor.speakerAuthority} />
-                          <Link href={`/sessions/${encodeURIComponent(task.roomId)}#transcript-segment-${encodeURIComponent(task.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">
+                          <Link href={transcriptSourceHref(task.sourceAnchor)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">
                             <Play size={14} aria-hidden="true" />Return to {formatScheduleMediaTime(task.sourceAnchor.startSeconds)}–{formatScheduleMediaTime(task.sourceAnchor.endSeconds)}
                           </Link>
                         </div>

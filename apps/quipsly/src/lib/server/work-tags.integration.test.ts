@@ -10,7 +10,9 @@ import {
   createWorkTagTaxonomy,
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
+  readDocumentTagContext,
 } from "./work-tags";
+import { readCanonicalDocumentNoteForActor } from "./canonical-document-note-edit";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -102,6 +104,37 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     }
   });
 
+  it("reads document tag colors without exposing private writing or changing its content revision", async () => {
+    const document = await prisma.studioDocument.create({ data: { projectId, stableId: `tagged-writing-${nonce}`,
+      title: "A morning idea", sourceLabel: "document-kind:note", personalOwnerUserId: actorUserId, isPrivate: true,
+      blocks: { create: { stableId: `tagged-writing-block-${nonce}`, order: 0, body: "An idea worth keeping." } } } });
+    const actor = { prisma, actorUserId, actorEmail, entityId: document.id };
+    const before = await readCanonicalDocumentNoteForActor({ userId: actorUserId, email: actorEmail }, document.id, prisma);
+    const initial = await readDocumentTagContext(actor);
+    expect(initial).toMatchObject({ tagRevision: 0, selectedTagIds: [], projectId });
+    const saved = await replaceWorkEntityTags({ ...actor, entityKind: "document", tagIds: [tagId],
+      expectedUpdatedAt: document.updatedAt, expectedTagRevision: 0, clientRequestId: randomUUID() });
+    expect(saved.ok).toBe(true);
+    const current = await readDocumentTagContext(actor);
+    expect(current).toMatchObject({ tagRevision: 1, selectedTagIds: [tagId], tags: expect.arrayContaining([
+      expect.objectContaining({ id: tagId, label: "Proof listen", hexColor: null }),
+    ]) });
+    expect((await readCanonicalDocumentNoteForActor({ userId: actorUserId, email: actorEmail }, document.id, prisma))?.contentRevision).toBe(before?.contentRevision);
+    expect(before).not.toBeNull();
+    const otherEmail = `work-tags-other-${nonce}@example.test`;
+    const outsider = { ...actor, actorUserId: otherUserId, actorEmail: otherEmail };
+    expect(await readDocumentTagContext(outsider)).toBeNull();
+    const grant = await prisma.studioProjectAccessGrant.create({ data: { projectId, email: otherEmail, role: "EDITOR", status: "ACTIVE" } });
+    try {
+      expect(await readDocumentTagContext(outsider)).toBeNull();
+      await prisma.studioDocument.update({ where: { id: document.id }, data: { isPrivate: false } });
+      expect(await readDocumentTagContext(outsider)).toMatchObject({ selectedTagIds: [tagId] });
+      await prisma.studioProjectAccessGrant.update({ where: { id: grant.id }, data: { status: "REVOKED" } });
+      expect(await readDocumentTagContext(outsider)).toBeNull();
+    } finally { await prisma.studioProjectAccessGrant.delete({ where: { id: grant.id } }); }
+    expect(await readDocumentTagContext({ ...actor, entityId: "missing-document" })).toBeNull();
+  });
+
   it("persists explicit same-Nest joins for a document, task, goal, session, and note", async () => {
     const documentResult = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "document", entityId: documentId, tagIds: [tagId], expectedUpdatedAt: documentUpdatedAt, expectedTagRevision: 0 });
     const taskResult = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "task", entityId: taskId, tagIds: [tagId], expectedUpdatedAt: taskUpdatedAt });
@@ -135,6 +168,45 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     expect(note?.tagLinks.map((link) => link.tag.label)).toEqual(["Proof listen"]);
     expect(note?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
     expect(task?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
+  });
+
+  it.each(["task", "goal", "note", "session", "document"] as const)("retains archived %s labels without allowing new retired assignments", async (entityKind) => {
+    const unique = randomUUID();
+    const archived = await prisma.studioTag.create({data: {projectId, slug: `retired-${unique}`, label: "Earlier context", isActive: false}});
+    const active = await prisma.studioTag.create({data: {projectId, slug: `current-${unique}`, label: "Current context"}});
+    const linked = {create: {tagId: archived.id, createdByUserId: actorUserId}};
+    const entity = entityKind === "task"
+      ? await prisma.actionItem.create({data: {projectId, assignedUserId: actorUserId, title: "Retained context", tagLinks: linked}})
+      : entityKind === "goal"
+        ? await prisma.goal.create({data: {projectId, ownerUserId: actorUserId, title: "Retained context", tagLinks: linked}})
+        : entityKind === "note"
+          ? await prisma.coachingNote.create({data: {roomId, authorUserId: actorUserId, kind: "SESSION_NOTE", body: "Retained context", tagLinks: linked}})
+          : entityKind === "session"
+            ? await prisma.callRoom.create({data: {projectId, createdByUserId: actorUserId, title: "Retained context", tagLinks: linked}})
+            : await prisma.studioDocument.create({data: {projectId, stableId: unique, title: "Retained context", tagLinks: linked}});
+    const model = entityKind === "task" ? prisma.actionItem : entityKind === "goal" ? prisma.goal
+      : entityKind === "note" ? prisma.coachingNote : entityKind === "session" ? prisma.callRoom : prisma.studioDocument;
+    try {
+      const input = {prisma, actorUserId, actorEmail, entityKind, entityId: entity.id,
+        expectedUpdatedAt: entity.updatedAt, expectedTagRevision: 0, tagIds: [archived.id, active.id]};
+      const saved = await replaceWorkEntityTags(input);
+      expect(saved).toMatchObject({ok: true, tagIds: [archived.id, active.id].sort()});
+      if (!saved.ok) throw new Error(saved.error);
+      // A foreign label cannot be smuggled in alongside a retained one.
+      expect(await replaceWorkEntityTags({...input, expectedUpdatedAt: saved.updatedAt!, expectedTagRevision: saved.tagRevision ?? 0,
+        tagIds: [archived.id, otherTagId]})).toMatchObject({ok: false, code: "FORBIDDEN"});
+      const removed = await replaceWorkEntityTags({...input, expectedUpdatedAt: saved.updatedAt!, expectedTagRevision: saved.tagRevision ?? 0,
+        tagIds: [active.id]});
+      expect(removed).toMatchObject({ok: true, tagIds: [active.id]});
+      if (!removed.ok) throw new Error(removed.error);
+      expect(await replaceWorkEntityTags({...input, expectedUpdatedAt: removed.updatedAt!, expectedTagRevision: removed.tagRevision ?? 0}))
+        .toMatchObject({ok: false, code: "FORBIDDEN"});
+      const read = await (model as any).findUniqueOrThrow({where: {id: entity.id}, include: {tagLinks: true}});
+      expect(read.tagLinks.map((link: {tagId: string}) => link.tagId)).toEqual([active.id]);
+    } finally {
+      await (model as any).deleteMany({where: {id: entity.id}});
+      await prisma.studioTag.deleteMany({where: {id: {in: [archived.id, active.id]}}});
+    }
   });
 
   it("focuses the exact tag identity without mixing a same-label tag from another visible Nest", async () => {
@@ -760,6 +832,30 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     });
     expect(otherActor).toMatchObject({ ok: false, code: "NOT_FOUND" });
     await expect(prisma.actionItemTagLink.findMany({ where: { actionItemId: taskId, tagId: archived.id } })).resolves.toEqual([]);
+  });
+
+  it("persists shared color and reset without changing task links, rejecting stale and cross-Nest edits", async () => {
+    const tag = await prisma.studioTag.create({ data: { projectId, slug: `shared-color-${nonce}`, label: "Chapter planning" } });
+    await prisma.actionItemTagLink.create({ data: { actionItemId: taskId, tagId: tag.id } });
+    const command = { prisma, actorUserId, actorEmail, tagId: tag.id, operation: "COLOR" as const, expectedUpdatedAt: tag.updatedAt };
+    for (const hexColor of [undefined, "red", "#1234", "#12345678", "url(secret)"]) {
+      await expect(mutateWorkTagTaxonomy({ ...command, hexColor })).resolves.toMatchObject({ ok: false, code: "INVALID_INPUT" });
+    }
+    const colored = await mutateWorkTagTaxonomy({ ...command, hexColor: "#AbC" });
+    expect(colored).toMatchObject({ ok: true, tag: { id: tag.id, label: "Chapter planning", hexColor: "#aabbcc" }, revision: 1 });
+    if (!colored.ok) throw new Error("color setup failed");
+    await expect(mutateWorkTagTaxonomy({ ...command, hexColor: "#000000" })).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    await expect(mutateWorkTagTaxonomy({ ...command, tagId: otherTagId, hexColor: "#000000" })).resolves.toMatchObject({ ok: false, code: "FORBIDDEN" });
+    await expect(mutateWorkTagTaxonomy({ ...command, actorUserId: otherUserId, actorEmail: `work-tags-other-${nonce}@example.test`, hexColor: "#000000", expectedUpdatedAt: colored.tag.updatedAt })).resolves.toMatchObject({ ok: false, code: "FORBIDDEN" });
+    const linked = await prisma.actionItemTagLink.findMany({ where: { actionItemId: taskId, tagId: tag.id }, include: { tag: true } });
+    expect(linked).toHaveLength(1);
+    expect(linked[0].tag.hexColor).toBe("#aabbcc");
+    await expect(mutateWorkTagTaxonomy({ ...command, hexColor: null, expectedUpdatedAt: colored.tag.updatedAt })).resolves.toMatchObject({ ok: true, tag: { id: tag.id, hexColor: null }, revision: 2 });
+    const revisions = await prisma.studioTagRevision.findMany({ where: { tagId: tag.id }, orderBy: { revision: "asc" } });
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({ operation: "color", snapshotJson: { before: { hexColor: null }, after: { hexColor: "#aabbcc" } } });
+    expect(revisions[1]).toMatchObject({ operation: "color", snapshotJson: { before: { hexColor: "#aabbcc" }, after: { hexColor: null } } });
+    expect(await prisma.actionItemTagLink.count({ where: { actionItemId: taskId, tagId: tag.id } })).toBe(1);
   });
 
   it("retains old names as aliases across rename, archive, restore, and Capture-style reuse", async () => {

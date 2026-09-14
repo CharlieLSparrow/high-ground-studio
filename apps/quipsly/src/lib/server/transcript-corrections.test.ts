@@ -509,6 +509,27 @@ describe("transcript correction desk", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it.each(["RUNNING", "FAILED"])("keeps the earlier source transcript readable when a retry is %s", async status => {
+    const usable = accessibleRoom();
+    const retry = accessibleRoom();
+    Object.assign(retry.transcriptJobs[0], { id: "retry-job", status, segments: [] });
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn().mockResolvedValueOnce(retry).mockResolvedValueOnce(usable),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", recordingAssetId: "asset-1", actor });
+    expect(result.transcriptJobId).toBe("job-1");
+    expect(prisma.callRoom.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ id: "room-1" }),
+      select: expect.objectContaining({ transcriptJobs: expect.objectContaining({
+        where: { assetId: "asset-1", status: "COMPLETED", segments: { some: {} } }, take: 1,
+      }) }),
+    }));
+  });
+
   it("selects only the requested RecordingAsset transcript inside the accessible Session", async () => {
     const prisma = {
       callRoom: {
@@ -533,7 +554,7 @@ describe("transcript correction desk", () => {
     }));
   });
 
-  it("projects isolated source ownership as speaker identity without rewriting provider evidence", async () => {
+  it.each([false, true])("projects source identity without treating an import as an isolated microphone (imported=%s)", async (imported) => {
     const room: any = accessibleRoom();
     room.transcriptJobs[0].resultJson = {
       processingControl: {
@@ -548,6 +569,10 @@ describe("transcript correction desk", () => {
     };
     room.transcriptJobs[0]._count = { words: 1 };
     room.transcriptJobs[0].asset.participantId = "participant-scott";
+    if (imported) room.transcriptJobs[0].asset.localManifestJson = {
+      ...room.transcriptJobs[0].asset.localManifestJson,
+      reportedSourceProfile: { kind: "quipsly-nest-external-recording-import-v1" },
+    };
     room.transcriptJobs[0].segments = [{
       ...segment(),
       speakerLabel: null,
@@ -569,15 +594,15 @@ describe("transcript correction desk", () => {
     });
 
     expect(result.segments[0]).toMatchObject({
-      speakerLabel: "Scott Sparrow",
+      speakerLabel: imported ? null : "Scott Sparrow",
       providerSpeakerLabel: null,
-      speakerAuthority: "source-binding",
-      sourceBoundParticipantId: "participant-scott",
+      speakerAuthority: imported ? "unresolved" : "source-binding",
+      sourceBoundParticipantId: imported ? null : "participant-scott",
     });
     expect(result.processing?.routing).toMatchObject({
-      sourceTopology: "participant-isolated",
-      participantLabel: "Scott Sparrow",
-      speakerAuthority: "source-binding",
+      sourceTopology: imported ? "unknown" : "participant-isolated",
+      participantLabel: imported ? null : "Scott Sparrow",
+      speakerAuthority: imported ? "unresolved" : "source-binding",
       providerOutputRemainsImmutable: true,
     });
   });
@@ -707,6 +732,7 @@ describe("transcript correction desk", () => {
   it("fails closed instead of falling back when an exact source has no accessible transcript", async () => {
     const prisma = {
       callRoom: { findFirst: jest.fn(async () => ({ ...accessibleRoom(), transcriptJobs: [] })) },
+      recordingAsset: { findFirst: jest.fn(async () => null) },
     };
 
     await expect(readTranscriptCorrectionDesk({
@@ -715,6 +741,68 @@ describe("transcript correction desk", () => {
       recordingAssetId: "asset-outside-room",
       actor,
     })).rejects.toMatchObject({ status: 404, code: "SOURCE_TRANSCRIPT_NOT_FOUND" });
+    expect(prisma.recordingAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "asset-outside-room", roomId: "room-1", status: "VERIFIED" },
+    }));
+  });
+
+  it("opens an authorized saved recording before a transcript job exists", async () => {
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => ({ ...accessibleRoom(), transcriptJobs: [] })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      recordingAsset: { findFirst: jest.fn(async () => recordingAsset()) },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [protectedPlaybackReceipt()]) },
+    };
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", recordingAssetId: "asset-1", actor });
+    expect(result).toMatchObject({
+      transcriptJobId: null, transcriptStatus: null, segments: [], gate: {allowed: true},
+      recording: {id: "asset-1", eligibleForProtectedPlaybackPreparation: true},
+      sourceSha256: "a".repeat(64),
+    });
+    expect(result.playback).not.toBeNull();
+    expect(prisma.recordingAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {id: "asset-1", roomId: "room-1", status: "VERIFIED"},
+    }));
+  });
+
+  it("checks room access before looking up a source with no transcript", async () => {
+    const prisma = { callRoom: {findFirst: jest.fn(async () => null)}, recordingAsset: {findFirst: jest.fn()} };
+    await expect(readTranscriptCorrectionDesk({prisma, roomId: "private-room", recordingAssetId: "asset-1", actor}))
+      .rejects.toMatchObject({status: 404, code: "ROOM_NOT_FOUND"});
+    expect(prisma.recordingAsset.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("does not replace an explicitly missing job with a source-only desk", async () => {
+    const prisma = { callRoom: {findFirst: jest.fn(async () => ({...accessibleRoom(), transcriptJobs: []}))},
+      recordingAsset: {findFirst: jest.fn()} };
+    await expect(readTranscriptCorrectionDesk({prisma, roomId: "room-1", recordingAssetId: "asset-1", transcriptJobId: "missing-job", actor}))
+      .rejects.toMatchObject({status: 404, code: "SOURCE_TRANSCRIPT_NOT_FOUND"});
+    expect(prisma.recordingAsset.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("keeps private recording exports on their recipient-scoped route", async () => {
+    const prisma = { callRoom: {findFirst: jest.fn(async () => ({...accessibleRoom(), transcriptJobs: []}))},
+      recordingAsset: {findFirst: jest.fn(async () => ({...recordingAsset(), localManifestJson: {source: "session-recording-share"}}))} };
+    await expect(readTranscriptCorrectionDesk({prisma, roomId: "room-1", recordingAssetId: "asset-1", actor}))
+      .rejects.toMatchObject({status: 404, code: "SOURCE_TRANSCRIPT_NOT_FOUND"});
+  });
+
+  it.each([
+    ["openai-whisper-local", "This recording contains no audio signal. The original recording is kept. Check the microphone before recording again.", "NO_AUDIO_SIGNAL", false],
+    ["cloud-provider", "Request failed at /private/internal/path?token=secret", "TRANSCRIPTION_FAILED", true],
+  ])("projects a safe %s failure without leaking provider errors", async (provider, errorMessage, failureCode, retryable) => {
+    const room = accessibleRoom();
+    Object.assign(room.transcriptJobs[0]!, {status: "FAILED", provider, errorMessage, segments: []});
+    const prisma = { callRoom: {
+      findFirst: jest.fn(async () => room),
+      findUnique: jest.fn(async () => ({id: "room-1", participants: [], recordingConsents: []})),
+    }, mobileCaptureFinalizationReceipt: {findMany: jest.fn(async () => [protectedPlaybackReceipt()])} };
+    const result = await readTranscriptCorrectionDesk({prisma, roomId: "room-1", recordingAssetId: "asset-1", actor});
+    expect(result.processing).toMatchObject({failureCode, retryable});
+    expect(JSON.stringify(result)).not.toContain("token=secret");
+    expect(result.processing?.message).toContain(failureCode === "NO_AUDIO_SIGNAL" ? "no audio signal" : "could not finish");
   });
 
   it("applies one current speaker identity without claiming any turn's words were reviewed", async () => {

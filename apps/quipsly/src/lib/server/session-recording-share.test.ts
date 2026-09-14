@@ -1,8 +1,10 @@
 /** @jest-environment node */
 
 jest.mock("server-only", () => ({}));
+jest.mock("./session-reviewed-source-placement", () => ({ readSessionReviewedSourcePlacements: jest.fn(async () => []) }));
 
 import { createHash } from "node:crypto";
+import { readSessionReviewedSourcePlacements } from "./session-reviewed-source-placement";
 
 import {
   applyRecordingShareTranscriptReadiness,
@@ -14,11 +16,155 @@ import {
   sessionRecordingShareAudioMixSourceIds,
   sessionRecordingShareProgramClock,
   recordingShareSourcesForTake,
+  recordingShareAttempts,
   sessionRecordingSharePlaybackPlan,
   stableJson,
   transitionSessionRecordingShare,
 } from "./session-recording-share";
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
+import { recordingListenPlan } from "@/lib/recording-listen-plan";
+
+describe("recording attempts within one Session", () => {
+  const at = (seconds: number) => new Date(Date.parse("2026-09-09T12:00:00Z") + seconds * 1000);
+  const captureId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  const sources = [0, 1, 2, 3].map(n => ({
+    id: `source-${n}`, roomId: "room", participantId: n === 1 ? "client" : "coach", kind: "LOCAL_AUDIO",
+    contentType: "audio/webm", byteSize: 1000, checksum: "a".repeat(64),
+    recordedStartedAt: at([0, 1, 1200, 3600][n]!), recordedStoppedAt: at([1190, 1800, 1800, 3612][n]!),
+    localManifestJson: {captureGroupId: "same-session", captureId: captureId(n), exactBytesVerified: true},
+    participant: {displayName: n === 1 ? "Client" : "Coach"},
+  }));
+  const receipts = sources.map((source, n) => ({
+    captureId: captureId(n), participantId: source.participantId,
+    directive: {id: n === 3 ? "second" : "first", issuedAt: at(n === 3 ? 3600 : 0)},
+  }));
+
+  it("keeps long reconnect segments with their START and separates a later explicit recording", () => {
+    const before = structuredClone(sources);
+    const groups = recordingShareAttempts(sources, receipts);
+    expect(groups.map(group => ({id: group.id, sources: group.sources.map(source => source.id)}))).toEqual([
+      {id: "start:second", sources: ["source-3"]},
+      {id: "start:first", sources: ["source-0", "source-1", "source-2"]},
+    ]);
+    expect(sources).toEqual(before);
+  });
+
+  it("never binds a source to a receipt owned by another participant", () => {
+    const groups = recordingShareAttempts([sources[3]!], [{...receipts[3]!, participantId: "unrelated"}]);
+    expect(groups[0]?.id).toBe("span:source-3");
+  });
+
+  it("separates standalone recordings without START receipts while preserving overlapping reconnect coverage", () => {
+    const groups = recordingShareAttempts(sources, []);
+    expect(groups.map(group => group.sources.map(source => source.id))).toEqual([
+      ["source-3"], ["source-0", "source-1", "source-2"],
+    ]);
+    const short = [0, 1, 2].map(n => ({ ...sources[0]!, id: `short-${n}`, recordedStartedAt: at(n * 30), recordedStoppedAt: at(n * 30 + 9) }));
+    expect(recordingShareAttempts(short, []).map(group => group.sources.map(source => source.id))).toEqual([
+      ["short-2"], ["short-1"], ["short-0"],
+    ]);
+  });
+
+  async function read(takeId?: string, role = "coach", sourceId?: string, sourceRows: Array<(typeof sources)[number] & {durationSeconds?: number}> = sources, transcriptJobId?: string) {
+    const room = {id: "room", title: "Coaching", captureGroupId: "same-session",
+      booking: {coachUserId: "coach", clientUserId: "client", coachUser: {id: "coach"}, clientUser: {id: "client"}}};
+    const client: any = {
+      callRoom: {findFirst: jest.fn().mockResolvedValueOnce(room).mockResolvedValueOnce(role === "coach" ? room : null)},
+      sessionOutput: {findFirst: jest.fn().mockResolvedValue(null)},
+      recordingAsset: {findMany: jest.fn().mockResolvedValue(sourceRows)},
+      callRecordingEndpointReceipt: {findMany: jest.fn().mockResolvedValue(receipts)},
+      transcriptJob: {findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockImplementation(async ({where}) => {
+        const source = sourceRows.find(source => `job:${source.id}` === where.id && where.assetId.in.includes(source.id));
+        return source ? {assetId: source.id} : null;
+      })},
+    };
+    const result = await readSessionRecordingShare(client, {roomId: "room", actor: {id: role, primaryEmail: `${role}@example.test`, isStaff: false}, takeId, sourceId, transcriptJobId});
+    return {result, client};
+  }
+
+  it("defaults to the latest attempt on a new private edit, without hours of silence", async () => {
+    const {result, client} = await read();
+    expect(result.available.selectedTakeId).toBe("start:second");
+    expect(result.available.sources.map(source => source.id)).toEqual(["source-3"]);
+    expect(result.available.programDurationSeconds).toBe(12);
+    expect(client.callRecordingEndpointReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {roomId: "room", captureId: {in: sources.map((_, n) => captureId(n))}, state: "STARTED", directive: {roomId: "room", action: "START"}},
+    }));
+  });
+
+  it("uses measured sync in the recording workspace rather than reverting to wall time", async () => {
+    jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValueOnce([
+      {alignmentJobId: "sync-1", captureGroupId: "same-session", spineRecordingAssetId: "source-0", targetRecordingAssetId: "source-1", signedOffsetSeconds: 0.35, residualDriftMilliseconds: 2, correctionApplied: false, sourceBytesMutated: false, sampleAccurateClaimed: false},
+      {alignmentJobId: "sync-2", captureGroupId: "same-session", spineRecordingAssetId: "source-0", targetRecordingAssetId: "source-2", signedOffsetSeconds: 1199.75, residualDriftMilliseconds: 2, correctionApplied: false, sourceBytesMutated: false, sampleAccurateClaimed: false},
+    ] as any);
+    const {result} = await read("start:first");
+    expect(result.available.timeline).toMatchObject({authority: "reviewed-waveform-placement", precision: "measured"});
+    expect(result.available.sources.map(source => source.programOffsetSeconds)).toEqual([0, 0.35, 1199.75]);
+    expect(readSessionReviewedSourcePlacements).toHaveBeenLastCalledWith(expect.objectContaining({roomId: "room", recordingAssetIds: ["source-0", "source-1", "source-2"]}));
+  });
+
+  it("lets the coach reopen earlier attempts including their reconnect segments", async () => {
+    expect((await read("start:first")).result.available.sources.map(source => source.id)).toEqual(["source-0", "source-1", "source-2"]);
+    await expect(read("start:another-room")).rejects.toMatchObject({status: 404, code: "RECORDING_ATTEMPT_NOT_FOUND"});
+  });
+
+  it("opens a recording with measured participant sync and a clock-placed reconnect", async () => {
+    jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValueOnce([
+      {alignmentJobId: "sync-1", captureGroupId: "same-session", spineRecordingAssetId: "source-0", targetRecordingAssetId: "source-1", signedOffsetSeconds: 0.35, residualDriftMilliseconds: 2, correctionApplied: false, sourceBytesMutated: false, sampleAccurateClaimed: false},
+    ] as any);
+    const {result} = await read("start:first");
+    expect(result.available.timeline).toMatchObject({authority: "mixed-waveform-clock-placement", precision: "provisional"});
+    expect(result.available.sources.map(source => source.programOffsetSeconds)).toEqual([0, 0.35, 1200]);
+    expect(result.available.programDurationSeconds).toBeGreaterThan(1200);
+    expect(result.readiness.canPrepare).toBe(true);
+  });
+
+  it("uses the actual media duration for trimming a paused source, not elapsed clock time", async () => {
+    const {result} = await read(undefined, "coach", "source-3", sources.map(source => ({...source, durationSeconds: 8.466833})));
+    expect(result.available.programDurationSeconds).toBe(8.466833);
+    expect(result.available.sources[0].durationSeconds).toBe(8.466833);
+    expect(result.available.sources[0].stoppedAt).toBe(at(3612).toISOString());
+  });
+
+  it("does not expose private recording attempts to the client", async () => {
+    const {result, client} = await read("start:first", "client");
+    expect(result.available.sources).toEqual([]);
+    expect(result.available.takes).toEqual([]);
+    expect(client.callRecordingEndpointReceipt.findMany).not.toHaveBeenCalled();
+  });
+
+  it("anchors an editing deep link to the exact source's attempt, including reconnects", async () => {
+    const {result} = await read(undefined, "coach", "source-2");
+    expect(result.available.selectedTakeId).toBe("start:first");
+    expect(result.available.sources.map(source => source.id)).toEqual(["source-0", "source-1", "source-2"]);
+    await expect(read(undefined, "coach", "source-other-room")).rejects.toMatchObject({status: 404});
+    await expect(read("start:second", "coach", "source-2")).rejects.toMatchObject({status: 404});
+  });
+
+  it("never uses a source deep link to widen a client's access", async () => {
+    const {result, client} = await read(undefined, "client", "source-2");
+    expect(result.available.sources).toEqual([]);
+    expect(result.available.takes).toEqual([]);
+    expect(client.recordingAsset.findMany).not.toHaveBeenCalled();
+  });
+
+  it("resolves a transcript deep link to its older recording, not the latest take", async () => {
+    const {result, client} = await read(undefined, "coach", undefined, sources, "job:source-2");
+    expect(result.available.selectedTakeId).toBe("start:first");
+    expect(client.transcriptJob.findFirst).toHaveBeenCalledWith({
+      where: {id: "job:source-2", roomId: "room", assetId: {in: sources.map(source => source.id)}}, select: {assetId: true},
+    });
+    await expect(read(undefined, "coach", undefined, sources, "foreign-job")).rejects.toMatchObject({status: 404});
+    await expect(read(undefined, "coach", "source-3", sources, "job:source-2")).rejects.toMatchObject({status: 404});
+    await expect(read("start:second", "coach", undefined, sources, "job:source-2")).rejects.toMatchObject({status: 404});
+  });
+
+  it("does not look up private transcript sources for a client", async () => {
+    const {result, client} = await read(undefined, "client", undefined, sources, "job:source-2");
+    expect(result.available.sources).toEqual([]);
+    expect(client.transcriptJob.findFirst).not.toHaveBeenCalled();
+  });
+});
 
 describe("Recording workspace current output selection", () => {
   it.each(["coach", "client"])("keeps the %s on the latest relevant edit", async (role) => {
@@ -284,6 +430,20 @@ describe("Session recording share take selection", () => {
 });
 
 describe("Session recording share text edits", () => {
+  it("cuts without a transcript and keeps outside-trim choices for later editing", () => {
+    const manualCuts = [{startSeconds: 5, endSeconds: 8}, {startSeconds: 7, endSeconds: 10}, {startSeconds: 25, endSeconds: 28}];
+    const edit = buildSessionRecordingShareEdit({startSeconds: 2, endSeconds: 20, programDurationSeconds: 30, manualCuts, transcriptSegments: [], excludedTranscriptSegments: []});
+    expect(edit.manualCuts).toEqual(manualCuts);
+    expect(edit.transcriptExclusions).toEqual([]);
+    expect(edit.keptRanges).toEqual([expect.objectContaining({startSeconds: 2, endSeconds: 5}), expect.objectContaining({startSeconds: 10, endSeconds: 20})]);
+  });
+
+  it("rejects cuts outside the source duration and edits removing the whole recording", () => {
+    const base = {startSeconds: 0, endSeconds: 20, transcriptSegments: [], excludedTranscriptSegments: []};
+    expect(() => buildSessionRecordingShareEdit({...base, manualCuts: [{startSeconds: 18, endSeconds: 25}]})).toThrow("within this recording");
+    expect(() => buildSessionRecordingShareEdit({...base, manualCuts: [{startSeconds: 0, endSeconds: 20}]})).toThrow("Keep at least one passage");
+  });
+
   const sourceSha256 = "f".repeat(64);
   const transcriptReadiness = (overrides: Record<string, unknown> = {}) => buildSessionTranscriptReadiness({
     id: "job-1",
@@ -317,6 +477,14 @@ describe("Session recording share text edits", () => {
     cutSafety: "safe" as const,
     cutSafetyReason: "Word timing is bound to this exact source recording.",
   };
+
+  it("uses identical keep boundaries for manual plus transcript cuts in listening and rendering", () => {
+    const manualCuts = [{startSeconds: 8, endSeconds: 11}, {startSeconds: 13.81, endSeconds: 15}];
+    const edit = buildSessionRecordingShareEdit({startSeconds: 2, endSeconds: 20, manualCuts, transcriptSegments: [transcriptSegment], excludedTranscriptSegments: [transcriptSegment]});
+    const listening = recordingListenPlan(2, 20, [...manualCuts, {startSeconds: transcriptSegment.cutStartSeconds, endSeconds: transcriptSegment.cutEndSeconds}]);
+    expect(edit.keptRanges.map(({startSeconds, endSeconds}) => ({startSeconds, endSeconds}))).toEqual(listening.map(({startSeconds, endSeconds}) => ({startSeconds, endSeconds})));
+    expect(edit.keptRanges).toEqual([expect.objectContaining({startSeconds: 2, endSeconds: 8}), expect.objectContaining({startSeconds: 15, endSeconds: 20})]);
+  });
 
   it("turns source-bound transcript exclusions into reversible kept ranges", () => {
     const edit = buildSessionRecordingShareEdit({

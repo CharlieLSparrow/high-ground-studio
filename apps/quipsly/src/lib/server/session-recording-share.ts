@@ -1,6 +1,9 @@
 import "server-only";
+import { parseRecordingManualCuts, recordingKeptRanges, type RecordingTimeRange } from "../recording-manual-cuts";
 
 import { createHash, randomUUID } from "node:crypto";
+import { readSessionRecordingAttempts as loadRecordingAttempts } from "./session-recording-attempts";
+export { recordingShareAttempts } from "./session-recording-attempts";
 
 import {
   newSessionRecordingShareJob,
@@ -28,7 +31,9 @@ import {
   buildSessionTranscriptReadiness,
   type SessionTranscriptReadiness,
 } from "@/lib/session-transcript-readiness";
-import { assembleSessionTranscriptProgramClock } from "./session-transcript-assembly";
+import { assembleSessionTranscriptProgramClock, type SessionTranscriptReviewedPlacement } from "./session-transcript-assembly";
+import { readSessionReviewedSourcePlacements } from "./session-reviewed-source-placement";
+import { projectEditedTranscript, type TimedTranscriptWord } from "@/lib/edited-transcript-export";
 
 export const SESSION_RECORDING_SHARE_SCHEMA =
   "quipsly-session-recording-share-v3";
@@ -346,6 +351,7 @@ export function sessionRecordingShareAudioMixSourceIds(
     participantId: string;
     kind?: string | null;
     contentType?: string | null;
+    durationSeconds?: number | null;
     recordedStartedAt?: Date | null;
     recordedStoppedAt?: Date | null;
   }>,
@@ -378,7 +384,7 @@ export function sessionRecordingShareAudioMixSourceIds(
         startSeconds,
         endSeconds:
           startSeconds +
-          (source.recordedStoppedAt.getTime() - source.recordedStartedAt.getTime()) / 1_000,
+          recordingSourceDuration(source),
       };
     };
     const timed = candidates.every((source) =>
@@ -407,8 +413,7 @@ export function sessionRecordingShareAudioMixSourceIds(
     for (const group of overlapGroups) {
       const preferred = group.find((source) => source.id === primaryVideoSourceId) || [...group].sort(
         (left, right) =>
-          (right.recordedStoppedAt!.getTime() - right.recordedStartedAt!.getTime()) -
-            (left.recordedStoppedAt!.getTime() - left.recordedStartedAt!.getTime()) ||
+          recordingSourceDuration(right) - recordingSourceDuration(left) ||
           left.id.localeCompare(right.id),
       )[0];
       if (preferred) selected.add(preferred.id);
@@ -472,10 +477,12 @@ async function loadSources(
   client: RestoreClient,
   roomId: string,
   preferredCaptureGroupId?: string | null,
-) {
+  exactSourceIds?: string[],
+): Promise<any[]> {
   const rows = await client.recordingAsset.findMany({
     where: {
       roomId,
+      ...(exactSourceIds ? {id: {in: exactSourceIds}} : {}),
       kind: { in: ["LOCAL_AUDIO", "LOCAL_VIDEO"] },
       status: "VERIFIED",
       participantId: { not: null },
@@ -501,6 +508,7 @@ async function loadSources(
       storageObjectPath: true,
       recordedStartedAt: true,
       recordedStoppedAt: true,
+      durationSeconds: true,
       localManifestJson: true,
       verifiedAt: true,
       createdAt: true,
@@ -524,10 +532,10 @@ async function loadSources(
       row.recordedStoppedAt > row.recordedStartedAt
     );
   });
-  // A capture group is the durable call/take boundary. Unlike a start-time
+  // A capture group is the durable call boundary. Unlike a start-time
   // cluster it deliberately survives long calls and crash/reconnect segments.
   // The bounded clock fallback exists only for legacy sources without groups.
-  return recordingShareSourcesForTake(verified, preferredCaptureGroupId);
+  return exactSourceIds ? verified : recordingShareSourcesForTake<any>(verified, preferredCaptureGroupId);
 }
 
 async function exactCloudBindings(
@@ -568,7 +576,7 @@ async function exactCloudBindings(
   );
 }
 
-export function sessionRecordingShareProgramClock(rows: any[]) {
+export function sessionRecordingShareProgramClock(rows: any[], reviewedPlacements: SessionTranscriptReviewedPlacement[] = []) {
   if (!rows.length)
     return {
       authority: "single-source-origin" as const,
@@ -600,9 +608,14 @@ export function sessionRecordingShareProgramClock(rows: any[]) {
             : recordingSync.alignment,
       };
     }),
+    { reviewedPlacements },
   );
   const reason =
-    clock.authority === "capture-clock-proposal"
+    clock.authority === "reviewed-waveform-placement"
+      ? "Waveform sync places the recordings and transcript on the same timeline. The originals stay unchanged; sync can be reset."
+      : clock.authority === "mixed-waveform-clock-placement"
+        ? clock.reason
+      : clock.authority === "capture-clock-proposal"
       ? "Device clock evidence placed the participant masters automatically. Waveform analysis can refine this provisional placement without changing the originals."
       : clock.authority === "reported-wall-clock-fallback"
         ? "Reported source times placed the participant masters automatically because complete device clock evidence was unavailable. The placement remains adjustable."
@@ -623,14 +636,22 @@ export function sessionRecordingShareProgramClock(rows: any[]) {
   };
 }
 
-function sourceSummary(rows: any[]) {
+function recordingSourceDuration(source: {durationSeconds?: number | null; recordedStartedAt?: Date | null; recordedStoppedAt?: Date | null}) {
+  // A native pause removes media time, not wall-clock time. Prefer the
+  // canonical source duration; retain timestamps only as a legacy fallback.
+  if (typeof source.durationSeconds === "number" && Number.isFinite(source.durationSeconds) && source.durationSeconds > 0) return source.durationSeconds;
+  return source.recordedStartedAt && source.recordedStoppedAt
+    ? Math.max(0, (source.recordedStoppedAt.getTime() - source.recordedStartedAt.getTime()) / 1_000) : 0;
+}
+
+function sourceSummary(rows: any[], reviewedPlacements: SessionTranscriptReviewedPlacement[] = []) {
   if (!rows.length)
     return {
       programDurationSeconds: 0,
       timeline: sessionRecordingShareProgramClock(rows),
       sources: [] as any[],
     };
-  const timeline = sessionRecordingShareProgramClock(rows);
+  const timeline = sessionRecordingShareProgramClock(rows, reviewedPlacements);
   const timingBySourceId = new Map(
     timeline.sources.map((source) => [source.recordingAssetId, source]),
   );
@@ -638,11 +659,7 @@ function sourceSummary(rows: any[]) {
     0,
     ...rows.map((row) => {
       const offset = timingBySourceId.get(row.id)?.programOffsetSeconds ?? 0;
-      const duration = Math.max(
-        0,
-        (row.recordedStoppedAt.getTime() - row.recordedStartedAt.getTime()) /
-          1_000,
-      );
+      const duration = recordingSourceDuration(row);
       return offset + duration;
     }),
   );
@@ -660,6 +677,7 @@ function sourceSummary(rows: any[]) {
       sha256: clean(row.checksum, 64).toLowerCase(),
       startedAt: row.recordedStartedAt.toISOString(),
       stoppedAt: row.recordedStoppedAt.toISOString(),
+      durationSeconds: recordingSourceDuration(row),
       programOffsetSeconds:
         timingBySourceId.get(row.id)?.programOffsetSeconds ?? 0,
       timingUncertaintyMilliseconds:
@@ -682,6 +700,8 @@ export type RecordingShareTranscriptSegment = {
   cutEndSeconds: number;
   timingFingerprint: string;
   timingBasis: "provider-words" | "provider-segment";
+  words?: TimedTranscriptWord[];
+  providerText?: string;
   cutSafety:
     | "safe"
     | "timing-unavailable"
@@ -746,6 +766,7 @@ async function loadTranscriptEditSegments(
   roomId: string,
   sources: any[],
   programClock = sessionRecordingShareProgramClock(sources),
+  includeWords = false,
 ): Promise<RecordingShareTranscriptSegment[]> {
   if (!sources.length) return [];
   const sourceById = new Map(
@@ -933,6 +954,11 @@ async function loadTranscriptEditSegments(
             cutEndSeconds,
             timingFingerprint,
             timingBasis,
+            ...(includeWords && hasExactWordTiming ? {providerText: segment.text, words: providerWords.map((word: any) => ({
+              text: word.punctuatedWord || word.word,
+              startSeconds: offsetSeconds + Number(word.startSeconds),
+              endSeconds: offsetSeconds + Number(word.endSeconds),
+            }))} : {}),
             cutSafety: hasExactWordTiming ? "safe" : "timing-unavailable",
             cutSafetyReason: hasExactWordTiming
               ? "Word timing is bound to this exact source recording."
@@ -953,6 +979,8 @@ async function loadTranscriptEditSegments(
 export function buildSessionRecordingShareEdit(input: {
   startSeconds: number;
   endSeconds: number;
+  programDurationSeconds?: number;
+  manualCuts?: RecordingTimeRange[];
   transcriptSegments: RecordingShareTranscriptSegment[];
   excludedTranscriptSegments: Array<{
     transcriptJobId: string;
@@ -1017,30 +1045,10 @@ export function buildSessionRecordingShareEdit(input: {
     }
     return { ...segment, startSeconds, endSeconds };
   });
-  const merged: Array<{ startSeconds: number; endSeconds: number }> = [];
-  for (const exclusion of [...transcriptExclusions].sort(
-    (left, right) =>
-      left.startSeconds - right.startSeconds ||
-      left.endSeconds - right.endSeconds,
-  )) {
-    const current = merged.at(-1);
-    if (current && exclusion.startSeconds <= current.endSeconds + 0.02)
-      current.endSeconds = Math.max(current.endSeconds, exclusion.endSeconds);
-    else
-      merged.push({
-        startSeconds: exclusion.startSeconds,
-        endSeconds: exclusion.endSeconds,
-      });
-  }
-  const kept: Array<{ startSeconds: number; endSeconds: number }> = [];
-  let cursor = input.startSeconds;
-  for (const exclusion of merged) {
-    if (exclusion.startSeconds - cursor >= 0.05)
-      kept.push({ startSeconds: cursor, endSeconds: exclusion.startSeconds });
-    cursor = Math.max(cursor, exclusion.endSeconds);
-  }
-  if (input.endSeconds - cursor >= 0.05)
-    kept.push({ startSeconds: cursor, endSeconds: input.endSeconds });
+  let manualCuts: RecordingTimeRange[];
+  try { manualCuts = parseRecordingManualCuts(input.manualCuts, input.programDurationSeconds ?? input.endSeconds); }
+  catch (error) { throw new SessionRecordingShareError(400, "TIMELINE_CUT_INVALID", error instanceof Error ? error.message : "Choose valid cut times."); }
+  const kept = recordingKeptRanges(input.startSeconds, input.endSeconds, [...transcriptExclusions, ...manualCuts]);
   if (!kept.length) {
     throw new SessionRecordingShareError(
       400,
@@ -1055,6 +1063,7 @@ export function buildSessionRecordingShareEdit(input: {
   return {
     startSeconds: input.startSeconds,
     endSeconds: input.endSeconds,
+    manualCuts,
     keptRanges,
     transcriptExclusions: transcriptExclusions.map((segment) => ({
       transcriptJobId: segment.transcriptJobId,
@@ -1182,7 +1191,7 @@ async function reconcileRender(client: RestoreClient, output: any) {
     render: {
       ...render,
       status: "VERIFIED",
-      recordingAssetId: existingAsset?.id || null,
+      recordingAssetId: derivedAssetId,
       provider: result.output.provider,
       bucketName: result.output.bucketName,
       objectName: result.output.objectName,
@@ -1198,6 +1207,22 @@ async function reconcileRender(client: RestoreClient, output: any) {
     },
   });
   return client.$transaction(async (tx: any) => {
+    // Claim this output revision before inserting the derived asset. Concurrent
+    // readers can otherwise race Prisma's emulated upsert and get P2002. The
+    // revision update and asset creation commit together, or both roll back.
+    const changed = await tx.sessionOutput.updateMany({
+      where: { id: output.id, revision: output.revision, status: "DRAFT" },
+      data: {
+        bodyJson: nextBody,
+        contentSha256: sha256(nextBody),
+        revision: output.revision + 1,
+      },
+    });
+    if (changed.count !== 1)
+      return tx.sessionOutput.findUnique({
+        where: { id: output.id },
+        select: OUTPUT_SELECT,
+      });
     let assetId = existingAsset?.id;
     if (!assetId) {
       const asset = await tx.recordingAsset.upsert({
@@ -1238,20 +1263,6 @@ async function reconcileRender(client: RestoreClient, output: any) {
       });
       assetId = asset.id;
     }
-    nextBody.render.recordingAssetId = assetId;
-    const changed = await tx.sessionOutput.updateMany({
-      where: { id: output.id, revision: output.revision, status: "DRAFT" },
-      data: {
-        bodyJson: nextBody,
-        contentSha256: sha256(nextBody),
-        revision: output.revision + 1,
-      },
-    });
-    if (changed.count !== 1)
-      return tx.sessionOutput.findUnique({
-        where: { id: output.id },
-        select: OUTPUT_SELECT,
-      });
     await tx.sessionOutputRevision.create({
       data: {
         id: randomUUID(),
@@ -1269,9 +1280,33 @@ async function reconcileRender(client: RestoreClient, output: any) {
   });
 }
 
+/** Use the transcript's source-bound placement for preview, edits and renders.
+ * Saved outputs retain their own clock even if a later sync decision changes. */
+async function readSourceSummary(client: RestoreClient, roomId: string, sources: any[]) {
+  const placements = await readSessionReviewedSourcePlacements({
+    prisma: client, roomId, recordingAssetIds: sources.map(source => source.id),
+  });
+  return sourceSummary(sources, placements);
+}
+
+/** Autosave checks the same authorized source clock without loading transcript
+ * words, reconciling media or starting rendering work on every keystroke. */
+export async function readSessionRecordingEditSources(
+  client: RestoreClient, input: {roomId: string; takeId: string; actor: SessionAccessActor},
+) {
+  const room = await loadRoom(client, input.roomId, input.actor, "read");
+  const canEdit = await client.callRoom.findFirst({where: sessionInvitationAccessWhere(input.roomId, input.actor), select: {id: true}});
+  if (!canEdit) throw new SessionRecordingShareError(403, "RECORDING_EDIT_FORBIDDEN", "You cannot edit this recording.");
+  const rows = await loadSources(client, room.id, room.captureGroupId);
+  const attempts = await loadRecordingAttempts(client, room.id, rows);
+  const take = attempts.find(attempt => attempt.id === input.takeId);
+  if (!take) throw new SessionRecordingShareError(404, "RECORDING_ATTEMPT_NOT_FOUND", "This recording is no longer available.");
+  return {role: "COACH" as const, available: {...await readSourceSummary(client, room.id, take.sources), selectedTakeId: take.id}};
+}
+
 export async function readSessionRecordingShare(
   client: RestoreClient,
-  input: { roomId: string; actor: SessionAccessActor },
+  input: { roomId: string; actor: SessionAccessActor; takeId?: string; sourceId?: string; transcriptJobId?: string },
 ) {
   const room = await loadRoom(client, input.roomId, input.actor, "read");
   const canPrepare = Boolean(
@@ -1305,10 +1340,35 @@ export async function readSessionRecordingShare(
   });
   if (canPrepare && output?.status === "DRAFT")
     output = await reconcileRender(client, output);
-  const sourceRows = canPrepare
+  const allSourceRows = canPrepare
     ? await loadSources(client, room.id, room.captureGroupId)
     : [];
-  const available = sourceSummary(sourceRows);
+  const attempts = canPrepare ? await loadRecordingAttempts(client, room.id, allSourceRows) : [];
+  let requestedSourceId = input.sourceId;
+  if (canPrepare && input.transcriptJobId) {
+    const transcript = await client.transcriptJob.findFirst({
+      where: {id: input.transcriptJobId, roomId: room.id, assetId: {in: allSourceRows.map(source => source.id)}},
+      select: {assetId: true},
+    });
+    if (!transcript?.assetId || (requestedSourceId && requestedSourceId !== transcript.assetId))
+      throw new SessionRecordingShareError(404, "RECORDING_ATTEMPT_NOT_FOUND", "The recording for this transcript is not available in this Session.");
+    requestedSourceId = transcript.assetId;
+  }
+  const outputSources = object(output?.sourceManifestJson).sources;
+  const outputSourceIds = new Set((Array.isArray(outputSources) ? outputSources : [])
+    .map((source: any) => clean(source.recordingAssetId, 240)).filter(Boolean));
+  const outputAttempt = outputSourceIds.size ? attempts.find(attempt =>
+    [...outputSourceIds].every(id => attempt.sources.some(source => source.id === id))) : null;
+  const selectedAttempt = input.takeId ? attempts.find(attempt => attempt.id === input.takeId)
+    : requestedSourceId ? attempts.find(attempt => attempt.sources.some(source => source.id === requestedSourceId))
+    : outputAttempt || attempts[0];
+  if (canPrepare && (input.takeId || requestedSourceId) && (!selectedAttempt ||
+    (requestedSourceId && !selectedAttempt.sources.some(source => source.id === requestedSourceId)))) throw new SessionRecordingShareError(
+    404, "RECORDING_ATTEMPT_NOT_FOUND", "This recording attempt is not available in this Session.",
+  );
+  if (canPrepare && (input.takeId || requestedSourceId) && outputAttempt?.id !== selectedAttempt?.id) output = null;
+  const sourceRows = selectedAttempt?.sources || [];
+  const available = await readSourceSummary(client, room.id, sourceRows);
   const transcriptSegments = canPrepare
     ? await loadTranscriptEditSegments(
         client,
@@ -1343,7 +1403,9 @@ export async function readSessionRecordingShare(
           "Client",
       },
     },
-    available: { ...available, transcriptSegments },
+    available: { ...available, transcriptSegments, selectedTakeId: selectedAttempt?.id || null,
+      takes: attempts.map(attempt => ({id: attempt.id, startedAt: attempt.startedAt.toISOString(), sourceCount: attempt.sources.length})),
+    },
     output: serializeOutput(output),
     readiness: {
       canPrepare,
@@ -1374,6 +1436,7 @@ export async function prepareSessionRecordingShare(
     startSeconds: number;
     endSeconds: number;
     title: string;
+    manualCuts?: RecordingTimeRange[];
     excludedTranscriptSegments: Array<{
       transcriptJobId: string;
       segmentId: string;
@@ -1393,7 +1456,7 @@ export async function prepareSessionRecordingShare(
   ];
   const selected = requested.length
     ? allSources.filter((row: any) => requested.includes(row.id))
-    : allSources;
+    : (await loadRecordingAttempts(client, room.id, allSources))[0]?.sources || [];
   if (
     !selected.length ||
     (requested.length && selected.length !== requested.length)
@@ -1421,7 +1484,7 @@ export async function prepareSessionRecordingShare(
       "Choose one exact verified camera recording for the private video preview.",
     );
   }
-  const summary = sourceSummary(selected);
+  const summary = await readSourceSummary(client, room.id, selected);
   const audioMixSourceIds = sessionRecordingShareAudioMixSourceIds(
     selected,
     primaryVideo?.id,
@@ -1454,6 +1517,8 @@ export async function prepareSessionRecordingShare(
     endSeconds: input.endSeconds,
     transcriptSegments,
     excludedTranscriptSegments: input.excludedTranscriptSegments,
+    manualCuts: input.manualCuts,
+    programDurationSeconds: summary.programDurationSeconds,
   });
   const outputId = `recording-share-${createHash("sha256").update(`${input.actor.id}|${room.id}|${input.clientRequestId}`).digest("hex").slice(0, 40)}`;
   const jobId = `session_share_${sha256({
@@ -2026,7 +2091,7 @@ export async function transitionSessionRecordingShare(
   return { output: serializeOutput(updated), idempotentReplay: false };
 }
 
-export async function authorizeSessionRecordingShareMedia(
+async function authorizedSessionRecordingShareOutput(
   client: RestoreClient,
   input: { roomId: string; outputId: string; actor: SessionAccessActor },
 ) {
@@ -2061,6 +2126,50 @@ export async function authorizeSessionRecordingShareMedia(
       "RECORDING_SHARE_NOT_READY",
       "This recording preview is not ready.",
     );
+  return {room, output, render};
+}
+
+export async function readSessionRecordingShareTranscript(
+  client: RestoreClient,
+  input: { roomId: string; outputId: string; actor: SessionAccessActor },
+) {
+  const {room, output, render} = await authorizedSessionRecordingShareOutput(client, input);
+  const manifest = object(output.sourceManifestJson);
+  const allSources = Array.isArray(manifest.sources) ? manifest.sources.map(object) : [];
+  const mixedSources = allSources.filter(source => source.includeInAudioMix !== false);
+  if (!mixedSources.length || mixedSources.length > 128 || new Set(mixedSources.map(source => source.recordingAssetId)).size !== mixedSources.length) {
+    throw new SessionRecordingShareError(409, "RECORDING_TRANSCRIPT_SOURCES_UNAVAILABLE", "The saved recording sources could not be resolved.");
+  }
+  const sources = await loadSources(client, room.id, null, mixedSources.map(source => source.recordingAssetId));
+  if (sources.length !== mixedSources.length || mixedSources.some(saved => {
+    const source = sources.find((candidate: any) => candidate.id === saved.recordingAssetId);
+    return !source || source.checksum !== saved.sha256 || object(source.localManifestJson).storageGeneration !== saved.generation ||
+      source.storageBucket !== saved.bucketName || source.storageObjectPath !== saved.objectName ||
+      !Number.isFinite(saved.programOffsetSeconds);
+  })) throw new SessionRecordingShareError(409, "RECORDING_TRANSCRIPT_SOURCE_CHANGED", "A transcript source no longer matches this saved recording.");
+  const clock = {...sessionRecordingShareProgramClock([]), sources: mixedSources.map(source => ({
+    recordingAssetId: source.recordingAssetId, programOffsetSeconds: source.programOffsetSeconds, timingUncertaintyMilliseconds: null,
+  }))};
+  const passages = await loadTranscriptEditSegments(client, room.id, sources, clock, true);
+  const edit = object(object(output.bodyJson).edit);
+  let projection;
+  try {
+    projection = projectEditedTranscript(passages, {
+      keptRanges: edit.keptRanges,
+      joinCrossfadeSeconds: edit.joinCrossfadeSeconds,
+    }, Number(render.durationSeconds));
+  } catch (error) {
+    throw new SessionRecordingShareError(409, "RECORDING_TRANSCRIPT_TIMING_UNAVAILABLE", error instanceof Error ? error.message : "The saved edit timing is unavailable.");
+  }
+  const untranscribedSources = mixedSources.filter(source => !passages.some(passage => passage.sourceRecordingAssetId === source.recordingAssetId)).length;
+  return {title: output.title, outputId: output.id, outputSha256: render.sha256, ...projection, untranscribedSources};
+}
+
+export async function authorizeSessionRecordingShareMedia(
+  client: RestoreClient,
+  input: { roomId: string; outputId: string; actor: SessionAccessActor },
+) {
+  const {room, render} = await authorizedSessionRecordingShareOutput(client, input);
   const asset = await client.recordingAsset.findFirst({
     where: {
       id: render.recordingAssetId,

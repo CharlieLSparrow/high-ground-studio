@@ -54,9 +54,11 @@ export async function POST(req: Request) {
       create: {
         projectId: project.id,
         email: email,
+        memberUserId: user.id,
         role: "OWNER"
       },
       update: {
+        memberUserId: user.id,
         role: "OWNER"
       }
     });

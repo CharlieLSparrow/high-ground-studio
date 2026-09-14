@@ -19,5 +19,5 @@ export default async function VoiceWritingPage({ params }: { params: Promise<{ d
   const { draftId: rawDraftId } = await params;
   const draftId = String(rawDraftId || "").trim().toLowerCase();
   if (!mobileVoiceWritingDraftIdFromDocumentId(mobileVoiceWritingDocumentId(draftId))) notFound();
-  return <VoiceWritingEditor draftId={draftId} />;
+  return <VoiceWritingEditor key={`${session.user.id}:${draftId}`} draftId={draftId} actorId={session.user.id} />;
 }

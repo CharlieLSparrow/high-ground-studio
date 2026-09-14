@@ -7,9 +7,15 @@ import {
   createWorkTagTaxonomy,
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
+  readTaskTagContext,
+  readGoalTagContext,
+  readNoteTagContext,
+  readDocumentTagContext,
+  readNewCoachingTaskTagContext,
+  readNewNestTaskTagContext,
 } from "@/lib/server/work-tags";
 
-import { PATCH, POST } from "./route";
+import { GET, PATCH, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -18,6 +24,12 @@ jest.mock("@/lib/server/work-tags", () => ({
   createWorkTagTaxonomy: jest.fn(),
   mutateWorkTagTaxonomy: jest.fn(),
   replaceWorkEntityTags: jest.fn(),
+  readTaskTagContext: jest.fn(),
+  readGoalTagContext: jest.fn(),
+  readNoteTagContext: jest.fn(),
+  readDocumentTagContext: jest.fn(),
+  readNewCoachingTaskTagContext: jest.fn(),
+  readNewNestTaskTagContext: jest.fn(),
 }));
 
 function request(body: unknown) {
@@ -31,11 +43,113 @@ function patchRequest(body: unknown) {
 describe("authenticated shared work tags route", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it("reads document colors and the independent tag revision through document access", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "writer", primaryEmail: "Writer@Example.test" } } as any);
+    const context = { entityId: "document", projectId: "nest", updatedAt: "2026-09-09T00:00:00Z", tagRevision: 3,
+      selectedTagIds: ["research"], tags: [{ id: "research", label: "Research", hexColor: "#506b46", isActive: true }], canCreateTags: true };
+    jest.mocked(readDocumentTagContext).mockResolvedValue(context);
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=document&entityId=document"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ ok: true, ...context });
+    expect(readDocumentTagContext).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "writer", actorEmail: "writer@example.test", entityId: "document" }));
+    expect(readNoteTagContext).not.toHaveBeenCalled();
+    jest.mocked(readDocumentTagContext).mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=document&entityId=private"))).status).toBe(404);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=document&projectSlug=nest"))).status).toBe(400);
+  });
+
+  it("reads note tags through the note authorization boundary", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "client@example.test"}} as any);
+    jest.mocked(readNoteTagContext).mockResolvedValue(null);
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=note&entityId=note"));
+    expect(response.status).toBe(404);
+    expect(readNoteTagContext).toHaveBeenCalledWith(expect.objectContaining({entityId: "note", actorUserId: "client"}));
+    expect(readTaskTagContext).not.toHaveBeenCalled();
+    expect(readGoalTagContext).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable JSON response when the identity database is temporarily unavailable", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
+    const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await GET(new Request("http://localhost/api/work/tags?entityKind=goal&entityId=goal"));
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(await response.json()).toEqual({ ok: false, error: "Tags couldn't load. Try again." });
+      expect(readGoalTagContext).not.toHaveBeenCalled();
+    } finally { errorLog.mockRestore(); }
+  });
+
+  it("reads the authorized task tag context without caching private vocabulary", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "Client@Example.test"}} as any);
+    const context = {entityId: "task", projectId: "nest", canCreateTags: false, updatedAt: "2026-09-08T00:00:00Z", selectedTagIds: ["research"],
+      tags: [{id: "research", label: "Research", hexColor: "#23543a", isActive: true}]};
+    jest.mocked(readTaskTagContext).mockResolvedValue(context);
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=task"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ok: true, ...context});
+    expect(readTaskTagContext).toHaveBeenCalledWith(expect.objectContaining({actorUserId: "client", actorEmail: "client@example.test", entityId: "task"}));
+  });
+
+  it("does not disclose a missing or inaccessible tag context", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "outsider", primaryEmail: "outsider@example.test"}} as any);
+    jest.mocked(readTaskTagContext).mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=private-task"))).status).toBe(404);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=unknown&entityId=private-task"))).status).toBe(400);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=private-task"))).status).toBe(401);
+  });
+
+  it("reads a goal's scoped catalog and rejects ambiguous or unavailable contexts", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "client", primaryEmail: "Client@Example.test" } } as never);
+    jest.mocked(readGoalTagContext).mockResolvedValue({ entityId: "goal", projectId: "nest", canCreateTags: false,
+      updatedAt: "2026-09-09T00:00:00Z", selectedTagIds: [], tags: [] });
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=goal&entityId=goal"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(readGoalTagContext).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "client", actorEmail: "client@example.test", entityId: "goal" }));
+    expect(readTaskTagContext).not.toHaveBeenCalled();
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=goal&engagementId=space&entityId=goal"))).status).toBe(400);
+    jest.mocked(readGoalTagContext).mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=goal&entityId=goal"))).status).toBe(404);
+  });
+
+  it.each(["task", "goal"])("loads a new %s's client-space vocabulary without inventing work or accepting ambiguous scopes", async (kind) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "client@example.test"}} as any);
+    jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue({projectId: "nest", canCreateTags: false, selectedTagIds: [], tags: []});
+    const response = await GET(new Request(`http://localhost/api/work/tags?entityKind=${kind}&engagementId=space`));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(readNewCoachingTaskTagContext).toHaveBeenCalledWith(expect.objectContaining({actorUserId: "client", engagementId: "space"}));
+    expect(readTaskTagContext).not.toHaveBeenCalled();
+    expect((await GET(new Request(`http://localhost/api/work/tags?entityKind=${kind}&engagementId=space&entityId=work`))).status).toBe(400);
+    jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue(null);
+    expect((await GET(new Request(`http://localhost/api/work/tags?entityKind=${kind}&engagementId=private-space`))).status).toBe(404);
+  });
+
   it("rejects before database access when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
     const response = await POST(request({}));
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("returns Nest creation capability from the authorized catalog", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "owner", primaryEmail: "owner@example.test" } } as any);
+    jest.mocked(readNewNestTaskTagContext).mockResolvedValue({ projectId: "nest", canCreateTags: true, selectedTagIds: [], tags: [] });
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&projectSlug=our-book"));
+    expect(await response.json()).toMatchObject({ ok: true, projectId: "nest", canCreateTags: true });
+    expect(readNewNestTaskTagContext).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "owner", projectSlug: "our-book" }));
+  });
+
+  it("forwards an explicit color and maps invalid colors to a validation response", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "owner", primaryEmail: "owner@example.test" } } as any);
+    jest.mocked(createWorkTagTaxonomy).mockResolvedValue({ ok: false, code: "INVALID_INPUT", error: "Invalid color" });
+    const response = await POST(request({ operation: "CREATE", projectId: "nest", label: "Research", hexColor: "not-a-color" }));
+    expect(response.status).toBe(400);
+    expect(createWorkTagTaxonomy).toHaveBeenCalledWith(expect.objectContaining({ hexColor: "not-a-color" }));
   });
 
   it("rejects a signed-out vocabulary mutation before database access", async () => {
@@ -195,6 +309,22 @@ describe("authenticated shared work tags route", () => {
     }));
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+
+  it.each(["#506b46", null])("routes a color change or theme reset through the canonical service: %s", async (hexColor) => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({} as any);
+    jest.mocked(mutateWorkTagTaxonomy).mockResolvedValue({ ok: false, code: "FORBIDDEN", error: "Editor access required" });
+    const response = await PATCH(patchRequest({ tagId: "tag-1", operation: "COLOR", hexColor, expectedUpdatedAt: "2026-07-30T12:00:00.000Z" }));
+    expect(response.status).toBe(403);
+    expect(mutateWorkTagTaxonomy).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "user-1", actorEmail: "person@example.test", operation: "COLOR", hexColor }));
+  });
+
+  it("does not interpret a missing color as a theme reset", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
+    const response = await PATCH(patchRequest({ tagId: "tag-1", operation: "COLOR", expectedUpdatedAt: "2026-07-30T12:00:00.000Z" }));
+    expect(response.status).toBe(400);
+    expect(mutateWorkTagTaxonomy).not.toHaveBeenCalled();
   });
 
   it("rejects an incomplete rename before calling the taxonomy service", async () => {

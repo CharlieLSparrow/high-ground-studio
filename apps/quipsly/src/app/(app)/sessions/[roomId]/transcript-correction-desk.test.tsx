@@ -3,8 +3,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
-  reviewedTranscriptFileName,
-  reviewedTranscriptText,
   transcriptWordsForAudioEvidence,
   TranscriptCorrectionDesk,
 } from "./transcript-correction-desk";
@@ -120,41 +118,31 @@ async function markProtectedPlaybackReady() {
 }
 
 describe("TranscriptCorrectionDesk", () => {
-  it("exports effective text while preserving reviewed versus provider-only truth", () => {
-    const text = reviewedTranscriptText({
-      title: "Coaching Session 9",
-      transcriptJobId: "job-reviewed-123456789",
-      segments: [
-        { ...segment, speakerLabel: "Client", text: "I will bring the evidence.", acceptedVerification: { id: "verification-1" } },
-        { ...segment, startSeconds: 8, endSeconds: 10, speakerLabel: null, text: "What would make that repeatable?" },
-      ],
-    });
-
-    expect(reviewedTranscriptFileName("Coaching Session 9", "job-reviewed-123456789")).toBe(
-      "coaching-session-9-transcript-job-review.txt",
-    );
-    expect(text).toContain("Playback-reviewed turns: 1/2");
-    expect(text).toContain("Client (playback-reviewed)");
-    expect(text).toContain("Speaker not attributed (provider-only)");
-    expect(text).toContain("I will bring the evidence.");
-    expect(text).toContain("Provider evidence remains immutable");
+  it("keeps an unfinished correction intact while searching a different passage", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({...desk(true), segments: [segment,
+      {...segment, id: "segment-2", text: "Plan the next chapter.", startSeconds: 8, endSeconds: 10},
+    ]})}) as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getAllByRole("button", {name: "Edit transcript"})[0]);
+    const draft = screen.getByLabelText(/^transcript$/i, { selector: "textarea" });
+    fireEvent.change(draft, {target: {value: "My unfinished correction."}});
+    fireEvent.change(screen.getByRole("searchbox", {name: "Find in transcript"}), {target: {value: "chapter"}});
+    expect(screen.getByText("1 matching passage")).toBeVisible();
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toBe(draft);
+    expect(draft).toHaveValue("My unfinished correction.");
+    expect(screen.getByText("Welcome, everybody.")).toBeVisible();
   });
 
-  it("exports assembled turns on the Session clock instead of each source clock", () => {
-    const text = reviewedTranscriptText({
-      title: "Two-person coaching Session",
-      transcriptJobId: "job-coach",
-      segments: [{
-        ...segment,
-        startSeconds: 3,
-        endSeconds: 5,
-        programStartSeconds: 11.25,
-        programEndSeconds: 13.25,
-      }],
-    });
-
-    expect(text).toContain("[00:11-00:13]");
-    expect(text).not.toContain("[00:03-00:05]");
+  it("calls a usable fallback transcript available without inventing playback review", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({...desk(true),
+      segments: [{...segment, acceptedCorrection: {correctedText: segment.text, revisions: [], correctedSpeakerLabel: null}}],
+      sessionTranscript: {status: "held", sourceCount: 0, sources: [], reason: "Another source is unavailable.", programClock: null},
+    })}) as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    expect(await screen.findByText("Your available transcript")).toBeVisible();
+    expect(screen.queryByText("Transcript not ready yet")).not.toBeInTheDocument();
+    expect(screen.queryByText(/passages played|checked against audio/)).not.toBeInTheDocument();
   });
 
   it("keeps participant words on their exact source waveform", () => {
@@ -270,6 +258,26 @@ describe("TranscriptCorrectionDesk", () => {
     expect(await screen.findByText(/mentor transcript downloaded/i)).toBeInTheDocument();
   });
 
+  it("downloads available transcript text while another source is pending", async () => {
+    const partial = {...desk(false), gate: {allowed: false}, sessionTranscript: {
+      status: "incomplete", sources: [{recordingAssetId: "ready-source", transcriptJobId: "ready-job", programOffsetSeconds: 0}],
+      pendingSources: [{recordingAssetId: "pending-source", participantLabel: "Client", status: "RUNNING"}],
+    }};
+    const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: jest.fn(() => "blob:partial-report") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: jest.fn() });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ok: true, json: async () => partial})
+      .mockResolvedValueOnce({ok: true, headers: new Headers({"X-Quipsly-Transcript-Completeness": "partial"}),
+        blob: async () => new Blob(["PK synthetic"], {type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"})});
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    fireEvent.click(await screen.findByRole("button", {name: /mentor report/i}));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/sessions/room-1/transcript-report?recordingAssetId=ready-source");
+    expect(await screen.findByText(/Partial transcript downloaded/)).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     // jsdom has no layout/scrolling implementation; real-browser coverage checks
     // the visible position, while these tests verify focus and the scroll call.
@@ -292,6 +300,7 @@ describe("TranscriptCorrectionDesk", () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
     window.history.replaceState(null, "", window.location.pathname);
   });
@@ -381,6 +390,28 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByRole("button", { name: "Revise transcript" })).toBeEnabled();
   });
 
+  it.each([
+    ["task", "Make this my task", "Task title"],
+    ["goal", "Make this my goal", "Goal title"],
+  ])("starts a %s from current corrected words but preserves an open draft on refresh", async (_kind, action, titleLabel) => {
+    let currentDesk = desk(true);
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => currentDesk })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    currentDesk = { ...currentDesk, segments: [{ ...segment, text: "Finish the chapter outline by Friday." }] };
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText("Finish the chapter outline by Friday.");
+    fireEvent.click(screen.getByText("Create from this moment"));
+    fireEvent.click(screen.getByRole("button", { name: action }));
+    const title = screen.getByLabelText(titleLabel, { exact: true });
+    expect(title).toHaveValue("Finish the chapter outline by Friday.");
+    fireEvent.change(title, { target: { value: "My own carefully written follow-up" } });
+    currentDesk = { ...currentDesk, segments: [{ ...segment, text: "The transcript was corrected again." }] };
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText("The transcript was corrected again.");
+    expect(title).toHaveValue("My own carefully written follow-up");
+  });
+
   it("saves a source-anchored transcript edit without forcing playback first", async () => {
     const directEditDesk = desk(false);
     directEditDesk.recording.eligibleForProtectedPlaybackPreparation = false;
@@ -394,10 +425,12 @@ describe("TranscriptCorrectionDesk", () => {
     await screen.findByText("Welcome, everybody.");
     expect(document.getElementById("transcript-segment-segment-1")).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit transcript" })); });
-    expect(await screen.findByText(/save directly, or play the passage first when the audio will help/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/correct transcript words/i)).toHaveFocus();
-    fireEvent.change(screen.getByLabelText(/correct speaker/i), { target: { value: "Charlie" } });
-    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
+    expect(screen.getByText("Your original recording stays unchanged.")).toBeInTheDocument();
+    expect(screen.getByText("Add an edit note").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("Edit note (optional)")).toHaveValue("");
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toHaveFocus();
+    fireEvent.change(screen.getByLabelText(/^speaker$/i), { target: { value: "Charlie" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     const request = fetchMock.mock.calls[1];
@@ -415,26 +448,28 @@ describe("TranscriptCorrectionDesk", () => {
   });
 
   it("plays and pauses the exact participant source without leaving an active correction", async () => {
+    const onMediaFocusChange = jest.fn();
     const current: any = desk(true);
     current.segments = [{ ...segment, programStartSeconds: 31.25, sourceStartSeconds: 1.25,
       sourcePlayback: { ...current.playback, sourceId: "client-source", recordingAssetId: "client-asset", url: "/api/ingest/media/client-source" } }];
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => current })) as unknown as typeof fetch;
-    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    render(<TranscriptCorrectionDesk roomId="room-1" onMediaFocusChange={onMediaFocusChange} />);
     await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
-    const input = screen.getByLabelText(/correct transcript words/i);
+    const input = screen.getByLabelText(/^transcript$/i, { selector: "textarea" });
     fireEvent.change(input, { target: { value: "Welcome to coaching." } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Play transcript segment from Session time 00:31/i })); });
     const media = await markProtectedPlaybackReady();
     expect(media).toHaveAttribute("src", "/api/ingest/media/client-source");
     expect(media.currentTime).toBe(1.25);
+    expect(onMediaFocusChange).toHaveBeenLastCalledWith("client-asset", 1.25);
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
     fireEvent.play(media);
     fireEvent.click(screen.getByRole("button", { name: "Pause recording" }));
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
-    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toBe(input);
     expect(input).toHaveValue("Welcome to coaching.");
-    expect(screen.getByRole("button", { name: /save transcript correction/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeEnabled();
   });
 
   it("preserves an active draft across refresh and submits the revision it was based on", async () => {
@@ -448,12 +483,12 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
-    const input = screen.getByLabelText(/correct transcript words/i);
+    const input = screen.getByLabelText(/^transcript$/i, { selector: "textarea" });
     fireEvent.change(input, { target: { value: "My unsaved correction." } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
-    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toBe(input);
     expect(input).toHaveValue("My unsaved correction.");
-    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/source changed/i);
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
       expectedAcceptedCorrectionId: null, expectedText: segment.providerText, correctedText: "My unsaved correction.",
@@ -485,15 +520,177 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
-    const input = screen.getByLabelText(/correct transcript words/i);
+    const input = screen.getByLabelText(/^transcript$/i, { selector: "textarea" });
     fireEvent.change(input, { target: { value: "Keep this draft while reconnecting." } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
     expect(input).toHaveValue("Keep this draft while reconnecting.");
-    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toBe(input);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
-    expect(screen.queryByLabelText(/correct transcript words/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^transcript$/i, { selector: "textarea" })).not.toBeInTheDocument();
     expect(screen.queryByText("Welcome, everybody.")).not.toBeInTheDocument();
     expect(screen.getByText(/Session access removed/)).toBeInTheDocument();
+  });
+
+  it("clears a recovered read error without discarding an unfinished correction", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockRejectedValueOnce(new Error("Temporarily offline"))
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    const input = screen.getByLabelText(/^transcript$/i, { selector: "textarea" });
+    fireEvent.change(input, { target: { value: "My unfinished correction." } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("Temporarily offline")).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(screen.queryByText("Temporarily offline")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toBe(input);
+    expect(input).toHaveValue("My unfinished correction.");
+  });
+
+  it("times out a stalled read so it can be retried", async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn()
+      .mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }))
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+    expect(screen.getByText(/taking too long to load/i)).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Retry" })); });
+    expect(screen.getByText("Welcome, everybody.")).toBeInTheDocument();
+    expect(screen.queryByText(/taking too long to load/i)).not.toBeInTheDocument();
+  });
+
+  it("refreshes missing participant transcripts even when the visible transcript is completed, preserving a draft", async () => {
+    jest.useFakeTimers();
+    const partial = { ...desk(true), transcriptStatus: "COMPLETED", sessionTranscript: {
+      schema: "quipsly-session-transcript-correction-desk-v1", status: "incomplete", sourceCount: 1,
+      pendingSourceCount: 1, reason: "Another participant transcript is not ready yet.", programClock: null, sources: [],
+      pendingSources: [{recordingAssetId: "asset-riley", participantLabel: "Riley", transcriptJobId: "job-riley", status: "RUNNING", error: null}],
+    } };
+    const ready = { ...partial, sessionTranscript: { ...partial.sessionTranscript, status: "assembled", pendingSourceCount: 0, pendingSources: [], sourceCount: 2 } };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => partial })
+      .mockResolvedValue({ ok: true, json: async () => ready });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await act(async () => { render(<TranscriptCorrectionDesk roomId="room-1" />); });
+    expect(screen.getByRole("link", { name: "View recordings and progress" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    fireEvent.change(screen.getByLabelText(/^transcript$/i, { selector: "textarea" }), { target: { value: "My unfinished correction." } });
+    await act(async () => { jest.advanceTimersByTime(5_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toHaveValue("My unfinished correction.");
+    expect(screen.getByText("2 participant recordings on one Session timeline")).toBeInTheDocument();
+    await act(async () => { jest.advanceTimersByTime(15_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a failed source without polling forever or hiding the available transcript", async () => {
+    jest.useFakeTimers();
+    const partial = { ...desk(true), sessionTranscript: {
+      schema: "quipsly-session-transcript-correction-desk-v1", status: "incomplete", sourceCount: 1,
+      pendingSourceCount: 1, reason: "Another participant transcript is not ready yet.", programClock: null, sources: [],
+      pendingSources: [{recordingAssetId: "asset-riley", participantLabel: "Riley", transcriptJobId: "job-riley", status: "FAILED", error: "Temporary provider failure"}],
+    } };
+    const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => partial});
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await act(async () => { render(<TranscriptCorrectionDesk roomId="room-1" />); });
+    expect(screen.getByText("Welcome, everybody.")).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Retry transcription for Riley"})).toBeEnabled();
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["NOT_STARTED", "FAILED"])("starts the focused saved source from %s and reveals its resulting words", async status => {
+    const waiting = {...desk(true), transcriptJobId: status === "NOT_STARTED" ? null : "job-1",
+      transcriptStatus: status === "NOT_STARTED" ? null : status, segments: [],
+      processing: status === "NOT_STARTED" ? null : {...desk(true).processing, status, retryable: true,
+        failureCode: "TRANSCRIPTION_FAILED", message: "Transcription could not finish. Try again."}};
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ok: true, json: async () => waiting})
+      .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, status: "COMPLETED"})})
+      .mockResolvedValue({ok: true, json: async () => desk(true)});
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" />);
+    const start = await screen.findByRole("button", {name: `${status === "NOT_STARTED" ? "Start" : "Retry"} transcription for session.wav`});
+    expect(screen.getByRole("heading", {name: "Your transcript"})).toBeVisible();
+    const player = screen.getByLabelText("Protected session recording");
+    expect(player).toBeVisible();
+    fireEvent.click(start);
+    await screen.findByText("Welcome, everybody.");
+    expect(fetchMock.mock.calls[1]).toEqual(["/api/mobile/capture/transcripts/run", expect.objectContaining({
+      body: JSON.stringify({recordingAssetId: "asset-1"}),
+    })]);
+    expect(screen.getByRole("heading", {name: "Edit the transcript"})).toBeVisible();
+    expect(screen.getByLabelText("Protected session recording")).toBe(player);
+  });
+
+  it("shows a focused silent recording with no retry and no false ready message", async () => {
+    const silent = {...desk(true), transcriptStatus: "FAILED", segments: [], processing: {...desk(true).processing,
+      status: "FAILED", failureCode: "NO_AUDIO_SIGNAL", retryable: false,
+      message: "This recording contains no audio signal. Check the microphone before recording again."}};
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => silent});
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" />);
+    await screen.findByText("No audio was captured");
+    expect(screen.queryByRole("button", {name: /Retry transcription/})).not.toBeInTheDocument();
+    expect(screen.queryByText("Ready to review, correct, and share.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No persisted transcript/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Check the microphone/)).toBeVisible();
+    expect(screen.getByLabelText("Protected session recording")).toBeVisible();
+    expect(screen.getByRole("link", {name: "Choose another recording"})).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
+  });
+
+  it("explains a pending recording choice without offering transcription before permission", async () => {
+    const pending = {...desk(false), transcriptJobId: null, transcriptStatus: null, processing: null, segments: [],
+      gate: {allowed: false, error: "Riley has not allowed transcription yet."}};
+    global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => pending});
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" />);
+    expect(await screen.findByText("Riley has not allowed transcription yet.")).toBeVisible();
+    expect(screen.queryByRole("button", {name: /Start transcription/})).not.toBeInTheDocument();
+  });
+
+  it("does not stack background reads or apply an old response over a manual refresh", async () => {
+    jest.useFakeTimers();
+    let finishOld!: (value: unknown) => void;
+    const running = { ...desk(true), transcriptStatus: "RUNNING" };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => running })
+      .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await act(async () => { render(<TranscriptCorrectionDesk roomId="room-1" />); });
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    const input = screen.getByLabelText(/^transcript$/i, { selector: "textarea" });
+    fireEvent.change(input, { target: { value: "My current correction." } });
+    await act(async () => { jest.advanceTimersByTime(15_000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true);
+    await act(async () => { finishOld({ ok: false, status: 403, json: async () => ({ error: "Old failure" }) }); });
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toBe(input);
+    expect(input).toHaveValue("My current correction.");
+    expect(screen.queryByText("Old failure")).not.toBeInTheDocument();
+  });
+
+  it.each([401, 403, 404, "wrong-session"])("clears protected content after %s even without an error JSON body", async (status) => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockResolvedValueOnce(status === "wrong-session"
+        ? { ok: true, json: async () => ({ ...desk(true), roomId: "other-room" }) }
+        : { ok: false, status, json: async () => { throw new SyntaxError("Not JSON"); } });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(screen.queryByText("Welcome, everybody.")).not.toBeInTheDocument();
+    expect(screen.getByText(/no longer available/i)).toBeInTheDocument();
   });
 
   it("retries an ambiguous correction with the same command and prevents double submission", async () => {
@@ -508,21 +705,21 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     const media = await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
-    fireEvent.change(screen.getByLabelText(/correct transcript words/i), { target: { value: "Welcome to coaching." } });
-    const save = screen.getByRole("button", { name: /save transcript correction/i });
+    fireEvent.change(screen.getByLabelText(/^transcript$/i, { selector: "textarea" }), { target: { value: "Welcome to coaching." } });
+    const save = screen.getByRole("button", { name: /save changes/i });
     fireEvent.click(save);
     fireEvent.click(save);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(save).toBeDisabled();
-    expect(screen.getByLabelText(/correct transcript words/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^transcript$/i, { selector: "textarea" })).toBeDisabled();
     await act(async () => { rejectSave(new Error("Connection interrupted")); });
     expect(await screen.findByRole("alert")).toHaveTextContent("Connection interrupted");
     media.currentTime = 4.2;
     fireEvent.timeUpdate(media);
-    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(fetchMock.mock.calls[2][1].body).toEqual(fetchMock.mock.calls[1][1].body);
-    expect(screen.queryByLabelText(/correct transcript words/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^transcript$/i, { selector: "textarea" })).not.toBeInTheDocument();
     expect(screen.getByText(/already saved; no duplicate/i)).toBeInTheDocument();
   });
 
@@ -535,9 +732,9 @@ describe("TranscriptCorrectionDesk", () => {
     const view = render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
     fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
-    fireEvent.change(screen.getByLabelText(/correct transcript words/i), { target: { value: "Private draft in room one." } });
+    fireEvent.change(screen.getByLabelText(/^transcript$/i, { selector: "textarea" }), { target: { value: "Private draft in room one." } });
     view.rerender(<TranscriptCorrectionDesk roomId="room-2" />);
-    expect(screen.queryByLabelText(/correct transcript words/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^transcript$/i, { selector: "textarea" })).not.toBeInTheDocument();
     expect(screen.queryByText("Welcome, everybody.")).not.toBeInTheDocument();
     expect(screen.getByText(/Loading transcript and recording/)).toBeInTheDocument();
     await act(async () => { resolveNext({ ok: true, json: async () => ({ ...desk(true), roomId: "room-2", segments: [{ ...segment, id: "room-two-passage", text: "Different Session." }] }) }); });
@@ -558,8 +755,8 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByRole("button", { name: priorName ? "Revise transcript" : "Edit transcript" });
     fireEvent.click(screen.getByRole("button", { name: priorName ? "Revise transcript" : "Edit transcript" }));
-    fireEvent.change(screen.getByLabelText(/correct transcript words/i), { target: { value: "Welcome, everyone." } });
-    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
+    fireEvent.change(screen.getByLabelText(/^transcript$/i, { selector: "textarea" }), { target: { value: "Welcome, everyone." } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
       correctedText: "Welcome, everyone.", correctedSpeakerLabel: priorName,
@@ -790,7 +987,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/mobile/capture/transcripts/corrections?callRoomId=room-1&recordingAssetId=asset-backup",
-      { cache: "no-store" },
+      { cache: "no-store", signal: expect.any(AbortSignal) },
     );
   });
 
@@ -877,9 +1074,13 @@ describe("TranscriptCorrectionDesk", () => {
       fireEvent.timeUpdate(media);
     }
     fireEvent.click(screen.getByRole("checkbox", { name: /normal exchange/i }));
+    // Once the first window exists, the desk also reads its experiment runs.
+    // Keep that independent read out of the mutation's ordered response slots.
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ok: true, runs: []}) });
     fireEvent.click(screen.getByRole("button", { name: /add to private accuracy corpus/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/transcript-evaluation?roomId=room-1&view=runs");
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
       operation: "approve-evaluation-window",
       roomId: "room-1",
@@ -1068,7 +1269,7 @@ describe("TranscriptCorrectionDesk", () => {
     await waitFor(() => expect(clientMedia.getAttribute("src")).toBe("/api/ingest/media/source-2"));
     expect(clientMedia.currentTime).toBe(2);
     expect(screen.getByText(/2 participant recordings on one session timeline/i)).toBeInTheDocument();
-    expect(screen.getByText(/waveform and drift review still required/i)).toBeInTheDocument();
+    expect(screen.getByText(/Timing is estimated\. Source audio and original timestamps are preserved/i)).toBeInTheDocument();
   });
 
   it.each([true, false])("creates a self-owned task with exact source identity when playback availability is %s", async (hasPlayback) => {
@@ -1092,6 +1293,7 @@ describe("TranscriptCorrectionDesk", () => {
     fireEvent.click(screen.getByRole("button", { name: /create my task/i }));
 
     await screen.findByText("Task created in Today and Work: Prepare the opening");
+    expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=task-1");
     const requests = fetchMock.mock.calls.filter(([url]) => url === "/api/mobile/capture/transcripts/tasks");
     expect(requests).toHaveLength(1);
     const request = requests[0]!;
@@ -1103,6 +1305,39 @@ describe("TranscriptCorrectionDesk", () => {
       title: "Prepare the opening",
       surface: "nest-session-transcript-review",
     });
+  });
+
+  it.each(["network", "timeout"])("keeps task creation visible and retries a %s failure without another command", async (failure) => {
+    if (failure === "timeout") jest.useFakeTimers();
+    let rejectSave!: (reason: Error) => void;
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+        rejectSave = reject;
+        options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: true, task: { id: "retained/task", title: "Write the outline" } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByText("Create from this moment"));
+    fireEvent.click(screen.getByRole("button", { name: /make this my task/i }));
+    fireEvent.change(screen.getByLabelText(/task title/i), { target: { value: "Write the outline" } });
+    const create = screen.getByRole("button", { name: /create my task/i });
+    fireEvent.click(create);
+    fireEvent.click(create);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: /creating task/i })).toBeDisabled();
+    expect(screen.getByLabelText(/task title/i)).toBeDisabled();
+    await act(async () => {
+      if (failure === "timeout") jest.advanceTimersByTime(30_000);
+      else rejectSave(new Error("Connection interrupted"));
+    });
+    expect(screen.getByLabelText(/task title/i)).toHaveValue("Write the outline");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /create my task/i })); });
+    expect(fetchMock.mock.calls[2][1].body).toBe(fetchMock.mock.calls[1][1].body);
+    expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=retained%2Ftask");
   });
 
   it("opens coaching recording edits in the transcript surface", async () => {

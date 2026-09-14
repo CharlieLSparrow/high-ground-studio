@@ -152,38 +152,38 @@ export function studioSoundCheckGuidance(evidence: StudioAudioMeterEvidence | nu
     case "inactive":
       return {
         tone: "neutral" as const,
-        heading: "Run the selected setup first",
-        detail: "Open the exact microphone, speak naturally, then record a private sample to hear the browser call path through your chosen output.",
+        heading: "Test your microphone",
+        detail: "Speak naturally, then play the test through your headphones.",
       };
     case "no-signal":
       return {
         tone: "warning" as const,
-        heading: "The selected path is not carrying useful speech",
-        detail: "Check mute, interface gain, cable, and the selected input. Do not join or record until the meter follows your voice.",
+        heading: "Speak to check your microphone",
+        detail: "If the meter stays still while you speak, check mute, the selected microphone, and its connection.",
       };
     case "low":
       return {
         tone: "warning" as const,
-        heading: "Speech is arriving low",
-        detail: "Move closer or raise interface gain modestly, then repeat the sample. Leave headroom instead of normalizing a weak call path by ear.",
+        heading: "Your microphone is quiet",
+        detail: "Try moving closer or increasing your microphone’s input volume a little.",
       };
     case "ready":
       return {
         tone: "ready" as const,
-        heading: "Level is in a healthy speech range",
-        detail: "Listen for room noise, mouth noise, monitoring delay, and the correct microphone. The meter cannot certify those by itself.",
+        heading: "Your microphone level looks good",
+        detail: "Play the test to check how your voice and room sound.",
       };
     case "hot":
       return {
         tone: "warning" as const,
-        heading: "Speech is running hot",
-        detail: "Lower interface gain or increase mic distance slightly, then repeat the loudest line you expect to deliver.",
+        heading: "Your microphone is loud",
+        detail: "Try lowering its input volume or moving slightly farther away.",
       };
     case "clipping-risk":
       return {
         tone: "danger" as const,
-        heading: "Clipping risk—lower gain before joining",
-        detail: "Near-full-scale samples were observed. Reduce gain, repeat the loudest phrase, and confirm the peak no longer reaches the danger range.",
+        heading: "Your microphone may sound distorted",
+        detail: "The signal is reaching its maximum level. Lower the input volume and try again.",
       };
   }
 }

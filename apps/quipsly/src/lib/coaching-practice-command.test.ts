@@ -6,6 +6,16 @@ import {
 const NOW = "2026-08-26T18:00:00.000Z";
 
 describe("buildQuipslyCoachingPracticeCommand", () => {
+  it("does not infer that a client is waiting from an open room", () => {
+    const command = buildQuipslyCoachingPracticeCommand({
+      now: NOW, bookings: [], timeRequests: [],
+      rooms: [{ id: "open-room", title: "Prepared room", status: "OPEN", recordingCount: 0 }],
+    });
+    expect(command.headline).toBe("You have an open session.");
+    expect(command.detail).not.toMatch(/waiting|join first/i);
+    expect(command.items[0]).toMatchObject({ href: "/sessions/open-room?mode=live", actionLabel: "Join now" });
+  });
+
   it("orders live, client requests, repair, follow-up, and preparation deterministically", () => {
     const command = buildQuipslyCoachingPracticeCommand({
       now: NOW,

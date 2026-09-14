@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
-  isEditableSessionNoteKind,
+  isMutableSessionNoteKind,
   isSessionNoteVisibility,
 } from "@/lib/session-note-contract";
 import { getPrismaClient } from "@/lib/prisma";
@@ -59,7 +59,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ noteI
   const expectedUpdatedAt = new Date(text(input.expectedUpdatedAt, 80));
   const requestedKind = input.kind === undefined
     ? null
-    : isEditableSessionNoteKind(input.kind) ? input.kind : undefined;
+    : isMutableSessionNoteKind(input.kind) ? input.kind : undefined;
   const requestedVisibility = input.visibility === undefined
     ? null
     : isSessionNoteVisibility(input.visibility) ? input.visibility : undefined;
@@ -67,7 +67,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ noteI
   const clientRequestId = input.clientRequestId === undefined
     ? null
     : text(input.clientRequestId, 80).toLowerCase();
-  const surface = clientRequestId
+  const surface = clientRequestId && input.surface !== "nest-session-notes"
     ? "ios-capture-session-notes" as const
     : "nest-session-notes" as const;
 

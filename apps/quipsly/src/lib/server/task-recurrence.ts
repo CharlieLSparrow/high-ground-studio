@@ -55,6 +55,7 @@ export async function materializeTaskOccurrence(input: {
   occurrence: TaskOccurrencePlan;
   actorUserId: string;
   reason: TaskOccurrenceMaterializationReason;
+  initialTask?: { id: string; creationCommand: { clientRequestId: string; fingerprint: string; receiptId: string; occurrenceCount: number } };
 }) {
   // Serialize only this series/occurrence identity. A second transaction waits,
   // then reads the receipt committed by the first instead of surfacing a unique
@@ -70,7 +71,7 @@ export async function materializeTaskOccurrence(input: {
   });
   if (existing) return { created: false as const, occurrenceId: existing.id, actionItemId: existing.actionItemId };
 
-  const actionItemId = randomUUID();
+  const actionItemId = input.initialTask?.id ?? randomUUID();
   const occurrenceId = randomUUID();
   const receiptId = randomUUID();
   const receipt = {
@@ -107,6 +108,7 @@ export async function materializeTaskOccurrence(input: {
         recurrenceSeriesId: input.series.id,
         occurrenceKey: input.occurrence.occurrenceKey,
         materializationReceipt: receipt,
+        ...(input.initialTask ? { creationCommand: input.initialTask.creationCommand } : {}),
       },
     },
   });

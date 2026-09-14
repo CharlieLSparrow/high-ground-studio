@@ -121,7 +121,7 @@ describe("Session invitation email", () => {
 
     await expect(
       sendSessionInvitationEmail({
-        recipientEmail: " Client@Example.Test ",
+        recipientEmail: " Delivery-Check@Quipsly.com ",
         recipientName: "Client",
         hostName: "Coach",
         roomTitle: "Values Session",
@@ -143,7 +143,7 @@ describe("Session invitation email", () => {
       "user-agent": "Quipsly/1.0 session-invitations",
     });
     const body = JSON.parse(String(options?.body));
-    expect(body.to).toEqual(["client@example.test"]);
+    expect(body.to).toEqual(["delivery-check@quipsly.com"]);
     expect(body.cc).toBeUndefined();
     expect(body.bcc).toBeUndefined();
     expect(body.text).toContain("phone, tablet, or desktop");
@@ -167,7 +167,7 @@ describe("Session invitation email", () => {
 
     await expect(
       sendSessionInvitationEmail({
-        recipientEmail: "client@example.test",
+        recipientEmail: "delivery-check@quipsly.com",
         roomTitle: "Session",
         joinUrl:
           "https://nest.quipsly.com/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
@@ -180,12 +180,12 @@ describe("Session invitation email", () => {
     });
   });
 
-  it("refuses reserved local recipients before any provider request", async () => {
+  it.each(["fresh-client@dev.test", "client-first@example.test", "client@example.com", "client@host.invalid"])("refuses reserved recipient %s before any provider request", async (recipientEmail) => {
     globalThis.fetch = jest.fn() as typeof fetch;
 
     await expect(
       sendSessionInvitationEmail({
-        recipientEmail: "fresh-client@dev.test",
+        recipientEmail,
         roomTitle: "Local acceptance Session",
         joinUrl:
           "http://127.0.0.1:3012/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
@@ -204,7 +204,7 @@ describe("Session invitation email", () => {
 
     await expect(
       sendSessionInvitationEmail({
-        recipientEmail: "client@example.com",
+        recipientEmail: "delivery-check@quipsly.com",
         roomTitle: "Local recovery rehearsal",
         joinUrl:
           "http://127.0.0.1:3022/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
@@ -225,7 +225,7 @@ describe("Session invitation email", () => {
 
     await expect(
       sendSessionInvitationEmail({
-        recipientEmail: "client@example.com",
+        recipientEmail: "delivery-check@quipsly.com",
         roomTitle: "Public invitation",
         joinUrl:
           "https://nest.quipsly.com/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",

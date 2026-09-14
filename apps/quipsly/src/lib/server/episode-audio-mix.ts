@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import type { Prisma } from "@prisma/client";
@@ -155,7 +155,7 @@ export async function reconcileEpisodeAudioMix(input: { prisma: any; projectSlug
   const result = parseEpisodeAudioMixResult(record(row.resultJson).receipt, proposal);
   const currentSources = await Promise.all(proposal.tracks.map((track) => currentBinding(input.prisma, context.project.id, track.assetId, track.sourceId)));
   if (currentSources.some((source, index) => !sameBinding(source.binding, proposal.tracks[index]!.source))) throw new EpisodeAudioMixError("An exact retained source changed before mix preview registration.", 409, "EPISODE_AUDIO_MIX_SOURCE_DRIFT");
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const verifiedOutputs = await Promise.all([
     verifyOutput(root, result.derivative, "proposal"),
     result.baselineDerivative ? verifyOutput(root, result.baselineDerivative, "baseline") : null,
@@ -183,7 +183,7 @@ export async function loadEpisodeAudioMixReviewContext(input: { prisma: any; pro
   if (proposal.programFingerprintSha256 !== context.program.fingerprintSha256 || stableJson(proposal.activeDecisionReceiptIds) !== stableJson(currentDecisionIds)) throw new EpisodeAudioMixError("The canonical Episode program changed after this mix was rendered. Build and review a new proposal.", 409, "EPISODE_AUDIO_MIX_REVIEW_STALE");
   const currentSources = await Promise.all(proposal.tracks.map((track) => currentBinding(input.prisma, context.project.id, track.assetId, track.sourceId)));
   if (currentSources.some((source, index) => !sameBinding(source.binding, proposal.tracks[index]!.source))) throw new EpisodeAudioMixError("An exact retained source changed after this mix was rendered.", 409, "EPISODE_AUDIO_MIX_REVIEW_SOURCE_DRIFT");
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   await Promise.all([verifyOutput(root, result.derivative, "proposal"), verifyOutput(root, result.baselineDerivative, "baseline")]);
   return { ...context, row, proposal, result, registration };
 }

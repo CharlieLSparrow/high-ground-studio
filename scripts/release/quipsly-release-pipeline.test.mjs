@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -50,6 +52,72 @@ const generatedAdminUserSmoke = fs.readFileSync(
   new URL("../quipsly-generated-admin-user-smoke.mjs", import.meta.url),
   "utf8",
 );
+
+for (const scenario of ["missing-cli", "unset-account", "expired-token", "project-denied"]) {
+  test(`preflight reports ${scenario} without inventing remote configuration failures`, () => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "quipsly-preflight-operator-"));
+    const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+    try {
+      const bin = path.join(fixture, "bin");
+      fs.mkdirSync(bin);
+      for (const command of ["bash", "git", "mktemp", "rm", "cat"]) {
+        const resolved = spawnSync("/bin/bash", ["-c", `command -v ${command}`], { encoding: "utf8" });
+        assert.equal(resolved.status, 0);
+        fs.symlinkSync(resolved.stdout.trim(), path.join(bin, command));
+      }
+      fs.symlinkSync(process.execPath, path.join(bin, "node"));
+      const calls = path.join(fixture, "gcloud-calls");
+      if (scenario !== "missing-cli") {
+        fs.writeFileSync(path.join(bin, "gcloud"), `#!/bin/bash
+printf '%s\\n' "$*" >> "$PREFLIGHT_TEST_CALLS"
+case "$1 $2" in
+  'config get-value')
+    if [[ "$PREFLIGHT_TEST_SCENARIO" == 'unset-account' ]]; then
+      printf '(unset)\\n'
+    else
+      printf 'operator@example.test\\n'
+    fi
+    ;;
+  'auth print-access-token') [[ "$PREFLIGHT_TEST_SCENARIO" != 'expired-token' ]] ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o700 });
+      }
+      const childEnvironment = { ...process.env };
+      // The script launches its own Node test process. Do not let the parent's
+      // runner context silently suppress that child suite.
+      delete childEnvironment.NODE_TEST_CONTEXT;
+      const result = spawnSync("/bin/bash", [path.join(repoRoot, "scripts/release/quipsly-release-preflight.sh")], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        timeout: 30_000,
+        env: {
+          ...childEnvironment,
+          PATH: bin,
+          RELEASE_CONTEXT_DIR: repoRoot,
+          QUIPSLY_PREFLIGHT_PURPOSE: "audit",
+          QUIPSLY_PREFLIGHT_BUILD: "0",
+          PREFLIGHT_TEST_SCENARIO: scenario,
+          PREFLIGHT_TEST_CALLS: calls,
+        },
+      });
+      const output = `${result.stdout}${result.stderr}`;
+      assert.equal(result.status, 1, output);
+      assert.match(output, /the retired owner override cannot participate in Nest runtime authorization/);
+      assert.match(output, /Retired owner override is absent/);
+      assert.match(output, /production build was explicitly skipped/);
+      assert.match(output, /runtime checks were NOT RUN because operator cloud access is unavailable/);
+      assert.match(output, /Preflight failed with 1 blocker/);
+      assert.doesNotMatch(output, /Calendar bearer request URLs can enter|runtime cannot sign|media IAM is incomplete/);
+      if (scenario === "missing-cli") assert.match(output, /gcloud is not on PATH/);
+      if (fs.existsSync(calls)) {
+        assert.doesNotMatch(fs.readFileSync(calls, "utf8"), /run services|iam |get-iam-policy/);
+      }
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+}
 
 test("standalone preflight materializes the committed Nest release context", () => {
   assert.match(preflight, /quipsly-build-context\.sh/);

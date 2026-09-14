@@ -3,11 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import {
-  sessionConversationAccessWhere,
-  sessionMutationAccessWhere,
-} from "@/lib/server/session-access";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
+import { WORK_TAG_LINKS_SELECT } from "@/lib/server/coaching-work-projection";
+import { nestSharedTaskAccessWhere } from "@/lib/server/task-access";
 
 import {
   findStudioProjectForAccess,
@@ -416,50 +414,6 @@ async function loadThread(
     };
   }
 
-  // A Session participant owns access to the meeting thread without receiving
-  // access to the surrounding Nest. Resolve this scope at the CallRoom boundary
-  // first; falling through to project access would make a Session-only invite
-  // either useless or accidentally broader than intended.
-  if (scope.sessionRoomId) {
-    const sessionRoom = await prisma.callRoom.findFirst({
-      where: {
-        ...(action === "write"
-          ? sessionMutationAccessWhere(scope.sessionRoomId, actor)
-          : sessionConversationAccessWhere(scope.sessionRoomId, actor)),
-        project: { is: { slug: projectSlug } },
-      },
-      select: {
-        id: true,
-        title: true,
-        purpose: true,
-        status: true,
-        createdByUserId: true,
-        participants: {
-          where: { userId: actor.id, accessStatus: "ACTIVE" },
-          take: 1,
-          select: { role: true },
-        },
-        project: { select: { id: true, slug: true, name: true } },
-      },
-    });
-    if (!sessionRoom?.project) {
-      return { ok: false as const, status: 404, error: "Session thread is not available." };
-    }
-    const thread = await ensureThread(sessionRoom.project.id, sessionRoom.project.name, scope.key);
-    return {
-      ok: true as const,
-      project: sessionRoom.project,
-      episode: null,
-      sessionRoom,
-      engagement: null,
-      sourceCard: null,
-      thread,
-      access: {
-        role: sessionRoom.participants[0]?.role
-          || (sessionRoom.createdByUserId === actor.id ? "HOST" : "SESSION_PARTICIPANT"),
-      },
-    };
-  }
 
   const access = await resolveStudioProjectAccess({
     projectSlug,
@@ -516,6 +470,7 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("threadKey"),
     request.nextUrl.searchParams.get("episodeSlug"),
   );
+  if (scope.sessionRoomId) return NextResponse.json({ ok: false, code: "SESSION_CONVERSATION_MOVED", error: "Refresh Quipsly to open this Session conversation.", endpoint: `/api/sessions/${scope.sessionRoomId}/conversation` }, { status: 410 });
   const actor = await resolveActor(request);
 
   if (scope.invalidScope) {
@@ -566,6 +521,25 @@ export async function GET(request: NextRequest) {
 
     const hasMore = rawMessages.length > limit;
     const messagesToReturn = rawMessages.slice(0, limit).reverse();
+    // A source link may point behind the latest page. Include that exact
+    // authorized message without changing the normal history cursor.
+    const requestedMessageId = request.nextUrl.searchParams.get("message");
+    if (requestedMessageId && !messagesToReturn.some(message => message.id === requestedMessageId)) {
+      const sourceMessage = await prisma.studioNestChatMessage.findFirst({ where: { ...where, id: requestedMessageId } });
+      if (sourceMessage) messagesToReturn.unshift(sourceMessage);
+    }
+    const includesTaskLinks = Boolean(loaded.engagement || (loaded.thread.key === "default" && actor.id));
+    const linkedTasks = includesTaskLinks && messagesToReturn.length ? await prisma.actionItem.findMany({
+      where: { projectId: loaded.project.id, AND: [
+        ...(loaded.engagement ? [{ engagementId: loaded.engagement.id,
+          sourceJson: { path: ["visibility"], equals: "engagement-shared" } }]
+          : [nestSharedTaskAccessWhere(actor.id!)]),
+        { sourceJson: { path: ["conversationSource", "threadId"], equals: loaded.thread.id } },
+        { OR: messagesToReturn.map(message => ({ sourceJson: { path: ["conversationSource", "messageId"], equals: message.id } })) },
+      ] },
+      orderBy: { createdAt: "desc" }, take: 500,
+      select: { id: true, title: true, status: true, sourceJson: true, tagLinks: WORK_TAG_LINKS_SELECT },
+    }) : [];
 
     return NextResponse.json({
       ok: true,
@@ -590,7 +564,12 @@ export async function GET(request: NextRequest) {
         name: actor.name,
         role: loaded.access.role,
       },
-      messages: messagesToReturn.map(serializeMessage),
+      messages: messagesToReturn.map(message => ({ ...serializeMessage(message),
+        ...(includesTaskLinks ? { linkedTasks: linkedTasks.filter(task =>
+          objectValue(objectValue(task.sourceJson)?.conversationSource)?.messageId === message.id
+          && objectValue(objectValue(task.sourceJson)?.relationshipWorkRemoval)?.active !== true)
+          .map(({ id, title, status, tagLinks }) => ({ id, title, status, tags: (tagLinks ?? []).map(link => link.tag) })) } : {}),
+      })),
     });
   } catch (error) {
     if (isPrismaConnectionPressure(error)) return chatUnavailableResponse();
@@ -605,6 +584,7 @@ export async function POST(request: NextRequest) {
     body.threadKey || request.nextUrl.searchParams.get("threadKey"),
     body.episodeSlug || request.nextUrl.searchParams.get("episodeSlug"),
   );
+  if (scope.sessionRoomId) return NextResponse.json({ ok: false, code: "SESSION_CONVERSATION_MOVED", error: "Refresh Quipsly to send your retained draft to the Session conversation.", endpoint: `/api/sessions/${scope.sessionRoomId}/conversation` }, { status: 410 });
   const message = cleanMessage(body.body);
   const explicitGifUrl = normalizeGifUrl(body.gifUrl);
   const gifUrl = explicitGifUrl || firstGifUrlFromText(message);
@@ -748,10 +728,6 @@ export async function POST(request: NextRequest) {
         ...(scope.episodeSlug ? {
           episodeId: loaded.episode?.id,
           episodeSlug: scope.episodeSlug,
-        } : {}),
-        ...(scope.sessionRoomId ? {
-          callRoomId: loaded.sessionRoom?.id,
-          sessionTitle: loaded.sessionRoom?.title,
         } : {}),
         ...(scope.engagementId ? {
           coachingEngagementId: loaded.engagement?.id,

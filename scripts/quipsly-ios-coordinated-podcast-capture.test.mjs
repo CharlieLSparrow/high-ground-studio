@@ -43,9 +43,9 @@ function check(name, condition) {
 }
 
 check(
-  "Capture exposes a distinct podcast audio plus video mode",
+  "Capture exposes coordinated audio plus video with a purpose-neutral label",
   model.includes("case podcastAV")
-    && model.includes('case .podcastAV: "Podcast audio + video"')
+    && model.includes('case .podcastAV: "Audio + video"')
     && model.includes("self == .audio || self == .podcastAV"),
 );
 check(
@@ -59,7 +59,9 @@ check(
   "live-room audio observes LiveKit local PCM instead of opening a second microphone",
   providerAudio.includes("AudioManager.shared.add(localAudioRenderer: self)")
     && providerAudio.includes("AudioMixRecorder(")
-    && providerAudio.includes("source.render(pcmBuffer: pcmBuffer)")
+    && providerAudio.includes("ProviderAudioPrivacyBuffer.silence(matching: pcmBuffer)")
+    && providerAudio.includes("source.render(pcmBuffer: retainedBuffer)")
+    && providerAudio.includes("liveTranscriptPCMConsumer?(retainedBuffer)")
     && !providerAudio.includes("AVAudioRecorder(")
     && audio.includes("providerInputObservationAvailable"),
 );

@@ -1,12 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
-import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { coachingSpaceTaskWhere, sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
+import { NOTE_SELECT, TASK_SELECT, GOAL_SELECT, notePayload, taskPayload, goalPayload } from "@/lib/server/coaching-work-projection";
+import { coachingWorkPage } from "@/lib/server/coaching-work-page";
+import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
+import { parseWorkTagSelection, replaceWorkEntityTags } from "@/lib/server/work-tags";
 
 export const runtime = "nodejs";
 
@@ -16,6 +20,23 @@ const WORK_SCHEMA = "quipsly-coaching-engagement-work-v1";
 const RECEIPT_LIMIT = 24;
 
 type WorkKind = "NOTE" | "TASK" | "GOAL";
+
+class WorkTagSaveError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
+async function saveWorkTags(tx: Prisma.TransactionClient, work: { id: string; updatedAt: Date },
+  actor: { id: string; primaryEmail?: string | null; email?: string | null },
+  selection: NonNullable<ReturnType<typeof parseWorkTagSelection>>, entityKind: "task" | "goal" | "note") {
+  const result = await replaceWorkEntityTags({
+    prisma: getPrismaClient(), transaction: tx, actorUserId: actor.id,
+    actorEmail: actor.primaryEmail || actor.email || "", entityKind, entityId: work.id,
+    expectedUpdatedAt: work.updatedAt, ...selection,
+  });
+  // Work and tags are one save, including retries after a lost response.
+  if (!result.ok) throw new WorkTagSaveError(result.error,
+    result.code === "CONFLICT" ? 409 : result.code === "NOT_FOUND" ? 404 : 400);
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -95,114 +116,6 @@ function collaborativeNoteWhere(actorUserId: string) {
   };
 }
 
-function notePayload(row: any, actorUserId: string, canWrite = true) {
-  const isAuthor = row.authorUserId === actorUserId;
-  const isShared = ["SESSION_SHARED", "CLIENT_SAFE"].includes(row.visibility);
-  return {
-    id: row.id,
-    kind: "NOTE" as const,
-    title: row.title,
-    body: row.body,
-    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
-    status: null,
-    owner: row.authorUser
-      ? {
-          id: row.authorUserId,
-          label: row.authorUser.name || row.authorUser.primaryEmail,
-        }
-      : null,
-    visibility: row.visibility === "AUTHOR_PRIVATE" ? "PRIVATE" : "SHARED",
-    dueAt: null,
-    canEdit: canWrite && (isAuthor || isShared),
-    canChangeVisibility: canWrite && isAuthor,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function taskPayload(row: any, canWrite = true) {
-  return {
-    id: row.id,
-    kind: "TASK" as const,
-    title: row.title,
-    body: row.detail,
-    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
-    status: String(row.status),
-    owner: row.assignedUser
-      ? {
-          id: row.assignedUserId,
-          label: row.assignedUser.name || row.assignedUser.primaryEmail,
-        }
-      : null,
-    visibility: "SHARED" as const,
-    dueAt: row.dueAt?.toISOString() ?? null,
-    canEdit: canWrite,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function goalPayload(row: any, canWrite = true) {
-  return {
-    id: row.id,
-    kind: "GOAL" as const,
-    title: row.title,
-    body: row.description,
-    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
-    status: String(row.status),
-    owner: {
-      id: row.ownerUserId,
-      label: row.owner.name || row.owner.primaryEmail,
-    },
-    visibility: "SHARED" as const,
-    dueAt: row.targetAt?.toISOString() ?? null,
-    canEdit: canWrite,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-const NOTE_SELECT = {
-  id: true,
-  roomId: true,
-  authorUserId: true,
-  title: true,
-  body: true,
-  visibility: true,
-  createdAt: true,
-  updatedAt: true,
-  sourceJson: true,
-  authorUser: { select: { name: true, primaryEmail: true } },
-} as const;
-
-const TASK_SELECT = {
-  id: true,
-  roomId: true,
-  assignedUserId: true,
-  title: true,
-  detail: true,
-  status: true,
-  dueAt: true,
-  createdAt: true,
-  updatedAt: true,
-  sourceJson: true,
-  assignedUser: { select: { name: true, primaryEmail: true } },
-} as const;
-
-const GOAL_SELECT = {
-  id: true,
-  roomId: true,
-  ownerUserId: true,
-  title: true,
-  description: true,
-  status: true,
-  targetAt: true,
-  createdAt: true,
-  updatedAt: true,
-  sourceJson: true,
-  owner: { select: { name: true, primaryEmail: true } },
-} as const;
-
 function privateJson(value: unknown, status = 200) {
   return NextResponse.json(value, {
     status,
@@ -229,7 +142,10 @@ export async function GET(
   }
 
   const { engagementId } = await context.params;
-  const prisma = getPrismaClient() as any;
+  let paging: ReturnType<typeof coachingWorkPage>;
+  try { paging = coachingWorkPage(new URL(request.url).searchParams, engagementId, session.user.id); }
+  catch { return privateJson({ok: false, code: "INVALID_WORK_QUERY", error: "Refresh this work list and try again."}, 400); }
+  const prisma = getPrismaClient();
   try {
     const [engagement, writable] = await Promise.all([
       prisma.coachingEngagement.findFirst({
@@ -253,25 +169,20 @@ export async function GET(
           },
           notes: {
             where: {
+              ...paging.where("NOTE"),
               OR: [
                 { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
                 { authorUserId: session.user.id },
               ],
             },
-            orderBy: { updatedAt: "desc" },
-            take: 100,
+            orderBy: paging.orderBy,
+            take: paging.take,
             select: NOTE_SELECT,
           },
-          actionItems: {
-            where: sharedCoachingWorkVisibilityWhere(),
-            orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-            take: 100,
-            select: TASK_SELECT,
-          },
           goals: {
-            where: sharedCoachingWorkVisibilityWhere(),
-            orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-            take: 100,
+            where: { ...sharedCoachingWorkVisibilityWhere(), ...paging.where("GOAL") },
+            orderBy: paging.orderBy,
+            take: paging.take,
             select: GOAL_SELECT,
           },
         },
@@ -293,11 +204,15 @@ export async function GET(
       );
     }
 
+    const tasks = await prisma.actionItem.findMany({
+      where: { AND: [coachingSpaceTaskWhere(engagementId, session.user), paging.where("TASK")] },
+      orderBy: paging.orderBy, take: paging.take, select: TASK_SELECT,
+    });
     const entries = [
       ...engagement.notes
         .filter((row: any) => !activeRemoval(row.sourceJson))
         .map((row: any) => notePayload(row, session.user.id, Boolean(writable))),
-      ...engagement.actionItems
+      ...tasks
         .filter((row: any) => !activeRemoval(row.sourceJson))
         .map((row: any) => taskPayload(row, Boolean(writable))),
       ...engagement.goals
@@ -305,6 +220,7 @@ export async function GET(
         .map((row: any) => goalPayload(row, Boolean(writable))),
     ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
+    const page = paging.result(entries);
     return privateJson({
       ok: true,
       engagement: {
@@ -318,7 +234,8 @@ export async function GET(
           label: member.user?.name || member.user?.primaryEmail || "Member",
           role: member.role,
         })),
-        entries,
+        entries: page.entries,
+        page: page.page,
       },
       boundaries: {
         canonicalEngagementRecords: true,
@@ -351,6 +268,14 @@ export async function POST(
   const input = record(await request.json().catch(() => ({})));
   const workKind = kind(input.kind);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+  const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
+  if (input.tags !== undefined && !tagSelection) {
+    return NextResponse.json({ ok: false, error: "Choose up to 24 tags." }, { status: 400 });
+  }
+  const sourceMessageId = input.sourceMessageId == null ? null : input.sourceMessageId;
+  if (sourceMessageId !== null && (typeof sourceMessageId !== "string" || !/^[a-zA-Z0-9_-]{1,240}$/.test(sourceMessageId))) {
+    return NextResponse.json({ ok: false, error: "This conversation message is not available." }, { status: 400 });
+  }
   const title = text(input.title, 500);
   const detail = text(input.body, 20_000, true);
   const ownerUserId = text(input.ownerUserId, 240) || session.user.id;
@@ -376,7 +301,7 @@ export async function POST(
     );
   }
 
-  const prisma = getPrismaClient() as any;
+  const prisma = getPrismaClient();
   const id = stableId(session.user.id, clientRequestId, workKind);
   const fingerprint = createHash("sha256")
     .update(
@@ -388,12 +313,14 @@ export async function POST(
         ownerUserId,
         targetAt: targetAt?.toISOString() ?? null,
         noteVisibility,
+        ...(sourceMessageId ? { sourceMessageId } : {}),
+        ...(tagSelection ? { tags: tagSelection } : {}),
       }),
     )
     .digest("hex");
 
   try {
-    const result = await prisma.$transaction(
+    const result = await retryCoachingWorkTransaction(() => prisma.$transaction(
       async (tx: any) => {
         const engagement = await tx.coachingEngagement.findFirst({
           where: coachingEngagementAccessWhere(
@@ -411,6 +338,12 @@ export async function POST(
           },
         });
         if (!engagement) return { kind: "unavailable" as const };
+        const sourceMessage = sourceMessageId ? await tx.studioNestChatMessage.findFirst({
+          where: { id: sourceMessageId, projectId: engagement.projectId,
+            thread: { projectId: engagement.projectId, key: `engagement:${engagementId}` } },
+          select: { id: true, threadId: true, body: true, updatedAt: true },
+        }) : null;
+        if (sourceMessageId && !sourceMessage) return { kind: "unavailable" as const };
         const memberIds = new Set(
           engagement.members.map((member: { userId: string }) => member.userId),
         );
@@ -424,7 +357,12 @@ export async function POST(
           clientRequestId,
           requestFingerprint: fingerprint,
           createdByUserId: session.user.id,
-          origin: "in-product-create",
+          origin: sourceMessage ? "conversation" : "in-product-create",
+          ...(sourceMessage ? { conversationSource: {
+            schema: "quipsly-conversation-work-v1", engagementId, messageId: sourceMessage.id,
+            threadId: sourceMessage.threadId, excerpt: sourceMessage.body,
+            messageUpdatedAt: sourceMessage.updatedAt.toISOString(),
+          } } : {}),
           visibility:
             workKind === "NOTE" && noteVisibility === "AUTHOR_PRIVATE"
               ? "author-private"
@@ -478,9 +416,10 @@ export async function POST(
             },
             select: NOTE_SELECT,
           });
+          if (tagSelection) await saveWorkTags(tx, created, session.user, tagSelection, "note");
           return {
             kind: "saved" as const,
-            entry: notePayload(created, session.user.id),
+            entry: notePayload(tagSelection ? await tx.coachingNote.findUniqueOrThrow({ where: { id }, select: NOTE_SELECT }) : created, session.user.id),
             replay: false,
           };
         }
@@ -514,9 +453,10 @@ export async function POST(
             },
             select: TASK_SELECT,
           });
+          if (tagSelection) await saveWorkTags(tx, created, session.user, tagSelection, "task");
           return {
             kind: "saved" as const,
-            entry: taskPayload(created),
+            entry: taskPayload(tagSelection ? await tx.actionItem.findUniqueOrThrow({ where: { id }, select: TASK_SELECT }) : created),
             replay: false,
           };
         }
@@ -548,14 +488,15 @@ export async function POST(
           },
           select: GOAL_SELECT,
         });
+        if (tagSelection) await saveWorkTags(tx, created, session.user, tagSelection, "goal");
         return {
           kind: "saved" as const,
-          entry: goalPayload(created),
+          entry: goalPayload(tagSelection ? await tx.goal.findUniqueOrThrow({ where: { id }, select: GOAL_SELECT }) : created),
           replay: false,
         };
       },
       { isolationLevel: "Serializable" },
-    );
+    ));
 
     if (result.kind === "unavailable") {
       return NextResponse.json(
@@ -601,6 +542,7 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (error instanceof WorkTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("Coaching engagement work creation failed", error);
     return NextResponse.json(
       { ok: false, error: "Quipsly could not save this coaching work." },
@@ -624,12 +566,22 @@ export async function PATCH(
   const input = record(await request.json().catch(() => ({})));
   const workKind = kind(input.kind);
   const id = text(input.id, 240);
+  const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
+  const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+  if ((input.tags !== undefined && !tagSelection) || (clientRequestId && !REQUEST_ID.test(clientRequestId))) {
+    return NextResponse.json({ ok: false, error: "Choose valid tags and retry this save." }, { status: 400 });
+  }
   const title = text(input.title, 500);
   const detail = text(input.body, 20_000, true);
   const ownerUserId = text(input.ownerUserId, 240);
   const expectedUpdatedAt = new Date(text(input.expectedUpdatedAt, 100));
   const requestedStatus = text(input.status, 40).toUpperCase();
   const targetAt = optionalDate(input.targetAt);
+  const requestFingerprint = createHash("sha256").update(JSON.stringify({
+    engagementId, workKind, id, title, detail, ownerUserId, requestedStatus,
+    targetAt, ...(workKind === "NOTE" ? { visibility: text(input.visibility, 20).toUpperCase() === "PRIVATE" ? "AUTHOR_PRIVATE" : "SESSION_SHARED" } : {}),
+    ...(tagSelection ? { tags: tagSelection } : {}),
+  })).digest("hex");
   if (
     !workKind ||
     !id ||
@@ -656,9 +608,9 @@ export async function PATCH(
     );
   }
 
-  const prisma = getPrismaClient() as any;
+  const prisma = getPrismaClient();
   try {
-    const result = await prisma.$transaction(
+    const result = await retryCoachingWorkTransaction(() => prisma.$transaction(
       async (tx: any) => {
         const engagement = await tx.coachingEngagement.findFirst({
           where: coachingEngagementAccessWhere(
@@ -688,7 +640,6 @@ export async function PATCH(
               id,
               engagementId,
               ...collaborativeNoteWhere(session.user.id),
-              updatedAt: expectedUpdatedAt,
             },
             select: {
               ...NOTE_SELECT,
@@ -697,6 +648,13 @@ export async function PATCH(
             },
           });
           if (!current) return { kind: "conflict" as const };
+          const source = record(current.sourceJson);
+          const replay = clientRequestId && priorReceipts(source).map(record).find(receipt =>
+            receipt.clientRequestId === clientRequestId && receipt.actorUserId === session.user.id);
+          if (replay) return replay.requestFingerprint === requestFingerprint
+            ? { kind: "saved" as const, entry: notePayload(current, session.user.id) }
+            : { kind: "conflict" as const };
+          if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { kind: "conflict" as const };
           const visibility =
             text(input.visibility, 20).toUpperCase() === "PRIVATE"
               ? "AUTHOR_PRIVATE"
@@ -713,6 +671,10 @@ export async function PATCH(
               title,
               body: detail || title,
               visibility,
+              sourceJson: { ...source, editReceipts: [...priorReceipts(source), {
+                id: randomUUID(), actorUserId: session.user.id, clientRequestId: clientRequestId || null,
+                requestFingerprint, changedAt: new Date().toISOString(),
+              }] },
               revisions: {
                 create: {
                   id: randomUUID(),
@@ -730,28 +692,39 @@ export async function PATCH(
             },
             select: NOTE_SELECT,
           });
+          if (tagSelection) await saveWorkTags(tx, updated, session.user, tagSelection, "note");
           return {
             kind: "saved" as const,
-            entry: notePayload(updated, session.user.id),
+            entry: notePayload(tagSelection ? await tx.coachingNote.findUniqueOrThrow({ where: { id }, select: NOTE_SELECT }) : updated, session.user.id),
           };
         }
 
         const current =
           workKind === "TASK"
             ? await tx.actionItem.findFirst({
-                where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                where: { id, ...coachingSpaceTaskWhere(engagementId, session.user, "write") },
                 select: { ...TASK_SELECT, sourceJson: true },
               })
             : await tx.goal.findFirst({
-                where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                where: { id, engagementId, ...sharedCoachingWorkVisibilityWhere() },
                 select: { ...GOAL_SELECT, sourceJson: true },
               });
         if (!current) return { kind: "conflict" as const };
+        if (workKind === "TASK" && current.engagementId === null && ownerUserId !== current.assignedUserId) {
+          return { kind: "private-task-owner" as const };
+        }
         const source = record(current.sourceJson);
+        const replay = clientRequestId && priorReceipts(source).map(record).find(receipt =>
+          receipt.clientRequestId === clientRequestId && receipt.actorUserId === session.user.id);
+        if (replay) return replay.requestFingerprint === requestFingerprint
+          ? { kind: "saved" as const, entry: workKind === "TASK" ? taskPayload(current) : goalPayload(current) }
+          : { kind: "conflict" as const };
+        if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { kind: "conflict" as const };
         const editReceipt = {
           id: randomUUID(),
           schema: "quipsly-coaching-engagement-work-edit-v1",
           actorUserId: session.user.id,
+          ...(clientRequestId ? { clientRequestId, requestFingerprint } : {}),
           changedAt: new Date().toISOString(),
           previous: {
             title: current.title,
@@ -794,7 +767,8 @@ export async function PATCH(
             },
             select: TASK_SELECT,
           });
-          return { kind: "saved" as const, entry: taskPayload(updated) };
+          if (tagSelection) await saveWorkTags(tx, updated, session.user, tagSelection, "task");
+          return { kind: "saved" as const, entry: taskPayload(tagSelection ? await tx.actionItem.findUniqueOrThrow({ where: { id }, select: TASK_SELECT }) : updated) };
         }
         const updated = await tx.goal.update({
           where: { id },
@@ -809,10 +783,11 @@ export async function PATCH(
           },
           select: GOAL_SELECT,
         });
-        return { kind: "saved" as const, entry: goalPayload(updated) };
+        if (tagSelection) await saveWorkTags(tx, updated, session.user, tagSelection, "goal");
+        return { kind: "saved" as const, entry: goalPayload(tagSelection ? await tx.goal.findUniqueOrThrow({ where: { id }, select: GOAL_SELECT }) : updated) };
       },
       { isolationLevel: "Serializable" },
-    );
+    ));
 
     if (result.kind === "unavailable") {
       return NextResponse.json(
@@ -831,6 +806,9 @@ export async function PATCH(
         },
         { status: 400 },
       );
+    }
+    if (result.kind === "private-task-owner") {
+      return NextResponse.json({ ok: false, error: "This task is only visible to you. Its owner cannot be changed here." }, { status: 403 });
     }
     if (result.kind === "private-author-required") {
       return NextResponse.json(
@@ -857,6 +835,7 @@ export async function PATCH(
       },
     });
   } catch (error) {
+    if (error instanceof WorkTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("Coaching engagement work update failed", error);
     return NextResponse.json(
       { ok: false, error: "Quipsly could not update this coaching work." },
@@ -916,7 +895,7 @@ export async function DELETE(
               })
             : workKind === "TASK"
               ? await tx.actionItem.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                  where: { id, updatedAt: expectedUpdatedAt, ...coachingSpaceTaskWhere(engagementId, session.user, "write") },
                   select: TASK_SELECT,
                 })
               : await tx.goal.findFirst({
@@ -1068,7 +1047,7 @@ export async function PUT(
               })
             : workKind === "TASK"
               ? await tx.actionItem.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                  where: { id, updatedAt: expectedUpdatedAt, ...coachingSpaceTaskWhere(engagementId, session.user, "write") },
                   select: TASK_SELECT,
                 })
               : await tx.goal.findFirst({

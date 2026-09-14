@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import path from "node:path";
 
 import { Prisma, type Prisma as PrismaTypes } from "@prisma/client";
@@ -146,7 +146,7 @@ export async function reconcileAudioDelivery(input: Coordinates) {
   const result = parseAudioDeliveryResult(object(row.resultJson).receipt, job);
   const candidateEvidence = await inspectImmutableStudioMediaSource(context.previewPath, "audio/wav");
   if (candidateEvidence.sha256 !== job.source.sha256 || candidateEvidence.sizeBytes !== job.source.sizeBytes) throw new AudioDeliveryError("The promoted master changed before delivery registration.", 409, "AUDIO_DELIVERY_CANDIDATE_DRIFT");
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const outputPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.output.locator));
   if (!outputPath) throw new AudioDeliveryError("The delivery artifact escaped the authorized media root.", 409, "AUDIO_DELIVERY_OUTPUT_HELD");
   const [outputStat, outputEvidence] = await Promise.all([stat(outputPath), inspectImmutableStudioMediaSource(outputPath, "audio/mp4")]);
@@ -324,7 +324,7 @@ async function loadPromotedCandidate(input: Coordinates) {
   const derivative = context.result.derivative!;
   if (!promotion || promotion.operation !== "PROMOTE" || promotion.masteryJobId !== context.job.jobId || promotion.reviewReceiptId == null || promotion.previewSha256 !== derivative.sha256) throw new AudioDeliveryError("Delivery encoding requires the current exact promoted mastering candidate.", 409, "AUDIO_DELIVERY_ACTIVE_PROMOTION_REQUIRED");
   if (!latestMasterReview || latestMasterReview.id !== promotion.reviewReceiptId || latestMasterReview.decision !== "APPROVED" || latestMasterReview.previewSha256 !== derivative.sha256) throw new AudioDeliveryError("The promoted candidate is held because its approval is no longer the latest listening decision.", 409, "AUDIO_DELIVERY_PROMOTION_APPROVAL_STALE");
-  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || defaultLocalMediaRoot());
   const previewPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, derivative.locator));
   if (!previewPath) throw new AudioDeliveryError("The promoted candidate has no authorized byte location.", 409, "AUDIO_DELIVERY_CANDIDATE_UNAVAILABLE");
   const evidence = await inspectImmutableStudioMediaSource(previewPath, "audio/wav");

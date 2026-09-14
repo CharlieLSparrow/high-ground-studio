@@ -1,9 +1,24 @@
 export const SESSION_NOTE_KINDS = [
+  "SUMMARY",
+  "HIGHLIGHT",
   "SESSION_NOTE",
   "FOLLOW_UP",
   "DECISION",
   "PRODUCTION",
 ] as const;
+
+// Generated notes use the same editor and revisions, but cannot be manufactured
+// by changing a regular note's type or selected in the new-note composer.
+export const MUTABLE_SESSION_NOTE_KINDS = [
+  "SUMMARY", "HIGHLIGHT", "SESSION_NOTE", "DECISION", "PRODUCTION",
+] as const;
+export type MutableSessionNoteKind = typeof MUTABLE_SESSION_NOTE_KINDS[number];
+export function isMutableSessionNoteKind(value: unknown): value is MutableSessionNoteKind {
+  return MUTABLE_SESSION_NOTE_KINDS.includes(value as MutableSessionNoteKind);
+}
+export function isGeneratedSessionNoteKind(value: unknown) {
+  return value === "SUMMARY" || value === "HIGHLIGHT";
+}
 
 export const EDITABLE_SESSION_NOTE_KINDS = [
   "SESSION_NOTE",

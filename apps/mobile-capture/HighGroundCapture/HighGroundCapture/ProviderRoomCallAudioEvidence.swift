@@ -101,14 +101,38 @@ enum ProviderRoomCallAudioEvidence {
 }
 
 enum ProviderRoomParticipantPresence {
-    static func label(remoteParticipantCount: Int) -> String {
-        switch max(0, remoteParticipantCount) {
-        case 0:
-            "Waiting for others"
-        case 1:
-            "2 people here"
-        default:
-            "\(remoteParticipantCount + 1) people here"
+    /// Presentation only: endpoints keep their own media and consent state.
+    static func label(personKeys: [String]) -> String {
+        let count = Set(personKeys).count
+        guard count > 1 else { return "Waiting for others" }
+        let devices = personKeys.count > count ? " · \(personKeys.count) devices" : ""
+        return "\(count) people here\(devices)"
+    }
+
+}
+
+struct ProviderRoomEndpointIdentity: Equatable {
+    let personKey: String
+    let deviceLabel: String
+    let isCompanion: Bool
+
+    init(endpointID: String, metadata: String?) {
+        let object = metadata?.data(using: .utf8).flatMap {
+            (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+        } ?? [:]
+        func text(_ key: String) -> String {
+            (object[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         }
+        let room = text("callRoomId"), participant = text("participantId")
+        if !room.isEmpty, !participant.isEmpty,
+           let data = try? JSONSerialization.data(withJSONObject: [room, participant]),
+           let key = String(data: data, encoding: .utf8) {
+            personKey = key
+        } else { personKey = "endpoint:\(endpointID)" }
+        let label = String(text("deviceLabel").prefix(80))
+        deviceLabel = label.isEmpty
+            ? (text("clientKind") == "web" ? "Browser" : text("clientKind") == "ios" ? "iPhone or iPad" : "Device")
+            : label
+        isCompanion = text("endpointRole") == "companion"
     }
 }

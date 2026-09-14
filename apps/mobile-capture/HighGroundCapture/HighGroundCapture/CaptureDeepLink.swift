@@ -7,6 +7,26 @@ enum CaptureDeepLinkMode: String, Equatable {
     case review
 }
 
+/// Resolves a canonical work source inside the current client space. The chat
+/// API still authorizes both the thread and the requested message.
+struct CaptureConversationWorkLink: Hashable {
+    let messageID: String
+
+    init?(href: String, engagementID: String) {
+        guard let components = URLComponents(string: href),
+              components.scheme == nil, components.host == nil,
+              components.path == "/coaching/engagements/\(engagementID)",
+              components.fragment == "relationship-conversation",
+              let query = components.queryItems, query.count == 1,
+              query[0].name == "message", let messageID = query[0].value,
+              !messageID.isEmpty, messageID.utf8.count <= 240,
+              messageID.unicodeScalars.allSatisfy({
+                  CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_").contains($0)
+              }) else { return nil }
+        self.messageID = messageID
+    }
+}
+
 /// The same relative source link returned to web and Capture. It only chooses
 /// a native transcript destination; the signed-in API still authorizes its read.
 struct CaptureTranscriptWorkLink: Hashable {

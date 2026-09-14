@@ -1,5 +1,5 @@
+import { prepareLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 import { mkdir, realpath, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -516,17 +516,11 @@ function assertResolved(
 }
 
 async function authorizedRoot(configuredRoot: string) {
-  const temporaryRoot = await realpath(tmpdir());
-  const resolved = path.resolve(configuredRoot);
-  await mkdir(resolved, { recursive: true, mode: 0o700 });
-  const canonical = await realpath(resolved);
-  if (!pathIsInside(temporaryRoot, canonical) || canonical === temporaryRoot) {
-    throw new SourceAudioNavigationTerminalError(
-      "source-audio-navigation-root-rejected",
-      "The local media root must be a dedicated directory below the operating-system temporary directory.",
-    );
+  try {
+    return await prepareLocalMediaRoot(configuredRoot);
+  } catch {
+    throw new SourceAudioNavigationTerminalError("source-audio-navigation-root-rejected", "Local media requires a dedicated persistent workspace or isolated test directory.");
   }
-  return canonical;
 }
 
 async function authorizedExistingPath(root: string, candidate: string) {

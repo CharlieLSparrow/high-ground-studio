@@ -641,7 +641,7 @@ struct MobileEpisodeManuscriptCard: View {
     }
 }
 
-private struct MobileEpisodeManuscriptReader: View {
+struct MobileEpisodeManuscriptReader: View {
     @ObservedObject var client: MobileEpisodeManuscriptClient
     let session: MobileCaptureSession
     let previewOnly: Bool
@@ -694,6 +694,7 @@ private struct MobileEpisodeManuscriptReader: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("CaptureEpisodeManuscriptDone")
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     if !previewOnly, let editorURL = client.editorURL(for: session) {

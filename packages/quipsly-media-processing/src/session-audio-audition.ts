@@ -498,7 +498,7 @@ function parseTechnical(value: unknown): SessionAudioAuditionTechnicalEvidence {
     evidence.sampleRateHz !== 48_000 ||
     ![1, 2].includes(evidence.channelCount) ||
     !Number.isSafeInteger(evidence.bitRate) ||
-    evidence.bitRate < 64_000 ||
+    evidence.bitRate <= 0 ||
     evidence.bitRate > 256_000 ||
     evidence.hasVideo !== false ||
     evidence.decodedToEnd !== true

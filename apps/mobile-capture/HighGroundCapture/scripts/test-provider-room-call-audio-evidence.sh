@@ -8,7 +8,14 @@ trap 'rm -rf "$temporary_root"' EXIT
 xcrun swiftc \
   "$capture_root/HighGroundCapture/CaptureAudioSoundCheckModel.swift" \
   "$capture_root/HighGroundCapture/ProviderRoomCallAudioEvidence.swift" \
+  "$capture_root/HighGroundCapture/ProviderAudioPCMLevels.swift" \
   "$capture_root/Testing/ProviderRoomCallAudioEvidenceHarness.swift" \
   -o "$temporary_root/ProviderRoomCallAudioEvidenceHarness"
 
 "$temporary_root/ProviderRoomCallAudioEvidenceHarness"
+
+xcrun swiftc \
+  "$capture_root/HighGroundCapture/CaptureCallLifecycle.swift" \
+  "$capture_root/Testing/CaptureCallLifecycleHarness.swift" \
+  -o "$temporary_root/CaptureCallLifecycleHarness"
+"$temporary_root/CaptureCallLifecycleHarness"

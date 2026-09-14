@@ -42,6 +42,9 @@
     "validation": {
       "prefixes": [
         "scripts/release/quipsly-cloud-run-capability-readback",
+        "scripts/hgo-quipsly-",
+        "scripts/ci/pr-contract-lane",
+        "scripts/ci/verify-required-jest-results",
         "scripts/ci/plan-changed-surfaces"
       ],
       "files": [

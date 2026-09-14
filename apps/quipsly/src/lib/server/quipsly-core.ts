@@ -645,11 +645,13 @@ export async function grantNestAccess(input: {
       projectId: project.id,
       email,
       role: input.role ?? "VIEWER",
+      memberUserId: invitedUser.id,
       createdByEmail: input.invitedByEmail ?? null,
       note: input.note ?? null,
     },
     update: {
       role: input.role ?? undefined,
+      memberUserId: invitedUser.id,
       status: "ACTIVE",
       createdByEmail: input.invitedByEmail ?? undefined,
       note: input.note ?? undefined,

@@ -1,14 +1,16 @@
 "use client";
+import { SessionRecordingAudio } from "@/components/session-recording-audio";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Clock3, DatabaseZap, ShieldAlert } from "lucide-react";
 
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 import { buildSessionFinishingCockpit, type SessionFinishingEvidence } from "./session-finishing-cockpit";
 import { buildSessionSourceJourneyProjection, type SessionSourceJourney, type SessionSourceJourneyCheckpoint } from "./session-source-journey";
+import { useRecordingToolsActive } from "./session-recordings-workspace";
 
 type Props = {
   roomId: string;
@@ -68,20 +70,24 @@ function checkpointAction(input: {
 
 export function SessionFinishingCockpitCard(props: Props) {
   const router = useRouter();
+  const active = useRecordingToolsActive();
+  const [openedSourceID, setOpenedSourceID] = useState<string | null>(null);
+  useEffect(() => { if (!active) setOpenedSourceID(null); }, [active]);
   const cockpit = buildSessionFinishingCockpit(props);
   const sourceJourney = buildSessionSourceJourneyProjection(props);
   const shouldRefresh = sourceJourney.counts.attention === 0
     && sourceJourney.counts.inProgress > 0;
   useEffect(() => {
-    if (!shouldRefresh) return;
+    if (!active || !shouldRefresh) return;
     let attempts = 0;
     const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       attempts += 1;
       router.refresh();
       if (attempts >= 24) window.clearInterval(interval);
     }, 5_000);
     return () => window.clearInterval(interval);
-  }, [props.roomId, router, shouldRefresh]);
+  }, [active, props.roomId, router, shouldRefresh]);
   const protectedSourceCount = props.sourceEvidence.counts.VERIFIED_MATCH;
   const completedTranscriptCount = props.finishingEvidence.transcriptJobs.filter(
     (job) => job.readiness ? job.readiness.state === "READY" : job.status === "COMPLETED" && job.segmentCount > 0,
@@ -138,7 +144,10 @@ export function SessionFinishingCockpitCard(props: Props) {
       <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3"><dt className="text-[9px] font-black uppercase tracking-wide text-violet-800">Edit & share</dt><dd className="mt-1 text-sm font-black text-violet-950">{protectedSourceCount > 0 ? "Available here" : "After recording"}</dd></div>
     </dl>
 
-    <details className="mt-5 rounded-2xl border border-slate-200 bg-white/70 p-4">
+    <details className="mt-5 rounded-2xl border border-slate-200 bg-white/70 p-4"
+      onToggle={event => {
+        if (event.target === event.currentTarget && !event.currentTarget.open) setOpenedSourceID(null);
+      }}>
       <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-violet-900">Recording details</summary>
       <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">Technical source, transcript, editor, and delivery evidence. Most people never need this; it remains available for support, recovery, and professional review.</p>
 
@@ -180,11 +189,18 @@ export function SessionFinishingCockpitCard(props: Props) {
           </div>
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold leading-5 text-slate-700">{journey.summary}</p>
           {journey.protectedPlayback ? <div className="mt-3 rounded-2xl border border-sky-200 bg-white p-3">
-            <p className="mb-2 text-[9px] font-black uppercase tracking-wide text-sky-800">Protected source player</p>
+            <button type="button" aria-expanded={active && openedSourceID === journey.id}
+              onClick={() => setOpenedSourceID(current => current === journey.id ? null : journey.id)}
+              className="min-h-11 rounded-full border border-quipsly-divider px-4 text-sm font-semibold text-quipsly-ink">
+              {openedSourceID === journey.id ? "Close source player" : "Listen to original recording"}
+            </button>
+            {active && openedSourceID === journey.id ? <>
+            <p className="mb-2 mt-3 text-[9px] font-black uppercase tracking-wide text-sky-800">Protected source player</p>
             {journey.protectedPlayback.kind === "video"
               ? <video controls preload="metadata" className="max-h-80 w-full rounded-xl bg-black" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</video>
-              : <audio controls preload="metadata" className="w-full" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</audio>}
-            <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-600">This authenticated route is bound to the retained source. Playing it here is the runtime listening or viewing check; the original remains unchanged.</p>
+              : <SessionRecordingAudio controls preload="metadata" className="w-full" src={journey.protectedPlayback.url}>Your browser cannot play this recording.</SessionRecordingAudio>}
+            <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-600">Listen to this source on its own. Your original recording stays unchanged.</p>
+            </> : null}
           </div> : null}
           <ol className="mt-3 grid gap-2 md:grid-cols-6" aria-label={`${journey.label} source checkpoints`}>
             {journey.checkpoints.map((checkpoint) => {

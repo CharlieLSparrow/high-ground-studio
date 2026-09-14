@@ -6,11 +6,19 @@ const subscribe = () => () => {};
 
 type LocalDateTimeProps = {
   value: string;
-  mode?: "date" | "date-time" | "time";
+  mode?: "date" | "date-time" | "time" | "appointment";
   className?: string;
 };
 
+const appointmentFormat: Intl.DateTimeFormatOptions = {
+  weekday: "short", month: "short", day: "numeric",
+  hour: "numeric", minute: "2-digit", timeZoneName: "short",
+};
+
 function formatUtc(date: Date, mode: NonNullable<LocalDateTimeProps["mode"]>) {
+  if (mode === "appointment") return new Intl.DateTimeFormat("en-US", {
+    ...appointmentFormat, timeZone: "UTC",
+  }).format(date);
   return new Intl.DateTimeFormat("en-US", mode === "date"
     ? {
         year: "numeric",
@@ -38,6 +46,7 @@ function formatUtc(date: Date, mode: NonNullable<LocalDateTimeProps["mode"]>) {
 }
 
 function formatLocal(date: Date, mode: NonNullable<LocalDateTimeProps["mode"]>) {
+  if (mode === "appointment") return new Intl.DateTimeFormat(undefined, appointmentFormat).format(date);
   return mode === "date"
     ? date.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })
     : mode === "time"

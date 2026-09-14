@@ -600,6 +600,15 @@ if (jsonOutput) {
   for (const check of checks) {
     const marker = check.status === "pass" ? "PASS" : "FAIL";
     console.log(`${marker} ${check.id}: ${check.summary}`);
+    if (check.status !== "pass") {
+      // Child source reports can be longer than retained stdout. Print their
+      // failed assertions, not only the optimistic parent description.
+      for (const failure of check.payload?.checks ?? []) {
+        if (failure.status !== "fail") continue;
+        console.log(`  - ${failure.id ?? failure.name}: ${failure.summary}`);
+      }
+      console.log(`  Reproduce: ${check.command}`);
+    }
   }
   if (report.deployBlocked) {
     console.log("Deploy blocked by:");

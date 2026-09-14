@@ -124,6 +124,7 @@ function publicTag(tag: any) {
     slug: String(tag?.slug || ""),
     label: String(tag?.label || ""),
     isActive: tag?.isActive !== false,
+    hexColor: typeof tag?.hexColor === "string" ? tag.hexColor : null,
   };
 }
 
@@ -158,7 +159,7 @@ function voiceWritingDocumentInclude() {
         tags: {
           where: { isActive: true, mergedIntoTagId: null },
           orderBy: [{ label: "asc" }, { id: "asc" }],
-          select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+          select: { id: true, projectId: true, slug: true, label: true, isActive: true, hexColor: true },
         },
       },
     },
@@ -166,7 +167,7 @@ function voiceWritingDocumentInclude() {
     tagLinks: {
       orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
       select: {
-        tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
+        tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true, hexColor: true } },
       },
     },
     documentOperations: {
@@ -735,31 +736,7 @@ export async function POST(request: Request) {
   const commit = () => prisma.$transaction(async (tx: any) => {
     const existing = await tx.studioDocument.findUnique({
       where: { id: documentId },
-      include: {
-        project: {
-          select: {
-            name: true,
-            slug: true,
-            tags: {
-              where: { isActive: true, mergedIntoTagId: null },
-              orderBy: [{ label: "asc" }, { id: "asc" }],
-              select: { id: true, projectId: true, slug: true, label: true, isActive: true },
-            },
-          },
-        },
-        blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
-        tagLinks: {
-          orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
-          select: {
-            tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
-          },
-        },
-        documentOperations: {
-          where: { operationType: "mobile-voice-writing-sync" },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 1,
-        },
-      },
+      include: voiceWritingDocumentInclude(),
     });
 
     if (!existing) {
@@ -836,31 +813,7 @@ export async function POST(request: Request) {
             },
           },
         },
-        include: {
-          project: {
-            select: {
-              name: true,
-              slug: true,
-              tags: {
-                where: { isActive: true, mergedIntoTagId: null },
-                orderBy: [{ label: "asc" }, { id: "asc" }],
-                select: { id: true, projectId: true, slug: true, label: true, isActive: true },
-              },
-            },
-          },
-          blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
-          tagLinks: {
-            orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
-            select: {
-              tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
-            },
-          },
-          documentOperations: {
-            where: { operationType: "mobile-voice-writing-sync" },
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-            take: 1,
-          },
-        },
+        include: voiceWritingDocumentInclude(),
       });
       return { kind: "saved" as const, document, serverRevision: input.localRevision, idempotentReplay: false };
     }
@@ -947,31 +900,7 @@ export async function POST(request: Request) {
     });
     const document = await tx.studioDocument.findUniqueOrThrow({
       where: { id: documentId },
-      include: {
-        project: {
-          select: {
-            name: true,
-            slug: true,
-            tags: {
-              where: { isActive: true, mergedIntoTagId: null },
-              orderBy: [{ label: "asc" }, { id: "asc" }],
-              select: { id: true, projectId: true, slug: true, label: true, isActive: true },
-            },
-          },
-        },
-        blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
-        tagLinks: {
-          orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
-          select: {
-            tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
-          },
-        },
-        documentOperations: {
-          where: { operationType: "mobile-voice-writing-sync" },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 1,
-        },
-      },
+      include: voiceWritingDocumentInclude(),
     });
     return { kind: "saved" as const, document, serverRevision: input.localRevision, idempotentReplay: false };
   }, { isolationLevel: "Serializable" });

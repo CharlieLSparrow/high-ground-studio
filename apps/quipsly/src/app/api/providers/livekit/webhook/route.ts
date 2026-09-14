@@ -6,6 +6,7 @@ import {
   ProviderRecordingCommandError,
 } from "@/lib/server/provider-recording-command";
 import { verifyLiveKitWebhook } from "@/lib/server/livekit-egress-provider";
+import { reconcileLiveKitParticipantJoin } from "@/lib/server/session-access-reconciliation";
 
 export const runtime = "nodejs";
 
@@ -41,13 +42,26 @@ export async function POST(request: Request) {
     );
   }
 
+  let evidence;
   try {
-    const evidence = await verifyLiveKitWebhook({
+    evidence = await verifyLiveKitWebhook({
       rawBody,
       authorization,
       apiKey: environment.apiKey,
       apiSecret: environment.apiSecret,
     });
+  } catch {
+    return NextResponse.json(
+      { ok: false, code: "INVALID_LIVEKIT_WEBHOOK", error: "LiveKit webhook signature or payload could not be verified." },
+      { status: 401 },
+    );
+  }
+  try {
+    const access = await reconcileLiveKitParticipantJoin(evidence);
+    if (access) {
+      const pending = access.status === "FAILED" || access.status === "BLOCKED";
+      return NextResponse.json({ ok: !pending, access }, { status: pending ? 503 : 200 });
+    }
     const result = await applyLiveKitProviderWebhook({ evidence });
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
@@ -58,8 +72,8 @@ export async function POST(request: Request) {
       );
     }
     return NextResponse.json(
-      { ok: false, code: "INVALID_LIVEKIT_WEBHOOK", error: "LiveKit webhook signature or payload could not be verified." },
-      { status: 401 },
+      { ok: false, code: "LIVEKIT_WEBHOOK_RETRY", error: "LiveKit event handling did not complete. Retry delivery." },
+      { status: 503 },
     );
   }
 }

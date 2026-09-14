@@ -1,6 +1,13 @@
 export const SESSION_PROTECTED_PLAYBACK_SCHEMA =
   "quipsly-session-protected-playback-v1" as const;
 
+/** Native CAF masters need a browser-compatible listening copy, just as
+ * video sources need an audio-only copy. The original remains source truth. */
+export function sessionRecordingNeedsAudioDerivative(contentType: string): boolean {
+  const mime = contentType.split(";", 1)[0].trim().toLowerCase();
+  return mime.startsWith("video/") || mime === "audio/x-caf" || mime === "audio/caf";
+}
+
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>

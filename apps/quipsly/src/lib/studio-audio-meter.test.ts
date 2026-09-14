@@ -70,16 +70,16 @@ describe("studio audio meter evidence", () => {
   });
 
   it("turns measured call-path states into specific sound-check guidance", () => {
-    expect(studioSoundCheckGuidance(null).heading).toBe("Run the selected setup first");
+    expect(studioSoundCheckGuidance(null).heading).toBe("Test your microphone");
     expect(studioSoundCheckGuidance(studioAudioMeterEvidence(
       analyseStudioAudioFrame(new Float32Array(32)),
-    )).heading).toMatch(/not carrying useful speech/i);
+    )).heading).toMatch(/speak to check/i);
     expect(studioSoundCheckGuidance(studioAudioMeterEvidence(
       analyseStudioAudioFrame(new Float32Array([0.02, -0.02])),
-    )).heading).toMatch(/healthy speech range/i);
+    )).heading).toMatch(/level looks good/i);
     expect(studioSoundCheckGuidance(studioAudioMeterEvidence(
       analyseStudioAudioFrame(new Float32Array([1, -1])),
-    )).heading).toMatch(/lower gain/i);
+    )).heading).toMatch(/distorted/i);
   });
 
   it("guides one short sample through normal speech, headroom, plosives, and room tone", () => {

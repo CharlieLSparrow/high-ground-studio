@@ -3,6 +3,7 @@ import {
   parseSessionNoteView,
   sessionNotesHref,
   sessionNoteViewCounts,
+  sessionNoteCreationDefaults,
   type SessionWorkspaceNote,
 } from "./session-notes-model";
 
@@ -28,6 +29,17 @@ function note(
 }
 
 describe("Session Notes views", () => {
+  it.each([
+    ["all", true, "SESSION_NOTE", "SESSION_SHARED"],
+    ["private", true, "SESSION_NOTE", "AUTHOR_PRIVATE"],
+    ["shared", false, "SESSION_NOTE", "SESSION_SHARED"],
+    ["client-safe", true, "SESSION_NOTE", "CLIENT_SAFE"],
+    ["production", true, "PRODUCTION", "PROJECT_TEAM"],
+    ["production", false, "SESSION_NOTE", "SESSION_SHARED"],
+    ["decisions", true, "DECISION", "SESSION_SHARED"],
+  ] as const)("uses %s context for new notes without widening unavailable team access", (view, team, kind, visibility) => {
+    expect(sessionNoteCreationDefaults(view, team)).toEqual({kind, visibility});
+  });
   const notes = [
     note("private", "AUTHOR_PRIVATE"),
     note("shared", "SESSION_SHARED"),

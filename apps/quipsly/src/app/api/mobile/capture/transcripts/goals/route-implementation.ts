@@ -206,11 +206,7 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
   });
   if (replay) {
     const source = record(replay.sourceJson);
-    const legacySingleSegmentEvidenceAbsent = sourceAnchor.segmentIds.length === 1
-      && !source.segmentId
-      && !source.providerTextSha256
-      && !Array.isArray(source.segmentIds);
-    const sourceEvidenceMatches = legacySingleSegmentEvidenceAbsent || (
+    const sourceEvidenceMatches = (
       source.segmentId === request.segmentId
       && source.providerTextSha256 === request.expectedProviderTextSha256
       && JSON.stringify(Array.isArray(source.segmentIds) ? source.segmentIds : [source.segmentId])

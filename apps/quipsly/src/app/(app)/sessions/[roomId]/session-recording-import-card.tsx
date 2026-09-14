@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CheckCircle2, CircleAlert, FileUp, LoaderCircle, ShieldCheck, XCircle } from "lucide-react";
 
 import type { SessionPreparation } from "./session-preparation-model";
 import {
   importSessionRecording,
   sessionRecordingFileType,
+  sessionRecordingLocalDateTimeValue as localDateTimeValue,
   suggestSessionRecordingRange,
   type SessionRecordingImportResult,
 } from "./session-recording-import";
@@ -20,13 +22,6 @@ function newImportIdentity(captureGroupId: string) {
     captureId: crypto.randomUUID(),
     captureGroupId,
   };
-}
-
-function localDateTimeValue(value: string | null, fallback: Date) {
-  const parsed = value ? new Date(value) : fallback;
-  const safe = Number.isFinite(parsed.getTime()) ? parsed : fallback;
-  const shifted = new Date(safe.getTime() - safe.getTimezoneOffset() * 60_000);
-  return shifted.toISOString().slice(0, 16);
 }
 
 function isoFromLocal(value: string) {
@@ -143,7 +138,7 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
   const startIso = isoFromLocal(startedAt);
   const stopIso = isoFromLocal(stoppedAt);
   const validRange = Boolean(startIso && stopIso && new Date(stopIso).getTime() >= new Date(startIso).getTime());
-  const canImport = Boolean(file && fileType && actor && actorConsent?.id && actorCanRecord && validRange && preparation?.captureGroupId && !busy);
+  const canImport = Boolean(file && fileType && actor && actorConsent?.id && actorCanRecord && validRange && preparation?.captureGroupId && !busy && stage !== "complete");
   const activeProgress = progressLabel(stage, hashProgress, uploadProgress);
 
   useEffect(() => () => {
@@ -253,19 +248,37 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
         {file ? <div className={`rounded-xl border bg-white p-4 text-xs font-bold ${fileError ? "border-rose-200 text-rose-950" : "border-violet-100 text-[#5b472f]"}`}><p className="break-words text-sm font-black text-[#3d3122]">{file.name}</p><p className="mt-1">{formatBytes(file.size)} · {fileType ? `${fileType.sourceType} · ${fileType.contentType}` : "unsupported type"}</p>{fileError ? <p className="mt-2">{fileError}</p> : null}{fileType?.sourceType === "video" && !actorConsent?.canRecordVideo ? <p className="mt-2 text-amber-950">This consent permits audio but not video. Choose audio or update consent before importing this video.</p> : null}</div> : null}
       </div>
 
-      <div className="rounded-xl border border-violet-100 bg-white p-4">
-        <h3 className="text-sm font-black text-[#3d3122]">Place it on the session timeline</h3>
-        <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">Use the time the external recorder actually started and stopped so Quipsly can align it with the Session.</p>
+      <details className="self-start rounded-xl border border-violet-100 bg-white p-4">
+        <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#3d3122]">Adjust recording time</summary>
+        <p className="mt-1 text-xs leading-5 text-[#765f40]">We suggest a time from the file. Adjust it if you’re matching this recording to another camera or microphone.</p>
         <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-violet-700">{rangeSource === "file" ? "Suggested from file metadata · editable" : rangeSource === "manual" ? "Adjusted by you" : "Session time · editable"}</p>
-        <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording started<input type="datetime-local" value={startedAt} disabled={busy} onChange={(event) => { timeEdited.current = true; setRangeSource("manual"); setStartedAt(event.target.value); }} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
-        <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording stopped<input type="datetime-local" value={stoppedAt} disabled={busy} onChange={(event) => { timeEdited.current = true; setRangeSource("manual"); setStoppedAt(event.target.value); }} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
+        <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording started<input type="datetime-local" step="0.001" value={startedAt} disabled={busy} onChange={(event) => { timeEdited.current = true; setRangeSource("manual"); setStartedAt(event.target.value); }} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
+        <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording stopped<input type="datetime-local" step="0.001" value={stoppedAt} disabled={busy} onChange={(event) => { timeEdited.current = true; setRangeSource("manual"); setStoppedAt(event.target.value); }} className="mt-1 block min-h-11 w-full rounded-lg border-[#d8c7a7] border px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
         {!validRange ? <p className="mt-2 text-xs font-black text-rose-800">Stop time must be at or after start time.</p> : null}
-      </div>
+      </details>
     </div>
 
     {activeProgress ? <div className="mt-5 rounded-xl border border-violet-200 bg-white p-4" role="status"><p className="inline-flex items-center gap-2 text-xs font-black text-violet-950"><LoaderCircle size={15} className="animate-spin" aria-hidden="true" />{activeProgress}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-violet-100"><div className="h-full rounded-full bg-violet-700 transition-[width]" style={{ width: `${Math.round((stage === "hashing" ? hashProgress : stage === "uploading" ? uploadProgress : stage === "reserving" ? 5 / 100 : 100) * 100)}%` }} /></div></div> : null}
 
-    {notice ? <div className={`mt-5 flex gap-3 rounded-xl border p-4 text-xs font-black leading-5 ${stage === "complete" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-rose-200 bg-rose-50 text-rose-950"}`} role="status">{stage === "complete" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}<div><p>{notice}</p>{result ? <dl className="mt-3 grid gap-1 font-mono text-[10px]"><div><dt className="inline font-sans uppercase">SHA-256 </dt><dd className="inline break-all">{result.sha256}</dd></div><div><dt className="inline font-sans uppercase">Verified bytes </dt><dd className="inline">{result.verifiedSizeBytes.toLocaleString()}</dd></div><div><dt className="inline font-sans uppercase">Processing </dt><dd className="inline">{result.processingDisposition}</dd></div><div><dt className="inline font-sans uppercase">Transcript </dt><dd className="inline">{result.transcriptDisposition}</dd></div></dl> : null}</div></div> : null}
+    {notice ? <div className={`mt-5 flex gap-3 rounded-xl border p-4 text-xs font-bold leading-5 ${stage === "complete" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-rose-200 bg-rose-50 text-rose-950"}`} role="status">
+      {stage === "complete" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+      <div className="min-w-0 flex-1">
+        <p>{notice}</p>
+        {result?.recordingAssetId ? <div className="mt-3 flex flex-wrap gap-3">
+          <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=recordings&source=${encodeURIComponent(result.recordingAssetId)}`} className="inline-flex min-h-11 items-center rounded-full bg-emerald-900 px-4 py-2 text-white">Open recording</Link>
+          <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(result.recordingAssetId)}`} className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 px-4 py-2">View transcript</Link>
+        </div> : null}
+        {result ? <details className="mt-3">
+          <summary className="min-h-11 cursor-pointer content-center font-semibold">File verification details</summary>
+          <dl className="mt-1 grid gap-1 font-mono text-[10px]">
+            <div><dt className="inline font-sans uppercase">SHA-256 </dt><dd className="inline break-all">{result.sha256}</dd></div>
+            <div><dt className="inline font-sans uppercase">Verified bytes </dt><dd className="inline">{result.verifiedSizeBytes.toLocaleString()}</dd></div>
+            <div><dt className="inline font-sans uppercase">Processing </dt><dd className="inline">{result.processingDisposition}</dd></div>
+            <div><dt className="inline font-sans uppercase">Transcript </dt><dd className="inline">{result.transcriptDisposition}</dd></div>
+          </dl>
+        </details> : null}
+      </div>
+    </div> : null}
 
     <div className="mt-5 flex flex-wrap items-center gap-3">
       <button type="button" disabled={!canImport} onClick={() => void runImport()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45"><FileUp size={15} aria-hidden="true" />Import recording</button>

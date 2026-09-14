@@ -92,25 +92,24 @@ else
   pass "Project: ${PROJECT_ID}"
 fi
 
-account="$(gcloud config get-value account 2>/dev/null || true)"
-if [[ -z "${account}" ]]; then
-  fail "No active gcloud account is configured."
+cloud_access_ready=0
+if ! command -v gcloud >/dev/null 2>&1; then
+  fail "gcloud is not on PATH. Add the installed Google Cloud CLI to PATH before cloud verification. Local checks will continue."
 else
-  pass "Account: ${account}"
-fi
-
-print_step "Cloud auth"
-
-if gcloud auth print-access-token >/dev/null 2>&1; then
-  pass "gcloud can mint an access token non-interactively."
-else
-  fail "gcloud cannot mint an access token. Run: gcloud auth login --update-adc"
-fi
-
-if [[ -n "${PROJECT_ID}" ]] && gcloud projects describe "${PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
-  pass "gcloud token can access project ${PROJECT_ID}."
-else
-  fail "gcloud token cannot access ${PROJECT_ID}. Run: gcloud auth login --no-launch-browser --brief"
+  account="$(gcloud config get-value account 2>/dev/null || true)"
+  print_step "Cloud auth"
+  if [[ -z "${account}" || "${account}" == "(unset)" ]]; then
+    fail "No active gcloud account is configured. Run: gcloud auth login --update-adc"
+  elif ! gcloud auth print-access-token >/dev/null 2>&1; then
+    fail "gcloud cannot mint an access token for ${account}. Run: gcloud auth login --update-adc"
+  elif [[ -z "${PROJECT_ID}" ]] || ! gcloud projects describe "${PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
+    fail "Operator access to ${PROJECT_ID} could not be verified for ${account}. Check the selected account and project access."
+  else
+    pass "Account: ${account}"
+    pass "gcloud can mint an access token non-interactively."
+    pass "gcloud token can access project ${PROJECT_ID}."
+    cloud_access_ready=1
+  fi
 fi
 
 print_step "Local git state"
@@ -250,6 +249,10 @@ else
   warn "Exact committed production build was explicitly skipped with QUIPSLY_PREFLIGHT_BUILD=0."
 fi
 
+# An unavailable operator credential is not evidence of a production IAM,
+# billing, or privacy defect. Keep local validation useful, but do not infer
+# remote configuration from commands that cannot inspect it.
+if [[ "${cloud_access_ready}" == "1" ]]; then
 print_step "Cloud Run service"
 
 if [[ -n "${PROJECT_ID}" ]] && gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --project="${PROJECT_ID}" --format="value(metadata.name)" >/dev/null 2>&1; then
@@ -362,6 +365,10 @@ if gcloud iam service-accounts get-iam-policy \
   pass "Cloud Run runtime may sign Firebase custom tokens as the dedicated ${FIREBASE_PROJECT_ID} service account."
 else
   fail "Cloud Run runtime cannot sign as ${FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT}; Mac and other custom-token exchanges will be rejected by Firebase."
+fi
+else
+  print_step "Cloud runtime verification"
+  warn "Cloud Run, calendar-log privacy, media IAM, production recovery, and Firebase runtime checks were NOT RUN because operator cloud access is unavailable. Their configuration remains unverified; no cloud changes are indicated by this result."
 fi
 
 print_step "Next release commands"

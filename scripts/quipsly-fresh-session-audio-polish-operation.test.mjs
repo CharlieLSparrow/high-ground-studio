@@ -32,7 +32,8 @@ test("fresh Session audio polish operation protects source truth and acceptance 
   assert.match(subject, /transcriptBasedCutSavedAndDecoded: true/);
   assert.match(subject, /correctionAvailableWithoutPlaybackGate: true/);
   assert.match(subject, /repeatedPlaybackAttestationAbsent: true/);
-  assert.match(subject, /name: "Save transcript correction"/);
+  assert.match(subject, /name: "Save changes"/);
+  assert.match(subject, /getByLabel\("Edit note \(optional\)"\).isVisible\(\)/);
   assert.match(subject, /correctionPacket\?\.correction\?\.segmentId === correctedSegmentId/);
   assert.match(subject, /transcriptCorrectionSavedAndReadBack: true/);
   assert.match(subject, /humanAcceptanceSatisfied: false/);

@@ -1,4 +1,5 @@
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
+import { readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import type { ClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 
@@ -16,6 +17,7 @@ export type TodayTag = {
   id: string;
   slug: string;
   label: string;
+  hexColor?: string | null;
 };
 
 export type TodayTask = {
@@ -87,11 +89,11 @@ function sourceRecord(value: unknown) {
     : {};
 }
 
-function isReviewedTranscriptTask(task: TodayTask) {
+function hasTranscriptSource(task: TodayTask) {
+  const anchor = readTranscriptDerivedTaskSource(task.sourceJson);
+  if (anchor) return anchor.roomId === task.room?.id;
   const source = sourceRecord(task.sourceJson);
-  return source.schema === "quipsly-transcript-derived-task-v1"
-    || source.materializationSource === "transcript-action-candidate-acceptance"
-    || source.humanAccepted === true;
+  return source.materializationSource === "transcript-action-candidate-acceptance";
 }
 
 export function buildTodayView(input: {
@@ -149,8 +151,8 @@ export function buildTodayView(input: {
             ? "Reminder time reached" as const
             : Number.isFinite(reminderAt) && reminderAt <= dayAhead
               ? "Reminder within 24 hours" as const
-          : isReviewedTranscriptTask(task) && createdAt >= weekAgo
-            ? "Reviewed transcript follow-through" as const
+          : hasTranscriptSource(task) && createdAt >= weekAgo
+            ? "From session transcript" as const
             : null;
       const rank = reason === "Overdue commitment"
         ? 0
@@ -158,7 +160,7 @@ export function buildTodayView(input: {
           ? 1
           : reason === "Reminder within 24 hours"
             ? 2
-            : reason === "Reviewed transcript follow-through"
+            : reason === "From session transcript"
               ? 3
               : 4;
       return {

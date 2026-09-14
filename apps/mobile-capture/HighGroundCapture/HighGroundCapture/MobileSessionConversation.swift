@@ -4,7 +4,7 @@ import Foundation
 import SwiftUI
 
 struct MobileSessionConversationAuthor: Codable, Hashable {
-    let id: String
+    let id: String?
     let label: String
     let image: String?
     let isCurrentActor: Bool
@@ -27,6 +27,8 @@ struct MobileSessionConversationMessage: Codable, Hashable, Identifiable {
     let author: MobileSessionConversationAuthor
     let replyTo: MobileSessionConversationReply?
     let canEdit: Bool
+    var gifUrl: String? = nil
+    var linkedTasks: [NestChatLinkedTask]? = nil
 }
 
 private struct MobileSessionConversationRoom: Codable {
@@ -49,6 +51,13 @@ private struct MobileSessionConversationResponse: Codable {
     let capabilities: MobileSessionConversationCapabilities?
 }
 
+private struct SessionConversationWorkResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let roomId: String?
+    let entry: MobileSessionWorkEntry?
+}
+
 private struct MobileSessionConversationCache: Codable {
     let schemaVersion: Int
     let ownerDigest: String
@@ -60,6 +69,9 @@ private struct MobileSessionConversationCache: Codable {
 
 @MainActor
 final class MobileSessionConversationClient: ObservableObject {
+    // A sheet is presentation, not ownership. Keep an unsent message while
+    // the person returns to the call, and clear it with the room/account.
+    @Published var composerDraft = ""
     @Published private(set) var messages: [MobileSessionConversationMessage] = []
     @Published private(set) var title = "Session conversation"
     @Published private(set) var canWrite = false
@@ -70,6 +82,8 @@ final class MobileSessionConversationClient: ObservableObject {
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
     @Published private(set) var outboundLiveHint: MobileChatPersistedLiveHint?
+    @Published private(set) var unreadCount = 0
+    @Published private(set) var readCheckVersion = 0
 
     private struct PendingSend {
         let body: String
@@ -84,6 +98,10 @@ final class MobileSessionConversationClient: ObservableObject {
     private var accountCancellable: AnyCancellable?
     private var lastReceivedLiveMessageID: String?
     private var loadGeneration = 0
+    private var openingID = UUID()
+    private var creatingTask = false
+    private var lastMarkedReadID: String?
+    private var activityInFlight = false
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -227,9 +245,8 @@ final class MobileSessionConversationClient: ObservableObject {
                 ? "Start the conversation"
                 : "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
             persist(context: context)
-            if (payload.unreadCount ?? 0) > 0, let latest = messages.last {
-                await markRead(context: context, messageID: latest.id)
-            }
+            unreadCount = max(0, payload.unreadCount ?? 0)
+            readCheckVersion &+= 1
         } catch {
             guard generation == loadGeneration,
                   currentRoomID == context.roomID else { return }
@@ -412,6 +429,70 @@ final class MobileSessionConversationClient: ObservableObject {
         try? FileManager.default.removeItem(at: root)
     }
 
+    func createTask(_ command: SessionConversationTaskCommand, session: MobileCaptureSession) async -> Bool {
+        guard canWrite, !creatingTask, let context = context(for: session),
+              command.roomID == context.roomID, currentRoomID == context.roomID,
+              messages.contains(where: { $0.id == command.sourceMessageId && $0.deletedAt == nil }),
+              let owner = AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return false }
+        let opening = openingID
+        creatingTask = true
+        errorMessage = nil
+        defer { if opening == openingID { creatingTask = false } }
+        do {
+            var request = URLRequest(url: context.endpoint.deletingLastPathComponent().appendingPathComponent("work"))
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(command)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return false }
+            try validateOrigin(response.url)
+            let payload = try AuthResponseDecoder.decode(NestConversationTaskResponse.self, from: data, response: response,
+                errorDomain: "QuipslyCapture.SessionConversation", malformedResponseMessage: "Your task couldn't be confirmed. Try again.").payload
+            guard (200...299).contains(response.statusCode), payload.ok, let entry = payload.entry else {
+                throw Self.error(payload.error ?? "Your task couldn't save. Try again.", code: response.statusCode)
+            }
+            invalidateLoads()
+            messages = messages.map { message in
+                guard message.id == command.sourceMessageId else { return message }
+                var updated = message
+                updated.linkedTasks = (message.linkedTasks ?? []).filter { $0.id != entry.id } + [entry]
+                return updated
+            }
+            persist(context: context)
+            return true
+        } catch {
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return false }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func task(_ id: String, session: MobileCaptureSession) async -> MobileCaptureTodayTask? {
+        guard let context = context(for: session), currentRoomID == context.roomID,
+              let owner = AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+        let opening = openingID
+        do {
+            let endpoint = context.endpoint.deletingLastPathComponent().appendingPathComponent("work")
+            var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "entryId", value: id)]
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: URLRequest(url: components.url!))
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+            try validateOrigin(response.url)
+            let payload = try AuthResponseDecoder.decode(SessionConversationWorkResponse.self, from: data, response: response,
+                errorDomain: "QuipslyCapture.SessionConversation", malformedResponseMessage: "Couldn't open this task. Try again.").payload
+            guard (200...299).contains(response.statusCode), payload.ok, payload.roomId == context.roomID,
+                  let entry = payload.entry, entry.id == id, entry.kind == "TASK" else {
+                throw Self.error(payload.error ?? "This task is no longer available.", code: response.statusCode)
+            }
+            return entry.task(roomID: context.roomID, title: session.title)
+        } catch {
+            guard opening == openingID, owner == AuthManager.shared.stableOwnerSnapshot()?.ownerAccountID else { return nil }
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     private struct Context {
         let roomID: String
         let endpoint: URL
@@ -465,12 +546,46 @@ final class MobileSessionConversationClient: ObservableObject {
         return payload
     }
 
-    private func markRead(context: Context, messageID: String) async {
-        _ = try? await mutate(
-            context: context,
-            method: "POST",
-            body: ["action": "MARK_READ", "lastReadMessageId": messageID]
-        )
+    func refreshActivity(session: MobileCaptureSession) async {
+        guard AuthManager.shared.networkActionsAllowed, !activityInFlight,
+              let context = context(for: session) else { return }
+        if currentRoomID != context.roomID {
+            reset()
+            currentRoomID = context.roomID
+        }
+        let opening = openingID
+        activityInFlight = true
+        defer { activityInFlight = false }
+        do {
+            var components = URLComponents(url: context.endpoint, resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "view", value: "activity")]
+            var request = URLRequest(url: components.url!)
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            try validateOrigin(response.url)
+            guard opening == openingID, currentRoomID == context.roomID else { return }
+            if [401, 403, 404].contains(response.statusCode) { unreadCount = 0; return }
+            let payload = try JSONDecoder().decode(MobileSessionConversationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok, payload.room?.id == context.roomID else { return }
+            unreadCount = max(0, payload.unreadCount ?? 0)
+        } catch { /* A brief disconnect should not erase the last verified badge. */ }
+    }
+
+    /// Called only when the end of the conversation is visible, never by polling.
+    func markLatestVisible(session: MobileCaptureSession) async {
+        guard unreadCount > 0, !isUsingProtectedCache,
+              let latest = messages.last, latest.id != lastMarkedReadID,
+              let context = context(for: session), context.roomID == currentRoomID else { return }
+        let opening = openingID
+        lastMarkedReadID = latest.id
+        do {
+            _ = try await mutate(context: context, method: "POST",
+                body: ["action": "MARK_READ", "lastReadMessageId": latest.id])
+            guard opening == openingID else { return }
+            await refreshActivity(session: session)
+        } catch {
+            if opening == openingID { lastMarkedReadID = nil }
+        }
     }
 
     private func upsert(_ message: MobileSessionConversationMessage) {
@@ -502,10 +617,15 @@ final class MobileSessionConversationClient: ObservableObject {
     }
 
     private func reset() {
+        openingID = UUID()
+        creatingTask = false
+        composerDraft = ""
         stopPolling()
         loadGeneration += 1
         currentRoomID = nil
         messages = []
+        unreadCount = 0
+        lastMarkedReadID = nil
         title = "Session conversation"
         canWrite = false
         isLoading = false
@@ -636,122 +756,121 @@ final class MobileSessionConversationClient: ObservableObject {
     }
 }
 
-struct MobileSessionConversationCard: View {
-    @ObservedObject var client: MobileSessionConversationClient
-    let session: MobileCaptureSession
-    let previewOnly: Bool
-    @State private var isPresented = false
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label("Conversation", systemImage: "bubble.left.and.bubble.right.fill")
-                    .font(.headline)
-                Spacer()
-                Text(client.isUsingProtectedCache
-                    ? "Offline copy"
-                    : (client.statusMessage ?? "Session"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(client.isUsingProtectedCache ? CapturePalette.brass : .secondary)
-            }
-
-            if client.isLoading && client.messages.isEmpty {
-                ProgressView("Loading conversation…")
-            } else if let latest = client.latestMessage {
-                Text(latest.author.label)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.tint)
-                Text(latest.deletedAt == nil ? latest.body : "Message removed")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .accessibilityIdentifier("CaptureSessionChatLatestMessage")
-            } else {
-                Text("Share an agenda, a link, or what you want to cover with everyone in this Session.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button {
-                isPresented = true
-            } label: {
-                Label("Open conversation", systemImage: "bubble.left.and.bubble.right.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .captureProminentButton()
-            .disabled(client.isLoading && client.messages.isEmpty)
-            .accessibilityIdentifier("CaptureSessionChatOpenButton")
-
-            if let errorMessage = client.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(CapturePalette.brass)
-                    .accessibilityIdentifier("CaptureSessionChatError")
-            }
-        }
-        .captureCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureSessionChatCard")
-        .sheet(isPresented: $isPresented) {
-            MobileSessionConversationThread(
-                client: client,
-                session: session,
-                previewOnly: previewOnly
-            )
-        }
-    }
+private struct SessionConversationBottomPreference: PreferenceKey {
+    static var defaultValue: CGFloat { .infinity }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-private struct MobileSessionConversationThread: View {
+struct MobileSessionConversationThread: View {
     @ObservedObject var client: MobileSessionConversationClient
     let session: MobileCaptureSession
     let previewOnly: Bool
+    var onDismiss: (() -> Void)? = nil
+    var embedded = false
     @Environment(\.dismiss) private var dismiss
-    @State private var draft = ""
+    @Environment(\.scenePhase) private var scenePhase
     @State private var replyTo: MobileSessionConversationMessage?
     @State private var editing: MobileSessionConversationMessage?
     @State private var editDraft = ""
     @State private var removeCandidate: MobileSessionConversationMessage?
+    @State private var taskMessage: MobileSessionConversationMessage?
+    @State private var openTask: NestChatLinkedTask?
+    @State private var followsLatest = true
+    @State private var latestVisible = false
+    @State private var taskReturnMessageID: String?
+    @State private var scrollRequest: ConversationScrollRequest?
+
+    private struct ConversationScrollRequest: Equatable {
+        let id = UUID()
+        let messageID: String
+    }
 
     var body: some View {
-        NavigationStack {
+        CaptureWorkspaceNavigation(title: "Chat", embedded: embedded, onDismiss: {
+            if let onDismiss { onDismiss() } else { dismiss() }
+        }, actions: {
+            Button {
+                Task { await client.load(session: session, forceRefresh: true) }
+            } label: {
+                if client.isLoading { ProgressView() }
+                else { Image(systemName: "arrow.clockwise").frame(minWidth: 44, minHeight: 44) }
+            }
+            .disabled(client.isLoading || previewOnly)
+            .accessibilityLabel("Refresh session conversation")
+            .accessibilityIdentifier("CaptureSessionChatRefreshButton")
+        }) {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
+                    GeometryReader { viewport in
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             boundary
+                            if client.isLoading && client.messages.isEmpty {
+                                ProgressView("Loading messages…")
+                            }
+                            if let error = client.errorMessage {
+                                Text(error)
+                                    .font(.subheadline)
+                                    .foregroundStyle(CapturePalette.brass)
+                                    .accessibilityIdentifier("CaptureSessionChatError")
+                            }
                             ForEach(client.messages) { message in
                                 messageRow(message)
                                     .id(message.id)
                             }
+                            Color.clear.frame(height: 1)
+                                .id("conversation-bottom")
+                                .background(GeometryReader { end in
+                                    Color.clear.preference(key: SessionConversationBottomPreference.self,
+                                        value: end.frame(in: .named("session-conversation-scroll")).maxY)
+                                })
                         }
                         .padding()
                     }
-                    .onChange(of: client.messages.count) {
-                        guard let last = client.messages.last else { return }
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    .coordinateSpace(name: "session-conversation-scroll")
+                    .onPreferenceChange(SessionConversationBottomPreference.self) { bottom in
+                        let visible = bottom >= 0 && bottom <= viewport.size.height + 8
+                        latestVisible = visible
+                        if bottom.isFinite { followsLatest = visible }
+                    }
+                    .accessibilityIdentifier("CaptureSessionChatScroll")
+                    .scrollDismissesKeyboard(.interactively)
+                    .defaultScrollAnchor(.bottom)
+                    .onChange(of: scrollRequest) { _, request in
+                        guard let request else { return }
+                        proxy.scrollTo(request.messageID, anchor: .bottom)
+                    }
+                    .onChange(of: client.messages.last?.id) {
+                        guard followsLatest else { return }
+                        proxy.scrollTo("conversation-bottom", anchor: .bottom)
+                    }
+                    .overlay(alignment: .bottom) {
+                        if !latestVisible && client.unreadCount > 0 {
+                            Button {
+                                followsLatest = true
+                                withAnimation { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+                            } label: { Label("New messages", systemImage: "arrow.down") }
+                            .captureProminentButton()
+                            .padding(8)
+                            .accessibilityIdentifier("CaptureSessionChatNewMessages")
+                        }
+                    }
                     }
                 }
                 composer
             }
             .background(MobileStudioBackground())
-            .navigationTitle(client.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+            .sheet(item: $taskMessage, onDismiss: restoreTaskMessage) { message in
+                CaptureSessionConversationTaskEditor(client: client, session: session, message: message)
+            }
+            .sheet(item: $openTask, onDismiss: {
+                Task {
+                    await client.load(session: session, forceRefresh: true, quietly: true)
+                    restoreTaskMessage()
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await client.load(session: session, forceRefresh: true) }
-                    } label: {
-                        if client.isLoading { ProgressView() }
-                        else { Image(systemName: "arrow.clockwise") }
-                    }
-                    .disabled(client.isLoading || previewOnly)
-                    .accessibilityLabel("Refresh session conversation")
-                    .accessibilityIdentifier("CaptureSessionChatRefreshButton")
-                }
+            }) { task in
+                CaptureSessionConversationTaskDetail(client: client, session: session, linkedTask: task)
             }
             .confirmationDialog(
                 "Remove this message?",
@@ -773,7 +892,17 @@ private struct MobileSessionConversationThread: View {
                 Button("Keep message", role: .cancel) { removeCandidate = nil }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureSessionChatThread")
+        .task(id: "\(latestVisible)|\(client.messages.last?.id ?? "")|\(client.unreadCount)|\(client.readCheckVersion)|\(scenePhase)|\(taskMessage?.id ?? "")|\(openTask?.id ?? "")") {
+            guard latestVisible, scenePhase == .active, taskMessage == nil, openTask == nil, !previewOnly else { return }
+            await client.markLatestVisible(session: session)
+        }
+    }
+
+    private func restoreTaskMessage() {
+        guard let messageID = taskReturnMessageID else { return }
+        scrollRequest = ConversationScrollRequest(messageID: messageID)
     }
 
     private var boundary: some View {
@@ -783,7 +912,7 @@ private struct MobileSessionConversationThread: View {
                 systemImage: client.isUsingProtectedCache ? "lock.fill" : "person.2.fill"
             )
             .font(.subheadline.weight(.bold))
-            Text("Messages stay with this Session. Personal notes and commitments stay in Notes and Work.")
+            Text("Chat and shared tasks for this session.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -824,6 +953,27 @@ private struct MobileSessionConversationThread: View {
                             .italic(message.deletedAt != nil)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
+                        if message.deletedAt == nil {
+                            ForEach(message.linkedTasks ?? []) { task in
+                                Button {
+                                    taskReturnMessageID = message.id
+                                    openTask = task
+                                } label: {
+                                    Label(task.title, systemImage: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
+                                        .font(.subheadline.weight(.medium))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityValue(task.status == "DONE" ? "Completed" : task.status == "CANCELED" ? "Removed" : "Open")
+                                .accessibilityIdentifier("CaptureSessionChatTask_\(task.id)")
+                            }
+                        }
+                        if message.deletedAt == nil, let gifUrl = message.gifUrl,
+                           let url = URL(string: gifUrl), url.scheme == "https" {
+                            Link("View shared GIF", destination: url)
+                                .font(.caption)
+                        }
                         HStack(spacing: 3) {
                             Text(Self.formattedTime(message.createdAt))
                             if message.editedAt != nil && message.deletedAt == nil {
@@ -855,6 +1005,10 @@ private struct MobileSessionConversationThread: View {
 
     private func messageMenu(_ message: MobileSessionConversationMessage) -> some View {
         Menu {
+            Button("Create task", systemImage: "checkmark.circle") {
+                taskReturnMessageID = message.id
+                taskMessage = message
+            }
             Button {
                 editing = nil
                 replyTo = message
@@ -880,6 +1034,7 @@ private struct MobileSessionConversationThread: View {
                 .frame(width: 36, height: 36)
         }
         .accessibilityLabel("Message actions")
+        .accessibilityIdentifier("CaptureSessionChatActions_\(message.id)")
     }
 
     private var composer: some View {
@@ -937,8 +1092,9 @@ private struct MobileSessionConversationThread: View {
                 }
                 HStack(alignment: .bottom, spacing: 8) {
                     TextField(
-                        client.canWrite ? "Message everyone in this Session" : "View-only conversation",
-                        text: $draft,
+                        client.isLoading && client.messages.isEmpty ? "Loading conversation…"
+                            : client.canWrite ? "Message everyone in this Session" : "View-only conversation",
+                        text: $client.composerDraft,
                         axis: .vertical
                     )
                     .lineLimit(2 ... 6)
@@ -946,7 +1102,7 @@ private struct MobileSessionConversationThread: View {
                     .disabled(!client.canWrite || previewOnly)
                     .accessibilityIdentifier("CaptureSessionChatComposer")
                     Button {
-                        let body = draft
+                        let body = client.composerDraft
                         let replyID = replyTo?.id
                         Task {
                             if await client.send(
@@ -954,8 +1110,10 @@ private struct MobileSessionConversationThread: View {
                                 body: body,
                                 replyToID: replyID
                             ) {
-                                draft = ""
+                                if client.composerDraft == body { client.composerDraft = "" }
                                 replyTo = nil
+                                followsLatest = true
+                                scrollRequest = ConversationScrollRequest(messageID: "conversation-bottom")
                             }
                         }
                     } label: {
@@ -964,7 +1122,7 @@ private struct MobileSessionConversationThread: View {
                     }
                     .captureProminentButton()
                     .disabled(
-                        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        client.composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || !client.canWrite
                             || client.isSending
                             || previewOnly

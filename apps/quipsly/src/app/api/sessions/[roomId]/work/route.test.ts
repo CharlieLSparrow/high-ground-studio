@@ -3,7 +3,7 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
@@ -36,6 +36,46 @@ describe("Session work creation", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: actor } as any);
   });
 
+  it("requires sign-in before opening a linked task", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null);
+    expect((await GET(new Request(`http://localhost/api/sessions/${roomId}/work?entryId=task-1`),
+      {params: Promise.resolve({roomId})})).status).toBe(401);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("rejects an explicitly empty linked task", async () => {
+    expect((await GET(new Request(`http://localhost/api/sessions/${roomId}/work?entryId=`),
+      {params: Promise.resolve({roomId})})).status).toBe(400);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("does not disclose a work collection outside the actor's session", async () => {
+    const prisma: any = {callRoom: {findFirst: jest.fn().mockResolvedValue(null)}, actionItem: {findMany: jest.fn()}};
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+    const result = await GET(new Request(`http://localhost/api/sessions/${roomId}/work`), {params: Promise.resolve({roomId})});
+    expect(result.status).toBe(404);
+    expect(prisma.actionItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("returns bounded canonical work with current create permission %s", async canCreate => {
+    const prisma: any = {
+      callRoom: {findFirst: jest.fn()
+        .mockResolvedValueOnce({id: roomId})
+        .mockResolvedValueOnce({id: roomId, projectId: "project-1"})
+        .mockResolvedValueOnce(canCreate ? {id: roomId} : null)
+        .mockResolvedValueOnce(null)},
+      actionItem: {findMany: jest.fn().mockResolvedValue([])},
+      goal: {findMany: jest.fn().mockResolvedValue([])},
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+    const result = await GET(new Request(`http://localhost/api/sessions/${roomId}/work`), {params: Promise.resolve({roomId})});
+    expect(result.status).toBe(200);
+    expect(result.headers.get("cache-control")).toBe("private, no-store");
+    expect(await result.json()).toEqual({ok: true, roomId, actorUserId: actor.id, entries: [], canCreate, assignmentContext: null});
+    expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({take: 100, where: expect.objectContaining({roomId})}));
+    expect(prisma.goal.findMany).toHaveBeenCalledWith(expect.objectContaining({take: 100, where: expect.objectContaining({roomId})}));
+  });
+
   it("creates one retry-safe shared task without external side effects", async () => {
     const now = new Date("2026-08-19T20:30:00.000Z");
     const prisma: any = {
@@ -63,7 +103,7 @@ describe("Session work creation", () => {
     expect(payload).toMatchObject({
       ok: true,
       idempotentReplay: false,
-      entry: { kind: "TASK", visibility: "SESSION_SHARED", ownedByCurrentActor: true },
+      entry: { kind: "TASK", visibility: "SESSION_SHARED", ownedByCurrentActor: true, dueAt: null },
       boundaries: {
         explicitHumanCapture: true,
         canonicalRecordCommitted: true,
@@ -90,6 +130,13 @@ describe("Session work creation", () => {
         }),
       }),
     });
+  });
+
+  it.each([{title: "x".repeat(501)}, {body: "x".repeat(5001)}])("does not silently truncate a native work draft", async draft => {
+    const result = await POST(request(draft), {params: Promise.resolve({roomId})});
+    expect(result.status).toBe(400);
+    expect((await result.json()).error).toContain("Your draft has not been changed");
+    expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
   it("refuses a changed payload that reuses an existing retry identity", async () => {
@@ -158,6 +205,7 @@ describe("Session work creation", () => {
           title: "Practice reflective listening",
           description: "Review progress together next Session.",
           status: "ACTIVE",
+          targetAt: new Date("2026-09-01T12:00:00.000Z"),
           createdAt: now,
           updatedAt: now,
         }),
@@ -180,6 +228,7 @@ describe("Session work creation", () => {
       kind: "GOAL",
       title: "Practice reflective listening",
       visibility: "AUTHOR_PRIVATE",
+      dueAt: "2026-09-01T12:00:00.000Z",
     });
     expect(prisma.goal.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

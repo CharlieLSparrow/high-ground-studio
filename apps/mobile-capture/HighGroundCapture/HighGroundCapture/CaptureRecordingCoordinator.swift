@@ -44,6 +44,7 @@ struct CaptureRecordingParticipantStatus: Codable, Equatable, Identifiable {
     let endpointCount: Int
     let recordingEndpointCount: Int
     let attentionEndpointCount: Int
+    var noRecordingReported: Bool? = nil
 }
 
 struct CaptureRecordingHealth: Codable, Equatable {
@@ -138,7 +139,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
             clientKind: "ios",
             deviceLabel: "Quipsly Capture · operated simulator",
             detail: "Protected recording-status outbox relaunch evidence.",
-            occurredAt: ISO8601DateFormatter().string(from: Date())
+            occurredAt: CaptureDateCoding.string(from: Date())
         )
         return try receiptOutbox.enqueue(
             roomID: roomID,
@@ -272,6 +273,14 @@ final class CaptureRecordingCoordinator: ObservableObject {
         statusMessage = handledStatusMessage(for: state)
     }
 
+    func markIdleStopHandled(_ directive: CaptureRecordingDirective) {
+        guard directive.action == .stop else { return }
+        handledStates[directive.id] = .stopped
+        joinConfirmationRequired = false
+        // No source was operated on, so do not announce a new recording save.
+        statusMessage = nil
+    }
+
     /// Atomically claims a directive before an async local start/stop crosses
     /// actor suspension points. The shell observer and a visible host control
     /// can discover the same command at nearly the same time; only one may
@@ -316,7 +325,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
             clientKind: "ios",
             deviceLabel: deviceLabel,
             detail: normalizedDetail(detail),
-            occurredAt: ISO8601DateFormatter().string(from: Date())
+            occurredAt: CaptureDateCoding.string(from: Date())
         )
         do {
             _ = try receiptOutbox.enqueue(
@@ -388,7 +397,8 @@ final class CaptureRecordingCoordinator: ObservableObject {
             let encoder = JSONEncoder()
             request.httpBody = try encoder.encode(receipt.payload)
             let (data, response) = try await AuthManager.shared.authenticatedData(
-                for: request
+                for: request,
+                expectedOwnerAccountID: receipt.ownerAccountID
             )
             let packet = try AuthResponseDecoder.decode(
                 CaptureRecordingEndpointResponse.self,

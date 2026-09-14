@@ -5,7 +5,10 @@ import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coa
 import { transcriptPacketNoteCandidateId } from "@high-ground/quipsly-domain/coaching-packet";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { buildCoachingPacketFromTranscriptJob, transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
+import { buildCoachingPacketFromTranscriptJob, transcriptPacketSnapshot, loadSessionFollowThroughSource, sessionFollowThroughAnalysisSource } from "@/lib/server/coaching-packets";
+import { analyzeSessionTranscript, SESSION_ANALYSIS_VERSION, sessionAnalysisSourceFingerprint } from "@/lib/server/session-transcript-analysis";
+import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { loadSessionWork } from "@/lib/server/session-work";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
@@ -13,13 +16,14 @@ import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_
 import { POST } from "../notes/route";
 import { POST as mergeTask } from "./actions/route";
 import { POST as mergeGoal } from "./goals/route";
-import { GET as readPacket } from "./route";
+import { GET as readPacket, POST as buildPacket } from "./route";
 import { POST as createTask } from "../tasks/route";
 import { POST as createGoal } from "../goals/route";
 import { POST as createDraft } from "../drafts/route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/capture-transcript-follow-through-dispatch", () => ({ dispatchCaptureTranscriptFollowThrough: jest.fn() }));
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
 if (enabled) {
@@ -28,6 +32,9 @@ if (enabled) {
       || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
       || url.pathname === "/") throw new Error("Transcript work integration requires an explicit loopback database.");
   process.env.DATABASE_URL = url.toString();
+  // One lock holder, two independent callers, and one observer connection.
+  // This test-only pool does not change the application's deployment defaults.
+  process.env.PRISMA_PG_POOL_MAX = "4";
 }
 const actualPrisma = jest.requireActual<typeof import("@/lib/prisma")>("@/lib/prisma");
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -246,6 +253,74 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
 (enabled ? describe : describe.skip)("transcript work against a fresh database fixture", () => {
   afterAll(async () => { if (enabled) await actualPrisma.getPrismaClient().$disconnect(); });
 
+  it("serializes an explicit rebuild with the background worker on the same committed Session", async () => {
+    const db = actualPrisma.getPrismaClient();
+    const setup = await db.$transaction(async tx => {
+      const f = await fixture(tx);
+      const session = await automaticSession(tx, f);
+      const project = await tx.studioProject.findUniqueOrThrow({ where: { id: session.engagement.projectId! } });
+      return { f, engagementId: session.engagement.id, projectId: project.id, workspaceId: project.workspaceId };
+    });
+    const { f } = setup;
+    jest.mocked(getPrismaClient).mockReturnValue(db);
+    f.actAs(f.owner);
+    let unlock!: () => void;
+    const release = new Promise<void>(resolve => { unlock = resolve; });
+    let announce!: (pid: number) => void;
+    const locked = new Promise<number>(resolve => { announce = resolve; });
+    const holder = db.$transaction(async tx => {
+      await acquirePrismaAdvisoryTransactionLock(tx, `capture-transcript-follow-through-room:${f.room.id}`);
+      const [connection] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      announce(connection!.pid);
+      await release;
+    }, { timeout: 15_000 });
+    const pending: Promise<unknown>[] = [holder];
+    try {
+      const pid = await locked;
+      const explicit = buildPacket(new Request("http://localhost/api/mobile/capture/transcripts/packet", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcriptJobId: f.job.id }),
+      }));
+      const worker = reconcileCaptureTranscriptFollowThrough({ prisma: db, transcriptJobId: f.job.id, analysisProvider: null });
+      pending.push(explicit, worker);
+      let waiters = 0;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && waiters < 2) {
+        const [state] = await db.$queryRaw<{ count: number }[]>`
+          SELECT count(*)::int AS count FROM pg_stat_activity
+          WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`;
+        waiters = state!.count;
+        if (waiters < 2) await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      // This is PostgreSQL-observed contention, not a sleep-based assumption
+      // that both code paths happened to use the same lock.
+      expect(waiters).toBe(2);
+      unlock();
+      const [response, followed] = await Promise.all([explicit, worker]);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true });
+      expect(followed).toMatchObject({ packetStatus: "ready" });
+      expect(await db.actionItem.count({ where: { roomId: f.room.id } })).toBe(1);
+      expect(await db.goal.count({ where: { roomId: f.room.id } })).toBe(1);
+      expect(await db.coachingNote.count({ where: { roomId: f.room.id, engagementId: setup.engagementId, kind: "SUMMARY" } })).toBe(1);
+    } finally {
+      unlock();
+      await Promise.allSettled(pending);
+      // Only this test's newly created metadata is removed. No source file was
+      // uploaded; no retained persona or existing project is touched.
+      await db.$transaction(async tx => {
+        await tx.actionItem.deleteMany({ where: { roomId: f.room.id } });
+        await tx.goal.deleteMany({ where: { roomId: f.room.id } });
+        await tx.mobileCaptureFinalizationReceipt.deleteMany({ where: { roomId: f.room.id } });
+        await tx.callRoom.delete({ where: { id: f.room.id } });
+        await tx.coachingEngagement.delete({ where: { id: setup.engagementId } });
+        await tx.studioProject.delete({ where: { id: setup.projectId } });
+        if (setup.workspaceId) await tx.studioWorkspace.delete({ where: { id: setup.workspaceId } });
+        await tx.user.deleteMany({ where: { id: { in: [f.owner.id, f.member.id, f.outsider.id] } } });
+      });
+    }
+  }, 20_000);
+
   it.each(["task", "goal", "note", "draft"] as const)("creates and retries a %s from a known transcript before playback is available", async (kind) => {
     await withFixture(async (tx, f) => {
       await tx.recordingAsset.update({ where: { id: f.asset.id }, data: { localManifestJson: {} } });
@@ -276,6 +351,116 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(await retry.json()).toMatchObject({ idempotentReplay: true });
       expect(await tx.recordingAsset.findUniqueOrThrow({ where: { id: f.asset.id } }))
         .toMatchObject({ localManifestJson: {}, checksum: f.asset.checksum });
+    });
+  });
+
+  it.each(["task", "goal"] as const)("binds a %s retry to its original passage and wording while preserving later edits", async (kind) => {
+    await withFixture(async (tx, f) => {
+      const handler = kind === "task" ? createTask : createGoal;
+      const body = { roomId: f.room.id, segmentId: f.segments[0]!.id,
+        expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID(),
+        title: "Write the opening", detail: "Keep it brief", description: "Keep it brief" };
+      const submit = (changes: Record<string, unknown> = {}) => handler(new Request(`http://localhost/api/mobile/capture/transcripts/${kind}s`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...changes }),
+      }));
+      const created = await submit();
+      expect(created.status).toBe(200);
+      const payload = await created.json();
+      const id = payload[kind].id;
+      for (const changes of [
+        { segmentId: f.segments[1]!.id, expectedProviderTextSha256: sha(f.segments[1]!.text) },
+        { title: "A different opening" },
+        { detail: "Different details", description: "Different details" },
+      ]) {
+        const conflict = await submit(changes);
+        expect(conflict.status).toBe(409);
+        expect(await conflict.json()).toMatchObject({ ok: false, code: "IDEMPOTENCY_CONFLICT" });
+      }
+      if (kind === "task") {
+        await tx.actionItem.update({ where: { id }, data: { title: "Edited after creation", detail: "Keep my edits", status: "DONE" } });
+      } else {
+        await tx.goal.update({ where: { id }, data: { title: "Edited after creation", description: "Keep my edits", status: "ACHIEVED" } });
+      }
+      const retry = await submit();
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toMatchObject({ idempotentReplay: true, [kind]: { id, title: "Edited after creation" } });
+      const rows = kind === "task" ? await tx.actionItem.findMany({ where: { roomId: f.room.id } })
+        : await tx.goal.findMany({ where: { roomId: f.room.id } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ title: "Edited after creation", sourceJson: { segmentId: f.segments[0]!.id } });
+    });
+  });
+
+  it("recovers successive lost task replies into one item while preserving tags, deadlines, and disjoint edits", async () => {
+    await withFixture(async (tx, f) => {
+      const original = { title: "First task wording", detail: "Original details" };
+      const command = { roomId: f.room.id, segmentId: f.segments[0]!.id,
+        expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID() };
+      const submit = async (revision: number, title: string, changes: Record<string, unknown> = {}) => {
+        const response = await createTask(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...command, ...original, title, save: { revision, original }, ...changes }),
+        }));
+        return { status: response.status, body: await response.json() };
+      };
+      const first = await submit(0, original.title);
+      expect(first.status).toBe(200);
+      const id = first.body.task.id;
+      const initial = await tx.actionItem.findUniqueOrThrow({ where: { id } });
+      const project = await tx.studioProject.create({ data: { slug: randomUUID(), name: "Writing",
+        workspace: { create: { slug: randomUUID(), name: "Synthetic Nest" } } } });
+      const tag = await tx.studioTag.create({ data: { projectId: project.id, slug: "writing", label: "Writing", hexColor: "#506b46" } });
+      const tagLink = await tx.actionItemTagLink.create({ data: { actionItemId: id, tagId: tag.id } });
+      const dueAt = new Date("2027-01-02T12:00:00Z");
+      const reminder = await tx.taskReminder.create({ data: { id: randomUUID(), actionItemId: id,
+        ownerUserId: f.owner.id, remindAt: new Date("2027-01-01T12:00:00Z") } });
+      await tx.actionItem.update({ where: { id }, data: { detail: "Details edited in the browser", dueAt } });
+      // The client has not received either successful response; each edit still targets the same ID.
+      for (const [revision, title] of [[1, "Second wording"], [2, "Third wording"]] as const) {
+        const saved = await submit(revision, title);
+        expect(saved).toMatchObject({ status: 200, body: { task: { id, title, detail: "Details edited in the browser" } } });
+      }
+      const current = await tx.actionItem.findUniqueOrThrow({ where: { id } });
+      expect(current).toMatchObject({ dueAt, status: "OPEN", assignedUserId: f.owner.id,
+        sourceJson: { materializationIntent: original, draftSave: { revision: 2, fields: { ...original, title: "Third wording" } },
+          segmentId: f.segments[0]!.id, recordingAssetId: f.asset.id } });
+      expect((current.sourceJson as any).governance).toEqual((initial.sourceJson as any).governance);
+      expect((current.sourceJson as any).editReceipts).toHaveLength(2);
+      expect(await tx.actionItemTagLink.findMany({ where: { actionItemId: id } })).toEqual([tagLink]);
+      expect(await tx.taskReminder.findUniqueOrThrow({ where: { id: reminder.id } })).toEqual(reminder);
+      const replay = await submit(2, "Third wording");
+      expect(replay).toMatchObject({ status: 200, body: { idempotentReplay: true, task: { id } } });
+      expect(await tx.actionItem.findUniqueOrThrow({ where: { id } })).toEqual(current);
+      for (const [revision, title, changes] of [
+        [1, "Second wording", {}], [2, "Reused revision", {}],
+        [3, "Third wording", { detail: "Conflicting browser details" }],
+        [3, "Third wording", { segmentId: f.segments[1]!.id, expectedProviderTextSha256: sha(f.segments[1]!.text) }],
+      ] as const) expect((await submit(revision, title, changes)).status).toBe(409);
+      f.actAs(f.outsider);
+      expect((await submit(3, "Unauthorized task")).status).toBe(404);
+      f.actAs(f.owner);
+      expect(await tx.actionItem.findMany({ where: { roomId: f.room.id } })).toEqual([current]);
+      await tx.actionItem.update({ where: { id }, data: { status: "DONE" } });
+      expect((await submit(3, "Do not reopen this task")).status).toBe(409);
+      expect((await submit(2, "Third wording")).status).toBe(200);
+      expect(await tx.recordingAsset.findUniqueOrThrow({ where: { id: f.asset.id } })).toEqual(f.asset);
+    });
+  });
+
+  it("saves the newest task revision when earlier requests never arrived", async () => {
+    await withFixture(async (tx, f) => {
+      const command = { roomId: f.room.id, segmentId: f.segments[0]!.id,
+        expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID(),
+        title: "Newest wording", detail: null, save: { revision: 4, original: { title: "Unsent wording", detail: null } } };
+      const submit = () => createTask(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(command),
+      }));
+      const first = await submit();
+      expect(first.status).toBe(200);
+      const { task } = await first.json();
+      const retry = await submit();
+      expect(await retry.json()).toMatchObject({ idempotentReplay: true, task: { id: task.id, title: "Newest wording" } });
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(1);
     });
   });
 
@@ -360,7 +545,7 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(tasks[0]).toMatchObject({ assignedUserId: f.member.id, status: "OPEN", engagementId: session.engagement.id,
         title: "Tomorrow I will draft one page", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
       expect(goals[0]).toMatchObject({ ownerUserId: f.member.id, status: "ACTIVE", engagementId: session.engagement.id,
-        title: "My goal is to write every morning", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
+        title: "Write every morning", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
       const notes = await tx.coachingNote.findMany({ where: { roomId: f.room.id, engagementId: session.engagement.id } });
       expect(notes.some(note => note.kind === "SUMMARY")).toBe(true);
       expect(notes.some(note => note.kind === "HIGHLIGHT")).toBe(true);
@@ -378,6 +563,137 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(await tx.transcriptSegment.findMany({ where: { transcriptJobId: f.job.id }, orderBy: { startSeconds: "asc" } })).toEqual(session.segments);
       expect(await tx.transcriptSegmentVerification.count({ where: { roomId: f.room.id } })).toBe(0);
       expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
+    });
+  });
+
+  it("persists analysis retry intent before responding without resetting attempts on an automatic build", async () => {
+    await withFixture(async (tx, f) => {
+      await automaticSession(tx, f);
+      expect(await reconcileCaptureTranscriptFollowThrough({ prisma: getPrismaClient(), transcriptJobId: f.job.id, analysisProvider: null }))
+        .toMatchObject({ packetStatus: "ready" });
+      const loaded = await loadSessionFollowThroughSource({ prisma: tx, transcriptJobId: f.job.id });
+      if (!loaded.ok) throw new Error(loaded.error);
+      const source = sessionFollowThroughAnalysisSource(loaded.job, loaded.resolvedTranscript);
+      await tx.sessionFollowThroughAnalysis.create({ data: {
+        roomId: f.room.id, sourceFingerprint: sessionAnalysisSourceFingerprint(source),
+        version: SESSION_ANALYSIS_VERSION, provider: "synthetic", model: "retry-test",
+        status: "failed", attemptCount: 3, errorCode: "PROVIDER_UNAVAILABLE",
+      } });
+      const beforeFlag = process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED;
+      process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED = "true";
+      try {
+        for (const retryAnalysis of [false, true]) {
+          const response = await buildPacket(new Request("http://localhost/api/mobile/capture/transcripts/packet", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ transcriptJobId: f.job.id, retryAnalysis }),
+          }));
+          expect(response.status).toBe(200);
+          expect(await response.json()).toMatchObject({ ok: true, analysisQueued: true });
+          expect(await tx.sessionFollowThroughAnalysis.findUniqueOrThrow({ where: { roomId: f.room.id } }))
+            .toMatchObject({ status: "failed", attemptCount: retryAnalysis ? 0 : 3 });
+          const job = await tx.transcriptJob.findUniqueOrThrow({ where: { id: f.job.id } });
+          expect(job.resultJson).toMatchObject({ followThrough: { packetStatus: "waiting" },
+            processingControl: { routing: { sourceTopology: "participant-isolated" } } });
+        }
+      } finally {
+        if (beforeFlag === undefined) delete process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED;
+        else process.env.SESSION_FOLLOW_THROUGH_AI_ENABLED = beforeFlag;
+      }
+      // No after-response callback ran. A normal recovery pass can consume the
+      // durable request and its explicitly reset attempt allowance instead.
+      const generate = jest.fn(async () => JSON.stringify({ goals: [], notes: [], tasks: [{
+        sourceId: source.segments.find(segment => segment.text.includes("Tomorrow I will draft one page."))!.id,
+        title: "Draft one page", excerpt: "Tomorrow I will draft one page.",
+      }] }));
+      expect(await reconcileCaptureTranscriptFollowThrough({ prisma: getPrismaClient(), transcriptJobId: f.job.id,
+        analysisProvider: { name: "synthetic", model: "retry-test", generate }, runAnalysis: true,
+      })).toMatchObject({ packetStatus: "ready" });
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(await tx.sessionFollowThroughAnalysis.findUniqueOrThrow({ where: { roomId: f.room.id } }))
+        .toMatchObject({ status: "materialized", attemptCount: 1 });
+    });
+  });
+
+  it("materializes semantic work from one passage, shares it only with members, and preserves edits on retry", async () => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      await tx.transcriptSegment.update({ where: { id: session.segments[1]!.id }, data: {
+        text: "Tomorrow I will draft one page. Then I will read it aloud.",
+      } });
+      const loaded = await loadSessionFollowThroughSource({ prisma: tx, transcriptJobId: f.job.id });
+      if (!loaded.ok) throw new Error(loaded.error);
+      const source = sessionFollowThroughAnalysisSource(loaded.job, loaded.resolvedTranscript);
+      const item = (title: string, excerpt: string) => ({
+        sourceId: source.segments.find(segment => segment.text.includes(excerpt))!.id, title, excerpt,
+      });
+      // Deterministic provider output exercises the real materialization and
+      // access boundary, not model quality or a paid external request.
+      const analysis = await analyzeSessionTranscript(source, { name: "synthetic", model: "integration", generate: async () => JSON.stringify({
+        tasks: [item("Draft a page tomorrow", "Tomorrow I will draft one page."), item("Read the draft aloud", "Then I will read it aloud.")],
+        goals: [item("A daily writing habit", "My goal is to write every morning.")],
+        notes: [item("Small steps help", "I learned that small steps help me start.")],
+      }) });
+      await tx.sessionFollowThroughAnalysis.create({ data: {
+        roomId: f.room.id, sourceFingerprint: analysis.sourceFingerprint, provider: analysis.provider,
+        model: analysis.model, version: analysis.version, status: "completed", attemptCount: 1,
+        resultJson: analysis as unknown as Prisma.InputJsonValue,
+      } });
+      const build = () => buildCoachingPacketFromTranscriptJob({ prisma: tx, transcriptJobId: f.job.id,
+        authorUserId: f.owner.id, requireAnalysisFingerprint: analysis.sourceFingerprint });
+      expect(await build()).toMatchObject({ ok: true, actionItemCount: 2, goalCount: 1 });
+      const tasks = await tx.actionItem.findMany({ where: { roomId: f.room.id }, orderBy: { title: "asc" } });
+      const goal = await tx.goal.findFirstOrThrow({ where: { roomId: f.room.id } });
+      expect(tasks.map(task => task.title)).toEqual(["Draft a page tomorrow", "Read the draft aloud"]);
+      expect(new Set(tasks.map(task => task.id)).size).toBe(2);
+      for (const user of [f.owner, f.member]) {
+        expect((await session.read(user)).map(work => work.id).sort()).toEqual([...tasks.map(task => task.id), goal.id].sort());
+      }
+      expect(await session.read(f.outsider)).toEqual([]);
+      const edited = await tx.actionItem.update({ where: { id: tasks[0]!.id }, data: { title: "My chosen next step", status: "DONE" } });
+      const counts = { tasks: tasks.length, notes: await tx.coachingNote.count({ where: { roomId: f.room.id } }) };
+      const generate = jest.fn(async () => { throw new Error("A completed analysis must not spend again"); });
+      expect(await reconcileCaptureTranscriptFollowThrough({ prisma: getPrismaClient(), transcriptJobId: f.job.id,
+        analysisProvider: { name: "synthetic", model: "integration", generate }, runAnalysis: true,
+      })).toMatchObject({ packetStatus: "ready" });
+      expect(await tx.sessionFollowThroughAnalysis.findUniqueOrThrow({ where: { roomId: f.room.id } }))
+        .toMatchObject({ status: "materialized" });
+      expect(generate).not.toHaveBeenCalled();
+      expect(await build()).toMatchObject({ ok: true, reusedExistingPacket: true });
+      expect(await tx.actionItem.findUniqueOrThrow({ where: { id: edited.id } })).toEqual(edited);
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(counts.tasks);
+      expect(await tx.coachingNote.count({ where: { roomId: f.room.id } })).toBe(counts.notes);
+      await tx.transcriptSegment.update({ where: { id: session.segments[1]!.id }, data: { text: "I have changed my plan." } });
+      expect(await build()).toMatchObject({ ok: false, errorCode: "SESSION_ANALYSIS_SOURCE_CHANGED" });
+      expect(await tx.actionItem.findUniqueOrThrow({ where: { id: edited.id } })).toEqual(edited);
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(counts.tasks);
+      expect(await tx.coachingNote.count({ where: { roomId: f.room.id } })).toBe(counts.notes);
+      expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
+    });
+  });
+
+  it.each([false, true])("replaces an unfinished repeated task only while it is untouched (adopted: %s)", async adopted => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      const partial = await tx.transcriptSegment.update({where: {id: session.segments[1]!.id}, data: {
+        text: "Tomorrow I will draft one page and share it with my", startSeconds: 4, endSeconds: 5,
+      }});
+      await tx.transcriptSegment.update({where: {id: session.segments[2]!.id}, data: {startSeconds: 10, endSeconds: 12}});
+      expect(await session.build()).toMatchObject({ok: true, actionItemCount: 1});
+      let originalTask = await tx.actionItem.findFirstOrThrow({where: {roomId: f.room.id}});
+      if (adopted) originalTask = await tx.actionItem.update({where: {id: originalTask.id}, data: {title: "My own chosen next step"}});
+      const complete = await tx.transcriptSegment.create({data: {
+        transcriptJobId: f.job.id, speakerLabel: "Other participant", speakerUserId: f.member.id,
+        text: "Tomorrow I will draft one page and share it with my coach.", startSeconds: 20, endSeconds: 25,
+      }});
+      expect(await session.build()).toMatchObject({ok: true, actionItemCount: 1});
+      const tasks = await tx.actionItem.findMany({where: {roomId: f.room.id}});
+      expect(tasks).toHaveLength(adopted ? 2 : 1);
+      const canonical = tasks.find(task => task.title === "Tomorrow I will draft one page and share it with my coach")!;
+      expect(canonical).toMatchObject({assignedUserId: f.member.id, sourceJson: {segmentId: complete.id}});
+      expect(await tx.actionItem.findUnique({where: {id: originalTask.id}})).toEqual(adopted ? originalTask : null);
+      expect(await tx.transcriptSegment.findUniqueOrThrow({where: {id: partial.id}})).toEqual(partial);
+      expect(await session.read(f.outsider)).toEqual([]);
+      expect((await session.read(f.member)).some(work => work.id === canonical.id)).toBe(true);
     });
   });
 

@@ -4,6 +4,8 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Prisma } from "@prisma/client";
 import {
+  assessAudioAlignmentPlacement,
+  type AudioAlignmentPlacementAssessment,
   buildAudioAlignmentCloudManifestObjectName,
   buildAudioAlignmentCloudResultObjectName,
   newSessionAudioAlignmentJob,
@@ -116,6 +118,7 @@ export type PublicSessionSourceAlignment = {
   targetRecordingAssetId: string;
   clockAuthority: SessionSourceAlignmentPlan["clockAuthority"] | null;
   evidence: AudioAlignmentEvidence | null;
+  placementAssessment: AudioAlignmentPlacementAssessment | null;
   notice: string | null;
   error: string | null;
   updatedAt: string | null;
@@ -1155,6 +1158,7 @@ function publicStatus(row: any, blocked = false): PublicSessionSourceAlignment {
         ? plan.clockAuthority
         : null,
     evidence: result?.evidence ?? null,
+    placementAssessment: result ? assessAudioAlignmentPlacement(result.evidence) : null,
     notice: acousticRefinementUnavailable
       ? "Capture-clock sync remains active. These isolated recordings did not contain enough shared sound or duration for waveform refinement. The originals and their clock placement remain unchanged."
       : null,

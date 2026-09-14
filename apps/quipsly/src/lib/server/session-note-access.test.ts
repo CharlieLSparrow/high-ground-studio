@@ -74,7 +74,7 @@ describe("Session note visibility policy", () => {
 
   it("lets writable Session participants mutate shared notes without widening private notes", () => {
     expect(sessionNoteMutationWhere({ id: "participant-1", primaryEmail: "person@example.test" })).toMatchObject({
-      kind: { in: ["SESSION_NOTE", "DECISION", "PRODUCTION"] },
+      kind: { in: ["SUMMARY", "HIGHLIGHT", "SESSION_NOTE", "DECISION", "PRODUCTION"] },
       OR: [
         { authorUserId: "participant-1" },
         { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },

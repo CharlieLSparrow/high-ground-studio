@@ -3,10 +3,12 @@ import "server-only";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { defaultLocalMediaRoot } from "@high-ground/quipsly-media-processing/local-media-paths";
 
 import { parseGcsUri, requireMediaBucketName } from "@/lib/server/gcs";
 
 const DEFAULT_LOCAL_STUDIO_MEDIA_ROOTS = [
+  defaultLocalMediaRoot(),
   path.join(tmpdir(), "quipsly-media-ingest"),
   path.join(tmpdir(), "quipsly-mobile-chunk-ingest"),
 ] as const;
