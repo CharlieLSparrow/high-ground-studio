@@ -350,7 +350,7 @@ describe("Session review goal candidates", () => {
     expect(mockRouterPush).toHaveBeenCalledWith("/sessions/room-1?mode=outputs");
     rerender(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="work" consentSnapshot={consentSnapshot} />);
     expect(within(nav).getAllByRole("link").map(link => link.getAttribute("href"))).toEqual(destinations);
-    expect(within(nav).getByRole("link", { name: "Goals & commitments" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Tasks and goals" })).toHaveAttribute("aria-current", "page");
     expect(picker).toHaveValue("work");
     expect(within(screen.getByRole("region", { name: "Session heading and navigation" })).getByRole("heading", { name: "Coaching review" }))
       .toBeInTheDocument();
@@ -380,7 +380,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("link", { name: "Recordings" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
     expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript");
     expect(screen.getByRole("link", { name: "Coaching notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
-    expect(screen.getAllByRole("link", { name: "Goals & commitments" })[0]).toHaveAttribute("href", "/sessions/room-1?mode=work");
+    expect(screen.getAllByRole("link", { name: "Tasks and goals" })[0]).toHaveAttribute("href", "/sessions/room-1?mode=work");
     expect(screen.getByRole("link", { name: "Follow-up" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
     expect(screen.queryByRole("heading", { name: "Current runway" })).not.toBeInTheDocument();
     expect(screen.queryByText("Transcription permission is incomplete")).not.toBeInTheDocument();
@@ -592,7 +592,7 @@ describe("Session review goal candidates", () => {
       prepare: "Prepare",
       recordings: "Recordings",
       notes: "Coaching notes",
-      work: "Goals & commitments",
+      work: "Tasks and goals",
       outputs: "Follow-up",
     } as const;
     expect(screen.getByRole("link", { name: coachingLabels[mode] })).toHaveAttribute("aria-current", "page");

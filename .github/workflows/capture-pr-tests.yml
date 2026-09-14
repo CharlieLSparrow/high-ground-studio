@@ -116,6 +116,7 @@ jobs:
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
           bash scripts/test-capture-session-deep-links.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-coaching-work-save.sh
+          node --test scripts/quipsly-native-session-work-search.test.mjs
           bash apps/mobile-capture/HighGroundCapture/scripts/test-participant-grid.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-auth-response-decoder.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-protected-session-cache-identity.sh

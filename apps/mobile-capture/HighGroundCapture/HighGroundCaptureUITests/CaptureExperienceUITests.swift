@@ -1758,10 +1758,12 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureCoachingPracticeCommand"].exists,
             "Routine preparation must not become a mandatory-looking queue when the Session is already obvious above."
         )
-        XCTAssertFalse(
-            app.buttons["CaptureCoachingManage_preview-booking"].exists,
-            "A deterministic first screen should not show disabled administration beside the primary Session action."
+        let sessionOptions = app.buttons["CaptureCoachingManage_preview-booking"]
+        XCTAssertTrue(
+            sessionOptions.exists && sessionOptions.isEnabled && sessionOptions.isHittable,
+            "A coach should have usable, secondary session options for rescheduling without obscuring Open Session."
         )
+        XCTAssertEqual(sessionOptions.label, "More session options")
         XCTAssertFalse(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS[c] %@", "needs a decision")
@@ -1840,13 +1842,22 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testSessionOpensNativeClientSpaceAndReturnsToTheSameSession() {
+        assertSessionClientSpaceRoundTrip()
+    }
+
+    func testSessionOpensNativeClientSpaceAndReturnsToTheSameSessionOnRegularWidthIPad() {
+        assertSessionClientSpaceRoundTrip()
+    }
+
+    private func assertSessionClientSpaceRoundTrip() {
         app.terminate()
         app.launchArguments = ["--capture-ui-preview", "--capture-ui-preview-tab=record", "--capture-ui-preview-session=preview-coaching-ready"]
         app.launch()
         XCTAssertTrue(app.scrollViews["CaptureRecorderView"].firstMatch.waitForExistence(timeout: 15))
-        let open = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+        openSessionToolsMenu()
+        let open = app.buttons["CaptureSessionClientSpaceToolbar"].firstMatch
         XCTAssertTrue(open.waitForExistence(timeout: 10))
-        XCTAssertTrue(open.isHittable, "The ongoing client space should be available without scrolling past the recording tools.")
+        XCTAssertTrue(open.isHittable, "The ongoing client space should be reachable from the session menu without scrolling past recording tools.")
         open.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].exists)
@@ -4048,14 +4059,26 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCoachingPreparationDraftSurvivesRefreshAndRelaunch() {
+        assertCoachingPreparationDraftRecovery()
+    }
+
+    func testCoachingPreparationDraftSurvivesRefreshAndRelaunchOnRegularWidthIPad() {
+        assertCoachingPreparationDraftRecovery()
+    }
+
+    private func assertCoachingPreparationDraftRecovery() {
         let retainedWords = " Retained while Session details refresh and after relaunch."
 
         func revealPreparationFocus() -> XCUIElement {
-            app.tabBars.buttons["Home"].tap()
+            openRootDestination("Home")
             let openSession = app.buttons["CaptureOpenNextSessionButton"]
             XCTAssertTrue(openSession.waitForExistence(timeout: 5))
             openSession.tap()
-            openLocalRecorderIfNeeded()
+            openSessionToolsMenu()
+            let plan = app.buttons["CaptureSessionPreparationToolbar"]
+            XCTAssertTrue(plan.waitForExistence(timeout: 3))
+            XCTAssertTrue(plan.isHittable, "Session planning should not require scrolling through recording tools.")
+            plan.tap()
             let focus = app.descendants(matching: .any)[
                 "CaptureSessionPreparationFocus"
             ].firstMatch
@@ -4077,7 +4100,9 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 3))
         keyboardDone.tap()
 
-        app.tabBars.buttons["Home"].tap()
+        app.buttons["CaptureSessionPreparationClose"].tap()
+
+        openRootDestination("Home")
         let recoveredAfterDismissal = revealPreparationFocus()
         XCTAssertTrue(
             (recoveredAfterDismissal.value as? String)?.contains(retainedWords) == true,
@@ -6115,16 +6140,21 @@ final class CaptureExperienceUITests: XCTestCase {
             evaluatedWith: consentSheet
         )
         waitForExpectations(timeout: 5)
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureProviderRoomControls"].exists,
-            "Declining recording must not remove the ordinary call controls."
-        )
+        let backToCall = app.buttons["CaptureReturnToCallButton"]
+        XCTAssertTrue(backToCall.exists && backToCall.isEnabled,
+                      "Declining recording must leave a usable route back to the call lobby.")
         let start = app.buttons["CaptureStartButton"]
         XCTAssertTrue(start.exists)
         XCTAssertFalse(start.isEnabled, "A declined participant must remain outside the retained recording.")
         XCTAssertTrue(
             app.staticTexts["You chose not to be recorded in this preview Session. You can still join the call."].exists
         )
+        reveal(backToCall)
+        backToCall.tap()
+        let join = app.buttons["ProviderJoinRoomButton"]
+        XCTAssertTrue(join.waitForExistence(timeout: 5))
+        XCTAssertTrue(join.isEnabled && join.isHittable,
+                      "Recording consent must not gate joining the conversation.")
     }
 
     func testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord() {

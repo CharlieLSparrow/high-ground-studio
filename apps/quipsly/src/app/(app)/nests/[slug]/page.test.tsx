@@ -86,7 +86,7 @@ describe("Nest project follow-through", () => {
     expect(screen.getByText("OWNER")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ship a trustworthy episode active · 75% progress" })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByRole("link", { name: "Proof-listen the recap" })).toHaveAttribute("href", "/work?task=task-1");
-    expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
+    expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1");
     expect(screen.queryByText("Maybe follow up")).not.toBeInTheDocument();
     expect(goalFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { projectId: "project-1", ownerUserId: "user-1" } }));
     expect(taskFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ AND: expect.any(Array) }) }));

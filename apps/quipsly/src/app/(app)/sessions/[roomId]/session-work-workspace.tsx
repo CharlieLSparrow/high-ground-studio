@@ -33,7 +33,7 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(!compact);
+  const [composerOpen, setComposerOpen] = useState(!compact && workEntries(entries).length === 0);
   const composerToggle = useRef<HTMLButtonElement>(null);
   const composerId = useId();
   const inFlight = useRef(false);
@@ -139,12 +139,12 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
       {!compact && <Link onClick={onOpenWorkspace} href="/work" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-semibold">All my work</Link>}
     </header>
     {canCreate && <>
-    {compact && <button ref={composerToggle} type="button" aria-expanded={composerOpen} aria-controls={composerId}
+    <button ref={composerToggle} type="button" aria-expanded={composerOpen} aria-controls={composerId}
       onClick={() => {setComposerOpen(value => !value); if (!composerOpen) requestAnimationFrame(() => titleInput.current?.focus({preventScroll: true}));}}
       className="min-h-11 w-full rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-card-foreground">
       {composerOpen ? "Close draft" : title || body ? "Continue draft" : "Add task or goal"}
-    </button>}
-    <div id={composerId} hidden={compact && !composerOpen}>
+    </button>
+    <div id={composerId} hidden={!composerOpen}>
     <form aria-label="New session work" onSubmit={event => {event.preventDefault(); void createWork(new FormData(event.currentTarget));}}
       className="rounded-xl border border-border bg-card p-4 text-card-foreground">
       <fieldset disabled={busy} className="min-w-0 space-y-3">

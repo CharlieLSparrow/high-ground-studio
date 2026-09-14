@@ -14,9 +14,19 @@ struct MobileSessionWorkEntry: Decodable, Identifiable {
     let visibility: String?
     let ownerLabel: String?
     let sourceHref: String?
+    let ownedByCurrentActor: Bool?
+    let tags: [MobileCaptureTag]?
     var sourceLink: CaptureTranscriptWorkLink? { sourceHref.flatMap { CaptureTranscriptWorkLink(href: $0) } }
 
     var completed: Bool { ["DONE", "ACHIEVED", "CANCELED", "CANCELLED", "ARCHIVED"].contains(status) }
+
+    func matches(query: String, kind: String, assignedToMe: Bool) -> Bool {
+        guard kind == "ALL" || self.kind == kind,
+              !assignedToMe || ownedByCurrentActor == true else { return false }
+        let terms = query.split(whereSeparator: { $0.isWhitespace })
+        let searchable = ([title, body ?? "", ownerLabel ?? ""] + (tags ?? []).map(\.label)).joined(separator: " ")
+        return terms.allSatisfy { searchable.localizedCaseInsensitiveContains(String($0)) }
+    }
 
     func task(roomID: String, title sessionTitle: String) -> MobileCaptureTodayTask {
         MobileCaptureTodayTask(id: id, title: title, detail: body, status: status, isOverdue: nil,

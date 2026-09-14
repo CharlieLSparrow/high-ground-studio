@@ -11490,6 +11490,7 @@ private struct CaptureRecorderView: View {
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
     @State private var sessionClientSpace: MobileCaptureCoachingEngagement?
+    @State private var sessionPreparationSession: MobileCaptureSession?
     @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode(for: nil)
     @State private var cameraPosition: VideoCaptureCameraPosition = CaptureCallPreferences.cameraPosition
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
@@ -12027,11 +12028,14 @@ private struct CaptureRecorderView: View {
                         }
 
                     if session.isCoachingSession && !sessionHasPostCallWork(session) {
-                        MobileCoachingSessionPreparationCard(
-                            client: sessionPreparation,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
+                        Button {
+                            sessionPreparationSession = session
+                        } label: {
+                            Label("Session plan", systemImage: "list.bullet.clipboard")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureSessionPreparationOpen")
                     }
 
                     // Transcript correction and text editing are the first
@@ -13130,6 +13134,25 @@ private struct CaptureRecorderView: View {
                !session.isPersonalVoiceNote {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
+                        if session.isCoachingSession {
+                            Button {
+                                sessionPreparationSession = session
+                            } label: {
+                                Label("Session plan", systemImage: "list.bullet.clipboard")
+                            }
+                            .accessibilityIdentifier("CaptureSessionPreparationToolbar")
+                        }
+                        if let engagement = model.coachingEngagements.first(where: {
+                            $0.id == session.coachingEngagementId
+                        }) {
+                            Button {
+                                sessionClientSpace = engagement
+                            } label: {
+                                Label("Client space", systemImage: "person.2")
+                            }
+                            .accessibilityHint("Opens shared conversation, notes, tasks, and goals without ending the call.")
+                            .accessibilityIdentifier("CaptureSessionClientSpaceToolbar")
+                        }
                         Button {
                             if model.usesPreviewData {
                                 episodeManuscript.loadPreview(session: session)
@@ -13196,6 +13219,28 @@ private struct CaptureRecorderView: View {
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $sessionPreparationSession) { session in
+            NavigationStack {
+                ScrollView {
+                    MobileCoachingSessionPreparationCard(
+                        client: sessionPreparation,
+                        session: session,
+                        previewOnly: model.usesPreviewData
+                    )
+                    .padding()
+                }
+                .background(CapturePalette.canvas)
+                .navigationTitle("Session plan")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { sessionPreparationSession = nil }
+                            .accessibilityIdentifier("CaptureSessionPreparationClose")
+                    }
+                }
+            }
+            .presentationDetents([.large])
         }
         .sheet(isPresented: Binding(
             get: { showsConsentConfirmation && !showsCallTools },

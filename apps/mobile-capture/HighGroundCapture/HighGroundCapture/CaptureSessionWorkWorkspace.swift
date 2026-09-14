@@ -9,16 +9,14 @@ struct CaptureSessionWorkWorkspace: View {
     let onDismiss: () -> Void
     @State private var filter = "ALL"
     @State private var search = ""
+    @State private var assignedToMe = false
     @State private var showsComposer = false
     @State private var showsCompleted = false
     @State private var taskToEdit: MobileCaptureTodayTask?
     @State private var goalToEdit: MobileCaptureTodayGoal?
 
     private var visibleEntries: [MobileSessionWorkEntry] {
-        client.entries.filter {
-            (filter == "ALL" || $0.kind == filter) &&
-            (search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || ($0.body ?? "").localizedCaseInsensitiveContains(search))
-        }
+        client.entries.filter { $0.matches(query: search, kind: filter, assignedToMe: assignedToMe) }
     }
 
     var body: some View {
@@ -53,12 +51,18 @@ struct CaptureSessionWorkWorkspace: View {
                         .pickerStyle(.segmented)
                         .listRowBackground(Color.clear)
                         .accessibilityIdentifier("CaptureSessionWorkFilter")
+                        Toggle("Assigned to me", isOn: $assignedToMe)
+                            .accessibilityIdentifier("CaptureSessionWorkAssignedToMe")
+                        if !client.entries.isEmpty {
+                            Text("\(visibleEntries.count) of \(client.entries.count) items")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     if client.loading && client.entries.isEmpty {
                         ProgressView("Loading tasks and goals…")
                     } else if visibleEntries.isEmpty {
-                        ContentUnavailableView(search.isEmpty ? "No tasks or goals yet" : "No matches",
-                            systemImage: "checklist", description: Text(search.isEmpty ? "Add a next step or a goal for this session." : "Try a different search."))
+                        ContentUnavailableView(client.entries.isEmpty ? "No tasks or goals yet" : "No matches",
+                            systemImage: "checklist", description: Text(client.entries.isEmpty ? "Add a next step or a goal for this session." : "Try another search or change the filters."))
                     }
                     Section {
                         ForEach(visibleEntries.filter { !$0.completed }) { entry in workRow(entry) }
@@ -73,6 +77,9 @@ struct CaptureSessionWorkWorkspace: View {
                 .captureFormSurface()
                 .refreshable { await client.load(session: session) }
                 .searchable(text: $search, prompt: "Search tasks and goals")
+                .onChange(of: search) { _, value in
+                    if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { showsCompleted = true }
+                }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureSessionWorkWorkspace")
             }
@@ -125,6 +132,11 @@ struct CaptureSessionWorkWorkspace: View {
                     }
                     Text("\(entry.visibility == "AUTHOR_PRIVATE" ? "Only me" : "Shared") · \(entry.ownerLabel ?? "Session")")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let tags = entry.tags, !tags.isEmpty {
+                        CaptureWorkTags(tags: tags.map {
+                            MobileWorkTagLabel(id: $0.id, label: $0.label, hexColor: $0.hexColor, isActive: $0.isActive != false)
+                        }, workID: entry.id)
+                    }
                 }
                 Spacer(minLength: 0)
                 if entry.canEdit { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary) }
@@ -184,7 +196,12 @@ struct CaptureSessionWorkWorkspace: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(client.saving ? "Saving…" : "Save") {
-                        Task { if await client.create(session: session) { showsComposer = false } }
+                        Task {
+                            if await client.create(session: session) {
+                                search = ""; assignedToMe = false; filter = "ALL"
+                                showsComposer = false
+                            }
+                        }
                     }
                     .disabled(client.saving || !client.canCreate || client.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("CaptureSessionWorkSave")

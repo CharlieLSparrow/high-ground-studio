@@ -46,7 +46,7 @@ export const SESSION_WORKSPACE_MODES = [
   {
     id: "work",
     label: "Work",
-    eyebrow: "Goals and commitments",
+    eyebrow: "Tasks and goals",
     description: "Manage goals, tasks, focus time, and next steps.",
   },
   {
@@ -74,7 +74,7 @@ const PURPOSE_WORKSPACE_LANGUAGE: Record<SessionExperience["purpose"], Workspace
     recordings: { label: "Recordings", eyebrow: "Saved privately", description: "Play recordings and see whether every participant copy is safe." },
     transcript: { label: "Transcript", eyebrow: "Listen and edit", description: "Correct words and speakers, share the transcript, and use the Session results." },
     notes: { label: "Coaching notes", eyebrow: "Session context", description: "Keep private, team, and client-shared notes in the right place." },
-    work: { label: "Goals & commitments", eyebrow: "Next steps", description: "Manage goals, tasks, focus time, and the next Session." },
+    work: { label: "Tasks and goals", eyebrow: "Next steps", description: "Manage goals, tasks, focus time, and the next Session." },
     outputs: { label: "Follow-up", eyebrow: "Ready to share", description: "Prepare the recording, transcript, notes, and next steps you want to share." },
   },
   PODCAST: {

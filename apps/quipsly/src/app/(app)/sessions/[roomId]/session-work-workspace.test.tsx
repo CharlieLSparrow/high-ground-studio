@@ -16,6 +16,19 @@ describe("Session work workspace", () => {
   beforeEach(() => {jest.clearAllMocks();});
   afterEach(() => {global.fetch = originalFetch;});
 
+  it("leads with existing work and keeps a dismissed creation draft through refresh", async () => {
+    const user = userEvent.setup();
+    const {rerender} = render(<SessionWorkWorkspace roomId="room-1" entries={[task]} />);
+    expect(screen.getByRole("heading", {name: task.title!})).toBeVisible();
+    expect(screen.queryByRole("form", {name: "New session work"})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Add task or goal"}));
+    await user.type(screen.getByRole("textbox", {name: "Task title"}), "Keep this idea");
+    await user.click(screen.getByRole("button", {name: "Close draft"}));
+    rerender(<SessionWorkWorkspace roomId="room-1" entries={[task, {...task, id: "other", title: "Another reflection"}]} />);
+    await user.click(screen.getByRole("button", {name: "Continue draft"}));
+    expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("Keep this idea");
+  });
+
   it("finds work by words, person and tags while combining ownership and kind filters", async () => {
     const user = userEvent.setup();
     const fetchMock = jest.fn(); global.fetch = fetchMock;

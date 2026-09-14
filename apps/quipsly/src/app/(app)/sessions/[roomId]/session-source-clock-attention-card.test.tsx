@@ -40,7 +40,7 @@ describe("SessionSourceClockAttentionCard", () => {
     expect(screen.getByRole("heading", { name: "Listen where the evidence points" })).toBeInTheDocument();
     expect(screen.getByText("60% provider confidence · not measured accuracy")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open Audio Studio/i })).toHaveAttribute("href", expect.stringContaining("at=8.000"));
-    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-1");
+    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=recording-1&at=8#transcript-segment-segment-1");
     expect(screen.getByLabelText(/Protected source for/i)).toHaveAttribute("src", "/api/ingest/media/source-1");
   });
 
@@ -64,7 +64,7 @@ describe("SessionSourceClockAttentionCard", () => {
     expect(screen.getByText(/Grouped listening avoids about/i)).toBeInTheDocument();
     expect(screen.getByText("Transcript attempt · 0:08–0:10")).toBeInTheDocument();
     expect(screen.getByText("Audible-event detector · 0:09.5–0:09.7")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-1");
+    expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=recording-1&at=8#transcript-segment-segment-1");
     expect(screen.getAllByRole("link", { name: /Open Audio Studio/i })).toHaveLength(2);
   });
 

@@ -50,7 +50,7 @@ describe("Session workspace modes", () => {
 
 describe("purpose-aware Session workspace language", () => {
   it.each([
-    ["COACHING", "Coaching room", "Conversation", "Goals & commitments", "Follow-up"],
+    ["COACHING", "Coaching room", "Conversation", "Tasks and goals", "Follow-up"],
     ["PODCAST", "Recording room", "Take conversation", "Episode work", "Editor & publish"],
     ["RESEARCH_INTERVIEW", "Interview room", "Conversation", "Findings & tasks", "Writing uses"],
     ["INTERNAL_MEETING", "Team room", "Conversation", "Decisions & tasks", "Handoffs"],
