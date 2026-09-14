@@ -88,6 +88,33 @@ integration("shared after-call recording availability against PostgreSQL", () =>
     expect((await read(2)).status).toBe(404);
   });
 
+  it("shows editable current recap and ordinary work without leaking private or other-session work", async () => {
+    const currentSource = (await (await read(0)).json()).summary.recordingSourceId;
+    const provenance = {roomId, origin: "quipsly-session-follow-through", recordingAssetId: currentSource};
+    const shared = await prisma.coachingNote.create({data: {roomId, authorUserId: users[0].id, kind: "SUMMARY", visibility: "SESSION_SHARED",
+      title: "Our session recap", body: "The words we actually edited together.", sourceJson: provenance}});
+    await prisma.coachingNote.create({data: {roomId, authorUserId: users[0].id, kind: "SUMMARY", visibility: "AUTHOR_PRIVATE",
+      title: "Private coach reflection", body: "Not for the client", sourceJson: provenance}});
+    await prisma.coachingNote.create({data: {roomId, authorUserId: users[0].id, kind: "SUMMARY", visibility: "SESSION_SHARED",
+      title: "Old take recap", body: "Stale words must not be the latest recap", sourceJson: {...provenance, recordingAssetId: phoneId}}});
+    await prisma.coachingNote.create({data: {roomId: otherRoomId, authorUserId: users[2].id, kind: "SUMMARY", visibility: "SESSION_SHARED",
+      title: "Another client's recap", body: "Another space", sourceJson: provenance}});
+    await prisma.actionItem.createMany({data: [
+      {roomId, assignedUserId: users[0].id, title: "Try the next chapter", sourceJson: {roomId, visibility: "SESSION_SHARED"}},
+      {roomId, assignedUserId: users[0].id, title: "Private coach task", sourceJson: {roomId, visibility: "AUTHOR_PRIVATE"}},
+      {roomId, assignedUserId: users[0].id, title: "Already finished", status: "DONE", sourceJson: {roomId, visibility: "SESSION_SHARED"}},
+      {roomId: otherRoomId, assignedUserId: users[2].id, title: "Other client's task", sourceJson: {roomId: otherRoomId, visibility: "SESSION_SHARED"}},
+    ]});
+    const client = (await (await read(1)).json()).summary.followThrough;
+    expect(client).toMatchObject({recap: {id: shared.id, excerpt: "The words we actually edited together."}, openTasks: 1, openGoals: 0});
+    expect(client.nextSteps.map((entry: {title: string}) => entry.title)).toEqual(["Try the next chapter"]);
+    expect(JSON.stringify(client)).not.toMatch(/Private coach|Another client|Other client|Stale words|Already finished/);
+    const coach = (await (await read(0)).json()).summary.followThrough;
+    expect(coach.openTasks).toBe(2);
+    expect(coach.recap.title).toBe("Private coach reflection");
+    expect((await read(2)).status).toBe(404);
+  });
+
   it("removes visibility immediately when the participant's access is revoked", async () => {
     await prisma.callParticipant.updateMany({ where: { roomId, userId: users[1].id }, data: { accessStatus: "REMOVED" } });
     expect((await read(1)).status).toBe(404);

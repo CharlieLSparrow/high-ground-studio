@@ -622,7 +622,9 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(screen.getByRole("button", {name: "Simulate upload verified"}));
     expect(screen.getByRole("link", {name: "Listen and edit recording"})).toHaveAttribute("href", "/sessions/dock-controls-room?mode=recordings&source=new-take");
     expect(screen.getByTestId("browser-source-capture-group")).toBe(recorder);
-    fireEvent.click(screen.getByRole("link", {name: "Notes and recap"}));
+    fireEvent.click(screen.getByRole("button", {name: "Notes and recap"}));
+    expect(within(toolSlot).getByRole("region", {name: "Notes"})).toBeVisible();
+    expect(screen.getByTestId("browser-source-capture-group")).toBe(recorder);
     expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
     expect(mockLiveKitRoom.disconnect).toHaveBeenCalledTimes(1);

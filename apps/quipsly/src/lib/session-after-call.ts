@@ -1,6 +1,13 @@
 import { isOriginalSessionRecordingAsset } from "./session-recording-sources";
 import { recordingContentReadiness } from "./server/mobile-capture-content-readiness";
 
+export type SessionFollowThrough = {
+  recap: { id: string; title: string; excerpt: string; visibility: string } | null;
+  openTasks: number;
+  openGoals: number;
+  nextSteps: { id: string; title: string; kind: "TASK" | "GOAL"; ownerLabel: string; visibility: string }[];
+};
+
 export type SessionAfterCall = {
   roomId: string;
   recordings: { uploaded: number; pending: number; attention: number };
@@ -8,6 +15,8 @@ export type SessionAfterCall = {
   transcriptSourceId: string | null;
   recordingSourceId?: string | null;
   otherRecordingCount?: number;
+  /** Authorized ordinary work, not a second packet or an approval queue. */
+  followThrough?: SessionFollowThrough | null;
 };
 
 type Recording = {

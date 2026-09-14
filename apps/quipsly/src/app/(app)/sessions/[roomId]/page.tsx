@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { CircleAlert, LockKeyhole } from "lucide-react";
 import { notFound, unstable_rethrow } from "next/navigation";
-import { readLastTranscriptMergedNoteSource, readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
-import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
+import { sessionNoteSourceDetails } from "@/lib/session-note-source-details";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { reconcileAudioSignalProfile } from "@/lib/server/audio-signal-profile";
@@ -688,19 +687,7 @@ export default async function SessionReviewPage({
       .map((link: any) => link.tag)
       .filter((tag: any) => tag.isActive && visibleProject && tag.projectId === visibleProject.id)
       .map(({ id, label, slug, hexColor }: any) => ({ id, label, slug, hexColor }));
-    const noteOriginLabel = (sourceJson: unknown) => {
-      const source = jsonObject(sourceJson);
-      if (source.automaticallyCreated === true) return "From the transcript";
-      if (readTranscriptDerivedNoteSource(sourceJson)) return "Transcript review";
-      if (source.schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA) return "iPhone Capture";
-      if (source.schema === "quipsly-session-continuity-brief-v1") return "Saved continuity";
-      if (source.schema === "quipsly-session-context-v2") return "Session plan";
-      if (source.origin === "nest-session-notes") return "Nest Session note";
-      return "Session record";
-    };
     const sessionNotes = sessionNoteRows.map((row: any) => {
-      const parsedSourceAnchor = readTranscriptDerivedNoteSource(row.sourceJson);
-      const sourceHref = sessionWorkSourceHref(room.id, row.sourceJson);
       return {
         id: row.id,
         title: row.title,
@@ -712,7 +699,7 @@ export default async function SessionReviewPage({
           label: row.authorUser?.name || row.authorUser?.primaryEmail || "Note author",
           isCurrentActor: row.authorUserId === session.user.id,
         },
-        originLabel: noteOriginLabel(row.sourceJson),
+        ...sessionNoteSourceDetails(room.id, row.sourceJson),
         canEdit: canEditSessionNoteProjection({
           actorUserId: session.user.id,
           authorUserId: row.authorUserId,
@@ -726,9 +713,6 @@ export default async function SessionReviewPage({
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
         tags: quickEntryTags(row),
-        sourceAnchor: parsedSourceAnchor?.roomId === room.id ? parsedSourceAnchor : null,
-        sourceHref: sourceHref?.includes("&source=") ? sourceHref : null,
-        lastMergedSource: readLastTranscriptMergedNoteSource(row.sourceJson),
       };
     });
     const sessionQuickEntries = [

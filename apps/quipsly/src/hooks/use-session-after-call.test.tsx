@@ -15,6 +15,18 @@ it("fetches shared availability and refreshes when this device finishes uploadin
   await waitFor(() => expect(view.result.current.summary?.recordings.uploaded).toBe(2));
   expect(fetch).toHaveBeenCalledWith("/api/sessions/room/after-call", expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }));
 });
+it("refreshes the recap after an ordinary edit and ignores malformed work without hiding media", async () => {
+  const packet = response();
+  const body = await packet.json();
+  body.summary.followThrough = {recap: null, openTasks: 1, openGoals: 0, nextSteps: "not a list"};
+  jest.mocked(fetch).mockResolvedValue({...packet, json: async () => body} as Response);
+  const view = renderHook(() => useSessionAfterCall("room"));
+  await waitFor(() => expect(view.result.current.summary?.recordings.uploaded).toBe(1));
+  expect(view.result.current.summary?.followThrough).toBeNull();
+  body.summary.followThrough = {recap: {id: "recap", title: "Edited", excerpt: "Current words", visibility: "SESSION_SHARED"}, openTasks: 0, openGoals: 0, nextSteps: []};
+  await act(async () => { window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed")); });
+  expect(view.result.current.summary?.followThrough?.recap?.excerpt).toBe("Current words");
+});
 it.each(["", 42, "x".repeat(241)])("rejects an invalid recording destination %s", async recordingSourceId => {
   const packet = response();
   const body = await packet.json();

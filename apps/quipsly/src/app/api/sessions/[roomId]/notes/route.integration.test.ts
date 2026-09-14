@@ -78,6 +78,16 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
     }
   });
 
+  it("preserves a recap's transcript link in the same editable notes endpoint used during calls", async () => {
+    const note = await prisma.coachingNote.create({data: {roomId, authorUserId: actorUserId, kind: "SUMMARY", visibility: "SESSION_SHARED",
+      title: "Recap", body: "We agreed on one next step.", sourceJson: {roomId, recordingAssetId: "source", origin: "quipsly-session-follow-through", automaticallyCreated: true}}});
+    signedInAs(participantUserId, participantEmail);
+    const result = await GET(new Request(`http://localhost/api/sessions/${roomId}/notes`), {params: Promise.resolve({roomId})});
+    const visible = (await result.json()).notes.find((row: {id: string}) => row.id === note.id);
+    expect(visible).toMatchObject({id: note.id, sourceHref: `/sessions/${roomId}?mode=transcript&source=source`, originLabel: "From the transcript", canEdit: true});
+    await prisma.coachingNote.delete({where: {id: note.id}});
+  });
+
   function signedInAs(id: string, email: string) {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id, primaryEmail: email, isStaff: false },

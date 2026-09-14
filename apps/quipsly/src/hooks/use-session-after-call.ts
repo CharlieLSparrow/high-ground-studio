@@ -1,7 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { SessionAfterCall } from "@/lib/session-after-call";
+import type { SessionAfterCall, SessionFollowThrough } from "@/lib/session-after-call";
+
+function isFollowThrough(value: unknown): value is SessionFollowThrough {
+  if (!value || typeof value !== "object") return false;
+  const work = value as SessionFollowThrough;
+  const text = (value: unknown, max: number) => typeof value === "string" && value.length <= max;
+  return [work.openTasks, work.openGoals].every(count => Number.isSafeInteger(count) && count >= 0)
+    && (work.recap === null || Boolean(work.recap && text(work.recap.id, 240) && work.recap.id
+      && text(work.recap.title, 1000) && text(work.recap.excerpt, 700) && text(work.recap.visibility, 40)))
+    && Array.isArray(work.nextSteps) && work.nextSteps.length <= 4
+    && work.nextSteps.every(entry => entry && text(entry.id, 240) && entry.id && text(entry.title, 240)
+      && (entry.kind === "TASK" || entry.kind === "GOAL") && text(entry.ownerLabel, 1000) && text(entry.visibility, 40));
+}
 
 function isSummary(value: unknown, roomId: string): value is SessionAfterCall {
   if (!value || typeof value !== "object") return false;
@@ -47,7 +59,8 @@ export function useSessionAfterCall(roomId: string, localPhase?: string) {
         if (disposed) return;
         if (!response.ok || !payload.ok || !isSummary(payload.summary, roomId)) throw new Error("Unavailable summary");
         failures = 0;
-        const summary = payload.summary;
+        const summary = { ...payload.summary,
+          followThrough: isFollowThrough(payload.summary.followThrough) ? payload.summary.followThrough : null };
         polls += 1;
         delay = polls < 6 || summary.recordings.pending || summary.transcripts.processing ? 5_000 : 30_000;
         setState({ roomId, summary, error: null });
@@ -66,6 +79,7 @@ export function useSessionAfterCall(roomId: string, localPhase?: string) {
     const wake = () => void refresh();
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("online", wake);
+    window.addEventListener("quipsly-coaching-work-changed", wake);
     void refresh();
     return () => {
       disposed = true;
@@ -73,6 +87,7 @@ export function useSessionAfterCall(roomId: string, localPhase?: string) {
       controller?.abort();
       document.removeEventListener("visibilitychange", wake);
       window.removeEventListener("online", wake);
+      window.removeEventListener("quipsly-coaching-work-changed", wake);
     };
   }, [roomId, attempt, localPhase]);
   return { summary: state.roomId === roomId ? state.summary : null, error: state.roomId === roomId ? state.error : null, retry };

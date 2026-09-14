@@ -44,10 +44,12 @@ export function sessionWorkSourceHref(roomId: string | null | undefined, sourceJ
   const at = typeof source.sourceStartSeconds === "number" ? source.sourceStartSeconds : source.startSeconds;
   const assetId = source.recordingAssetId;
   const query = new URLSearchParams({ mode: "transcript" });
-  if (typeof at === "number" && Number.isFinite(at) && at >= 0 && typeof assetId === "string" && assetId.trim()) {
-    query.set("source", assetId);
+  if (typeof assetId !== "string" || !assetId.trim()) return null;
+  query.set("source", assetId);
+  if (typeof at === "number" && Number.isFinite(at) && at >= 0) {
     query.set("at", String(at));
   }
-  // A whole-session recap has no single source moment. Open the combined transcript.
+  // A recap has no single moment, but still belongs to one recorded take. Its
+  // source anchors the transcript assembly so a later call cannot replace it.
   return `/sessions/${encodeURIComponent(roomId)}?${query}`;
 }

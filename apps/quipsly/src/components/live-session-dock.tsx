@@ -122,6 +122,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
   const notesOpen = workspacePanel === "notes";
   const workOpen = workspacePanel === "work";
   const [notesVisitedRoom, setNotesVisitedRoom] = useState<string | null>(null);
+  const [noteToOpen, setNoteToOpen] = useState<{ id: string; request: number } | null>(null);
   const [workVisitedRoom, setWorkVisitedRoom] = useState<string | null>(null);
   const [notesNeedAttention, setNotesNeedAttention] = useState(false);
   const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
@@ -140,6 +141,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
 
   useEffect(() => {
     setWorkspacePanel(null);
+    setNoteToOpen(null);
   }, [active?.callRoomId]);
 
   useEffect(() => {
@@ -349,6 +351,13 @@ export function LiveSessionDockProvider({ children, currentUser }: {
                 showSessionHeading={false}
                 stageLayout
                 onOpenSessionWork={minimize}
+                onOpenNotes={(id) => {
+                  setNotesVisitedRoom(active.callRoomId);
+                  setNoteToOpen(current => id ? { id, request: (current?.request ?? 0) + 1 } : null);
+                  setWorkspacePanel("notes");
+                }}
+                onOpenTasks={() => { setWorkVisitedRoom(active.callRoomId); setWorkspacePanel("work"); }}
+                onOpenChat={() => setWorkspacePanel("chat")}
                 controlsContainer={controlsContainer}
                 toolPanelContainer={toolPanelContainer}
                 activeToolPanel={workspacePanel === "chat" || workspacePanel === "notes" || workspacePanel === "work" ? null : workspacePanel}
@@ -372,7 +381,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
               <div ref={setToolPanelContainer} data-testid="live-call-tool-panel"
                 className={`min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border ${workspacePanel && !chatOpen ? "block" : "hidden"}`} />
               {toolPanelContainer && notesVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Notes" open={notesOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
-                <CallNotesPanel key={active.callRoomId} roomId={active.callRoomId} active={notesOpen && isOpen} onOpenWorkspace={minimize} onAttentionChange={setNotesNeedAttention} />
+                <CallNotesPanel key={active.callRoomId} roomId={active.callRoomId} active={notesOpen && isOpen} noteToOpen={noteToOpen} onOpenWorkspace={minimize} onAttentionChange={setNotesNeedAttention} />
               </CallWorkspacePanel> : null}
               {toolPanelContainer && workVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Tasks" open={workOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
                 <CallWorkPanel key={active.callRoomId} roomId={active.callRoomId} active={workOpen && isOpen} onOpenWorkspace={minimize} />

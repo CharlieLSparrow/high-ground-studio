@@ -20,6 +20,18 @@ beforeEach(() => {
   global.fetch = fetchMock;
 });
 afterEach(() => { global.fetch = originalFetch; });
+it("opens the recap directly, retains an edited draft, and does not reopen it on every poll", async () => {
+  rows = [{...note, kind: "SUMMARY"}];
+  const request = {id: note.id, request: 1};
+  const view = render(<CallNotesPanel roomId="room" active noteToOpen={request} onOpenWorkspace={() => {}} />);
+  await screen.findByRole("textbox", {name: "Note text"});
+  fireEvent.change(screen.getByRole("textbox", {name: "Note text"}), {target: {value: "My unfinished recap edit"}});
+  await userEvent.click(screen.getByRole("button", {name: "All notes"}));
+  view.rerender(<CallNotesPanel roomId="room" active noteToOpen={request} onOpenWorkspace={() => {}} />);
+  expect(screen.queryByRole("textbox", {name: "Note text"})).not.toBeInTheDocument();
+  view.rerender(<CallNotesPanel roomId="room" active noteToOpen={{id: note.id, request: 2}} onOpenWorkspace={() => {}} />);
+  expect(await screen.findByRole("textbox", {name: "Note text"})).toHaveValue("My unfinished recap edit");
+});
 
 it("keeps a failed non-JSON response understandable and retries the exact save", async () => {
   write.mockResolvedValueOnce({ ok: false, status: 500, json: async () => { throw new SyntaxError("Unexpected end of JSON input"); } });

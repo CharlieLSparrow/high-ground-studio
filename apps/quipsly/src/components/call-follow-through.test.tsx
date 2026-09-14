@@ -6,6 +6,26 @@ jest.mock("@/hooks/use-session-after-call", () => ({ useSessionAfterCall: jest.f
 beforeEach(() => jest.mocked(useSessionAfterCall).mockReturnValue({ summary: null, error: null, retry: jest.fn() }));
 
 describe("call follow-through", () => {
+  it("makes the actual recap and next steps usable beside the call while uploads continue", () => {
+    const onOpenNotes = jest.fn(), onOpenTasks = jest.fn(), onOpenChat = jest.fn(), onOpenWork = jest.fn();
+    jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 1, pending: 1, attention: 0},
+      transcripts: {available: 1, processing: 0, attention: 0}, transcriptSourceId: "source",
+      followThrough: {recap: {id: "recap", title: "What matters next", excerpt: "Our edited recap, not a generated snapshot.", visibility: "AUTHOR_PRIVATE"},
+        openTasks: 1, openGoals: 0, nextSteps: [{id: "task", title: "Draft one paragraph", kind: "TASK", ownerLabel: "Casey", visibility: "SESSION_SHARED"}]}}, error: null, retry: jest.fn()});
+    render(<CallFollowThrough roomId="room" recording={{phase: "uploading", recordingHref: null, transcriptHref: null}}
+      onOpenRecording={jest.fn()} onOpenNotes={onOpenNotes} onOpenTasks={onOpenTasks} onOpenChat={onOpenChat} onOpenWork={onOpenWork} />);
+    expect(screen.getByLabelText("Session recap")).toHaveTextContent("Our edited recap, not a generated snapshot.");
+    expect(screen.getByLabelText("Session recap")).toHaveTextContent("Only you");
+    expect(screen.getByLabelText("Session next steps")).toHaveTextContent("Draft one paragraph");
+    fireEvent.click(screen.getByRole("button", {name: "Open recap"}));
+    expect(onOpenNotes).toHaveBeenCalledWith("recap");
+    fireEvent.click(screen.getByRole("button", {name: "Tasks and goals"}));
+    fireEvent.click(screen.getByRole("button", {name: "Continue conversation"}));
+    expect(onOpenTasks).toHaveBeenCalledTimes(1);
+    expect(onOpenChat).toHaveBeenCalledTimes(1);
+    expect(onOpenWork).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", {name: "View upload progress"})).toBeEnabled();
+  });
   it("opens the latest shared take explicitly instead of restoring an older editor draft", () => {
     jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 2, pending: 0, attention: 0},
       transcripts: {available: 0, processing: 1, attention: 0}, transcriptSourceId: null, recordingSourceId: "new-take-source", otherRecordingCount: 4}, error: null, retry: jest.fn()});

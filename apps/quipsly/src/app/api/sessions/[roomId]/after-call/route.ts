@@ -6,12 +6,13 @@ import { sessionAfterCall } from "@/lib/session-after-call";
 import { isOriginalSessionRecordingAsset } from "@/lib/session-recording-sources";
 import { readSessionRecordingAttempts } from "@/lib/server/session-recording-attempts";
 import { selectSessionTranscriptRecordingLanes, selectSessionTranscriptTake } from "@/lib/server/session-transcript-source-selection";
+import { loadSessionAfterCallWork } from "@/lib/server/session-after-call-work";
 
 export const runtime = "nodejs";
 const headers = { "Cache-Control": "private, no-store" };
 
 /** Shared across endpoints: leaving a browser call must also find phone uploads.
- * Return availability, never source bytes, transcript text, or private notes. */
+ * Media availability and ordinary visible work use their canonical scopes. */
 export async function GET(request: Request, context: { params: Promise<{ roomId: string }> }) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user) return NextResponse.json({ ok: false, error: "Sign in to open this session." }, { status: 401, headers });
@@ -49,6 +50,9 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
     summary.recordingSourceId = lanes.values().next().value ?? current[0]?.id ?? null;
     const other = originals.length - current.length;
     if (other > 0) summary.otherRecordingCount = other;
+    // A temporary work-query failure must not hide upload recovery or playback.
+    summary.followThrough = await loadSessionAfterCallWork({ prisma, roomId: room.id, actor: session.user,
+      sourceIds: lanes.size ? [...lanes] : current.map(asset => asset.id) }).catch(() => null);
     return NextResponse.json({ ok: true, summary }, { headers });
   } catch {
     return NextResponse.json({ ok: false, error: "Session updates aren't available right now. Your recordings have not been changed." }, { status: 503, headers });

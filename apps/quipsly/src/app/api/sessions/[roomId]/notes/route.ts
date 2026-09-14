@@ -12,6 +12,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { canEditSessionNoteProjection, canUseProjectTeamNotes, mobileSessionNoteVisibilityWhere, SESSION_NOTE_VISIBLE_KINDS } from "@/lib/server/session-note-access";
+import { sessionNoteSourceDetails } from "@/lib/session-note-source-details";
 
 export const runtime = "nodejs";
 
@@ -74,7 +75,7 @@ function sourceMatches(sourceJson: unknown, input: {
     && source.initialVisibility === input.visibility;
 }
 
-function serializedNote(row: any, actorUserId: string) {
+function serializedNote(row: any, actorUserId: string, projectId: string | null = row.room?.projectId ?? null) {
   return {
     id: row.id,
     title: row.title,
@@ -86,20 +87,22 @@ function serializedNote(row: any, actorUserId: string) {
       label: row.authorUser?.name || row.authorUser?.primaryEmail || "Note author",
       isCurrentActor: row.authorUserId === actorUserId,
     },
-    originLabel: "Nest Session note",
+    ...sessionNoteSourceDetails(row.roomId, row.sourceJson),
     canEdit: row.authorUserId === actorUserId,
     canChangeVisibility: row.authorUserId === actorUserId,
     revisionCount: row._count?.revisions ?? 0,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    tags: (row.tagLinks || []).map((link: any) => link.tag),
-    sourceAnchor: null,
+    tags: (row.tagLinks || []).map((link: any) => link.tag)
+      .filter((tag: any) => tag.isActive && projectId && tag.projectId === projectId)
+      .map(({id, label, slug, hexColor}: any) => ({id, label, slug, hexColor})),
   };
 }
 
 const NOTE_SELECT = {
   id: true,
   roomId: true,
+  room: { select: { projectId: true } },
   authorUserId: true,
   title: true,
   body: true,
@@ -111,7 +114,7 @@ const NOTE_SELECT = {
   authorUser: { select: { name: true, primaryEmail: true } },
   tagLinks: {
     orderBy: { createdAt: "asc" as const },
-    select: { tag: { select: { id: true, label: true, slug: true } } },
+    select: { tag: { select: { id: true, label: true, slug: true, hexColor: true, projectId: true, isActive: true } } },
   },
   _count: { select: { revisions: true } },
 } satisfies Prisma.CoachingNoteSelect;
@@ -128,7 +131,7 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   const room = await prisma.callRoom.findFirst({
     where: sessionAccessWhere(roomId, actor),
     select: {
-      id: true,
+      id: true, projectId: true,
       project: { select: { accessGrants: { where: { email: actorEmail, status: "ACTIVE" }, take: 1, select: { role: true } } } },
       notes: {
         where: { kind: { in: [...SESSION_NOTE_VISIBLE_KINDS] }, ...mobileSessionNoteVisibilityWhere({ actorUserId: actor.id, actorEmail, isStaff: actor.isStaff === true }) },
@@ -142,7 +145,7 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   return NextResponse.json({
     ok: true, actorUserId: actor.id, canCreate, hasMore: room.notes.length > 100,
     notes: room.notes.slice(0, 100).map(note => ({
-      ...serializedNote(note, actor.id),
+      ...serializedNote(note, actor.id, actor.isStaff || room.project?.accessGrants.length ? room.projectId : null),
       canEdit: canEditSessionNoteProjection({ actorUserId: actor.id, authorUserId: note.authorUserId, kind: note.kind, visibility: note.visibility, canMutateSession: canCreate, canUseProjectTeam: projectTeam }),
     })),
   }, { headers: { "Cache-Control": "private, no-store" } });

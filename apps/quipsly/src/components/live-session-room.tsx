@@ -492,6 +492,9 @@ export function LiveSessionRoom({
   controlsContainer = null,
   stageLayout = false,
   onOpenSessionWork,
+  onOpenNotes,
+  onOpenTasks,
+  onOpenChat,
   toolPanelContainer = null,
   activeToolPanel,
   onToolPanelChange,
@@ -517,6 +520,9 @@ export function LiveSessionRoom({
   controlsContainer?: HTMLElement | null;
   stageLayout?: boolean;
   onOpenSessionWork?: () => void;
+  onOpenNotes?: (noteId?: string) => void;
+  onOpenTasks?: () => void;
+  onOpenChat?: () => void;
   toolPanelContainer?: HTMLElement | null;
   activeToolPanel?: "devices" | "recording" | "details" | "people" | null;
   onToolPanelChange?: (panel: "devices" | "recording" | "details" | "people" | null) => void;
@@ -2522,6 +2528,7 @@ export function LiveSessionRoom({
             <CallFollowThrough roomId={callRoomId}
               recording={recordingHandoff?.identity === recorderIdentity ? recordingHandoff.value : null}
               onOpenWork={onOpenSessionWork} onOpenRecording={() => setToolPanel("recording")}
+              onOpenNotes={onOpenNotes} onOpenTasks={onOpenTasks} onOpenChat={onOpenChat}
               onRejoin={callPermanentlyClosed ? undefined : () => void join()} />
           ) : !connected && callPermanentlyClosed ? (
             <section className="rounded-2xl border border-slate-300 bg-slate-50 p-4" aria-label="Call closed">

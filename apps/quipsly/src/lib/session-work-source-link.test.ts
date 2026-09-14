@@ -32,8 +32,9 @@ describe("work-to-recording navigation", () => {
     })).toBe("/sessions/room-1?mode=transcript&source=asset-1&at=3.5#transcript-segment-segment-1");
   });
 
-  it("opens the combined transcript for a recap without fabricating a timestamp", () => {
-    expect(sessionWorkSourceHref("room-1", generated)).toBe("/sessions/room-1?mode=transcript");
+  it("anchors a recap to its take without fabricating a timestamp or opening a newer recording", () => {
+    expect(sessionWorkSourceHref("room-1", generated)).toBe("/sessions/room-1?mode=transcript&source=asset-1");
+    expect(sessionWorkSourceHref("room-1", {...generated, recordingAssetId: null})).toBeNull();
   });
 
   it.each(["note", "task", "goal"])("keeps a %s source link when its audio player is not ready", (kind) => {
@@ -50,12 +51,12 @@ describe("work-to-recording navigation", () => {
 
   it.each([NaN, Infinity, -1])("does not manufacture a seek for invalid source time %s", (at) => {
     expect(sessionWorkSourceHref("room-1", { ...generated, sourceStartSeconds: at, startSeconds: 120 }))
-      .toBe("/sessions/room-1?mode=transcript");
+      .toBe("/sessions/room-1?mode=transcript&source=asset-1");
   });
 
   it("does not interpret source-local time as session time without an identified recording", () => {
     expect(sessionWorkSourceHref("room-1", { ...generated, recordingAssetId: null, sourceStartSeconds: 3 }))
-      .toBe("/sessions/room-1?mode=transcript");
+      .toBeNull();
   });
 
   it("encodes identifiers without letting metadata supply a destination URL", () => {

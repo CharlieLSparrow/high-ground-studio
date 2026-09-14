@@ -27,8 +27,9 @@ function draftFor(note: SessionWorkspaceNote): Draft {
 
 /** A small editor over canonical Session notes. Kept mounted by the call dock,
  * so switching tools, minimizing, and reconnecting do not discard drafts. */
-export function CallNotesPanel({ roomId, active, onOpenWorkspace, onAttentionChange }: {
+export function CallNotesPanel({ roomId, active, noteToOpen, onOpenWorkspace, onAttentionChange }: {
   roomId: string; active: boolean; onOpenWorkspace: () => void; onAttentionChange?: (needed: boolean) => void;
+  noteToOpen?: { id: string; request: number } | null;
 }) {
   const [notes, setNotes] = useState<SessionWorkspaceNote[]>([]);
   const [canCreate, setCanCreate] = useState(false);
@@ -48,7 +49,18 @@ export function CallNotesPanel({ roomId, active, onOpenWorkspace, onAttentionCha
   const rebaseAttempts = useRef(new Map<string, number>());
   const refreshSequence = useRef(0);
   const alive = useRef(true);
+  const openedRequest = useRef<typeof noteToOpen>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => {
+    if (!active || !noteToOpen || openedRequest.current === noteToOpen) return;
+    const note = notes.find(note => note.id === noteToOpen.id);
+    if (!note) return; // Only open a note returned by the current actor's scoped read.
+    openedRequest.current = noteToOpen;
+    const retained = Object.values(draftsRef.current).find(draft => draft.note?.id === note.id);
+    setSelected(retained?.key ?? note.id);
+    setFilter(note.visibility === "AUTHOR_PRIVATE" ? "private" : "shared");
+    if (!retained) setDrafts(current => current[note.id] ? current : { ...current, [note.id]: draftFor(note) });
+  }, [active, noteToOpen, notes]);
 
   const clearAccess = useCallback((message: string) => {
     // Keep the previous actor's retry journal, but no longer display or save it.
@@ -203,6 +215,7 @@ export function CallNotesPanel({ roomId, active, onOpenWorkspace, onAttentionCha
       attempts.current.delete(key);
       rebaseAttempts.current.delete(key);
       setNotes(current => [note, ...current.filter(item => item.id !== note.id)]);
+      window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", { detail: { roomId } }));
       setDrafts(current => {
         const latest = current[key];
         // A retry can read a subsequent collaborator revision. Retain the draft
@@ -269,6 +282,7 @@ export function CallNotesPanel({ roomId, active, onOpenWorkspace, onAttentionCha
         {readOnly ? "Read-only note" : saving === draft.key ? <span className="inline-flex items-center gap-1"><LoaderCircle size={14} className="animate-spin" />Saving…</span> : draft.error ? "Not saved" : draft.conflict ? "Changed elsewhere" : draft.version === draft.savedVersion ? <span className="inline-flex items-center gap-1"><Check size={14} />{draft.note ? "Saved" : "Saves as you write"}</span> : draft.body.trim() ? "Saving soon…" : "Add note text to save"}
         {draft.note ? <span>{draft.note.author?.label}</span> : null}
       </div>
+      {draft.note?.sourceHref ? <Link href={draft.note.sourceHref} onClick={onOpenWorkspace} className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4">{draft.note.sourceHref.includes("?mode=conversation") ? "From conversation" : "From the transcript"}</Link> : null}
       {draft.reconciled && !draft.conflict ? <p className="text-xs text-muted-foreground">Includes your changes and the latest shared edits.</p> : null}
       {draft.error ? <div role="alert" className="rounded-xl border border-destructive/30 p-3 text-sm"><p>{draft.error}</p>{!readOnly ? <button type="button" onClick={() => void save(draft.key, true)} className="mt-2 min-h-11 rounded-xl border border-border px-3 font-semibold">Retry save</button> : null}</div> : null}
       {draft.conflict && !readOnly ? <section className="rounded-xl border border-border p-3 text-sm" aria-label="Note updated elsewhere">

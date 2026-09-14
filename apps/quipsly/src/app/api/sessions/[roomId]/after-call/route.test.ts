@@ -3,15 +3,18 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere } from "@/lib/server/session-access";
 import { GET } from "./route";
+import { loadSessionAfterCallWork } from "@/lib/server/session-after-call-work";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/session-after-call-work", () => ({ loadSessionAfterCallWork: jest.fn() }));
 const actor = { id: "coach", primaryEmail: "coach@example.test", isStaff: false };
 const findFirst = jest.fn();
 const read = (roomId = "session") => GET(new Request(`http://localhost/api/sessions/${roomId}/after-call`), { params: Promise.resolve({ roomId }) });
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(loadSessionAfterCallWork).mockResolvedValue(null);
   jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: actor } as any);
   jest.mocked(getPrismaClient).mockReturnValue({ callRoom: { findFirst } } as any);
 });
@@ -34,7 +37,7 @@ it("returns only availability, never filenames, source manifests, transcript bod
   findFirst.mockResolvedValue({ id: "session", recordingAssets: [{ id: "phone", kind: "LOCAL_AUDIO", status: "VERIFIED", verifiedAt: new Date(),
     localManifestJson: { exactBytesVerified: true, privateMetadata: "secret" } }], transcriptJobs: [{ assetId: "phone", status: "COMPLETED", _count: { segments: 10 } }] });
   const response = await read();
-  expect(await response.json()).toEqual({ ok: true, summary: { roomId: "session", recordings: { uploaded: 1, pending: 0, attention: 0 }, transcripts: { available: 1, processing: 0, attention: 0 }, transcriptSourceId: "phone", recordingSourceId: "phone" } });
+  expect(await response.json()).toEqual({ ok: true, summary: { roomId: "session", recordings: { uploaded: 1, pending: 0, attention: 0 }, transcripts: { available: 1, processing: 0, attention: 0 }, transcriptSourceId: "phone", recordingSourceId: "phone", followThrough: null } });
 });
 it("reports a retryable failure without claiming that a database outage means no recordings", async () => {
   findFirst.mockRejectedValue(new Error("database credentials must not escape"));
@@ -54,7 +57,15 @@ it("summarizes the latest take without borrowing an earlier take's transcript or
     transcriptJobs: [{id: "old-job", createdAt: new Date(), assetId: "old", status: "COMPLETED", _count: {segments: 10}}]});
   expect((await (await read()).json()).summary).toEqual({roomId: "session",
     recordings: {uploaded: 1, pending: 1, attention: 0}, transcripts: {available: 0, processing: 0, attention: 0},
-    transcriptSourceId: null, recordingSourceId: "new", otherRecordingCount: 1});
+    transcriptSourceId: null, recordingSourceId: "new", otherRecordingCount: 1, followThrough: null});
+  expect(loadSessionAfterCallWork).toHaveBeenCalledWith(expect.objectContaining({roomId: "session", actor, sourceIds: ["new"]}));
+});
+it("keeps media reachable when session work cannot refresh", async () => {
+  findFirst.mockResolvedValue({id: "session", recordingAssets: [], transcriptJobs: []});
+  jest.mocked(loadSessionAfterCallWork).mockRejectedValue(new Error("work read failed"));
+  const result = await read();
+  expect(result.status).toBe(200);
+  expect((await result.json()).summary.followThrough).toBeNull();
 });
 it("rejects invalid identifiers without querying", async () => {
   expect((await read(" ")).status).toBe(400);
