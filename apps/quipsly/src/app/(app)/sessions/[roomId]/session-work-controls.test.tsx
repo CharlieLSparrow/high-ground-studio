@@ -61,7 +61,7 @@ describe("in-session work controls", () => {
     const onUpdate = jest.fn();
     const view = render(<SessionWorkControls entry={task} onUpdate={onUpdate} />);
     await userEvent.click(screen.getByRole("button", {name: "Mark done"}));
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({status: "DONE", updatedAt: "2026-09-07T01:00:00Z"}));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({status: "DONE", updatedAt: "2026-09-07T01:00:00Z"}, {restoreFocus: false}));
     view.rerender(<SessionWorkControls entry={{...task, status: "DONE", updatedAt: "2026-09-07T01:00:00Z"}} onUpdate={onUpdate} />);
     await userEvent.click(screen.getByRole("button", {name: "Reopen"}));
     expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({taskId: task.id, nextStatus: "OPEN", expectedUpdatedAt: "2026-09-07T01:00:00Z"});
@@ -110,7 +110,7 @@ describe("in-session work controls", () => {
     const onUpdate = jest.fn();
     const view = render(<SessionWorkControls entry={goal} onUpdate={onUpdate} />);
     await userEvent.click(screen.getByRole("button", {name: "Mark achieved"}));
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({status: "ACHIEVED", updatedAt: "2026-09-07T01:00:00Z"}));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({status: "ACHIEVED", updatedAt: "2026-09-07T01:00:00Z"}, {restoreFocus: false}));
     view.rerender(<SessionWorkControls entry={{...goal, status: "ACHIEVED", updatedAt: "2026-09-07T01:00:00Z"}} onUpdate={onUpdate} />);
     await userEvent.click(screen.getByRole("button", {name: "Reopen"}));
     expect(updateWorkGoalStatus).toHaveBeenLastCalledWith({goalId: goal.id, nextStatus: "ACTIVE", expectedUpdatedAt: "2026-09-07T01:00:00Z"});

@@ -3,7 +3,7 @@ import {fireEvent, render, screen, within, waitFor} from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import {SessionWorkWorkspace} from "./session-work-workspace";
 import type {SessionQuickEntry} from "./session-review-client";
-import {updateWorkTaskStatus, editWorkTask} from "../../work/actions";
+import {updateWorkTaskStatus, updateWorkGoalStatus, editWorkTask} from "../../work/actions";
 
 const mockRefresh = jest.fn();
 jest.mock("next/navigation", () => ({useRouter: () => ({refresh: mockRefresh})}));
@@ -20,6 +20,7 @@ describe("Session work workspace", () => {
     const onOpenConversation = jest.fn(); const onOpenWorkspace = jest.fn();
     const entry = {...task, fromConversation: true, sourceHref: "/sessions/room-1?mode=conversation&message=message-1"};
     const view = render(<SessionWorkWorkspace roomId="room-1" entries={[entry]} compact onOpenConversation={onOpenConversation} onOpenWorkspace={onOpenWorkspace} />);
+    fireEvent.click(screen.getByLabelText("Open task: Write one page"));
     fireEvent.click(screen.getByRole("link", {name: "From conversation"}));
     expect(onOpenConversation).toHaveBeenCalledWith("message-1");
     expect(onOpenWorkspace).not.toHaveBeenCalled();
@@ -42,6 +43,7 @@ describe("Session work workspace", () => {
     const heading = await screen.findByRole("heading", {name: "Read the chapter"});
     await waitFor(() => expect(document.activeElement).toBe(heading.closest("article")));
     expect(heading).toBeVisible();
+    expect(screen.getByLabelText("Open task: Read the chapter").closest("details")).toHaveAttribute("open");
     expect(screen.getByRole("searchbox")).toHaveValue("");
     await user.click(screen.getByRole("button", {name: "Continue draft"}));
     expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("My next idea");
@@ -214,6 +216,81 @@ describe("Session work workspace", () => {
     await userEvent.click(screen.getByRole("button", {name: "Reopen"}));
     expect(await screen.findByRole("button", {name: "Mark done"})).toBeVisible();
     expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({taskId: task.id, nextStatus: "OPEN", expectedUpdatedAt: "2026-09-02T12:00:00Z"});
+  });
+
+  it("completes and reopens a compact task without opening its details", async () => {
+    jest.mocked(updateWorkTaskStatus).mockResolvedValueOnce({ok: true, taskId: task.id, status: "DONE", updatedAt: "2026-09-02T12:00:00Z", receiptId: "one"})
+      .mockResolvedValueOnce({ok: true, taskId: task.id, status: "OPEN", updatedAt: "2026-09-03T12:00:00Z", receiptId: "two"});
+    render(<SessionWorkWorkspace roomId="room-1" entries={[task]} compact />);
+    expect(screen.getByLabelText("Open task: Write one page").closest("details")).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByRole("checkbox", {name: "Mark done: Write one page"}));
+    await userEvent.click(await screen.findByText("Completed (1)"));
+    expect(screen.getByRole("checkbox", {name: "Reopen: Write one page"})).toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", {name: "Reopen: Write one page"}));
+    expect(await screen.findByRole("checkbox", {name: "Mark done: Write one page"})).not.toBeChecked();
+    expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({taskId: task.id, nextStatus: "OPEN", expectedUpdatedAt: "2026-09-02T12:00:00Z"});
+  });
+
+  it("keeps compact edit drafts through refresh and reports a conflict without discarding text", async () => {
+    const {rerender} = render(<SessionWorkWorkspace roomId="room-1" entries={[task]} compact />);
+    await userEvent.click(screen.getByLabelText("Open task: Write one page"));
+    await userEvent.clear(screen.getByRole("textbox", {name: "Title"}));
+    await userEvent.type(screen.getByRole("textbox", {name: "Title"}), "Write a reflection");
+    rerender(<SessionWorkWorkspace roomId="room-1" entries={[{...task, title: "Someone else's update", updatedAt: "2026-09-02T00:00:00Z"}]} compact />);
+    expect(screen.getByRole("textbox", {name: "Title"})).toHaveValue("Write a reflection");
+    jest.mocked(editWorkTask).mockResolvedValue({ok: false, code: "CONFLICT", error: "This task changed. Reload before saving."});
+    await userEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This task changed");
+    expect(screen.getByRole("textbox", {name: "Title"})).toHaveValue("Write a reflection");
+    expect(editWorkTask).toHaveBeenCalledWith(expect.objectContaining({expectedUpdatedAt: task.updatedAt, title: "Write a reflection"}));
+  });
+
+  it("keeps another person's read-only task and source visible without offering mutations", async () => {
+    render(<SessionWorkWorkspace roomId="room-1" compact canCreate={false} entries={[{...task, canEdit: false, ownedByCurrentActor: false, sourceHref: "/sessions/room-1?mode=transcript&at=4"}]} />);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Open task: Write one page"));
+    expect(screen.getByText("Start with the main idea")).toBeVisible();
+    expect(screen.getByRole("link", {name: "From recording"})).toBeVisible();
+    expect(screen.queryByRole("button", {name: "Save changes"})).not.toBeInTheDocument();
+  });
+
+  it("offers immediate undo after completion and keeps keyboard focus in the workflow", async () => {
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ok: true, taskId: task.id, status: "DONE", updatedAt: "2026-09-02T00:00:00Z", receiptId: "done"})
+      .mockResolvedValueOnce({ok: true, taskId: task.id, status: "OPEN", updatedAt: "2026-09-03T00:00:00Z", receiptId: "undo"});
+    render(<SessionWorkWorkspace roomId="room-1" entries={[task]} compact />);
+    await userEvent.click(screen.getByRole("checkbox", {name: "Mark done: Write one page"}));
+    const undo = await screen.findByRole("button", {name: "Undo"});
+    expect(undo).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent("Completed: Write one page");
+    await userEvent.click(undo);
+    await waitFor(() => expect(screen.getByRole("checkbox", {name: "Mark done: Write one page"})).toHaveFocus());
+    expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({taskId: task.id, nextStatus: "OPEN", expectedUpdatedAt: "2026-09-02T00:00:00Z"});
+    expect(screen.queryByRole("button", {name: "Undo"})).not.toBeInTheDocument();
+  });
+
+  it("does not overwrite a collaborator's newer change when undoing a completed task", async () => {
+    jest.mocked(updateWorkTaskStatus)
+      .mockResolvedValueOnce({ok: true, taskId: task.id, status: "DONE", updatedAt: "2026-09-02T00:00:00Z", receiptId: "done"})
+      .mockResolvedValueOnce({ok: false, code: "CONFLICT", error: "This task changed. Reload before saving."});
+    const view = render(<SessionWorkWorkspace roomId="room-1" entries={[task]} compact />);
+    await userEvent.click(screen.getByRole("checkbox", {name: "Mark done: Write one page"}));
+    await screen.findByRole("button", {name: "Undo"});
+    view.rerender(<SessionWorkWorkspace roomId="room-1" entries={[{...task, status: "DONE", updatedAt: "2026-09-04T00:00:00Z", title: "Updated by Riley"}]} compact />);
+    await userEvent.click(screen.getByRole("button", {name: "Undo"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This task changed");
+    expect(updateWorkTaskStatus).toHaveBeenLastCalledWith({taskId: task.id, nextStatus: "OPEN", expectedUpdatedAt: "2026-09-02T00:00:00Z"});
+  });
+
+  it("restores a paused goal to paused instead of changing its prior state on undo", async () => {
+    jest.mocked(updateWorkGoalStatus)
+      .mockResolvedValueOnce({ok: true, goalId: task.id, status: "ACHIEVED", updatedAt: "2026-09-02T00:00:00Z", receiptId: "achieved"})
+      .mockResolvedValueOnce({ok: true, goalId: task.id, status: "PAUSED", updatedAt: "2026-09-03T00:00:00Z", receiptId: "undo"});
+    render(<SessionWorkWorkspace roomId="room-1" entries={[{...task, kind: "GOAL", status: "PAUSED"}]} compact />);
+    await userEvent.click(screen.getByRole("checkbox", {name: "Mark achieved: Write one page"}));
+    await userEvent.click(await screen.findByRole("button", {name: "Undo"}));
+    await screen.findByRole("checkbox", {name: "Mark achieved: Write one page"});
+    expect(updateWorkGoalStatus).toHaveBeenLastCalledWith({goalId: task.id, nextStatus: "PAUSED", expectedUpdatedAt: "2026-09-02T00:00:00Z"});
   });
 
   it("edits a generated task without requiring a move to Work", async () => {

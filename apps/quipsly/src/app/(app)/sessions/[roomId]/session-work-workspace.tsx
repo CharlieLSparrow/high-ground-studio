@@ -7,6 +7,7 @@ import { TagSearchChips } from "@/components/tag-search-chips";
 import type { SessionQuickEntry } from "./session-review-client";
 import { SessionWorkControls } from "./session-work-controls";
 import type { SessionWorkAssignmentContext } from "@/lib/session-work-assignment";
+import { updateWorkGoalStatus, updateWorkTaskStatus } from "../../work/actions";
 
 type WorkKind = "TASK" | "GOAL";
 type WorkFilter = "ALL" | WorkKind;
@@ -46,6 +47,19 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
   const attempt = useRef<{fingerprint: string; id: string} | null>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const options = useRef<HTMLDetailsElement>(null);
+  const [completion, setCompletion] = useState<{id: string; kind: WorkKind; title: string; previousStatus: "OPEN" | "ACTIVE" | "PAUSED"; updatedAt: string} | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const undoInFlight = useRef(false);
+  const undoButton = useRef<HTMLButtonElement>(null);
+  const focusUndo = useRef(false);
+  useEffect(() => {
+    if (active && completion && focusUndo.current) {
+      focusUndo.current = false;
+      undoButton.current?.focus({preventScroll: true});
+      undoButton.current?.scrollIntoView?.({block: "nearest"});
+    }
+  }, [active, completion]);
   useEffect(() => setCurrent(workEntries(entries)), [entries]);
   useEffect(() => {
     if (!active || !entryToOpen || handledOpen.current === entryToOpen) return;
@@ -64,6 +78,36 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     });
     return () => cancelAnimationFrame(frame);
   }, [active, focusPending, focusedEntryId, compact, query, onlyMine, filter, expandedCompleted]);
+
+  function publishUpdate(id: string, update: Partial<SessionQuickEntry>) {
+    setCurrent(previous => previous.map(item => item.id === id ? {...item, ...update} : item));
+    onChanged?.();
+    window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", {detail: {roomId}}));
+  }
+
+  async function undoCompletion() {
+    if (!completion || undoInFlight.current) return;
+    const change = completion;
+    undoInFlight.current = true; setUndoBusy(true); setUndoError(null);
+    try {
+      const result = change.kind === "TASK"
+        ? await updateWorkTaskStatus({taskId: change.id, nextStatus: "OPEN", expectedUpdatedAt: change.updatedAt})
+        : await updateWorkGoalStatus({goalId: change.id, nextStatus: change.previousStatus === "PAUSED" ? "PAUSED" : "ACTIVE", expectedUpdatedAt: change.updatedAt});
+      if (!result.ok) throw new Error(result.error);
+      publishUpdate(change.id, {status: result.status, updatedAt: result.updatedAt});
+      setCompletion(previous => previous === change ? null : previous);
+      requestAnimationFrame(() => {
+        if (!active) return;
+        const row = document.getElementById(`${compact ? "call-work" : "quick-entry"}-${change.id}`);
+        const target = row?.querySelector<HTMLButtonElement>('[role="checkbox"]') || row;
+        target?.focus({preventScroll: true});
+        target?.scrollIntoView?.({block: "nearest"});
+      });
+      router.refresh();
+    } catch (error) {
+      setUndoError(error instanceof Error ? error.message : "Could not undo. Try again.");
+    } finally {undoInFlight.current = false; setUndoBusy(false);}
+  }
 
   async function createWork(form: FormData) {
     if (inFlight.current) return;
@@ -131,24 +175,27 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     const mine = entry.ownedByCurrentActor !== false;
     const due = entry.dueAt ? new Date(entry.dueAt) : null;
     const dateLabel = due && Number.isFinite(due.getTime()) ? due.toLocaleDateString(undefined, {month: "short", day: "numeric", year: "numeric"}) : null;
-    return <article id={`${compact ? "call-work" : "quick-entry"}-${entry.id}`} key={entry.id} tabIndex={-1}
-      className={`scroll-mt-24 rounded-xl border border-border bg-card p-4 text-card-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${entry.id === focusedEntryId ? "ring-2 ring-primary/50" : ""}`}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    const heading = <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className={`min-w-0 break-words font-semibold ${finished ? "text-muted-foreground" : ""}`}>{entry.title || `Untitled ${entry.kind.toLowerCase()}`}</h3>
         <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{entry.kind === "GOAL" ? "Goal" : "Task"}{finished ? ["DONE", "ACHIEVED"].includes(entry.status) ? " · Completed" : entry.status === "ARCHIVED" ? " · Archived" : " · Canceled" : entry.status === "PAUSED" ? " · Paused" : ""}</span>
-      </div>
-      {entry.body && <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{entry.body}</p>}
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-        {entry.visibility === "ENGAGEMENT_SHARED" ? "Shared client space" : entry.visibility === "SESSION_SHARED" ? "Everyone in this Session" : "Only me"} · {entry.ownerLabel || (mine ? "Mine" : "Another participant")}
+      </div>;
+    const body = entry.body && <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{entry.body}</p>;
+    const metadata = <p className={`${compact ? "mt-1" : "mt-2"} text-xs leading-5 text-muted-foreground`}>
+        {entry.visibility === "ENGAGEMENT_SHARED" ? "Shared client space" : entry.visibility === "SESSION_SHARED" ? compact ? "Shared" : "Everyone in this Session" : "Only me"} · {entry.ownerLabel || (mine ? "Mine" : "Another participant")}
         {dateLabel && <> · {entry.kind === "GOAL" ? "Target" : "Due"} <time dateTime={entry.dueAt!}>{dateLabel}</time></>}
-      </p>
-      <TagSearchChips tags={entry.tags} label={`${entry.title || entry.kind} tags`} />
-      <SessionWorkControls entry={entry} assignmentContext={assignmentContext} onUpdate={update => {
-        setCurrent(previous => previous.map(item => item.id === entry.id ? {...item, ...update} : item));
-        onChanged?.();
-        window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", {detail: {roomId}}));
-      }} />
-      <div className="mt-2 flex flex-wrap gap-x-4">
+      </p>;
+    const tags = <TagSearchChips tags={entry.tags} label={`${entry.title || entry.kind} tags`} />;
+    const onUpdate = (update: Partial<SessionQuickEntry>, interaction?: {restoreFocus: boolean}) => {
+        if (compact && update.status && update.status !== entry.status) {
+          if ((entry.status === "OPEN" || entry.status === "ACTIVE" || entry.status === "PAUSED") && (update.status === "DONE" || update.status === "ACHIEVED") && update.updatedAt) {
+            focusUndo.current = Boolean(interaction?.restoreFocus);
+            setCompletion({id: entry.id, kind: entry.kind as WorkKind, title: entry.title || "Untitled", previousStatus: entry.status, updatedAt: update.updatedAt});
+            setUndoError(null);
+          } else setCompletion(previous => previous?.id === entry.id ? null : previous);
+        }
+        publishUpdate(entry.id, update);
+      };
+    const sources = <div className="mt-2 flex flex-wrap gap-x-4">
         {entry.sourceHref && <Link onClick={event => {
           if (entry.fromConversation && onOpenConversation && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
             const source = new URL(entry.sourceHref!, window.location.origin);
@@ -160,7 +207,18 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
           onOpenWorkspace?.();
         }} href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{entry.fromConversation ? "From conversation" : "From recording"}</Link>}
         {mine && <Link onClick={onOpenWorkspace} href={`/work?${entry.kind === "TASK" ? "task" : "goal"}=${encodeURIComponent(entry.id)}`} className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline underline-offset-4">Open in Work</Link>}
-      </div>
+      </div>;
+    return <article id={`${compact ? "call-work" : "quick-entry"}-${entry.id}`} key={entry.id} tabIndex={-1}
+      className={`scroll-mt-24 rounded-xl border border-border bg-card ${compact ? "p-1" : "p-4"} text-card-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${entry.id === focusedEntryId ? "ring-2 ring-primary/50" : ""}`}>
+      {compact ? <>
+        <SessionWorkControls entry={entry} assignmentContext={assignmentContext} onUpdate={onUpdate}
+          revealRequest={entryToOpen?.id === entry.id ? entryToOpen.request : undefined}
+          compactSummary={<><h3 className={`break-words text-sm font-semibold ${finished ? "text-muted-foreground" : ""}`}>{entry.title || `Untitled ${entry.kind.toLowerCase()}`}</h3>{metadata}
+            {entry.kind === "GOAL" && <span className="text-xs font-medium text-muted-foreground">Goal{entry.status === "PAUSED" ? " · Paused" : ""}</span>}</>}>
+          {!(entry.canEdit ?? mine) || finished ? body : null}{sources}
+        </SessionWorkControls>
+        {entry.tags.length > 0 && <div className="px-3 pb-2 pl-12">{tags}</div>}
+      </> : <>{heading}{body}{metadata}{tags}<SessionWorkControls entry={entry} assignmentContext={assignmentContext} onUpdate={onUpdate} />{sources}</>}
     </article>;
   }
 
@@ -224,6 +282,11 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
         <button type="button" aria-pressed={onlyMine} onClick={() => setOnlyMine(value => !value)} className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${onlyMine ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}>Assigned to me</button>
       </div>
       {hasFilters && <p role="status" className="text-xs text-muted-foreground">{filtered.length} of {current.length} items</p>}
+    </div>}
+    {completion && <div className="flex flex-wrap items-center justify-between gap-x-3 rounded-xl border border-border bg-muted px-3 py-1">
+      <p role="status" className="min-w-0 flex-1 break-words text-sm">{completion.kind === "TASK" ? "Completed" : "Achieved"}: {completion.title}</p>
+      <button ref={undoButton} type="button" disabled={undoBusy} onClick={() => void undoCompletion()} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-primary underline underline-offset-4 disabled:opacity-50">{undoBusy ? "Undoing…" : "Undo"}</button>
+      {undoError && <p role="alert" className="w-full pb-2 text-sm text-destructive">{undoError}</p>}
     </div>}
     <div className="space-y-3" aria-label="Unfinished work">
       {unfinished.map(renderEntry)}

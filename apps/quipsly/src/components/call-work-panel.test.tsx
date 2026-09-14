@@ -95,7 +95,7 @@ describe("Call work panel", () => {
     });
     const user = userEvent.setup();
     render(<CallWorkPanel roomId="room-1" active onOpenWorkspace={jest.fn()} />);
-    await user.click(await screen.findByRole("button", {name: "Mark done"}));
+    await user.click(await screen.findByRole("checkbox", {name: "Mark done: Send the reflection"}));
     await waitFor(() => expect(screen.getByText("Completed (1)")).toBeVisible());
     expect(updateWorkTaskStatus).toHaveBeenCalledWith({taskId: task.id, nextStatus: "DONE", expectedUpdatedAt: task.updatedAt});
     entries = [...entries, {...task, id: "from-chat", title: "Try the practice from chat"}];
