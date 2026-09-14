@@ -11542,6 +11542,10 @@ private struct CaptureRecorderView: View {
                             visibleTab = .library
                         }
                     )
+                } else if let session = model.selectedSession,
+                          !model.providerRoom.isConnected,
+                          !localRecordingWorkspaceIsOpen(for: session) {
+                    prejoinWorkspace(session)
                 } else {
                     // This surface can project a full Episode workspace. Lazy
                     // layout remains a correctness boundary for collaborative
@@ -13070,6 +13074,52 @@ private struct CaptureRecorderView: View {
                 }
             }
         )
+    }
+
+    private func prejoinWorkspace(_ session: MobileCaptureSession) -> AnyView {
+        // A lobby is a bounded destination, not a lazy projection of every
+        // transcript, recording, and follow-through card. That projection can
+        // enter a SwiftUI placement loop while scrolling a populated session.
+        // Work remains directly reachable without participating in lobby layout.
+        AnyView(VStack(spacing: 16) {
+            SessionChooserButton(session: session) { showsSessionPicker = true }
+                .disabled(model.isSessionContextLocked)
+            if model.sessionClient.sessionsAreStale {
+                Label("Offline copy · some actions unavailable", systemImage: "wifi.slash")
+                    .font(.caption).foregroundStyle(CapturePalette.brass)
+                    .accessibilityIdentifier("CaptureSessionAuthorityStatus")
+            }
+            if let message = model.message {
+                CaptureInlineMessage(text: message)
+                    .accessibilityIdentifier("CaptureSessionStatusMessage")
+            }
+            ProviderRoomControls(
+                model: model, session: session,
+                inputRoute: audioCapture.inputRouteName,
+                cameraPosition: $cameraPosition,
+                videoQualityIntent: videoQualityIntent,
+                localRecordingWorkspaceOpen: false,
+                onToggleLocalRecordingWorkspace: { localOnlyRecordingSessionID = session.id }
+            )
+            .captureCard()
+            callWorkspaceActions(session)
+            if sessionHasRecording(session) { CaptureRecordingEditCard(session: session) }
+            if sessionHasPostCallWork(session) {
+                Button { showsCompletedSessionWork = true } label: {
+                    Label("Recap and transcript", systemImage: "doc.text")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureOpenSessionWork")
+            } else if session.isCoachingSession {
+                Button { sessionPreparationSession = session } label: {
+                    Label("Session plan", systemImage: "list.bullet.clipboard")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureSessionPreparationOpen")
+            }
+        }.accessibilityIdentifier("CaptureCallLobbyWorkspace"))
     }
 
     private func callWorkspaceActions(_ session: MobileCaptureSession) -> some View {

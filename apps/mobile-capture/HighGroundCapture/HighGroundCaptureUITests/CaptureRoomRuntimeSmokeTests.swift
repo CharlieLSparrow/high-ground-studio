@@ -5518,6 +5518,37 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRuntimeScreenshot(app, name: "Signed-in writing saved to Nest")
     }
 
+    private func assertWaveformScrubbing(in app: XCUIApplication) {
+        let scrub = app.descendants(matching: .any)["CaptureRecordingWaveformScrub"].firstMatch
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(scrub, in: app))
+        let originalRange = app.staticTexts["CaptureRecordingListenKeptRange"].firstMatch.label
+        scrub.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                guard let value = scrub.value as? String else { return false }
+                return value != "0:00"
+            }, object: scrub
+        )], timeout: 5), .completed, "Tapping the waveform seeks the actual source player.")
+        let tappedPosition = scrub.value as? String
+        scrub.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: scrub.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in (scrub.value as? String) != tappedPosition }, object: scrub
+        )], timeout: 5), .completed, "Dragging the waveform moves the source playhead.")
+        XCTAssertEqual(app.staticTexts["CaptureRecordingListenKeptRange"].firstMatch.label, originalRange,
+                       "Scrubbing navigates the original without changing the edit.")
+        if app.frame.width < 700 {
+            let positionBeforeScroll = scrub.value as? String
+            let yBeforeScroll = scrub.frame.minY
+            scrub.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+                .press(forDuration: 0.05, thenDragTo: scrub.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+            XCTAssertEqual(scrub.value as? String, positionBeforeScroll,
+                           "Scrolling vertically over the waveform must not scrub the audio.")
+            XCTAssertLessThan(scrub.frame.minY, yBeforeScroll - 1,
+                              "The waveform must not trap vertical editor scrolling.")
+        }
+    }
+
     func testRecordingEditDraftSurvivesNativeRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {
@@ -5540,6 +5571,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         var app = try launchSignedInCaptureApp(initialTab: "record", sessionDeepLinkRoomID: sessionID)
         openEditor(app)
+        let listen = app.buttons["CaptureRecordingListenToggle"].firstMatch
+        XCTAssertTrue(scrollRuntimeElementIntoHittableView(listen, in: app))
+        listen.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "Pause recording"), object: listen
+        )], timeout: 30), .completed)
+        listen.tap()
+        assertWaveformScrubbing(in: app)
         let title = app.textFields["CaptureRecordingShareTitle"]
         let initialValue = try XCTUnwrap(title.value as? String)
         let originalTitle = initialValue == title.placeholderValue ? "" : initialValue
@@ -6620,6 +6659,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             showPlayhead.tap()
             zoom.tap()
             app.buttons["1×"].firstMatch.tap()
+            assertWaveformScrubbing(in: app)
             XCTAssertTrue(scrollRuntimeElementIntoHittableView(position, in: app))
             position.adjust(toNormalizedSliderPosition: 0.25)
             let markStart = app.buttons["CaptureRecordingMarkStart"].firstMatch

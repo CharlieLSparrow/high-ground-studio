@@ -32,18 +32,36 @@ struct CaptureRecordingWaveformView: View {
                 .onChange(of: zoom) { _, _ in center = position }
             }
             ZStack {
-                Canvas { context, size in
-                    draw(context: &context, size: size)
-                }
-                .accessibilityHidden(true)
-                if waveform == nil {
-                    if isLoading {
-                        ProgressView("Drawing waveform…").font(.caption)
-                    } else {
-                        Text(duration > 0 ? "Waveform unavailable · playback still works" : "Play to load the waveform")
-                            .font(.caption).foregroundStyle(.secondary)
+                ZStack {
+                    Canvas { context, size in
+                        draw(context: &context, size: size)
+                    }
+                    .accessibilityHidden(true)
+                    if waveform == nil {
+                        if isLoading {
+                            ProgressView("Drawing waveform…").font(.caption)
+                        } else {
+                            Text(duration > 0 ? "Waveform unavailable · playback still works" : "Play to load the waveform")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                CaptureWaveformScrubSurface(window: window, seek: seek)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Recording waveform")
+                .accessibilityValue(captureRecordingShareTime(position))
+                .accessibilityHint("Tap or drag horizontally to move through the original recording.")
+                .accessibilityAdjustableAction { direction in
+                    guard duration > 0 else { return }
+                    let step = max(0.1, window.length / 20)
+                    switch direction {
+                    case .increment: seek(min(window.end, max(window.start, position + step)))
+                    case .decrement: seek(max(window.start, min(window.end, position - step)))
+                    @unknown default: break
+                    }
+                }
+                .accessibilityIdentifier("CaptureRecordingWaveformScrub")
             }
             .frame(height: 96)
             .background(CapturePalette.surface.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
@@ -130,6 +148,64 @@ struct CaptureRecordingWaveformView: View {
             line.move(to: CGPoint(x: x(position), y: 0))
             line.addLine(to: CGPoint(x: x(position), y: size.height))
             context.stroke(line, with: .color(.primary), lineWidth: 2)
+        }
+    }
+}
+
+/// Reject vertical movement before recognition, so the enclosing ScrollView
+/// receives it normally. A SwiftUI simultaneous DragGesture can still consume
+/// scrolling even when its onChanged handler ignores that movement.
+private struct CaptureWaveformScrubSurface: UIViewRepresentable {
+    let window: CaptureWaveformWindow
+    let seek: (TimeInterval) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(window: window, seek: seek) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isAccessibilityElement = false
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.panned(_:)))
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = context.coordinator
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
+        view.addGestureRecognizer(pan)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.window = window
+        context.coordinator.seek = seek
+        view.isUserInteractionEnabled = window.duration > 0
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var window: CaptureWaveformWindow
+        var seek: (TimeInterval) -> Void
+
+        init(window: CaptureWaveformWindow, seek: @escaping (TimeInterval) -> Void) {
+            self.window = window
+            self.seek = seek
+        }
+
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return true }
+            let velocity = pan.velocity(in: pan.view)
+            return abs(velocity.x) > abs(velocity.y)
+        }
+
+        @objc func tapped(_ recognizer: UITapGestureRecognizer) { move(recognizer) }
+
+        @objc func panned(_ recognizer: UIPanGestureRecognizer) {
+            guard [.began, .changed, .ended].contains(recognizer.state) else { return }
+            move(recognizer)
+        }
+
+        private func move(_ recognizer: UIGestureRecognizer) {
+            guard let view = recognizer.view, view.bounds.width > 0, window.duration > 0 else { return }
+            seek(window.sourceTime(at: recognizer.location(in: view).x / view.bounds.width))
         }
     }
 }

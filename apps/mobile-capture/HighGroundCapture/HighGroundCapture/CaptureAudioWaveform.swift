@@ -74,4 +74,11 @@ struct CaptureWaveformWindow: Equatable {
         let upper = min(end, programEnd - offset)
         return upper > lower ? lower...upper : nil
     }
+
+    /// Pointer coordinates are relative to the visible source window, not the
+    /// whole recording or the session clock. Never let an edge drag overshoot.
+    func sourceTime(at fraction: Double) -> TimeInterval {
+        guard fraction.isFinite else { return start }
+        return start + min(1, max(0, fraction)) * length
+    }
 }

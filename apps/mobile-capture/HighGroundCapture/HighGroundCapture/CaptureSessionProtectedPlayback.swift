@@ -375,6 +375,10 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
 
     func seek(to requestedSeconds: TimeInterval) {
         guard let player else { return }
+        // A deliberate seek leaves a bounded transcript/trim audition. Its old
+        // stop marker must not pull the playhead back after the user moves on.
+        boundedPlaybackStart = nil
+        boundedPlaybackEnd = nil
         let bounded = min(max(requestedSeconds.isFinite ? requestedSeconds : 0, 0), max(duration, 0))
         player.seek(
             to: CMTime(seconds: bounded, preferredTimescale: 600),

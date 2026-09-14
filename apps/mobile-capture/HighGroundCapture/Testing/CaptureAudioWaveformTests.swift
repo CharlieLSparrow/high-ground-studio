@@ -49,6 +49,9 @@ enum CaptureAudioWaveformTests {
 
         let window = CaptureWaveformWindow(duration: 20, zoom: 2, center: 8)
         precondition(window.start == 3 && window.end == 13)
+        precondition(window.sourceTime(at: 0.25) == 5.5, "Touch scrubbing uses the zoomed source window")
+        precondition(window.sourceTime(at: -0.5) == 3 && window.sourceTime(at: 1.5) == 13)
+        precondition(window.sourceTime(at: .nan) == 3 && window.sourceTime(at: .infinity) == 3)
         precondition(window.sourceRange(programStart: 12, programEnd: 28, offset: 10) == 3...13)
         precondition(window.sourceRange(programStart: 15, programEnd: 17, offset: 10) == 5...7)
         precondition(window.sourceRange(programStart: 30, programEnd: 40, offset: 10) == nil)
