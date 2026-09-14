@@ -254,6 +254,8 @@ export function SessionRecordingShareCard({
   initialSourceId?: string | null;
   renderOriginalRecordings?: (sourceIds: string[], editing: {
     selectedSourceIds: string[];
+    sourceOffsets: Record<string, number>;
+    removedRanges: Array<{startSeconds: number; endSeconds: number}>;
     startSeconds: number;
     endSeconds: number;
     disabled: boolean;
@@ -610,7 +612,7 @@ export function SessionRecordingShareCard({
   const coach = snapshot.role === "COACH";
   const verifiedRendererAvailable = Boolean(snapshot.readiness?.localRendererAvailable || snapshot.readiness?.cloudRendererAvailable);
   return (
-    <section id="recording-share" className="rounded-3xl border border-border bg-muted/40 p-5 shadow-sm sm:p-6" aria-labelledby="recording-share-heading">
+    <section id="recording-share" className="rounded-3xl border border-border bg-muted/40 p-3 shadow-sm sm:p-6" aria-labelledby="recording-share-heading">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <span className="rounded-2xl bg-card p-3 text-muted-foreground shadow-sm"><FileAudio aria-hidden="true" size={22} /></span>
@@ -659,6 +661,8 @@ export function SessionRecordingShareCard({
 
       {coach && renderOriginalRecordings ? <div className="mt-4">{renderOriginalRecordings((snapshot.available?.sources || []).map(source => source.id), {
         selectedSourceIds: [...selected], startSeconds, endSeconds, disabled: Boolean(busy), onTrimBoundary: markTrimBoundary,
+        sourceOffsets: Object.fromEntries((snapshot.available?.sources || []).map(source => [source.id, source.programOffsetSeconds])),
+        removedRanges: excludedTranscriptSegments.map(segment => ({startSeconds: segment.cutStartSeconds ?? segment.startSeconds, endSeconds: segment.cutEndSeconds ?? segment.endSeconds})),
       })}</div> : null}
 
       {coach && (!output || editing) ? (

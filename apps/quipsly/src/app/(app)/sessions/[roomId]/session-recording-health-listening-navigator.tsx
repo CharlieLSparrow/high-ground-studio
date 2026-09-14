@@ -1,5 +1,6 @@
 "use client";
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
+import { RecordingWaveformTimeline } from "@/components/recording-waveform-timeline";
 
 import { AudioLines, CircleAlert, Clock3, Pause, Play, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -73,6 +74,8 @@ export function SessionRecordingHealthListeningNavigator({
   onMediaFocusChange?: (sourceId: string, seconds: number | null) => void;
   trimControls?: {
     selectedSourceIds: string[];
+    sourceOffsets?: Record<string, number>;
+    removedRanges?: Array<{startSeconds: number; endSeconds: number}>;
     startSeconds: number;
     endSeconds: number;
     disabled: boolean;
@@ -122,6 +125,10 @@ export function SessionRecordingHealthListeningNavigator({
   const stopAtRef = useRef<number | null>(null);
   const selected = sources.find((source) => source.recordingAssetId === selectedId) ?? sources[0] ?? null;
   const waveform = useMemo(() => compactWaveform(selected?.signal ?? null), [selected?.signal]);
+  const sourceOffset = selected ? trimControls?.sourceOffsets?.[selected.recordingAssetId] : undefined;
+  const hasEditClock = selected && trimControls?.selectedSourceIds.includes(selected.recordingAssetId) && typeof sourceOffset === "number" && Number.isFinite(sourceOffset);
+  const keptStart = hasEditClock && trimControls ? Math.max(0, trimControls.startSeconds - sourceOffset!) : 0;
+  const keptEnd = hasEditClock && trimControls && selected ? Math.min(selected.durationSeconds, trimControls.endSeconds - sourceOffset!) : 0;
   const transcriptHref = selected
     ? `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(selected.recordingAssetId)}&at=${encodeURIComponent(String(Number(selectedSeconds.toFixed(3))))}`
     : null;
@@ -198,7 +205,7 @@ export function SessionRecordingHealthListeningNavigator({
     <p className="mt-2 text-sm font-semibold leading-6 text-muted-foreground">{workspace ? "Your recordings will appear here once they finish uploading and processing." : "Health evidence remains inspectable, but Quipsly will not turn a private storage locator into browser playback. Promote or repair an authorized protected source first."}</p>
   </section>;
 
-  return <section className="min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-5" data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
+  return <section className={`min-w-0 ${workspace ? "" : "rounded-2xl border border-border bg-card p-4 sm:p-5"}`} data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="max-w-3xl">
         <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-primary"><AudioLines size={16} aria-hidden="true" />{workspace ? "Your recordings" : "Source audition"}</p>
@@ -217,18 +224,22 @@ export function SessionRecordingHealthListeningNavigator({
     </ul>
 
     {selected ? <div className={`mt-3 grid gap-4 ${workspace ? "" : "xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]"}`}>
-      <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 p-4 text-white" onSeekedCapture={event => {
+      <div className={`min-w-0 rounded-xl border ${workspace ? "border-border bg-background p-3 text-foreground sm:p-4" : "border-slate-800 bg-slate-950 p-4 text-white"}`} onSeekedCapture={event => {
         const media = event.target;
         if (!(media instanceof HTMLMediaElement)) return;
         observe(media);
         onMediaFocusChange?.(selected.recordingAssetId, media.currentTime);
       }}>
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-wide text-cyan-200">{selected.participantLabel} · {workspace ? ({loading: "Loading audio", ready: "Ready to play", playing: "Playing", paused: "Paused", error: "Playback unavailable"}[playbackState]) : selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className="inline-flex items-center gap-1 font-mono text-xs font-black text-cyan-100"><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className={`text-[9px] font-black uppercase tracking-wide ${workspace ? "text-muted-foreground" : "text-cyan-200"}`}>{selected.participantLabel} · {workspace ? ({loading: "Loading audio", ready: "Ready to play", playing: "Playing", paused: "Paused", error: "Playback unavailable"}[playbackState]) : selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className={`inline-flex items-center gap-1 font-mono text-xs font-black ${workspace ? "text-muted-foreground" : "text-cyan-100"}`}><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
         {selected.kind === "video"
           ? <video key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 max-h-80 w-full rounded-lg bg-black" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />
           : <SessionRecordingAudio contentType={selected.contentType ?? undefined} key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 w-full" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />}
 
-        {waveform.length ? <div className="mt-4 flex h-24 items-end gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-900 px-2 pt-2" aria-label="Complete-decode waveform overview" role="img">{waveform.map((point, index) => <span key={`${point.startSeconds}-${index}`} className="min-w-px flex-1 rounded-t-sm bg-cyan-300/80" style={{ height: `${waveformHeight(point.rmsDbfs)}%` }} />)}</div> : <p className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-slate-300">{workspace ? "You can listen now. The waveform will appear when audio analysis finishes." : "No waveform overview is attached. Native playback remains available, but Quipsly does not invent a visual signal trace."}</p>}
+        {workspace ? <div className="mt-4"><RecordingWaveformTimeline key={selected.recordingAssetId} duration={selected.durationSeconds} position={selectedSeconds}
+          points={selected.signal?.waveform || []} disabled={playbackState === "loading" || playbackState === "error"} onSeek={seek}
+          keptRange={hasEditClock && trimControls ? {startSeconds: trimControls.startSeconds - sourceOffset!, endSeconds: trimControls.endSeconds - sourceOffset!} : null}
+          removedRanges={hasEditClock ? trimControls?.removedRanges?.map(range => ({startSeconds: range.startSeconds - sourceOffset!, endSeconds: range.endSeconds - sourceOffset!})) : []} />
+        </div> : waveform.length ? <div className="mt-4 flex h-24 items-end gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-900 px-2 pt-2" aria-label="Complete-decode waveform overview" role="img">{waveform.map((point, index) => <span key={`${point.startSeconds}-${index}`} className="min-w-px flex-1 rounded-t-sm bg-cyan-300/80" style={{ height: `${waveformHeight(point.rmsDbfs)}%` }} />)}</div> : <p className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-slate-300">No waveform overview is attached. Native playback remains available, but Quipsly does not invent a visual signal trace.</p>}
 
         {!workspace ? <><label htmlFor="flight-deck-source-clock" className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-100">Selected source time</label>
         <input id="flight-deck-source-clock" type="range" min={0} max={selected.durationSeconds} step={0.01} value={Math.min(selectedSeconds, selected.durationSeconds)} onChange={(event) => seek(Number(event.target.value))} className="mt-2 w-full accent-cyan-300" />
@@ -245,17 +256,25 @@ export function SessionRecordingHealthListeningNavigator({
             className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">
             Set {boundary} here
           </button>) : null}
-          {transcriptHref ? <Link href={transcriptHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-100 px-4 text-xs font-black text-violet-950">Open in Transcript at {timestampForSeconds(selectedSeconds)}</Link> : null}
+          {hasEditClock && keptEnd > keptStart ? <>
+            <button type="button" disabled={playbackState === "loading" || playbackState === "error"}
+              onClick={() => void play(Math.min(5, keptEnd - keptStart), keptStart)}
+              className="inline-flex min-h-11 items-center rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50">Check trim start</button>
+            <button type="button" disabled={playbackState === "loading" || playbackState === "error"}
+              onClick={() => void play(Math.min(5, keptEnd - keptStart), Math.max(keptStart, keptEnd - 5))}
+              className="inline-flex min-h-11 items-center rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50">Check trim end</button>
+          </> : null}
+          {transcriptHref ? <Link href={transcriptHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground">Open in Transcript at {timestampForSeconds(selectedSeconds)}</Link> : null}
         </div>
-        {trimControls ? <p role="status" aria-label="Recording trim range" className="mt-3 text-sm tabular-nums text-slate-200">
+        {trimControls ? <p role="status" aria-label="Recording trim range" className={`mt-3 text-sm tabular-nums ${workspace ? "text-muted-foreground" : "text-slate-200"}`}>
           Keep {timestampForSeconds(trimControls.startSeconds)} – {timestampForSeconds(trimControls.endSeconds)} of the session
         </p> : null}
-        {message ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-cyan-100">{message}</p> : null}
+        {message ? <p role="status" className="mt-3 rounded-lg border border-border bg-muted p-3 text-xs font-semibold text-foreground">{message}</p> : null}
         {!workspace ? <p className="mt-3 text-[9px] font-black uppercase tracking-wide text-slate-500">Client playback is navigation only · no heard/approved claim is written</p> : null}
       </div>
 
-      <details open={workspace ? undefined : true} className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
-        <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-cyan-950">Audio details</summary>
+      <details open={workspace ? undefined : true} className="rounded-xl border border-border bg-muted/40 p-4 text-foreground">
+        <summary className="min-h-11 cursor-pointer content-center text-sm font-bold">Audio details</summary>
       <aside aria-label="Signal observations for selected source">
         {workspace ? <button type="button" onClick={() => void play(10)} disabled={playbackState === "error"} data-flight-deck-ten-second-check className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-cyan-300 px-4 text-xs font-bold text-cyan-950 disabled:opacity-50"><Clock3 size={14} aria-hidden="true" />Check up to 10 seconds</button> : null}
         <p className="text-[10px] font-black uppercase tracking-wide text-cyan-900">Exact-time observations</p>

@@ -55,6 +55,18 @@ describe("SessionRecordingShareCard", () => {
     scrollIntoView.mockReset();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
   });
+
+  it("projects exact edit cuts and source offsets into the waveform without a second edit state", async () => {
+    global.fetch = jest.fn(async () => response(snapshot)) as typeof fetch;
+    const originalPlayer = jest.fn(() => <div>Original player</div>);
+    render(<SessionRecordingShareCard roomId="session_room_0001" renderOriginalRecordings={originalPlayer} />);
+    await screen.findByText("Original player");
+    expect((originalPlayer.mock.calls.at(-1) as any)[1]).toMatchObject({sourceOffsets: {recording_asset_0001: 0}, removedRanges: []});
+    await userEvent.click(screen.getByRole("checkbox", {name: `Keep in recording: ${transcriptSegment.text}`}));
+    expect((originalPlayer.mock.calls.at(-1) as any)[1].removedRanges).toEqual([{startSeconds: 8.1, endSeconds: 11.9}]);
+    await userEvent.click(screen.getByRole("button", {name: "Undo recording edit"}));
+    expect((originalPlayer.mock.calls.at(-1) as any)[1].removedRanges).toEqual([]);
+  });
   afterEach(() => {
     if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
     else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");

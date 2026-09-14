@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { SessionRecordingHealthListeningNavigator } from "./session-recording-health-listening-navigator";
 import type { SessionRecordingHealth } from "./session-recording-health";
@@ -139,7 +139,7 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace" />);
     expect(screen.getByRole("heading", { name: "Listen to your recording" })).toBeVisible();
     expect(screen.getByLabelText("Protected source MV7i master.wav")).toHaveAttribute("src", "/api/ingest/media/source-master");
-    expect(screen.getByRole("img", { name: "Complete-decode waveform overview" })).toBeVisible();
+    expect(screen.getByRole("img", { name: "Source waveform overview" })).toBeVisible();
     expect(screen.queryByText(/no heard\/approved claim|proof-listen receipt/)).not.toBeInTheDocument();
     expect(screen.queryByRole("slider", {name: "Selected source time"})).not.toBeInTheDocument();
     expect(screen.queryByRole("button", {name: "Play from selected time"})).not.toBeInTheDocument();
@@ -234,5 +234,27 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     fireEvent.loadedMetadata(screen.getByLabelText("Protected source Historical browser.wav"));
     expect(screen.getByRole("button", {name: "Set start here"})).toBeDisabled();
     expect(screen.getByRole("button", {name: "Set end here"})).toBeDisabled();
+  });
+
+  it("maps session trims and transcript cuts onto a late participant's source clock", async () => {
+    const mark = jest.fn();
+    const {container} = render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace"
+      trimControls={{selectedSourceIds: ["master"], sourceOffsets: {master: 10}, removedRanges: [{startSeconds: 15, endSeconds: 17}], startSeconds: 12, endSeconds: 28, disabled: false, onTrimBoundary: mark}} />);
+    const audio = screen.getByLabelText("Protected source MV7i master.wav") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", {value: 1, configurable: true});
+    fireEvent.loadedMetadata(audio);
+    expect(container.querySelector("[data-trimmed-range]")).toHaveStyle({width: "10%"});
+    expect(container.querySelector("[data-removed-range]")).toHaveStyle({left: "25%", width: "10%"});
+    fireEvent.change(screen.getByRole("slider", {name: "Seek recording waveform"}), {target: {value: "7.25"}});
+    expect(audio.currentTime).toBe(7.25);
+    fireEvent.click(screen.getByRole("button", {name: "Set start here"}));
+    expect(mark).toHaveBeenCalledWith("start", "master", 7.25);
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Check trim start"}));});
+    expect(audio.currentTime).toBe(2);
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Check trim end"}));});
+    expect(audio.currentTime).toBe(13);
+    audio.currentTime = 18;
+    fireEvent.timeUpdate(audio);
+    expect(audio.pause).toHaveBeenCalled();
   });
 });
