@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CaptureAppHandoff } from "./capture-app-handoff";
 import { useSessionChatActivity } from "@/hooks/use-session-chat-activity";
@@ -115,6 +115,34 @@ describe("LiveSessionDockProvider", () => {
 
   it("does not call a device-setup failure a connection failure", () => {
     expect(liveSessionStatusLabel("error")).toBe("Needs attention");
+  });
+
+  it("keeps a compact stage with work on phones, then returns to full call without remounting", async () => {
+    const original = global.ResizeObserver;
+    let resize!: ResizeObserverCallback;
+    global.ResizeObserver = class {
+      constructor(callback: ResizeObserverCallback) { resize = callback; }
+      observe() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const user = userEvent.setup();
+    const {unmount} = render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    const measure = (width: number, height: number) => act(() => resize([{contentRect: {width, height}}] as ResizeObserverEntry[], {} as ResizeObserver));
+    measure(430, 760);
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "true");
+    await user.type(screen.getByRole("textbox", {name: "Message"}), "Keep this thought");
+    await user.click(screen.getByRole("button", {name: "Back to call"}));
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "false");
+    await user.click(screen.getByRole("button", {name: "Show chat"}));
+    expect(screen.getByRole("textbox", {name: "Message"})).toHaveValue("Keep this thought");
+    measure(1200, 900);
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "false");
+    measure(430, 500);
+    expect(screen.getByTestId("live-call-workspace")).toHaveAttribute("data-companion", "false");
+    expect(mockRoomLifecycle.mounted).toHaveBeenCalledTimes(1);
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+    unmount(); global.ResizeObserver = original;
   });
 
   it("opens unread chat from the minimized call without reconnecting or losing the room", async () => {

@@ -25,12 +25,13 @@ function ParticipantVideo({ track, name, screen }: {track: RemoteTrack | LocalTr
 
 /** People, not subscribed tracks, define the stage. Pinning changes only this
  * viewer's layout and never moves recording or call transport ownership. */
-export function CallParticipantGallery({ participants, videos, bindLocalVideo, localCameraOn, localMicrophoneMuted }: {
+export function CallParticipantGallery({ participants, videos, bindLocalVideo, localCameraOn, localMicrophoneMuted, companion = false }: {
   participants: CallParticipant[];
   videos: CallParticipantVideo[];
   bindLocalVideo: (element: HTMLVideoElement | null) => void;
   localCameraOn: boolean;
   localMicrophoneMuted: boolean;
+  companion?: boolean;
 }) {
   const [pinned, setPinned] = useState<string | null>(null);
   const [view, setView] = useState<CallView>("gallery");
@@ -61,7 +62,8 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
   const others = visibleTiles.filter(tile => tile.id !== presentation);
   const capacity = presentation ? (size.width >= 720 ? 4 : 3) : size.width < 600 ? 4 : 9;
   const paged = callGalleryPage(presentation ? others : visibleTiles, page, capacity);
-  const shown = new Set([...paged.items.map(tile => tile.id), ...(presentation ? [presentation] : [])]);
+  const companionTile = focused ?? (share !== ignoredShare ? share : null) ?? stableSpeaker;
+  const shown = new Set(companion ? companionTile ? [companionTile] : [] : [...paged.items.map(tile => tile.id), ...(presentation ? [presentation] : [])]);
   const grid = callGalleryGrid(paged.items.length, size.width, size.height);
   const sideStrip = size.width >= 720;
   const stripCount = Math.max(1, paged.items.length);
@@ -99,7 +101,7 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
 
   return <section data-testid="call-video-stage" aria-label="Call participants"
     className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-3">
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+    <div hidden={companion} className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
       <span>{personCount} {personCount === 1 ? "person" : "people"} in call{people.length > personCount ? ` · ${people.length} devices` : ""}</span>
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {focused || (share && presentation === share) ? <button type="button" onClick={() => chooseView("gallery")} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-semibold hover:bg-muted"><PinOff size={15} />Back to gallery</button> : null}
@@ -113,11 +115,11 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
         </button> : null}
       </div>
     </div>
-    <div ref={stage} data-testid="call-gallery-grid" data-view={presentation ? "focus" : "gallery"} style={gridStyle} className="grid min-h-24 flex-1 gap-3">
+    <div ref={stage} data-testid="call-gallery-grid" data-view={companion ? "companion" : presentation ? "focus" : "gallery"} style={companion ? {gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr)"} : gridStyle} className="grid min-h-24 flex-1 gap-3">
       {tiles.map(({id, person, video, screen}) => {
         const isPinned = presentation === id;
         const tileHeight = presentation ? isPinned ? size.height : sideStrip ? size.height / 4 : size.height * .24 : size.height / grid.rows;
-        const compactTile = tileHeight < 180;
+        const compactTile = companion || tileHeight < 180;
         const thumbnailIndex = paged.items.findIndex(tile => tile.id === id);
         const tileStyle: CSSProperties = presentation && paged.items.length ? isPinned
           ? {gridColumn: sideStrip ? "1" : "1 / -1", gridRow: sideStrip ? "1 / -1" : "1"}
@@ -126,14 +128,14 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
         const cameraOn = screen || (person.isLocal ? localCameraOn : Boolean(video));
         const muted = person.isLocal ? localMicrophoneMuted : person.microphoneMuted;
         const label = `${callEndpointLabel(person, people)}${screen ? " · screen" : ""}`;
-        return <article key={id} aria-label={label} data-participant-identity={person.identity} data-focused={isPinned} hidden={!shown.has(id)} style={tileStyle}
-          className={`relative isolate min-h-0 w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#211a14] text-[#f5e8cf] ${isPinned ? "h-full" : presentation ? "aspect-video max-h-full self-start" : "aspect-video max-h-full self-center"} ${person.speaking && !screen ? "ring-2 ring-inset ring-[#b5c991]" : ""}`}>
+        return <article key={id} aria-label={label} data-participant-identity={person.identity} data-focused={isPinned} hidden={!shown.has(id)} style={companion ? {} : tileStyle}
+          className={`relative isolate min-h-0 w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#211a14] text-[#f5e8cf] ${companion || isPinned ? "h-full" : presentation ? "aspect-video max-h-full self-start" : "aspect-video max-h-full self-center"} ${person.speaking && !screen ? "ring-2 ring-inset ring-[#b5c991]" : ""}`}>
           {!screen && person.isLocal ? <video ref={bindLocalVideo} muted playsInline aria-label="Your camera" className={`absolute inset-0 h-full w-full object-cover ${cameraOn ? "" : "invisible"}`} /> : video ? <ParticipantVideo track={video.track} name={person.name} screen={screen} /> : null}
           {!cameraOn && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pb-8">
             <div className={`grid place-items-center rounded-full bg-[#514b36] font-medium ${compactTile ? "size-10 text-lg" : "size-16 text-2xl sm:size-20 sm:text-3xl"}`} aria-hidden="true">{person.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("") || "?"}</div>
             {!compactTile && <span className="inline-flex items-center gap-1 text-xs text-[#dfd0b8]"><CameraOff size={13} />Camera off</span>}
           </div>}
-          <button type="button" onClick={() => {setPinned(focused === id ? null : id); setPage(0);}} aria-label={`${focused === id ? "Unpin" : "Pin"} ${label}${focused === id ? "" : " for me"}`} aria-pressed={focused === id}
+          <button type="button" hidden={companion} onClick={() => {setPinned(focused === id ? null : id); setPage(0);}} aria-label={`${focused === id ? "Unpin" : "Pin"} ${label}${focused === id ? "" : " for me"}`} aria-pressed={focused === id}
             className="absolute right-2 top-2 z-10 grid size-11 place-items-center rounded-xl bg-black/55 text-white hover:bg-black/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
             {focused === id ? <PinOff size={17} /> : <Pin size={17} />}
           </button>
@@ -144,9 +146,9 @@ export function CallParticipantGallery({ participants, videos, bindLocalVideo, l
           </div>
         </article>;
       })}
-      {!visibleTiles.length && <div className="col-span-full grid min-h-48 place-items-center rounded-2xl bg-muted p-6 text-center text-sm text-muted-foreground">{hideSelf ? "Your self-view is hidden. Others will appear here when they join." : "Connecting to the call…"}</div>}
+      {!visibleTiles.length && <div className={`col-span-full grid place-items-center rounded-2xl bg-muted text-center text-sm text-muted-foreground ${companion ? "p-2" : "min-h-48 p-6"}`}>{companion ? "Self-view hidden" : hideSelf ? "Your self-view is hidden. Others will appear here when they join." : "Connecting to the call…"}</div>}
     </div>
-    <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground">
+    <div hidden={companion} className="flex shrink-0 flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground">
       {hideSelf && <span className="sr-only" role="status">Self-view hidden. Your camera setting has not changed.</span>}
       {personCount === 1 && !hideSelf && <p data-testid="call-gallery-waiting">You’re the first here. Others will appear when they join.</p>}
       {paged.pageCount > 1 && <nav aria-label="Participant pages" className="flex items-center gap-3">

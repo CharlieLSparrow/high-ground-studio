@@ -491,6 +491,7 @@ export function LiveSessionRoom({
   showSessionHeading = true,
   controlsContainer = null,
   stageLayout = false,
+  companion = false,
   onOpenSessionWork,
   onOpenNotes,
   onOpenTasks,
@@ -519,6 +520,7 @@ export function LiveSessionRoom({
   showSessionHeading?: boolean;
   controlsContainer?: HTMLElement | null;
   stageLayout?: boolean;
+  companion?: boolean;
   onOpenSessionWork?: () => void;
   onOpenNotes?: (noteId?: string) => void;
   onOpenTasks?: () => void;
@@ -2468,7 +2470,7 @@ export function LiveSessionRoom({
   const showRetainedSourceControls = connected || callRecoveryAvailable || localRecordingFallback || status === "ended" || sourceLocked || leaveAfterSourceStops ||
     (retainedGuardianEvidence?.protectedRecoveryCount ?? 0) > 0;
   const callVideoStage = connected ? (
-    <CallParticipantGallery participants={participants} videos={[...participantVideos, ...screenShare.videos]}
+    <CallParticipantGallery companion={companion} participants={participants} videos={[...participantVideos, ...screenShare.videos]}
       bindLocalVideo={bindLocalVideoElement} localCameraOn={cameraWanted && !cameraMuted}
       localMicrophoneMuted={microphoneMuted || callAudioMode === "other-device"} />
   ) : (
@@ -2545,9 +2547,9 @@ export function LiveSessionRoom({
   /> : null;
 
   return (
-    <section className={stageLayout ? "flex h-full min-h-0 min-w-0 flex-col text-foreground" : `overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
+    <section data-call-companion={companion} className={stageLayout ? "flex h-full min-h-0 min-w-0 flex-col text-foreground" : `overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div ref={bindRemoteMediaElement} aria-label="Remote participant audio" className="hidden" />
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-call-heading className="flex flex-wrap items-start justify-between gap-4">
         <div className={showSessionHeading ? "max-w-3xl" : "sr-only"}>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Call · {experience.label}</p>
           <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{sessionTitle}</h2>
@@ -2559,7 +2561,7 @@ export function LiveSessionRoom({
       </div>
 
       <div className={stageLayout ? "flex min-h-0 flex-1 flex-col" : `${showSessionHeading ? "mt-5 " : ""}grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
-        <div className={stageLayout ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
+        <div data-call-stage-content className={stageLayout ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
           {stageLayout && status === "ended" && callEndedByPerson ? (
             <CallFollowThrough roomId={callRoomId}
               recording={recordingHandoff?.identity === recorderIdentity ? recordingHandoff.value : null}

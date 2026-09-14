@@ -26,6 +26,41 @@ function video(source: Track.Source = Track.Source.Camera) {
   return {identity: "client", key: source, track: {source, attach: jest.fn(), detach: jest.fn()} as unknown as RemoteTrack};
 }
 
+it("keeps the remote camera beside work without rebinding media or changing the chosen view", () => {
+  const source = video();
+  const bindLocalVideo = jest.fn();
+  const {rerender} = render(<CallParticipantGallery {...base} bindLocalVideo={bindLocalVideo} videos={[source]} />);
+  const camera = screen.getByLabelText("Riley camera");
+  const local = screen.getByLabelText("Your camera");
+  rerender(<CallParticipantGallery {...base} bindLocalVideo={bindLocalVideo} videos={[source]} companion />);
+  expect(screen.getByTestId("call-gallery-grid")).toHaveAttribute("data-view", "companion");
+  expect(screen.getAllByRole("article")).toHaveLength(1);
+  expect(screen.getByRole("article", {name: "Riley"})).toBeVisible();
+  expect(local).toBeInTheDocument();
+  expect(local).not.toBeVisible();
+  expect(screen.queryByLabelText("Call view")).not.toBeVisible();
+  rerender(<CallParticipantGallery {...base} bindLocalVideo={bindLocalVideo} videos={[source]} />);
+  expect(screen.getByLabelText("Call view")).toHaveValue("gallery");
+  expect(screen.getByLabelText("Riley camera")).toBe(camera);
+  expect(screen.getByLabelText("Your camera")).toBe(local);
+  expect(source.track.attach).toHaveBeenCalledTimes(1);
+  expect(source.track.detach).not.toHaveBeenCalled();
+  expect(bindLocalVideo).toHaveBeenCalledTimes(1);
+});
+
+it("keeps an explicit pin and shared presentation meaningful in the companion view", () => {
+  const share = video(Track.Source.ScreenShare);
+  const {rerender} = render(<CallParticipantGallery {...base} videos={[share]} companion />);
+  expect(screen.getAllByRole("article")).toHaveLength(1);
+  expect(screen.getByRole("article", {name: "Riley · screen"})).toBeVisible();
+  rerender(<CallParticipantGallery {...base} videos={[share]} />);
+  fireEvent.click(screen.getByRole("button", {name: "Pin Casey (you) for me"}));
+  rerender(<CallParticipantGallery {...base} videos={[share]} companion />);
+  expect(screen.getByRole("article", {name: "Casey (you)"})).toBeVisible();
+  expect(screen.queryByRole("article", {name: "Riley · screen"})).not.toBeInTheDocument();
+  expect(share.track.attach).toHaveBeenCalledTimes(1);
+});
+
 it("shows a camera-off person next to a local camera with their name and microphone state", () => {
   render(<CallParticipantGallery {...base} />);
   expect(within(screen.getByRole("article", {name: "Riley"})).getByText("Camera off")).toBeVisible();

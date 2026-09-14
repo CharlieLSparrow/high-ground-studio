@@ -43,6 +43,7 @@ import { captureAppDeepLink } from "@/lib/capture-universal-link";
 import { selectSessionEntry } from "@/lib/session-entry-client";
 import { WorkspacePanelActivity } from "./workspace-panel-activity";
 import { useSessionChatActivity } from "@/hooks/use-session-chat-activity";
+import { useCallViewport } from "@/hooks/use-call-viewport";
 
 export type LiveSessionDockConfig = {
   callRoomId: string;
@@ -111,6 +112,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
   const [dismissedCallRoomId, setDismissedCallRoomId] = useState<string | null>(null);
   const [pending, setPending] = useState<LiveSessionDockConfig | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const visibleViewport = useCallViewport(isOpen);
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
   const [sourceProtected, setSourceProtected] = useState(false);
   const [microphoneControl, setMicrophoneControl] = useState<LiveSessionMicrophoneControl | null>(null);
@@ -130,6 +132,8 @@ export function LiveSessionDockProvider({ children, currentUser }: {
   const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
   const dockDialogRef = useRef<HTMLDialogElement>(null);
+  const [companionFits, setCompanionFits] = useState(false);
+  const companion = companionFits && (status === "connected" || status === "reconnecting") && (chatOpen || notesOpen || workOpen);
   const unreadChatCount = useSessionChatActivity(active?.callRoomId ?? null);
   const unreadChatBadge = unreadChatCount > 0 ? <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
     aria-label={`${unreadChatCount} unread chat ${unreadChatCount === 1 ? "message" : "messages"}`}>{unreadChatCount > 99 ? "99+" : unreadChatCount}</span> : null;
@@ -139,6 +143,20 @@ export function LiveSessionDockProvider({ children, currentUser }: {
     if (!dialog) return;
     if (isOpen && !dialog.open) dialog.showModal();
     if (!isOpen && dialog.open) dialog.close();
+  }, [active?.callRoomId, isOpen]);
+
+  useEffect(() => {
+    const dialog = dockDialogRef.current;
+    if (!dialog || !isOpen || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      // A landscape tablet has room for two panes. Short windows need their
+      // height for writing, not a thumbnail above the keyboard.
+      const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      setCompanionFits(entry.contentRect.width < 56 * rootFontSize && entry.contentRect.height >= 620);
+    });
+    observer.observe(dialog);
+    return () => observer.disconnect();
   }, [active?.callRoomId, isOpen]);
 
   useEffect(() => {
@@ -265,6 +283,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
         {active ? (
           <dialog
             ref={dockDialogRef}
+            style={visibleViewport}
             aria-label={`${active.sessionTitle} live call dock`}
             onCancel={(event) => { event.preventDefault(); if (workspacePanel) setWorkspacePanel(null); else minimize(); }}
             aria-hidden={!isOpen}
@@ -332,8 +351,9 @@ export function LiveSessionDockProvider({ children, currentUser }: {
               </section>
             ) : null}
 
-            <div data-testid="live-call-workspace" data-panel-open={Boolean(workspacePanel)} className={`${callSurface.workspace} relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6`}>
-              <div id="live-call-stage-panel" className={`${callSurface.stage} min-h-0 min-w-0 overflow-y-auto overscroll-contain`}>
+            <div data-testid="live-call-workspace" data-panel-open={Boolean(workspacePanel)} data-companion={companion} className={`${callSurface.workspace} relative grid min-h-0 flex-1 gap-4 p-4 sm:px-6`}>
+              <div id="live-call-stage-panel" className={`${callSurface.stage} relative min-h-0 min-w-0 overflow-y-auto overscroll-contain`}>
+              {companion ? <button type="button" onClick={() => setWorkspacePanel(null)} className="absolute inset-y-0 right-0 flex w-28 flex-col items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-muted"><PanelRightClose size={18} />Back to call</button> : null}
               {/* Mount the call only after its persistent portal host exists;
                   moving an already-mounted recorder into a portal restarts it. */}
               {toolPanelContainer ? <LiveSessionRoom
@@ -354,6 +374,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
                 narrow
                 showSessionHeading={false}
                 stageLayout
+                companion={companion}
                 onOpenSessionWork={minimize}
                 onOpenNotes={(id) => {
                   setNotesVisitedRoom(active.callRoomId);
@@ -369,7 +390,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
               /> : null}
               </div>
               <div id="live-call-chat-panel" className={`min-h-0 min-w-0 flex-col ${chatOpen ? "flex" : "hidden"}`}>
-              <button type="button" onClick={() => setWorkspacePanel(null)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted"><PanelRightClose size={16} />Back to call</button>
+              {!companion ? <button type="button" onClick={() => setWorkspacePanel(null)} className="mb-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-3 text-sm font-medium hover:bg-muted"><PanelRightClose size={16} />Back to call</button> : null}
                 <WorkspacePanelActivity.Provider value={chatOpen && isOpen}><SessionThread
                   projectSlug={active.projectSlug ?? undefined}
                   roomId={active.callRoomId}
