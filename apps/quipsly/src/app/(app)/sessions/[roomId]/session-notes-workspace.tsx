@@ -34,6 +34,7 @@ import {
 } from "./session-notes-model";
 import { timestampForSeconds } from "./session-review-model";
 import { isGeneratedSessionNoteKind } from "@/lib/session-note-contract";
+import { reconcileNoteText } from "@/lib/note-text-reconcile";
 
 function NoteAudienceIcon({ visibility }: { visibility: SessionNoteVisibility }) {
   if (visibility === "AUTHOR_PRIVATE") return <LockKeyhole className="h-4 w-4" aria-hidden="true" />;
@@ -79,6 +80,8 @@ export function SessionNotesWorkspace({
   const createForm = useRef<HTMLFormElement>(null);
   const createDisclosure = useRef<HTMLDetailsElement>(null);
   const createAttempt = useRef<{payload: string; requestId: string} | null>(null);
+  const editAttempts = useRef(new Map<string, { payload: string; requestId: string; submission: string; base: SessionWorkspaceNote }>());
+  const [editDrafts, setEditDrafts] = useState<Record<string, { base: SessionWorkspaceNote; title: string; body: string; kind: string; visibility: string }>>({});
   const [creationDefaults, setCreationDefaults] = useState(() => sessionNoteCreationDefaults(activeView, canUseProjectTeamNotes));
   const [draftVisibility, setDraftVisibility] = useState(creationDefaults.visibility);
   const [draftKind, setDraftKind] = useState(creationDefaults.kind);
@@ -167,36 +170,56 @@ export function SessionNotesWorkspace({
     setBusyId(note.id);
     setNotice(null);
     try {
-      const response = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: String(formData.get("title") || ""),
-          body: String(formData.get("body") || ""),
-          kind: String(formData.get("kind") || note.kind),
-          visibility: String(formData.get("visibility") || note.visibility),
-          expectedUpdatedAt: note.updatedAt,
-        }),
-      });
-      const payload = await response.json() as {
-        ok?: boolean;
-        error?: string;
-        note?: {
-          title: string | null;
-          body: string;
-          kind: SessionWorkspaceNote["kind"];
-          visibility: SessionNoteVisibility;
-          updatedAt: string;
-          revisionCount: number;
-          tags: SessionWorkspaceNote["tags"];
-        };
-      };
-      if (!response.ok || !payload.ok || !payload.note) {
-        throw new Error(payload.error || "The Session note was not saved.");
+      let base = note;
+      let title = String(formData.get("title") || "");
+      let body = String(formData.get("body") || "");
+      const kind = String(formData.get("kind") || note.kind);
+      const visibility = String(formData.get("visibility") || note.visibility);
+      const submission = JSON.stringify({ updatedAt: note.updatedAt, title, body, kind, visibility, restoring });
+      const interrupted = editAttempts.current.get(note.id);
+      if (interrupted?.submission === submission) {
+        base = interrupted.base;
+        const retainedCommand = JSON.parse(interrupted.payload);
+        title = retainedCommand.title; body = retainedCommand.body;
       }
-      replaceNote({ ...note, ...payload.note });
-      setUndoEdit(restoring ? null : { previous: note, savedAt: payload.note.updatedAt });
-      setNotice(restoring ? "Previous version restored." : "Note updated.");
+      for (let rebases = 0; ; rebases++) {
+        const command = JSON.stringify({ title, body, kind, visibility, tagIds: base.tags.map(tag => tag.id), expectedUpdatedAt: base.updatedAt });
+        const retained = editAttempts.current.get(note.id);
+        const attempt = retained?.payload === command && retained.submission === submission ? retained : { payload: command, requestId: crypto.randomUUID(), submission, base };
+        editAttempts.current.set(note.id, attempt);
+        const response = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
+          method: "PATCH", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...JSON.parse(command), clientRequestId: attempt.requestId }),
+        });
+        const payload = await response.json().catch(() => { throw new Error("Not saved yet. Your draft is still here. Try again."); }) as {
+          ok?: boolean; error?: string; code?: string; idempotentReplay?: boolean;
+          note?: SessionWorkspaceNote; current?: SessionWorkspaceNote;
+        };
+        if (!response.ok || !payload.ok || !payload.note) {
+          const remote = payload.current;
+          if (!restoring && payload.code === "CONFLICT" && remote?.id === note.id && rebases < 3
+            && remote.kind === base.kind && remote.visibility === base.visibility
+            && kind === base.kind && visibility === base.visibility
+            && typeof remote.body === "string" && typeof remote.updatedAt === "string" && remote.updatedAt !== base.updatedAt) {
+            const mergedTitle = reconcileNoteText(base.title || "", title, remote.title || "");
+            const mergedBody = reconcileNoteText(base.body, body, remote.body);
+            if (mergedTitle !== null && mergedTitle.length <= 500 && mergedBody !== null && mergedBody.trim()) {
+              title = mergedTitle; body = mergedBody; base = { ...base, ...remote };
+              editAttempts.current.delete(note.id);
+              continue;
+            }
+          }
+          if (response.status === 409) editAttempts.current.delete(note.id);
+          throw new Error(payload.error || "The note was not saved. Your draft is still here.");
+        }
+        editAttempts.current.delete(note.id);
+        replaceNote({ ...base, ...payload.note });
+        setEditDrafts(current => { const next = { ...current }; delete next[note.id]; return next; });
+        const subsequentEdit = payload.idempotentReplay && (payload.note.body !== body.trim() || (payload.note.title || "") !== title.replace(/\s+/g, " ").trim());
+        setUndoEdit(restoring || subsequentEdit ? null : { previous: base, savedAt: payload.note.updatedAt });
+        setNotice(restoring ? "Previous version restored." : subsequentEdit ? "Your edit was already saved. Showing the latest shared version." : rebases ? "Note updated, including the latest shared edits." : "Note updated.");
+        break;
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The Session note was not saved.");
     } finally {
@@ -367,7 +390,9 @@ export function SessionNotesWorkspace({
 
       {visibleNotes.length ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          {visibleNotes.map((note) => (
+          {visibleNotes.map((note) => {
+            const editor = editDrafts[note.id] || { base: note, ...note };
+            return (
             <article id={`session-note-${note.id}`} key={note.id} tabIndex={-1} className="scroll-mt-24 rounded-2xl border border-border bg-card p-5 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -410,21 +435,29 @@ export function SessionNotesWorkspace({
               {note.canEdit ? (
                 <details className="mt-4 rounded-xl border border-border bg-muted/35 p-3">
                   <summary className="cursor-pointer text-xs font-black text-foreground">Edit note, audience, and tags</summary>
-                  <form key={`${note.id}-${note.updatedAt}`} onSubmit={event => { event.preventDefault(); void saveNote(note, new FormData(event.currentTarget)); }} className="mt-4 grid gap-3">
+                  <form key={`${note.id}-${editor.base.updatedAt}`} onChange={event => {
+                    const form = new FormData(event.currentTarget);
+                    setEditDrafts(current => ({ ...current, [note.id]: {
+                      base: current[note.id]?.base || note,
+                      title: String(form.get("title") || ""), body: String(form.get("body") || ""),
+                      kind: String(form.get("kind") || note.kind), visibility: String(form.get("visibility") || note.visibility),
+                    } }));
+                  }} onSubmit={event => { event.preventDefault(); void saveNote(editor.base, new FormData(event.currentTarget)); }} className="mt-4 grid gap-3">
+                    <fieldset disabled={busyId === note.id} className="contents">
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="text-[10px] font-black uppercase tracking-wide text-foreground">
                         Note type
                         {isGeneratedSessionNoteKind(note.kind) ? <>
                           <input type="hidden" name="kind" value={note.kind} />
                           <span className="mt-1 block py-3 text-sm font-semibold normal-case tracking-normal">{sessionNoteKindLabel(note.kind)}</span>
-                        </> : <select name="kind" defaultValue={note.kind} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                        </> : <select name="kind" defaultValue={editor.kind} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                           {editableKinds(canUseProjectTeamNotes).map((kind) => <option key={kind} value={kind}>{sessionNoteKindLabel(kind)}</option>)}
                         </select>}
                       </label>
                       {note.canChangeVisibility !== false ? (
                         <label className="text-[10px] font-black uppercase tracking-wide text-foreground">
                           Who can read it
-                          <select name="visibility" defaultValue={note.visibility} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                          <select name="visibility" defaultValue={editor.visibility} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                             {editableVisibilities(canUseProjectTeamNotes).map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
                           </select>
                         </label>
@@ -436,9 +469,10 @@ export function SessionNotesWorkspace({
                         </div>
                       )}
                     </div>
-                    <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Title<input name="title" maxLength={500} defaultValue={note.title ?? ""} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-                    <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Note<textarea name="body" required maxLength={20_000} defaultValue={note.body} rows={6} className="mt-1 block w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+                    <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Title<input name="title" maxLength={500} defaultValue={editor.title ?? ""} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+                    <label className="text-[10px] font-black uppercase tracking-wide text-foreground">Note<textarea name="body" required maxLength={20_000} defaultValue={editor.body} rows={6} className="mt-1 block w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
                     <button type="submit" disabled={busyId === note.id} className="min-h-11 justify-self-start rounded-full bg-primary px-4 py-2 text-xs font-black text-primary-foreground disabled:opacity-50">Save revision</button>
+                    </fieldset>
                   </form>
 
                   {taxonomy?.canManageVocabulary ? (
@@ -465,7 +499,7 @@ export function SessionNotesWorkspace({
                 <p className="mt-4 text-xs font-bold text-slate-600">Read-only</p>
               )}
             </article>
-          ))}
+          ); })}
         </div>
       ) : (
         <section className="rounded-2xl border border-dashed border-border bg-card/65 p-6 text-center" aria-label="No notes in this view">

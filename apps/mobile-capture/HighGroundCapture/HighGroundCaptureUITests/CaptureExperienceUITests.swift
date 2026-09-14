@@ -3171,9 +3171,11 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureEpisodeChatThread"]
                 .waitForExistence(timeout: 5)
         )
-        let boundary = app.descendants(matching: .any)["CaptureEpisodeChatBoundary"]
-        XCTAssertTrue(boundary.label.contains("Canonical episode conversation"))
-        XCTAssertTrue(boundary.label.contains("never start from chat"))
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureEpisodeChatBoundary"].exists,
+            "An online conversation should show messages and its composer, not an offline explanation."
+        )
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureEpisodeChatComposer"].exists)
         XCTAssertTrue(app.staticTexts["Charlie"].exists)
         XCTAssertTrue(app.staticTexts["Homer"].exists)
         XCTAssertFalse(
@@ -3188,6 +3190,9 @@ final class CaptureExperienceUITests: XCTestCase {
             app.staticTexts["Recording audio"].exists,
             "Opening collaboration must not start local capture."
         )
+        app.buttons["Done"].tap()
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Recording audio"].exists)
     }
 
     func testSessionThreadKeepsTakeCoordinationSeparateFromEpisodeWork() {

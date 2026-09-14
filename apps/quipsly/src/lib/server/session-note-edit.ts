@@ -8,6 +8,7 @@ import {
   type SessionNoteVisibility,
 } from "@/lib/session-note-contract";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
+import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
 import {
   canUseProjectTeamNotes,
   sessionNoteMutationWhere,
@@ -140,6 +141,7 @@ function replayMatches(snapshotJson: unknown, input: {
 
 async function replayResult(input: {
   prisma: any;
+  actor: SessionActor;
   revisionId: string;
   note: any;
   intent: {
@@ -165,8 +167,8 @@ async function replayResult(input: {
       error: "This protected phone request identity already belongs to a different Session note edit.",
     };
   }
-  const current = await input.prisma.coachingNote.findUnique({
-    where: { id: input.note.id },
+  const current = await input.prisma.coachingNote.findFirst({
+    where: { id: input.note.id, ...sessionNoteMutationWhere(input.actor) },
     select: NOTE_SELECT,
   });
   if (!current) {
@@ -182,7 +184,7 @@ async function replayResult(input: {
 }
 
 export async function editSessionNote(input: EditSessionNoteInput): Promise<EditSessionNoteResult> {
-  const prisma = input.prisma as any;
+  const prisma = input.prisma;
   const actorEmail = (input.actor.primaryEmail || input.actor.email || "").trim().toLowerCase();
   if (
     !input.actor.id
@@ -282,7 +284,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
     tagIds: nextTagIds,
   } : null;
   if (intent) {
-    const replay = await replayResult({ prisma, revisionId, note, intent });
+    const replay = await replayResult({ prisma, actor: input.actor, revisionId, note, intent });
     if (replay) return replay;
   }
 
@@ -294,7 +296,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
       current: serialized(note),
     };
   }
-  if (tagsChanged && addedTagIds.length) {
+  if (tagsChanged && addedTagIds.length && room.projectId) {
     const validTagCount = await prisma.studioTag.count({
       where: { id: { in: addedTagIds }, projectId: room.projectId, isActive: true },
     });
@@ -308,9 +310,9 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
   }
 
   try {
-    const result = await prisma.$transaction(async (tx: any) => {
+    const result = await retryCoachingWorkTransaction(() => prisma.$transaction(async (tx: any) => {
       const currentRoom = await tx.callRoom.findFirst({
-        where: sessionMutationAccessWhere(note.roomId, input.actor as any),
+        where: sessionMutationAccessWhere(room.id, input.actor as any),
         select: {
           id: true,
           projectId: true,
@@ -327,7 +329,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
       });
       if (!currentRoom) return { kind: "not-found" as const };
       if (intent) {
-        const replay = await replayResult({ prisma: tx, revisionId, note, intent });
+        const replay = await replayResult({ prisma: tx, actor: input.actor, revisionId, note, intent });
         if (replay) return { kind: "replay" as const, replay };
       }
       const stillCanUseProjectTeam = canUseProjectTeamNotes(
@@ -471,7 +473,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
         select: NOTE_SELECT,
       });
       return { kind: "saved" as const, saved, revision };
-    }, { isolationLevel: "Serializable" });
+    }, { isolationLevel: "Serializable" }));
 
     if (result.kind === "replay") return result.replay;
     if (result.kind === "not-found") {
@@ -492,12 +494,16 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
       };
     }
     if (result.kind === "conflict" || !result.saved) {
-      const current = await prisma.coachingNote.findUnique({ where: { id: note.id }, select: NOTE_SELECT });
+      const current = await prisma.coachingNote.findFirst({
+        where: { id: note.id, ...sessionNoteMutationWhere(input.actor) },
+        select: NOTE_SELECT,
+      });
+      if (!current) return { ok: false, code: "NOT_FOUND", error: "This note is no longer available to this account." };
       return {
         ok: false,
         code: "CONFLICT",
-        error: "This note changed elsewhere. Nest kept the newer version; review it beside the protected iPhone draft.",
-        current: current ? serialized(current) : undefined,
+        error: "This note changed elsewhere. Your draft is still available.",
+        current: serialized(current),
       };
     }
     return {
@@ -509,7 +515,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
     };
   } catch (error) {
     if (record(error).code !== "P2002" || !intent) throw error;
-    const replay = await replayResult({ prisma, revisionId, note, intent });
+    const replay = await replayResult({ prisma, actor: input.actor, revisionId, note, intent });
     return replay ?? {
       ok: false,
       code: "CONFLICT",

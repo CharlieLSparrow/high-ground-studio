@@ -34,6 +34,90 @@ function jsonResponse(value: unknown, status = 200) {
 }
 
 describe("Session Notes workspace", () => {
+  it("keeps a draft and its original version across refreshed notes and search filtering", async () => {
+    const initial = note({ id: "shared", title: "Opening", body: "First question.", visibility: "SESSION_SHARED" });
+    const remote = { ...initial, body: "A collaborator's next question.", updatedAt: "2026-07-24T13:00:00.000Z" };
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse({ ok: false, error: "Keep the draft." }, 409)) as typeof fetch;
+    const user = userEvent.setup();
+    const view = render(<SessionNotesWorkspace roomId="room-1" initialNotes={[initial]} activeView="all" taxonomy={null} canUseProjectTeamNotes={false} />);
+    await user.click(screen.getByText("Edit note, audience, and tags"));
+    await user.clear(screen.getByRole("textbox", { name: "Title" }));
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Our opening draft");
+    view.rerender(<SessionNotesWorkspace roomId="room-1" initialNotes={[remote]} activeView="all" taxonomy={null} canUseProjectTeamNotes={false} />);
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Our opening draft");
+    await user.type(screen.getByRole("searchbox", { name: "Find a note" }), "No match");
+    expect(screen.queryByRole("textbox", { name: "Title" })).not.toBeInTheDocument();
+    await user.clear(screen.getByRole("searchbox", { name: "Find a note" }));
+    await user.click(screen.getByText("Edit note, audience, and tags"));
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Our opening draft");
+    const card = within(screen.getByRole("heading", { name: "Opening" }).closest("article")!);
+    expect(card.getByRole("textbox", { name: "Note" })).toHaveValue(initial.body);
+    await user.click(screen.getByRole("button", { name: "Save revision" }));
+    await screen.findByText("Keep the draft.");
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body).expectedUpdatedAt).toBe(initial.updatedAt);
+  });
+
+  it("combines independent shared edits and undoes only this editor's contribution", async () => {
+    const initial = note({ id: "shared", title: "Opening", body: "First question.", visibility: "SESSION_SHARED" });
+    const remote = { ...initial, body: "First question.\nBring a reflection.", updatedAt: "2026-07-24T13:00:00.000Z", tags: [{ id: "writing", label: "Writing", slug: "writing" }] };
+    const saved = { ...remote, title: "Our opening", updatedAt: "2026-07-24T14:00:00.000Z" };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: false, code: "CONFLICT", current: remote }, 409))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, note: saved }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, note: { ...remote, updatedAt: "2026-07-24T15:00:00.000Z" } }));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionNotesWorkspace roomId="room-1" initialNotes={[initial]} activeView="all" taxonomy={null} canUseProjectTeamNotes={false} />);
+    await user.click(screen.getByText("Edit note, audience, and tags"));
+    await user.clear(screen.getByRole("textbox", { name: "Title" }));
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Our opening");
+    await user.click(screen.getByRole("button", { name: "Save revision" }));
+    await screen.findByText("Note updated, including the latest shared edits.");
+    const first = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const merged = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(merged).toMatchObject({ title: "Our opening", body: remote.body, expectedUpdatedAt: remote.updatedAt, tagIds: ["writing"] });
+    expect(merged.clientRequestId).not.toBe(first.clientRequestId);
+    await user.click(screen.getByRole("button", { name: "Undo last edit" }));
+    await screen.findByText("Previous version restored.");
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ title: initial.title, body: remote.body, expectedUpdatedAt: saved.updatedAt, tagIds: ["writing"] });
+  });
+
+  it("retries an uncertain reconciled save with the same command and request identity", async () => {
+    const initial = note({ id: "shared", title: "Opening", body: "First question.", visibility: "SESSION_SHARED" });
+    const remote = { ...initial, body: "First question.\nBring a reflection.", updatedAt: "2026-07-24T13:00:00.000Z" };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: false, code: "CONFLICT", current: remote }, 409))
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => { throw new SyntaxError("JSON"); } })
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: true, note: { ...remote, title: "Our opening", updatedAt: "2026-07-24T14:00:00.000Z" } }));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionNotesWorkspace roomId="room-1" initialNotes={[initial]} activeView="all" taxonomy={null} canUseProjectTeamNotes={false} />);
+    await user.click(screen.getByText("Edit note, audience, and tags"));
+    await user.clear(screen.getByRole("textbox", { name: "Title" }));
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Our opening");
+    await user.click(screen.getByRole("button", { name: "Save revision" }));
+    await screen.findByText("Not saved yet. Your draft is still here. Try again.");
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Our opening");
+    await user.click(screen.getByRole("button", { name: "Save revision" }));
+    await screen.findByText("Note updated.");
+    expect(fetchMock.mock.calls[2][1].body).toBe(fetchMock.mock.calls[1][1].body);
+  });
+
+  it("does not auto-combine competing text or an audience change", async () => {
+    const initial = note({ id: "shared", body: "Original words.", visibility: "SESSION_SHARED" });
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse({ ok: false, code: "CONFLICT", error: "Changed elsewhere. Your draft is still here.", current: { ...initial, body: "Other words.", visibility: "AUTHOR_PRIVATE", updatedAt: "2026-07-24T13:00:00.000Z" } }, 409)) as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionNotesWorkspace roomId="room-1" initialNotes={[initial]} activeView="all" taxonomy={null} canUseProjectTeamNotes={false} />);
+    await user.click(screen.getByText("Edit note, audience, and tags"));
+    const editor = within(screen.getByRole("heading", { name: initial.title! }).closest("article")!);
+    await user.clear(editor.getByRole("textbox", { name: "Note" }));
+    await user.type(editor.getByRole("textbox", { name: "Note" }), "My words.");
+    await user.click(screen.getByRole("button", { name: "Save revision" }));
+    await screen.findByText("Changed elsewhere. Your draft is still here.");
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(editor.getByRole("textbox", { name: "Note" })).toHaveValue("My words.");
+  });
+
   it("finds useful notes by words, people and tags without mixing audience filters", async () => {
     const user = userEvent.setup();
     const notes = [note({id: "shared", title: "Chapter plan", body: "Write before revising", visibility: "SESSION_SHARED",
