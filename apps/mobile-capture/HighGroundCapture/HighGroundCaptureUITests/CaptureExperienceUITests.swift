@@ -4223,14 +4223,16 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
         let productionTag = app.buttons["CaptureQuickEntryTag_preview-production"].firstMatch
-        reveal(productionTag)
+        reveal(productionTag, searchAboveFirst: false)
         XCTAssertTrue(productionTag.exists)
         XCTAssertEqual(productionTag.value as? String, "Not selected")
         productionTag.tap()
         XCTAssertEqual(productionTag.value as? String, "Selected")
 
         let newTagField = app.textFields["CaptureQuickEntryNewTagField"]
-        reveal(newTagField)
+        // This row follows the existing tags. Searching upward first can
+        // pull the sheet down and dismiss it before its lazy row materializes.
+        reveal(newTagField, searchAboveFirst: false)
         XCTAssertTrue(newTagField.isHittable)
         newTagField.tap()
         newTagField.typeText("Product development")
