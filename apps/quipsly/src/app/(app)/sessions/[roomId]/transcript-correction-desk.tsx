@@ -2248,7 +2248,7 @@ function TranscriptCorrectionDeskContent({
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
   const progressSources: TranscriptionProgressSource[] = desk.sessionTranscript?.pendingSources?.length
     ? desk.sessionTranscript.pendingSources
-    : desk.recording && desk.transcriptStatus !== "COMPLETED" ? [{
+    : desk.recording && (desk.transcriptStatus !== "COMPLETED" || desk.processing?.failureCode === "NO_TRANSCRIPT_TEXT") ? [{
       recordingAssetId: desk.recording.id,
       participantLabel: desk.processing?.routing?.participantLabel || desk.recording.fileName,
       transcriptJobId: desk.transcriptJobId, status: desk.transcriptStatus,
@@ -2317,11 +2317,11 @@ function TranscriptCorrectionDeskContent({
           {desk.sessionTranscript.programClock?.waveformReviewRequired ? <p className="mt-2 text-xs text-muted-foreground">Timing is estimated. Source audio and original timestamps are preserved.</p> : null}
         </div> : null}
         {progressSources.length ? <SessionTranscriptionProgress key={`${roomId}:${recordingAssetId ?? "session"}`} sources={progressSources} onUpdated={() => load(true)} /> : null}
-        {desk.processing && desk.transcriptStatus === "COMPLETED" && (
+        {desk.processing && desk.transcriptStatus === "COMPLETED" && desk.segments.length > 0 && (
           <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#987443]">
-                {desk.processing.wordCount} timed words ready
+                {desk.processing.wordCount > 0 ? `${desk.processing.wordCount} timed words ready` : `${desk.segments.length} transcript passages ready`}
               </p>
               <p className="mt-1 text-sm font-semibold leading-relaxed text-[#5f4d37]">
                 Ready to review, correct, and share.

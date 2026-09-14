@@ -155,20 +155,25 @@ describe("Session transcript correction desk", () => {
     expect(readTranscriptCorrectionDesk).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["FAILED", "RUNNING", null])("keeps current verified audio playable when transcription is %s", async status => {
+  it.each(["FAILED", "RUNNING", "COMPLETED", null])("keeps current verified audio playable when transcription is %s", async status => {
     const older = desk({participantId: "coach", recordingAssetId: "older", transcriptJobId: "older-job", sha: "a".repeat(64), segmentId: "old-words", startSeconds: 0, text: "Old take"});
     const current = {...desk({participantId: "coach", recordingAssetId: "current", transcriptJobId: "current-job", sha: "b".repeat(64), segmentId: "none", startSeconds: 0, text: ""}),
       transcriptStatus: status, transcriptJobId: status ? "current-job" : null, sourceSha256: null, segments: []};
     jest.mocked(readTranscriptCorrectionDesk).mockImplementation(async input => (input.recordingAssetId === "current" ? current : older) as any);
     const prisma = {recordingAsset: {findMany: jest.fn(async () => [{id: "current", participantId: "coach", kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "b".repeat(64),
       recordedStartedAt: new Date("2026-09-14T12:00:00Z"), recordedStoppedAt: new Date("2026-09-14T12:01:00Z"), localManifestJson: {captureGroupId: "current-take"}, transcriptJobs: []}])},
-      transcriptJob: {findMany: jest.fn(async () => status ? [{id: "current-job", assetId: "current", status}] : [])}};
+      transcriptJob: {findMany: jest.fn(async () => status ? [{id: "current-job", assetId: "current", status, _count: {segments: 0, words: 0}}] : [])}};
     const result = await readSessionTranscriptCorrectionDesk({prisma, roomId: "room-1", actor}) as any;
     expect(result.playback).toEqual(current.playback);
     expect(result.recording.id).toBe("current");
     expect(result.gate.allowed).toBe(true);
     expect(result.segments).toEqual([]);
     expect(result.sessionTranscript).toMatchObject({sourceCount: 0, pendingSourceCount: 1, sources: [{recordingAssetId: "current", playback: current.playback}]});
+    if (status === "COMPLETED") {
+      expect(result.sessionTranscript.pendingSources).toEqual([expect.objectContaining({
+        recordingAssetId: "current", failureCode: "NO_TRANSCRIPT_TEXT", retryable: true,
+      })]);
+    }
     expect(readTranscriptCorrectionDesk).toHaveBeenLastCalledWith({prisma, roomId: "room-1", actor, recordingAssetId: "current"});
   });
 

@@ -559,7 +559,7 @@ async function loadAccessibleRoom(
           providerResponseObject: true,
           workerBuildId: true,
           resultJson: true,
-          _count: { select: { words: true } },
+          _count: { select: { words: true, segments: true } },
           speakerAttributions: {
             where: { status: "active" },
             orderBy: { updatedAt: "desc" },

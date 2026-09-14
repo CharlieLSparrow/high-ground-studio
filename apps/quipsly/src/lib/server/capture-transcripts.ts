@@ -11,6 +11,10 @@ export function transcriptRetryDisposition(
   } | null,
 ) {
   if (!job) return "CREATE" as const;
+  // A successful provider response can still contain no usable transcript.
+  // Keep its result/receipt intact; reusing it would immediately reconcile the
+  // same empty result instead of executing the requested retry.
+  if (job.status === "COMPLETED" && job.segmentCount === 0) return "CREATE_VERSION" as const;
   if (!["HELD", "FAILED"].includes(job.status || "")) {
     return "REUSE" as const;
   }

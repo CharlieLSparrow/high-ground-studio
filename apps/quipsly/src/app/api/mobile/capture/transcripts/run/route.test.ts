@@ -133,30 +133,38 @@ describe("mobile transcript run versioning", () => {
     }));
   });
 
-  it("requeues a failed job only while it has no provider segments", async () => {
+  it.each(["FAILED", "COMPLETED"])("retries %s without discarding the prior completed provider result", async priorStatus => {
+    const retryJobId = priorStatus === "COMPLETED" ? "job-v2" : "job-v1";
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", isStaff: false } } as any);
     jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
     jest.mocked(reconcileCaptureTranscriptJob).mockResolvedValue({
       status: "pending",
-      transcriptJobId: "job-v1",
+      transcriptJobId: retryJobId,
       message: null,
     });
     jest.mocked(ensureCaptureTranscriptProcessingQueued).mockResolvedValue({
       status: "queued",
-      transcriptJobId: "job-v1",
+      transcriptJobId: retryJobId,
       queueObjectName: "queue",
       manifestObjectName: "manifest",
       resultObjectName: "result",
       executionRequested: true,
     });
     const update = jest.fn().mockResolvedValue({ id: "job-v1" });
-    const create = jest.fn();
+    const create = jest.fn().mockResolvedValue({id: retryJobId});
     jest.mocked(getPrismaClient).mockReturnValue({
-      recordingAsset: { findFirst: jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: "FAILED", _count: { segments: 0, words: 0 } }] }) },
-      transcriptJob: { create, update, findFirst: jest.fn().mockResolvedValue({ id: "job-v1" }) },
+      recordingAsset: { findFirst: jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: priorStatus, _count: { segments: 0, words: 0 } }] }) },
+      transcriptJob: { create, update, findFirst: jest.fn().mockResolvedValue({ id: retryJobId }) },
     } as any);
     const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recordingAssetId: "asset-1" }) }));
     expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({transcriptJobId: retryJobId});
+    expect(ensureCaptureTranscriptProcessingQueued).toHaveBeenCalledWith(expect.objectContaining({transcriptJobId: retryJobId}));
+    if (priorStatus === "COMPLETED") {
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({data: expect.objectContaining({assetId: "asset-1", status: "QUEUED", resultJson: expect.objectContaining({versionedFromTranscriptJobId: "job-v1"})})}));
+      expect(update).not.toHaveBeenCalled();
+      return;
+    }
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "job-v1" },
       data: expect.objectContaining({

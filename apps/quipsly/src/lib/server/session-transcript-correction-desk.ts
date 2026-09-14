@@ -133,7 +133,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     where: {roomId: input.roomId, assetId: {in: pendingLanes.map(source => source.id)}},
     orderBy: [{createdAt: "desc"}, {id: "desc"}],
     distinct: ["assetId"],
-    select: {id: true, assetId: true, status: true, provider: true, errorMessage: true},
+    select: {id: true, assetId: true, status: true, provider: true, errorMessage: true, _count: {select: {segments: true, words: true}}},
   }) : [];
   const pendingSources: TranscriptionProgressSource[] = pendingLanes.map(source => {
     if (source.status !== "VERIFIED") {

@@ -671,7 +671,8 @@ function packetSafeActions(input: {
 }) {
   const transcriptCompleted =
     input.transcriptProcessingAllowed &&
-    input.latestTranscriptJob?.status === "COMPLETED";
+    input.latestTranscriptJob?.status === "COMPLETED" &&
+    transcriptFailurePresentation(input.latestTranscriptJob).failureCode !== "NO_TRANSCRIPT_TEXT";
   const transcriptRunning = input.latestTranscriptJob?.status === "RUNNING";
   const sourceAvailable = Boolean(
     input.selectedRecordingAsset?.id ?? input.latestTranscriptJob?.asset?.id,
@@ -1142,13 +1143,15 @@ export async function GET(request: Request) {
         error: "Transcript processing requires bound recording asset evidence.",
       };
   const transcriptProcessingAllowed = transcriptGate.allowed;
+  const transcriptFailure = transcriptFailurePresentation(latestTranscriptJob);
+  const transcriptEmpty = transcriptFailure.failureCode === "NO_TRANSCRIPT_TEXT";
   let resolvedSessionTranscript: Awaited<
     ReturnType<typeof resolveSessionPacketTranscript>
   > | null = null;
   let sessionTranscriptSourceError: string | null = null;
   let sessionTranscriptSourceErrorCode: string | null = null;
   if (
-    latestTranscriptJob?.status === "COMPLETED" &&
+    latestTranscriptJob?.status === "COMPLETED" && !transcriptEmpty &&
     transcriptProcessingAllowed
   ) {
     try {
@@ -1445,7 +1448,7 @@ export async function GET(request: Request) {
           id: latestTranscriptJob.id,
           status: latestTranscriptJob.status,
           provider: latestTranscriptJob.provider,
-          ...transcriptFailurePresentation(latestTranscriptJob),
+          ...transcriptFailure,
           segmentCount: latestTranscriptJob._count?.segments ?? 0,
           wordCount: latestTranscriptJob._count?.words ?? 0,
           readiness: transcriptConfidence,
@@ -1526,7 +1529,7 @@ export async function GET(request: Request) {
         : null,
       status: transcriptHeld || latestTranscriptJob?.status === "HELD"
         ? "TRANSCRIPT_HELD"
-        : !latestTranscriptJob || latestTranscriptJob.status !== "COMPLETED"
+        : !latestTranscriptJob || latestTranscriptJob.status !== "COMPLETED" || transcriptEmpty
           ? "NOT_READY"
           : !canReviewPrivatePacket
             ? transcriptResults
@@ -1658,6 +1661,8 @@ export async function GET(request: Request) {
           ? selectedTranscriptAsset
             ? "Transcribe this recording to create a recap, notes, tasks, and goals."
             : "Record or import audio to get a transcript and editable follow-up."
+          : transcriptEmpty
+            ? transcriptFailure.errorMessage
           : latestTranscriptJob.status === "FAILED"
             ? "Transcription could not finish. Try transcribing this recording again."
             : latestTranscriptJob.status !== "COMPLETED"

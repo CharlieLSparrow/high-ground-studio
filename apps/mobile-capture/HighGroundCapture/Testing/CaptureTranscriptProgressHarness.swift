@@ -21,6 +21,9 @@ enum CaptureTranscriptProgressHarness {
     precondition(make("FAILED", failureCode: "NO_AUDIO_SIGNAL").actionTitle == nil)
     precondition(make("FAILED", retryable: false).actionTitle == nil)
     precondition(make("COMPLETED").isComplete && make("COMPLETED").actionTitle == nil)
+    let empty = make("COMPLETED", failureCode: "NO_TRANSCRIPT_TEXT", retryable: true)
+    precondition(!empty.isComplete && !empty.isProcessing && empty.actionTitle == "Try again")
+    precondition(empty.title == "No transcript text returned")
     precondition(make("FUTURE_STATUS").actionTitle == nil && !make("FUTURE_STATUS").isProcessing)
     let summary = try decoder.decode(
       CaptureTranscriptProcessingSummary.self,

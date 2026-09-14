@@ -687,6 +687,25 @@ describe("packet source selection", () => {
     expect(mobileCaptureTranscriptProcessingGate).toHaveBeenCalledWith({ prisma, recordingAsset: recording });
   });
 
+  it("offers transcription recovery instead of ready results for an empty completed job", async () => {
+    const prisma = packetReadPrisma(recording);
+    prisma.transcriptJob.findFirst.mockResolvedValue({
+      id: "empty-job", status: "COMPLETED", assetId: recording.id, asset: recording,
+      requestedBy: actor.id, segments: [], speakerAttributions: [],
+      _count: {segments: 0, words: 0}, resultJson: {},
+    } as any);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/packet?callRoomId=room-1&recordingAssetId=asset-recovered-2"));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.transcriptJob).toMatchObject({failureCode: "NO_TRANSCRIPT_TEXT", retryable: true});
+    expect(payload.packet).toMatchObject({status: "NOT_READY", nextAction: expect.stringContaining("No transcript text was returned")});
+    expect(payload.packet.safeActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({id: "build-review-packet", enabled: false}),
+      expect.objectContaining({id: "repair-transcript-first", enabled: true}),
+    ]));
+  });
+
   it("fails closed when a requested source is not in the accessible Session", async () => {
     const prisma = packetReadPrisma(null);
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);

@@ -1,5 +1,11 @@
 import { transcriptFailurePresentation } from "./transcript-failure-presentation";
 
+test("distinguishes an empty provider completion from digital silence and unknown counts", () => {
+  expect(transcriptFailurePresentation({status: "COMPLETED", _count: {segments: 0, words: 0}})).toMatchObject({failureCode: "NO_TRANSCRIPT_TEXT", retryable: true});
+  expect(transcriptFailurePresentation({status: "COMPLETED", _count: {segments: 1, words: 0}}).failureCode).toBeNull();
+  expect(transcriptFailurePresentation({status: "COMPLETED"}).failureCode).toBeNull();
+});
+
 test("reports verified digital silence without offering the same failed work again", () => {
   const result = transcriptFailurePresentation({ status: "FAILED", provider: "openai-whisper-local",
     errorMessage: "This recording contains no audio signal. The original recording is kept. Check the microphone before recording again." });

@@ -8,6 +8,17 @@ const source: TranscriptionProgressSource = {
   recordingAssetId: "asset-casey", participantLabel: "Casey", transcriptJobId: "job-casey",
   status: "FAILED", error: "Temporary provider failure",
 };
+
+it("offers a real retry for a completed provider job that returned no usable text", async () => {
+  global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true})});
+  const onUpdated = jest.fn();
+  render(<SessionTranscriptionProgress sources={[{...source, status: "COMPLETED", failureCode: "NO_TRANSCRIPT_TEXT", retryable: true,
+    error: "No transcript text was returned."}]} onUpdated={onUpdated} />);
+  expect(screen.getByRole("status")).toHaveTextContent("No transcript text returned");
+  expect(screen.queryByText("Transcript ready")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name: "Retry transcription for Casey"}));
+  await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
+});
 const originalFetch = global.fetch;
 afterEach(() => { global.fetch = originalFetch; jest.useRealTimers(); });
 

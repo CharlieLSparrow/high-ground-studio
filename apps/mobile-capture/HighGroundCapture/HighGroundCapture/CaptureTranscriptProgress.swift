@@ -12,15 +12,17 @@ struct CaptureTranscriptProgressSource: Codable, Equatable, Identifiable {
 
   var id: String { recordingAssetId }
   var isProcessing: Bool { ["WAITING_FOR_UPLOAD", "QUEUED", "RUNNING", "PROCESSING"].contains(status ?? "") }
-  var isComplete: Bool { status == "COMPLETED" }
+  var isComplete: Bool { status == "COMPLETED" && failureCode != "NO_TRANSCRIPT_TEXT" }
   var actionTitle: String? {
     guard failureCode != "NO_AUDIO_SIGNAL", retryable != false else { return nil }
+    if failureCode == "NO_TRANSCRIPT_TEXT" { return "Try again" }
     if status == nil { return "Transcribe recording" }
     if ["FAILED", "HELD", "CANCELED", "CANCELLED"].contains(status ?? "") { return "Try again" }
     return nil
   }
   var title: String {
     if failureCode == "NO_AUDIO_SIGNAL" { return "No audio was captured" }
+    if failureCode == "NO_TRANSCRIPT_TEXT" { return "No transcript text returned" }
     switch status {
     case "WAITING_FOR_UPLOAD": return "Waiting for recording upload"
     case "UPLOAD_ATTENTION": return "Recording upload needs attention"

@@ -311,7 +311,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
 
     var progressSources: [CaptureTranscriptProgressSource] {
         if let pending = sessionTranscript?.pendingSources, !pending.isEmpty { return pending }
-        guard let recording, transcriptStatus != "COMPLETED" else { return [] }
+        guard let recording, transcriptStatus != "COMPLETED" || processing?.failureCode == "NO_TRANSCRIPT_TEXT" else { return [] }
         return [.init(recordingAssetId: recording.id, participantLabel: CaptureTranscriptRecordingLabel.title(fileName: recording.fileName),
                       transcriptJobId: transcriptJobId, status: transcriptStatus,
                       error: processing?.message, failureCode: processing?.failureCode,

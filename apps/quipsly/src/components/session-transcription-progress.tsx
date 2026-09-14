@@ -58,10 +58,10 @@ export function SessionTranscriptionProgress({sources, onUpdated}: {
             <p className="text-sm font-semibold text-foreground">{source.participantLabel}</p>
             <p role="status" className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
               {active ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : null}
-              {source.failureCode === "NO_AUDIO_SIGNAL" ? "No audio was captured" : transcriptionProgressLabel(source.status)}
+              {source.failureCode === "NO_AUDIO_SIGNAL" ? "No audio was captured" : source.failureCode === "NO_TRANSCRIPT_TEXT" ? "No transcript text returned" : transcriptionProgressLabel(source.status)}
             </p>
           </div>
-          {!active && source.status !== "COMPLETED" && source.retryable !== false ? <button type="button" disabled={Boolean(busy)} onClick={() => void retry(source)}
+          {!active && (source.status !== "COMPLETED" || source.failureCode === "NO_TRANSCRIPT_TEXT") && source.retryable !== false ? <button type="button" disabled={Boolean(busy)} onClick={() => void retry(source)}
             aria-label={`${source.transcriptJobId ? "Retry" : "Start"} transcription for ${source.participantLabel}`}
             className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-semibold disabled:opacity-50">
             {busy === source.recordingAssetId ? <LoaderCircle size={15} className="animate-spin" /> : <RefreshCw size={15} />}

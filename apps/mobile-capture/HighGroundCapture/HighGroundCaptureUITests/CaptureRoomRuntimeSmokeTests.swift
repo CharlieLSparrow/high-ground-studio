@@ -5579,6 +5579,19 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )], timeout: 30), .completed)
         listen.tap()
         assertWaveformScrubbing(in: app)
+        let manualCutRows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureRecordingRestoreSection-"))
+        let originalManualCutCount = manualCutRows.count
+        if originalManualCutCount > 0 {
+            let restoreCut = manualCutRows.firstMatch
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(restoreCut, in: app))
+            restoreCut.tap()
+            XCTAssertEqual(manualCutRows.count, originalManualCutCount - 1)
+            let undoCut = app.buttons["CaptureRecordingEditUndo"]
+            XCTAssertTrue(scrollRuntimeElementIntoHittableView(undoCut, in: app) && undoCut.isEnabled)
+            undoCut.tap()
+            XCTAssertEqual(manualCutRows.count, originalManualCutCount)
+            attachRuntimeScreenshot(app, name: "Browser timeline cut restored by native Undo")
+        }
         let title = app.textFields["CaptureRecordingShareTitle"]
         let initialValue = try XCTUnwrap(title.value as? String)
         let originalTitle = initialValue == title.placeholderValue ? "" : initialValue
@@ -5596,6 +5609,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app.terminate()
         app = try launchSignedInCaptureApp(initialTab: "record", sessionDeepLinkRoomID: sessionID)
         openEditor(app)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureRecordingRestoreSection-")).count, originalManualCutCount)
         let restored = app.textFields["CaptureRecordingShareTitle"]
         XCTAssertEqual(restored.value as? String, changedTitle)
         attachRuntimeScreenshot(app, name: "Native recording edit restored after relaunch")
