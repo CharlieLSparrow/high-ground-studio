@@ -385,6 +385,7 @@ export function LiveSessionDockProvider({ children, currentUser }: {
                     setWorkspacePanel("work");
                   }}
                   heading="Chat"
+                  presentation="call"
                   fillHeight
                 /></WorkspacePanelActivity.Provider>
               </div>

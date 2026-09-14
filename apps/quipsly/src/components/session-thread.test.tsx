@@ -24,6 +24,20 @@ describe("SessionThread", () => {
     globalThis.fetch = originalFetch;
   });
 
+  it("uses a compact in-call conversation without resetting the shared draft", async () => {
+    const view = render(<SessionThread roomId="room" sessionTitle="Coaching" heading="Chat" scopeLabel="This live Session" fillHeight />);
+    await act(async () => {});
+    const composer = screen.getByRole("textbox", {name: "Message"});
+    fireEvent.change(composer, {target: {value: "Bring this thought back to the call"}});
+    view.rerender(<SessionThread roomId="room" sessionTitle="Coaching" heading="Chat" scopeLabel="This live Session" presentation="call" fillHeight />);
+    expect(screen.getByRole("heading", {name: "Chat"})).toHaveClass("text-sm");
+    expect(screen.queryByText("This live Session")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Coordinate Coaching before/)).not.toBeInTheDocument();
+    expect(composer).toHaveValue("Bring this thought back to the call");
+    expect(composer).toHaveAttribute("rows", "2");
+    expect(screen.getByRole("button", {name: "Send collaboration message"})).toBeEnabled();
+  });
+
   it("marks visible unread conversation history once and keeps linked tasks available in view-only mode", async () => {
     const height = jest.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(500);
     const task = {id: "task", title: "Read the chapter", status: "OPEN"};

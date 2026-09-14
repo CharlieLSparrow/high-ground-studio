@@ -68,6 +68,7 @@ function ScopedCollaborationThread({
   scopeDescription,
   liveHintThreadKey = null,
   fillHeight = false,
+  presentation = "workspace",
   onOpenWork,
   onOpenTask,
   messageToOpen,
@@ -84,6 +85,7 @@ function ScopedCollaborationThread({
   scopeDescription?: string;
   liveHintThreadKey?: string | null;
   fillHeight?: boolean;
+  presentation?: "workspace" | "call";
   onOpenWork?: () => void;
   onOpenTask?: (taskId: string) => void;
   messageToOpen?: {id: string; request: number} | null;
@@ -347,18 +349,18 @@ function ScopedCollaborationThread({
   }
 
   return (
-    <section className={`flex min-w-0 w-full flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card text-card-foreground shadow-sm ${fillHeight ? "h-full min-h-0" : "min-h-[30rem]"}`} aria-labelledby={headingId}>
-      <header className={`shrink-0 border-b border-border ${fillHeight ? "px-4 py-3" : "px-5 py-4"}`}>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">{scopeLabel}</p>
-        <h2 id={headingId} className="mt-1 flex items-center gap-2 font-serif text-2xl font-black text-foreground"><MessageCircle size={20} aria-hidden="true" /> {heading}</h2>
-        <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">{scopeDescription || `Discuss ${collaborationTitle} and keep the conversation beside your work.`}</p>
+    <section className={`flex min-w-0 w-full flex-col overflow-hidden border border-border bg-card text-card-foreground ${presentation === "call" ? "rounded-xl" : "rounded-[1.75rem] shadow-sm"} ${fillHeight ? "h-full min-h-0" : "min-h-[30rem]"}`} aria-labelledby={headingId}>
+      <header className={`shrink-0 border-b border-border ${presentation === "call" ? "px-3 py-2" : fillHeight ? "px-4 py-3" : "px-5 py-4"}`}>
+        {presentation !== "call" ? <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">{scopeLabel}</p> : null}
+        <h2 id={headingId} className={`flex items-center gap-2 text-foreground ${presentation === "call" ? "text-sm font-semibold" : "mt-1 font-serif text-2xl font-black"}`}><MessageCircle size={presentation === "call" ? 16 : 20} aria-hidden="true" /> {heading}</h2>
+        {presentation !== "call" ? <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">{scopeDescription || `Discuss ${collaborationTitle} and keep the conversation beside your work.`}</p> : null}
       </header>
       <div ref={scrollRef} className={`min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 ${fillHeight ? "" : "max-h-[32rem]"}`} role="log" aria-label={heading}
         onScroll={() => { const el = scrollRef.current; if (el) { followLatestRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32; setAtLatest(followLatestRef.current); } }}>
         {nextCursor ? <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="min-h-11 w-full rounded-xl border border-border px-3 text-sm">{loadingOlder ? "Loading…" : "Earlier messages"}</button> : null}
         {loading ? <p className="flex items-center gap-2 text-sm font-semibold text-muted-foreground"><LoaderCircle size={16} className="animate-spin" /> Loading conversation…</p> : null}
         {!loading && !loadError && messages.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Start the conversation when you're ready.</p> : null}
-        {messages.map((message) => <article key={message.id} id={`conversation-message-${message.id}`} tabIndex={-1} className="rounded-2xl border border-border bg-background p-3 focus:outline focus:outline-2 focus:outline-ring">
+        {messages.map((message) => <article key={message.id} id={`conversation-message-${message.id}`} tabIndex={-1} className={`focus:outline focus:outline-2 focus:outline-ring ${presentation === "call" ? "border-b border-border pb-3 last:border-0" : "rounded-2xl border border-border bg-background p-3"}`}>
           <div className="flex items-center justify-between gap-3"><p className="text-xs font-black text-foreground">{author(message)}</p><LocalDateTime value={message.createdAt} mode="time" className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground" /></div>
           {message.replyTo && <blockquote className="mt-2 border-l-2 border-primary pl-3 text-xs text-muted-foreground"><strong>{message.replyTo.authorLabel}</strong><p className="line-clamp-2">{message.replyTo.body}</p></blockquote>}
           {editing === message.id ? <form className="mt-2 space-y-2" onSubmit={(event) => { event.preventDefault(); void changeMessage(message, "PATCH"); }}>
@@ -382,7 +384,7 @@ function ScopedCollaborationThread({
         {replyTo && <div className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-muted px-3 text-xs"><p className="min-w-0 truncate">Replying to {author(replyTo)}: {replyTo.body}</p><button type="button" className="min-h-11 shrink-0" onClick={() => setReplyTo(null)}>Cancel reply</button></div>}
         {error ? <p role="alert" className="mb-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">{error} Your draft is retained.</p> : null}
         <div className="flex items-end gap-2">
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="Message" maxLength={sessionRoomId ? 6000 : 4000} disabled={!writable || status === "sending"} placeholder={writable ? composerPlaceholder : viewOnlyPlaceholder} className="min-h-20 min-w-0 flex-1 resize-none rounded-2xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-4 focus:ring-ring/20 disabled:bg-muted" />
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="Message" rows={presentation === "call" ? 2 : 3} maxLength={sessionRoomId ? 6000 : 4000} disabled={!writable || status === "sending"} placeholder={writable ? composerPlaceholder : viewOnlyPlaceholder} className={`${presentation === "call" ? "min-h-11 rounded-xl" : "min-h-20 rounded-2xl"} min-w-0 flex-1 resize-none border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-4 focus:ring-ring/20 disabled:bg-muted`} />
           <button type="submit" disabled={!writable || !draft.trim() || status === "sending"} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-primary px-4 font-black text-primary-foreground disabled:opacity-45" aria-label="Send collaboration message">{status === "sending" ? <LoaderCircle size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
         {!writable ? <p className="mt-2 text-xs font-bold text-muted-foreground">View-only conversation</p> : null}
@@ -399,6 +401,7 @@ export function SessionThread({
   scopeLabel = "This meeting only",
   scopeDescription,
   fillHeight = false,
+  presentation = "workspace",
   heading = "Session thread",
   onOpenWork,
   onOpenTask,
@@ -411,6 +414,7 @@ export function SessionThread({
   scopeLabel?: string;
   scopeDescription?: string;
   fillHeight?: boolean;
+  presentation?: "workspace" | "call";
   heading?: string;
   onOpenWork?: () => void;
   onOpenTask?: (taskId: string) => void;
@@ -426,6 +430,7 @@ export function SessionThread({
     onOpenTask={onOpenTask}
     messageToOpen={messageToOpen}
     fillHeight={fillHeight}
+    presentation={presentation}
     clientSurface="session-room-web"
     canPost={canPost}
     scopeLabel={scopeLabel}
