@@ -15,6 +15,7 @@ import LocalDateTime from "@/components/LocalDateTime";
 import { coachingSessionSummarySelect, loadCoachingSessionHighlights } from "@/lib/server/coaching-session-highlights";
 import { CoachingEngagementMemberManager } from "@/components/coaching-engagement-member-manager";
 import { CoachingSpaceTabs } from "@/components/coaching-space-tabs";
+import { CoachingSessionMediaLinks } from "@/components/coaching-session-media-links";
 import {
   CoachingEngagementWorkspace,
   type CoachingEngagementWorkEntry,
@@ -360,7 +361,7 @@ export default async function CoachingEngagementPage({
                     const transcriptReady =
                       room.transcriptJobs[0]?.status === "COMPLETED";
                     const primaryHref = roomEnded
-                      ? `/sessions/${encodeURIComponent(room.id)}${transcriptReady ? "?mode=transcript" : ""}`
+                      ? `/sessions/${encodeURIComponent(room.id)}?mode=overview`
                       : roomIsLive || room.status === "PLANNED"
                         ? `/sessions/${encodeURIComponent(room.id)}?mode=live`
                         : `/sessions/${encodeURIComponent(room.id)}`;
@@ -369,9 +370,7 @@ export default async function CoachingEngagementPage({
                       : room.status === "PLANNED"
                         ? "Prepare session"
                         : roomEnded
-                          ? transcriptReady
-                            ? "Review transcript"
-                            : "Review session"
+                          ? "Open session"
                           : "Session details";
                     return (
                       <article
@@ -409,6 +408,9 @@ export default async function CoachingEngagementPage({
                             )}
                             {primaryLabel}
                           </Link>
+                          <CoachingSessionMediaLinks roomId={room.id}
+                            recordingCount={room._count.recordingAssets}
+                            hasTranscript={room.transcriptJobs.length > 0} />
                           {roomEnded && transcriptReady ? (
                             <Link
                               href={`/sessions/${encodeURIComponent(room.id)}?mode=outputs`}

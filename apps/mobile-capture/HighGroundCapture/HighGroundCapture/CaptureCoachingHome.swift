@@ -3639,6 +3639,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                             : CapturePalette.actionFill
                     )
                     .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
+                    sessionMediaActions(pulseSession, location: "Summary")
                 } else {
                     Button {
                         if canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS" {
@@ -3860,15 +3861,12 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         case "JOIN_LIVE_SESSION": return "Join Session"
         case "REVIEW_LATE_SESSION": return "Open Session"
         case "PREPARE_UPCOMING_SESSION", "PREPARE_UNSCHEDULED_SESSION": return "Open Session"
-        case "REVIEW_COACH_FOLLOW_UP": return "Review follow-up"
-        case "VIEW_RELEASED_FOLLOW_UP": return "View follow-up"
+        case "REVIEW_COACH_FOLLOW_UP", "VIEW_RELEASED_FOLLOW_UP": return "Open Session"
         default: break
         }
         if relationshipPulseIsLive(session) { return "Join Session" }
         if session.status?.uppercased() == "ENDED" {
-            return session.latestTranscriptStatus?.uppercased() == "COMPLETED"
-                ? "Open transcript"
-                : "Open Session"
+            return "Open Session"
         }
         if let start = session.scheduledStart.flatMap(coachingISO8601Date), start < Date() {
             return "Open Session"
@@ -3951,6 +3949,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                         .buttonStyle(.bordered)
                         .disabled(previewOnly)
                         .accessibilityIdentifier("CaptureCoachingContinuityOpen_\(session.id)")
+                        sessionMediaActions(session, location: "History")
                     }
                     .padding(.vertical, 4)
                     .accessibilityElement(children: .contain)
@@ -3973,6 +3972,41 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         case (.some, .none): true
         case (.none, .some): false
         case (.none, .none): left.title < right.title
+        }
+    }
+
+    /// These destinations stay inside the client space's navigation stack.
+    /// Opening saved work must not select a call room or start device setup.
+    private func sessionMediaActions(_ session: MobileCaptureSession, location: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { sessionMediaLinks(session, location: location) }
+            VStack(alignment: .leading, spacing: 8) { sessionMediaLinks(session, location: location) }
+        }
+    }
+
+    @ViewBuilder
+    private func sessionMediaLinks(_ session: MobileCaptureSession, location: String) -> some View {
+        if session.recordingCount > 0 {
+            NavigationLink {
+                CaptureRecordingEditScreen(roomID: session.callRoomId, sessionTitle: session.displayTitle)
+            } label: {
+                Label("Recordings & edits", systemImage: "waveform")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("CaptureCoaching\(location)Recordings_\(session.id)")
+        }
+        if let jobID = session.latestTranscriptJobId, !jobID.isEmpty {
+            NavigationLink {
+                CaptureTranscriptReviewView(roomID: session.callRoomId, sessionTitle: session.displayTitle,
+                    recording: nil, transcriptJobID: jobID, previewOnly: previewOnly,
+                    canUseProjectTeamNotes: session.canUseProjectTeamNotes == true)
+            } label: {
+                Label("Transcript", systemImage: "text.alignleft")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("CaptureCoaching\(location)Transcript_\(session.id)")
         }
     }
 

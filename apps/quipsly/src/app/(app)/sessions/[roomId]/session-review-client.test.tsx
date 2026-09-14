@@ -1824,6 +1824,7 @@ describe("Session review goal candidates", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/api/notes/mobile-note-1");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       title: "Opening rhythm",
+      clientRequestId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
       body: "Pause, then let the question breathe.",
       kind: "SESSION_NOTE",
       visibility: "AUTHOR_PRIVATE",

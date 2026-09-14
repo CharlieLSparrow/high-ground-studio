@@ -3568,6 +3568,7 @@ struct CaptureTranscriptReviewView: View {
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var followUpSessions = CaptureSessionClient()
     @State private var workToEdit: TranscriptWorkEditDestination?
+    @State private var selectedTranscriptRecording: CaptureSessionRecordingTranscriptDestination?
     @State private var expandedWorkKinds: Set<String> = []
     @State private var scrollTargetSegmentID: String?
     @State private var requestedEditingSegmentID: String?
@@ -3752,6 +3753,24 @@ struct CaptureTranscriptReviewView: View {
             .background(CapturePalette.canvas)
             .navigationTitle("Transcript")
             .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let session = followUpSessions.sessions.first(where: { $0.callRoomId == roomID }),
+                   (session.captureSources?.count ?? 0) > 1 {
+                    CaptureSessionTranscriptSourcePicker(session: session, previewOnly: previewOnly) { destination in
+                        guard destination.recordingAssetID != recordingAssetID else { return }
+                        playback.pause(resetPosition: true)
+                        selectedTranscriptRecording = destination
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CapturePalette.canvas)
+                }
+            }
+            .navigationDestination(item: $selectedTranscriptRecording) { destination in
+                CaptureTranscriptReviewView(roomID: destination.roomID, sessionTitle: destination.title,
+                    recording: nil, recordingAssetID: destination.recordingAssetID, previewOnly: previewOnly,
+                    canUseProjectTeamNotes: destination.canUseProjectTeamNotes)
+            }
             // Transcript review is a focused destination with its own reading,
             // playback, editing, and quality controls. Keep the global tabs
             // from covering those controls; the standard Back button remains.
@@ -3963,8 +3982,8 @@ struct CaptureTranscriptReviewView: View {
                     previewEntry: destination.previewEntry
                 )
             }
-            .task(id: client.packetResults != nil) {
-                guard client.packetResults != nil, !previewOnly else { return }
+            .task(id: roomID) {
+                guard !previewOnly else { return }
                 _ = await followUpSessions.load(authoritativeSessionID: roomID)
             }
             .task(id: client.transcriptWorkRefreshRevision) {

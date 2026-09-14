@@ -115,6 +115,7 @@ import {
   type SessionCollaborationContext,
 } from "./session-collaboration-model";
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
+import { TranscriptRecordingPicker } from "@/components/transcript-recording-picker";
 
 function humanize(value: string | null | undefined) {
   return (value || "not set")
@@ -4028,6 +4029,8 @@ export function SessionReviewClient({
         </div>
       ) : null}
 
+      {mode === "transcript" ? <TranscriptRecordingPicker roomId={roomId}
+        sources={sourceEvidence.sources} selectedSourceId={focusedRecordingAssetId} /> : null}
       {mode === "transcript" ? (
         loading && !packet ? (
           <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]">

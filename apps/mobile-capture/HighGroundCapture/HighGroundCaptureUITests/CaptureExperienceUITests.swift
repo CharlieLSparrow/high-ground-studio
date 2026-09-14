@@ -1862,6 +1862,22 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].exists)
         XCTAssertTrue(app.buttons["CaptureCoachingQuickAdd_TASK"].exists)
+        let transcript = app.buttons["CaptureCoachingSummaryTranscript_preview-coaching-ready"].firstMatch
+        XCTAssertTrue(transcript.waitForExistence(timeout: 5))
+        reveal(transcript, searchAboveFirst: true)
+        XCTAssertTrue(transcript.isHittable,
+                      "The client space should open saved words directly without a call-room detour.")
+        transcript.tap()
+        XCTAssertTrue(app.navigationBars["Transcript"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["CaptureCallLeave"].exists,
+                       "Opening a transcript must not join a call.")
+        let arrival = XCTAttachment(screenshot: app.screenshot())
+        arrival.name = "Client space direct transcript"
+        arrival.lifetime = .keepAlways
+        add(arrival)
+        app.navigationBars["Transcript"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 10),
+                      "Back from a transcript should return to the same client space.")
         let openSession = app.buttons["CaptureCoachingRelationshipPrimaryAction"].firstMatch
         XCTAssertTrue(openSession.waitForExistence(timeout: 5))
         openSession.tap()
