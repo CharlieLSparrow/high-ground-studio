@@ -1586,31 +1586,29 @@ function CorrectionEditor({
       ))}
 
       {editing ? (
-        <div className="mt-4 space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+        <div className="mt-4 space-y-3 rounded-xl border border-border bg-muted/40 p-4">
           <div className="flex items-center gap-3">
             {passagePlayback}
-            <span className="text-xs font-semibold text-amber-950">Listen while you edit</span>
+            <span className="text-sm text-muted-foreground">Listen while you edit</span>
           </div>
-          <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Correct speaker
-            <input value={correctedSpeaker} disabled={saving} onChange={(event) => setCorrectedSpeaker(event.target.value)} maxLength={160} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
+          <label className="block text-sm font-medium text-foreground">Speaker
+            <input value={correctedSpeaker} disabled={saving} onChange={(event) => setCorrectedSpeaker(event.target.value)} maxLength={160} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
           </label>
-          <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Correct transcript words
-            <textarea autoFocus value={correctedText} disabled={saving} onChange={(event) => setCorrectedText(event.target.value)} maxLength={10000} rows={4} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
+          <label className="block text-sm font-medium text-foreground">Transcript
+            <textarea autoFocus value={correctedText} disabled={saving} onChange={(event) => setCorrectedText(event.target.value)} maxLength={10000} rows={4} className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground" />
           </label>
-          <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Why this changed <span className="normal-case tracking-normal text-amber-800">(optional)</span>
-            <input value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="Name, wording, crosstalk, diarization…" className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
-          </label>
-          <p className={`rounded-lg border p-3 text-sm font-bold leading-relaxed ${playbackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-white text-slate-800"}`}>
-            {playbackReviewed
-              ? `Recording checked from ${timestampForSeconds(reviewedPlaybackPositionSeconds ?? segment.startSeconds)}. Your correction will stay linked to this moment.`
-              : "Save directly, or play the passage first when the audio will help. Quipsly keeps the edit linked to this exact moment either way."}
-          </p>
+          <details className="text-sm text-muted-foreground">
+            <summary className="min-h-11 cursor-pointer py-3">Add an edit note</summary>
+            <label className="block">Edit note (optional)
+              <input value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} maxLength={1000} className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
+            </label>
+          </details>
           {error && <p role="alert" className="flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void save()} disabled={busy || saving || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex items-center gap-2 rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{saving ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}{saving ? "Saving…" : "Save transcript correction"}</button>
-            <button type="button" onClick={() => { setEditing(false); setError(null); }} disabled={busy || saving} className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
+            <button type="button" onClick={() => void save()} disabled={busy || saving || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}{saving ? "Saving…" : "Save changes"}</button>
+            <button type="button" onClick={() => { setEditing(false); setError(null); }} disabled={busy || saving} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
           </div>
-          <p className="text-xs font-bold leading-relaxed text-amber-800">Saving adds a versioned correction linked to this exact source moment. The original transcript and recording remain recoverable.</p>
+          <p className="text-sm text-muted-foreground">Your original recording stays unchanged.</p>
         </div>
       ) : (
         <div className={onEditRecording ? "mt-3 grid grid-cols-3 gap-2" : "mt-3 grid grid-cols-2 gap-2"}>

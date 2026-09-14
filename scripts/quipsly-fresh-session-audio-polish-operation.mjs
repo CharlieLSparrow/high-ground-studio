@@ -575,14 +575,15 @@ async function operateRenderedSession({ baseURL, context, password }) {
       await firstPassage.getByRole("checkbox", { name: /listened/i }).count() === 0,
       "Transcript correction still required a repeated manual playback attestation.",
     );
-    const correctionInput = firstPassage.getByLabel("Correct transcript words");
+    const correctionInput = firstPassage.getByRole("textbox", { name: "Transcript", exact: true });
     const providerText = (await correctionInput.inputValue()).trim();
     assert(providerText.length > 0, "The operated transcript passage had no provider text.");
     const correctedText = `${providerText.replace(/\s+\[operated correction\]$/, "")} [operated correction]`;
     await correctionInput.fill(correctedText);
-    await firstPassage
-      .getByLabel(/Why this changed/i)
-      .fill("Operated local acceptance correction");
+    assert(
+      !await firstPassage.getByLabel("Edit note (optional)").isVisible(),
+      "An optional edit note should stay out of the ordinary correction workflow.",
+    );
     const [correctionResponse] = await Promise.all([
       page.waitForResponse(
         (response) => response.request().method() === "POST"
@@ -590,7 +591,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
         { timeout: 30_000 },
       ),
       firstPassage
-        .getByRole("button", { name: "Save transcript correction", exact: true })
+        .getByRole("button", { name: "Save changes", exact: true })
         .click(),
     ]);
     const correctionPacket = await correctionResponse.json().catch(() => null);
