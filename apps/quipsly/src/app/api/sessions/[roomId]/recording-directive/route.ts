@@ -63,7 +63,7 @@ function opaqueParticipantId(roomId: string, participantId: string) {
 
 type ExpectedRecordingParticipant = { id: string; label: string };
 
-function participantRecordingState(action: string, receipts: any[]) {
+function participantRecordingState(action: string, receipts: any[], earlierReceipts: any[] = []) {
   const states = new Set(receipts.map((receipt) => receipt.state));
   if (states.has("START_FAILED") || states.has("STOP_FAILED"))
     return "NEEDS_ATTENTION";
@@ -75,8 +75,16 @@ function participantRecordingState(action: string, receipts: any[]) {
   if (
     receipts.length > 0 &&
     receipts.every((receipt) => receipt.state === "STOPPED")
-  )
-    return "STOPPED_SAFELY";
+  ) {
+    // An idle endpoint also acknowledges STOP. It has no saved recording.
+    // If it previously reported a source, a stop with no source identity is
+    // incomplete evidence, not proof that that recording was safely saved.
+    if (receipts.some(receipt => !receipt.captureId && earlierReceipts.some(earlier =>
+      earlier.clientInstanceId === receipt.clientInstanceId && earlier.state === "STARTED" && earlier.captureId))) {
+      return "NEEDS_ATTENTION";
+    }
+    return receipts.some(receipt => Boolean(receipt.captureId)) ? "STOPPED_SAFELY" : "WAITING";
+  }
   if (states.has("STOPPING") || states.has("STOPPED") || states.has("STARTED") || states.has("OBSERVED")) return "STOPPING";
   return "WAITING";
 }
@@ -112,11 +120,14 @@ function directiveView(
       const state = participantRecordingState(
         directive.action,
         participantReceipts,
+        (directive.receipts ?? []).filter((receipt: any) => receipt.participantId === participant.id),
       );
       return {
         id: opaqueParticipantId(directive.roomId, participant.id),
         participantLabel: participant.label,
         state,
+        noRecordingReported: directive.action === "STOP" && state === "WAITING" &&
+          participantReceipts.every(receipt => receipt.state === "STOPPED" && !receipt.captureId),
         endpointCount: participantReceipts.length,
         recordingEndpointCount: participantReceipts.filter(
           (receipt) => receipt.state === "STARTED",
@@ -140,6 +151,7 @@ function directiveView(
     ).length,
     waitingParticipantCount: participantStatuses.filter((participant) =>
       ["WAITING", "GETTING_READY", "STOPPING"].includes(participant.state)
+      && !participant.noRecordingReported
       && (directive.action === "START" || participant.endpointCount > 0),
     ).length,
     allParticipantsRecording:

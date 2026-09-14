@@ -261,11 +261,11 @@ describe("browser recording directive client", () => {
     });
   });
 
-  it.each([false, true])("distinguishes unreported participants from recordings still saving (saved source: %s)", (hasSavedSource) => {
+  it.each([[false, 0], [true, 0], [false, 1], [true, 1]])("distinguishes unreported participants from recordings still saving (saved source: %s, endpoints: %s)", (hasSavedSource, endpointCount) => {
     const directive = {
       action: "STOP",
       participantStatuses: [
-        {id: "absent", participantLabel: "Jordan", state: "WAITING", endpointCount: 0},
+        {id: "absent", participantLabel: "Jordan", state: "WAITING", endpointCount, noRecordingReported: true},
         ...(hasSavedSource ? [{id: "coach", participantLabel: "Coach", state: "STOPPED_SAFELY", endpointCount: 1}] : []),
       ],
       recordingHealth: {attentionParticipantCount: 0, waitingParticipantCount: 0, allParticipantsStoppedSafely: false},

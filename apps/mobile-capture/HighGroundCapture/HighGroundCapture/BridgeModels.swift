@@ -8079,10 +8079,13 @@ final class CaptureSessionClient: ObservableObject {
             return .invalidResponse(message: message)
         }
 
+        let previousStatus = status
+        let previousError = errorMessage
         status = "Loading"
         errorMessage = nil
 
         do {
+            try Task.checkCancellation()
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
 
@@ -8090,6 +8093,7 @@ final class CaptureSessionClient: ObservableObject {
                 for: request,
                 allowOfflineRecovery: true
             )
+            try Task.checkCancellation()
             let decodedPayload = try? JSONDecoder().decode(MobileCaptureSessionsResponse.self, from: data)
 
             if response.statusCode == 401 || response.statusCode == 403 {
@@ -8171,6 +8175,20 @@ final class CaptureSessionClient: ObservableObject {
             return .loaded
         } catch {
             let message = error.localizedDescription
+            // SwiftUI cancels screen-owned refreshes when navigating into the
+            // editor. Cancellation says nothing about session access: erasing
+            // this collection also erases the user's post-call destination.
+            let requestError = error as NSError
+            if AuthManager.shared.accessMode != .signedOut,
+               Task.isCancelled || error is CancellationError
+                || (requestError.domain == NSURLErrorDomain
+                    && requestError.code == URLError.cancelled.rawValue) {
+                if status == "Loading" {
+                    status = previousStatus
+                    errorMessage = previousError
+                }
+                return .transportUnavailable(message: "Session refresh cancelled.")
+            }
             if isTransportUnavailable(error) {
                 // Keep an already-loaded authoritative list in place during a
                 // transient outage. Cache restoration is only a launch fallback.

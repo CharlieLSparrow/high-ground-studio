@@ -6517,12 +6517,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let privateFilter = app.buttons["Only me"].firstMatch
         XCTAssertTrue(privateFilter.exists)
         privateFilter.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "selected == true"), object: privateFilter
+        )], timeout: 5), .completed, "Only me must be selected before opening a private note.")
         createNote.tap()
         let noteTitle = app.textFields["CaptureQuickEntryTitle"].firstMatch
         XCTAssertTrue(noteTitle.waitForExistence(timeout: 8))
         // Check the audience shown above the writing area. The advanced note
         // details row is below the fold on iPhone, unlike the iPad sheet.
         let audienceSummary = app.staticTexts["CaptureQuickEntryAudienceSummary"].firstMatch
+        if audienceSummary.label != "Only you can see this note." {
+            attachRuntimeScreenshot(app, name: "Unexpected new-note audience")
+        }
         XCTAssertEqual(audienceSummary.label, "Only you can see this note.",
                        "Creating from Only me must not quietly share a private thought.")
         let callNoteTitle = "Native call note \(UUID().uuidString.prefix(8))"

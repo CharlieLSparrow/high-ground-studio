@@ -15698,7 +15698,11 @@ private struct CaptureSessionNotesWorkspace: View {
     @ObservedObject var model: CaptureExperienceModel
     var embedded = false
     let onDismiss: () -> Void
-    @State private var showsNewNote = false
+    private struct NewNote: Identifiable {
+        let id = UUID()
+        let visibility: MobileSessionNoteVisibility
+    }
+    @State private var newNote: NewNote?
     @State private var searchText = ""
     @State private var audience = "all"
 
@@ -15706,7 +15710,9 @@ private struct CaptureSessionNotesWorkspace: View {
         VStack(spacing: 0) {
             CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId, onReturn: onDismiss)
         CaptureWorkspaceNavigation(title: "Notes", embedded: embedded, onDismiss: onDismiss, actions: {
-            Button { showsNewNote = true } label: {
+            Button {
+                newNote = NewNote(visibility: audience == "private" ? .authorPrivate : .sessionShared)
+            } label: {
                 Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44)
             }
             .accessibilityLabel("New note")
@@ -15749,13 +15755,14 @@ private struct CaptureSessionNotesWorkspace: View {
             .accessibilityIdentifier("CaptureSessionNotesSheet")
         }
         }
-        .sheet(isPresented: $showsNewNote) {
+        .sheet(item: $newNote) { request in
             VStack(spacing: 0) {
                 // Keep mic control while composing, but don't add a second
                 // dismissal path that would silently throw away this note.
                 CaptureCallWorkspaceBar(model: model, roomID: session.callRoomId)
             CaptureQuickEntrySheet(kind: .note, session: session, model: model,
-                                  initialNoteVisibility: audience == "private" ? .authorPrivate : .sessionShared)
+                                  initialNoteVisibility: request.visibility)
+                .id(request.id)
             }
         }
     }
@@ -19908,7 +19915,7 @@ private struct CaptureRecordingCoordinationStatus: View {
                             .font(.caption)
                             .lineLimit(2)
                         Spacer()
-                        Text(participant.state == .waiting && !recordingRequested && participant.endpointCount == 0
+                        Text(participant.state == .waiting && !recordingRequested && (participant.endpointCount == 0 || participant.noRecordingReported == true)
                             ? "No recording reported" : participantLabel(participant.state))
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(participantTint(participant.state))
@@ -19932,7 +19939,7 @@ private struct CaptureRecordingCoordinationStatus: View {
                                         .font(.caption)
                                         .lineLimit(2)
                                     Spacer()
-                                    Text(endpointLabel(receipt.state))
+                                    Text(receipt.state == .stopped && receipt.captureId == nil ? "Stopped — no file confirmed" : endpointLabel(receipt.state))
                                         .font(.caption2.weight(.bold))
                                         .foregroundStyle(endpointTint(receipt.state))
                                 }
@@ -20019,7 +20026,7 @@ private struct CaptureRecordingCoordinationStatus: View {
     }
 
     private var unreportedCount: Int {
-        participantStatuses.filter { $0.endpointCount == 0 }.count
+        participantStatuses.filter { $0.endpointCount == 0 || $0.noRecordingReported == true }.count
     }
 
     private var hasSavedRecording: Bool {

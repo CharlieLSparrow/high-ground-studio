@@ -1944,6 +1944,53 @@ describe("LiveSessionRoom", () => {
     expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
   });
 
+  it.each(["cancel", "deny", "leave"])("keeps an in-call permission request visible and handles %s without losing the call", async (outcome) => {
+    let resolve!: (stream: MediaStream) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<MediaStream>((yes, no) => { resolve = yes; reject = no; });
+    const stop = jest.fn();
+    const getUserMedia = jest.fn(() => pending);
+    Object.defineProperty(navigator, "permissions", {configurable:true, value:{query:jest.fn().mockResolvedValue({state:"prompt"})}});
+    Object.defineProperty(navigator, "mediaDevices", {configurable:true, value:{
+      enumerateDevices:jest.fn().mockResolvedValue([]), getUserMedia,
+      addEventListener:jest.fn(), removeEventListener:jest.fn(),
+    }});
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => ({ok:true,status:200,json:async () =>
+      String(input).includes("/api/mobile/capture/rooms/join")
+        ? {ok:true,canJoin:true,serverUrl:"wss://live.test",participantToken:"test-token",recordingConsentGranted:true}
+        : {ok:true},
+    })) as unknown as typeof fetch;
+    await act(async () => {render(<LiveSessionRoom stageLayout callRoomId="live-device-request" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Device check" kind="coaching" />);});
+    fireEvent.click(screen.getByRole("button", {name:"Mic on"}));
+    fireEvent.click(screen.getByRole("button", {name:"Join call"}));
+    expect(await screen.findByRole("button", {name:"Leave"})).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", {name:"Devices"}));
+    fireEvent.click(screen.getByRole("button", {name:"Allow microphone"}));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Waiting for device access…")).toBeVisible();
+    expect(screen.getByRole("button", {name:"Allow microphone"})).toBeDisabled();
+    expect(screen.getByRole("button", {name:"Refresh devices"})).toBeDisabled();
+    expect(screen.getByRole("button", {name:"Leave"})).toBeEnabled();
+    expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+    if (outcome === "deny") {
+      await act(async () => {reject(new DOMException("Denied", "NotAllowedError"));});
+      expect(within(screen.getByTestId("call-device-settings")).getByRole("alert")).toHaveTextContent("Microphone access is blocked");
+      expect(screen.getByRole("button", {name:"Allow microphone"})).toBeEnabled();
+    } else {
+      fireEvent.click(screen.getByRole("button", {name: outcome === "leave" ? "Leave" : "Cancel device setup"}));
+      await act(async () => {resolve({getTracks:() => [{stop}]} as unknown as MediaStream);});
+      expect(stop).toHaveBeenCalledTimes(1);
+    }
+    expect(screen.queryByText("Waiting for device access…")).not.toBeInTheDocument();
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
+    if (outcome === "leave") expect(mockLiveKitRoom.disconnect).toHaveBeenCalledTimes(1);
+    else {
+      expect(mockLiveKitRoom.disconnect).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", {name:"Unmute"})).toBeEnabled();
+      expect(screen.getByRole("button", {name:"Leave"})).toBeEnabled();
+    }
+  });
+
   it("keeps a denied camera off and leaves joining available", async () => {
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
       enumerateDevices: jest.fn().mockResolvedValue([]),
@@ -2043,6 +2090,17 @@ describe("LiveSessionRoom", () => {
         expect(screen.getByRole("button", {name: "Stop camera"})).toHaveAttribute("aria-pressed", "true");
         expect(screen.getByRole("combobox", {name: "Camera"})).toHaveValue("newly-visible-camera");
         expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", expect.objectContaining({tracks: [media]}));
+        // An additional microphone permission request must not detach the
+        // working call camera while waiting, failing, or being cancelled.
+        let deny!: (reason: Error) => void;
+        Object.defineProperty(navigator.mediaDevices, "getUserMedia", {configurable:true,
+          value:jest.fn(() => new Promise((_resolve, reject) => {deny = reject;}))});
+        fireEvent.click(screen.getByText("Audio and video settings"));
+        fireEvent.click(screen.getByRole("button", {name:"Allow microphone and camera"}));
+        await waitFor(() => expect(screen.getByText("Waiting for device access…")).toBeVisible());
+        expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", expect.objectContaining({tracks:[media]}));
+        await act(async () => {deny(new DOMException("Denied", "NotAllowedError"));});
+        expect(screen.getByLabelText("Your camera")).toHaveProperty("srcObject", expect.objectContaining({tracks:[media]}));
         fireEvent.click(screen.getByRole("button", {name: "Stop camera"}));
         expect(await screen.findByRole("button", {name: "Start camera"})).toBeEnabled();
         expect(camera).toHaveBeenLastCalledWith(false, undefined);

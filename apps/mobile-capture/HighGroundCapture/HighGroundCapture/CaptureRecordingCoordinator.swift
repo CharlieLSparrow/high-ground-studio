@@ -44,6 +44,7 @@ struct CaptureRecordingParticipantStatus: Codable, Equatable, Identifiable {
     let endpointCount: Int
     let recordingEndpointCount: Int
     let attentionEndpointCount: Int
+    var noRecordingReported: Bool? = nil
 }
 
 struct CaptureRecordingHealth: Codable, Equatable {

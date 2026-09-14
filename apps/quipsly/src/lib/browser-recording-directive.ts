@@ -39,6 +39,7 @@ export type BrowserParticipantRecordingStatus = {
     | "STOPPED_SAFELY"
     | "WAITING";
   endpointCount: number;
+  noRecordingReported?: boolean;
   recordingEndpointCount: number;
   attentionEndpointCount: number;
 };
@@ -99,7 +100,7 @@ export function projectBrowserRecordingHealth(
   const attentionCount = health.attentionParticipantCount;
   const waitingCount = health.waitingParticipantCount;
   const unreportedCount = directive.action === "STOP"
-    ? directive.participantStatuses.filter((participant) => participant.endpointCount === 0).length
+    ? directive.participantStatuses.filter((participant) => participant.endpointCount === 0 || participant.noRecordingReported).length
     : 0;
   const savedCount = directive.participantStatuses.filter((participant) => participant.state === "STOPPED_SAFELY").length;
   const selfOnly =
@@ -175,7 +176,7 @@ export function projectBrowserRecordingHealth(
                   ? "Saved locally"
                   : directive.action === "START"
                     ? "Waiting for recorder"
-                    : participant.endpointCount === 0 ? "No recording reported" : "Waiting to save",
+                    : participant.endpointCount === 0 || participant.noRecordingReported ? "No recording reported" : "Waiting to save",
     })),
   };
 }

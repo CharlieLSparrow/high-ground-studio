@@ -621,6 +621,8 @@ export function LiveSessionRoom({
   const activePermissionRefreshesRef = useRef(0);
   const joinAttemptGenerationRef = useRef(0);
   const pendingMediaRequestRef = useRef<AbortController | null>(null);
+  const [devicePermissionPending, setDevicePermissionPending] = useState(false);
+  const [deviceSetupError, setDeviceSetupError] = useState<string | null>(null);
   const suppressPreferenceWriteRef = useRef(false);
   const lastPublishedWatchReceiptRef = useRef("");
   const preflightStreamRef = useRef<MediaStream | null>(null);
@@ -803,6 +805,7 @@ export function LiveSessionRoom({
   const clearPreflightPreview = useCallback(() => {
     pendingMediaRequestRef.current?.abort();
     pendingMediaRequestRef.current = null;
+    setDevicePermissionPending(false);
     previewRequestGenerationRef.current += 1;
     stopAudioMeter();
     stopStream(preflightStreamRef.current);
@@ -817,19 +820,35 @@ export function LiveSessionRoom({
     pendingMediaRequestRef.current?.abort();
     const controller = new AbortController();
     pendingMediaRequestRef.current = controller;
+    setDevicePermissionPending(true);
     try {
       return await requestBrowserMedia(navigator.mediaDevices, constraints, controller.signal);
     } finally {
-      if (pendingMediaRequestRef.current === controller) pendingMediaRequestRef.current = null;
+      if (pendingMediaRequestRef.current === controller) {
+        pendingMediaRequestRef.current = null;
+        setDevicePermissionPending(false);
+      }
     }
   }, []);
 
   const cancelDeviceSetup = useCallback(() => {
+    setDeviceSetupError(null);
     deviceRefreshGenerationRef.current += 1;
     joinAttemptGenerationRef.current += 1;
     cameraOperationGenerationRef.current += 1;
     cameraToggleInFlightRef.current = false;
     setCameraToggleBusy(false);
+    if (roomRef.current && roomRef.current.state !== ConnectionState.Disconnected) {
+      // Cancelling a permission request is not leaving the call. Keep the
+      // published camera, microphone meter, and transport exactly as they are.
+      pendingMediaRequestRef.current?.abort();
+      pendingMediaRequestRef.current = null;
+      setDevicePermissionPending(false);
+      setShowCallNotice(false);
+      setTechnicalMessage(null);
+      setMessage("Device setup cancelled. Your call is unchanged.");
+      return;
+    }
     clearPreflightPreview();
     setStatus("preflight");
     setMessage("");
@@ -1038,8 +1057,10 @@ export function LiveSessionRoom({
     if (!navigator.mediaDevices?.enumerateDevices) {
       if (!preserveLiveConnection) setStatus("error");
       setMessage("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone or iPad.");
+      setDeviceSetupError("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone or iPad.");
       return false;
     }
+    if (permission !== "none" || cause === "manual") setDeviceSetupError(null);
     if (!preserveLiveConnection && (permission !== "none" || cause !== "initial")) {
       setStatus("checking");
       setMessage(permission === "microphone"
@@ -1054,7 +1075,7 @@ export function LiveSessionRoom({
     if (ownsPermissionRefresh) activePermissionRefreshesRef.current += 1;
     try {
       if (permission !== "none") {
-        clearPreflightPreview();
+        if (!preserveLiveConnection) clearPreflightPreview();
         const permissionStream = await acquireMedia({
           audio: permission === "microphone" || permission === "media",
           video: permission === "camera" || permission === "media",
@@ -1251,15 +1272,16 @@ export function LiveSessionRoom({
         if (!preserveLiveConnection) setStatus(nextMicrophones.length && (!cameraWantedRef.current || nextCameras.length) ? "ready" : "preflight");
         setMessage(recoveryMessages.join(" "));
       } else if ((permission === "camera" || permission === "media") && !nextCameras.length) {
-        setShowCallNotice(false);
+        setShowCallNotice(true);
         if (!preserveLiveConnection) setStatus("error");
         setMessage("No camera is available. Check its connection and browser permission, or join with camera off.");
+        setDeviceSetupError("No camera is available. Check its connection and browser permission, or join with camera off.");
       } else if (permission === "camera" || permission === "media") {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("ready");
         setMessage(cameraNamesVisible ? "Camera names are visible. Choose the exact camera and run the preview." : "Camera access is available. Use the preview to verify the selected source.");
       } else if (!nextMicrophones.length) {
-        setShowCallNotice(false);
+        setShowCallNotice(permission !== "none" || cause === "manual");
         const waitingForJoinPermission = permission === "none" && cause === "initial";
         if (!preserveLiveConnection) {
           setStatus(waitingForJoinPermission || rawMicrophones.length ? "preflight" : "error");
@@ -1269,6 +1291,9 @@ export function LiveSessionRoom({
           : rawMicrophones.length
             ? "Microphone access is off. Allow it in this site's browser settings, then join again."
             : "No microphone was found. Check the cable and system sound settings, then try again.");
+        if (!waitingForJoinPermission) setDeviceSetupError(rawMicrophones.length
+          ? "Microphone access is off. Allow it in this site's browser settings, then try again."
+          : "No microphone was found. Check its connection and device sound settings, then try again.");
       } else if (cameraWantedRef.current && !nextCameras.length) {
         setShowCallNotice(false);
         if (!preserveLiveConnection) setStatus("preflight");
@@ -1287,8 +1312,11 @@ export function LiveSessionRoom({
     } catch (error) {
       if (generation !== deviceRefreshGenerationRef.current || (error instanceof Error && error.name === "AbortError")) return false;
       if (!preserveLiveConnection) setStatus("error");
+      setShowCallNotice(true);
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
-      setMessage(browserMediaSetupMessage(error, permission === "media" ? "microphone and camera" : permission === "none" ? "devices" : permission));
+      const setupError = browserMediaSetupMessage(error, permission === "media" ? "microphone and camera" : permission === "none" ? "devices" : permission);
+      setMessage(setupError);
+      setDeviceSetupError(setupError);
       return false;
     } finally {
       if (ownsPermissionRefresh) {
@@ -2492,6 +2520,14 @@ export function LiveSessionRoom({
       </div> : null}
       </div>
       {callAudioMode === "this-device" ? <div data-testid="call-microphone-status" data-routine={!microphoneRecoveryHeld}><LiveMicrophoneStatus evidence={meterEvidence} muted={microphoneMuted} recoveryHeld={microphoneRecoveryHeld} compact={Boolean(controlsContainer)} /></div> : null}
+      {stageLayout && toolPanel !== "devices" && devicePermissionPending ? <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+        <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />Waiting for device access…
+        <button type="button" onClick={cancelDeviceSetup} className="min-h-11 px-2 font-semibold underline underline-offset-4">Cancel device setup</button>
+      </div> : null}
+      {stageLayout && toolPanel !== "devices" && !devicePermissionPending && deviceSetupError ? <div role="alert" className="rounded-xl border border-destructive/30 bg-card p-3 text-xs">
+        <p>{deviceSetupError}</p>
+        <button type="button" onClick={() => setToolPanel("devices")} className="min-h-11 font-semibold underline underline-offset-4">Device settings</button>
+      </div> : null}
       {cameraControlError ? <p role="alert" className="text-xs leading-5 text-destructive">{cameraControlError}</p> : null}
       {screenShare.error ? <p role="alert" className="text-xs leading-5 text-destructive">{screenShare.error}</p> : null}
       {screenShare.sharing ? <p role="status" className="text-center text-xs text-muted-foreground">You’re sharing your screen live. Local recordings still capture your microphone and camera, not the shared screen.</p> : null}
@@ -2656,7 +2692,12 @@ export function LiveSessionRoom({
           <CallWorkspacePanel title="Audio and video settings" open={toolPanel === "devices"} onClose={closeToolPanel} inline={!stageLayout} container={toolPanelContainer}>
           <details ref={deviceSettingsRef} open={stageLayout || undefined} data-testid="call-device-settings" className={stageLayout ? "" : "rounded-2xl border border-border bg-card p-4"}>
             <summary className={stageLayout ? "hidden" : "cursor-pointer text-xs font-semibold text-foreground"}>Audio and video settings</summary>
-          {stageLayout && technicalMessage && (status === "error" || showCallNotice) ? <p role="alert" className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">{message}</p> : null}
+          {stageLayout && !devicePermissionPending && (deviceSetupError || technicalMessage && (status === "error" || showCallNotice)) ? <p role="alert" className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">{deviceSetupError || message}</p> : null}
+          {connected && devicePermissionPending ? <div role="status" className="mt-3 rounded-xl border border-border bg-muted p-3 text-sm">
+            <p className="flex items-center gap-2"><LoaderCircle size={16} className="animate-spin" aria-hidden="true" />Waiting for device access…</p>
+            <p className="mt-1 text-xs text-muted-foreground">Allow access in your browser’s prompt. Your call stays connected.</p>
+            <button type="button" onClick={cancelDeviceSetup} className="mt-2 min-h-11 rounded-xl border border-border px-3 font-semibold">Cancel device setup</button>
+          </div> : null}
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
             <button
               type="button"
@@ -2715,10 +2756,10 @@ export function LiveSessionRoom({
 
           <div className="mt-3 flex flex-wrap gap-2">
             {!sourceLocked && ((callAudioMode === "this-device" && !microphoneId) || (!connected && cameraWanted && !cameraId)) ? <>
-              <button type="button" aria-label={callAudioMode === "this-device" ? `Allow microphone${cameraWanted ? " and camera" : ""}` : "Allow camera"} onClick={() => void allowAndPreviewDevices()} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50">{status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : callAudioMode === "this-device" ? <Mic size={15} /> : <Camera size={15} />} {callAudioMode === "this-device" ? `Use microphone${cameraWanted ? " and camera" : ""}` : "Use camera"}</button>
+              <button type="button" aria-label={callAudioMode === "this-device" ? `Allow microphone${cameraWanted ? " and camera" : ""}` : "Allow camera"} onClick={() => void allowAndPreviewDevices()} disabled={devicePermissionPending || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50">{devicePermissionPending || status === "checking" ? <LoaderCircle size={15} className="animate-spin" /> : callAudioMode === "this-device" ? <Mic size={15} /> : <Camera size={15} />} {callAudioMode === "this-device" ? `Use microphone${cameraWanted ? " and camera" : ""}` : "Use camera"}</button>
             </> : null}
             {!connected && (callAudioMode === "this-device" || cameraWanted) ? <button type="button" aria-label="Test selected setup" onClick={() => void startSelectedPreview()} disabled={(cameraWanted && !cameraId) || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted px-4 text-xs font-semibold text-foreground disabled:opacity-50"><Video size={15} /> Preview</button> : null}
-            <button type="button" onClick={() => void refreshDevices("none", "manual")} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50"><RefreshCw size={15} /> Refresh devices</button>
+            <button type="button" onClick={() => void refreshDevices("none", "manual")} disabled={devicePermissionPending || status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-xs font-semibold text-foreground disabled:opacity-50"><RefreshCw size={15} /> Refresh devices</button>
           </div>
 
           {!stageLayout && !connected && callAudioMode === "this-device" ? (
@@ -2741,7 +2782,7 @@ export function LiveSessionRoom({
           </details>
           </CallWorkspacePanel>
 
-          {!(stageLayout && status === "ended" && callEndedByPerson) && (showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status)) ? (
+          {!(stageLayout && status === "ended" && callEndedByPerson) && !(stageLayout && connected && deviceSetupError === message) && (showCallNotice || ["checking", "joining", "connected", "reconnecting", "ended", "error"].includes(status)) ? (
             <p data-testid="call-status-message" role="status" aria-live="polite" className={stageLayout && connected && message.startsWith("You’re connected.") ? "sr-only" : "rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6 text-card-foreground"}>{message}</p>
           ) : null}
 

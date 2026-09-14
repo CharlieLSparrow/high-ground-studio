@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { BrowserSourceRecorder } from "./browser-source-recorder";
 import type { BrowserCaptureStudioHandoff } from "@/lib/browser-capture-studio-handoff";
-import { issueBrowserRecordingDirective, type BrowserRecordingDirective } from "@/lib/browser-recording-directive";
+import { issueBrowserRecordingDirective, readBrowserRecordingDirective, type BrowserRecordingDirective } from "@/lib/browser-recording-directive";
 import { browserSourceVaultReadiness } from "@/lib/browser-source-vault";
 
 let mockHandoff: BrowserCaptureStudioHandoff | null = null;
@@ -39,6 +39,7 @@ describe("browser recorder before recording", () => {
       allRegisteredParticipantConsentGranted: false };
     fetchMock.mockReset();
     jest.mocked(issueBrowserRecordingDirective).mockReset();
+    jest.mocked(readBrowserRecordingDirective).mockReset().mockResolvedValue(null);
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url.includes("/consent")) {
         if (init?.method === "POST") {
@@ -165,6 +166,84 @@ describe("browser recorder before recording", () => {
     }));
     expect(screen.getByTestId("recording-readiness-message")).toHaveTextContent("Choose a microphone.");
     expect(screen.queryByText(/Everyone is ready to record/)).not.toBeInTheDocument();
+  });
+
+  it("shows participant recording progress on the stage and marks failed readback instead of retaining a success claim", async () => {
+    session = {...session,recordingConsentStatus:"GRANTED",recordingConsentId:"consent",
+      recordingConsentCanRecordAudio:true,allRegisteredParticipantConsentGranted:true};
+    const directive: BrowserRecordingDirective = {id:"live",sequence:"1",action:"START",captureGroupId:"take",issuedAt:new Date().toISOString(),shouldRecord:true,
+      participantStatuses:[{id:"participant",participantLabel:"You",state:"WAITING",endpointCount:0,recordingEndpointCount:0,attentionEndpointCount:0}],
+      endpointReceipts:[],recordingHealth:{expectedParticipantCount:1,participantWithEndpointCount:0,recordingParticipantCount:0,
+        attentionParticipantCount:0,waitingParticipantCount:1,allParticipantsRecording:false,allParticipantsStoppedSafely:false}};
+    jest.mocked(readBrowserRecordingDirective).mockResolvedValue(directive);
+    const stage = document.createElement("div"); document.body.appendChild(stage);
+    const open = jest.fn();
+    const view = render(<div hidden><BrowserSourceRecorder {...props} microphoneId="" consentContainer={stage} onOpenRecordingSettings={open} /></div>);
+    try {
+      expect(await within(stage).findByText("0 of 1 person recording")).toBeVisible();
+      expect(within(stage).getByText("You: waiting for recorder")).toBeVisible();
+      fireEvent.click(within(stage).getByRole("button",{name:"Recording details"}));
+      expect(open).toHaveBeenCalledTimes(1);
+      jest.mocked(readBrowserRecordingDirective).mockRejectedValue(new Error("Offline"));
+      await act(async () => { await jest.advanceTimersByTimeAsync(2100); });
+      expect(within(stage).getByText("Recording status reconnecting")).toBeVisible();
+      expect(within(stage).queryByText("0 of 1 person recording")).not.toBeInTheDocument();
+      jest.mocked(readBrowserRecordingDirective).mockResolvedValue(directive);
+      await act(async () => { await jest.advanceTimersByTimeAsync(2100); });
+      expect(within(stage).getByText("0 of 1 person recording")).toBeVisible();
+      jest.mocked(readBrowserRecordingDirective).mockResolvedValue({...directive,id:"stop",sequence:"2",action:"STOP",shouldRecord:false});
+      await act(async () => { await jest.advanceTimersByTimeAsync(2100); });
+      expect(within(stage).queryByRole("region",{name:"Call recording status"})).not.toBeInTheDocument();
+    } finally { view.unmount(); stage.remove(); }
+  });
+
+  it("takes Record directly to the missing device and returns to recording when it is selected", async () => {
+    session = {...session,canControlRoom:true,recordingConsentStatus:"GRANTED",recordingConsentId:"consent",
+      recordingConsentCanRecordAudio:true,allRegisteredParticipantConsentGranted:true};
+    const controls = document.createElement("div"); document.body.appendChild(controls);
+    const devices = jest.fn(); const settings = jest.fn();
+    const view = render(<div hidden><BrowserSourceRecorder {...props} microphoneId="" controlsContainer={controls}
+      onOpenDeviceSettings={devices} onOpenRecordingSettings={settings} /></div>);
+    try {
+      const record = await within(controls).findByRole("button", {name:"Record"});
+      await waitFor(() => expect(record).toHaveAttribute("title", "Choose a microphone."));
+      fireEvent.click(record);
+      expect(devices).toHaveBeenCalledTimes(1);
+      expect(settings).not.toHaveBeenCalled();
+      expect(issueBrowserRecordingDirective).not.toHaveBeenCalled();
+      view.rerender(<div hidden><BrowserSourceRecorder {...props} controlsContainer={controls}
+        onOpenDeviceSettings={devices} onOpenRecordingSettings={settings} /></div>);
+      await waitFor(() => expect(record).toHaveAttribute("title", "Session recording"));
+      // Selecting a device prepares it; it never starts recording by itself.
+      expect(issueBrowserRecordingDirective).not.toHaveBeenCalled();
+      fireEvent.click(within(controls).getByRole("button", {name:"Recording settings and status"}));
+      expect(settings).toHaveBeenCalledTimes(1);
+    } finally { view.unmount(); controls.remove(); }
+  });
+
+  it("does not rewind a successful Stop when an older recording-status request finishes later", async () => {
+    session = {...session,canControlRoom:true,recordingConsentStatus:"GRANTED",recordingConsentId:"consent",
+      recordingConsentCanRecordAudio:true,allRegisteredParticipantConsentGranted:true};
+    const directive: BrowserRecordingDirective = {id:"start",sequence:"90071992547409930",action:"START",captureGroupId:"take",issuedAt:new Date().toISOString(),shouldRecord:true,
+      participantStatuses:[],endpointReceipts:[],recordingHealth:{expectedParticipantCount:1,participantWithEndpointCount:0,
+        recordingParticipantCount:0,attentionParticipantCount:0,waitingParticipantCount:1,allParticipantsRecording:false,allParticipantsStoppedSafely:false}};
+    jest.mocked(readBrowserRecordingDirective).mockResolvedValue(directive);
+    jest.mocked(issueBrowserRecordingDirective).mockResolvedValue({...directive,id:"stop",sequence:"90071992547409931",action:"STOP",shouldRecord:false});
+    const controls = document.createElement("div"); document.body.appendChild(controls);
+    const view = render(<div hidden><BrowserSourceRecorder {...props} microphoneId="" controlsContainer={controls} /></div>);
+    try {
+      expect(await within(controls).findByRole("button",{name:"Stop recording"})).toBeEnabled();
+      let finish!: (value: BrowserRecordingDirective) => void;
+      jest.mocked(readBrowserRecordingDirective).mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+      await act(async () => { await jest.advanceTimersByTimeAsync(2100); });
+      expect(finish).toBeDefined();
+      fireEvent.click(within(controls).getByRole("button",{name:"Stop recording"}));
+      expect(await within(controls).findByRole("button",{name:"Record"})).toBeEnabled();
+      await act(async () => {finish(directive);});
+      expect(within(controls).queryByRole("button",{name:"Stop recording"})).not.toBeInTheDocument();
+      expect(issueBrowserRecordingDirective).toHaveBeenCalledTimes(1);
+      expect(issueBrowserRecordingDirective).toHaveBeenCalledWith("room","STOP");
+    } finally {view.unmount();controls.remove();}
   });
 
   it("shows preparation rather than a storage failure while readiness is still loading", async () => {

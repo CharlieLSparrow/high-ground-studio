@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BrowserRecordingMicrophone } from "@/lib/browser-recording-microphone";
+import { CallRecordingStatus } from "@/components/call-recording-status";
 import { createPortal } from "react-dom";
 import { browserRecordingControl, type BrowserRecordingAction } from "@/lib/browser-recording-control";
 import {
@@ -416,6 +417,7 @@ export function BrowserSourceRecorder({
   const [directiveBusy, setDirectiveBusy] = useState(false);
   const directiveCommandInFlightRef = useRef(false);
   const [directiveError, setDirectiveError] = useState<string | null>(null);
+  const [directiveStatusUnavailable, setDirectiveStatusUnavailable] = useState(false);
   useEffect(() => {
     setDirectiveError(null);
   }, [callRoomId, recordingDirective?.id]);
@@ -478,6 +480,16 @@ export function BrowserSourceRecorder({
   const directiveInFlightRef = useRef(new Set<string>());
   const directiveBaselineEstablishedRef = useRef(false);
   const recordingDirectiveRef = useRef<BrowserRecordingDirective | null>(null);
+  const acceptRecordingDirective = useCallback((next: BrowserRecordingDirective) => {
+    const current = recordingDirectiveRef.current;
+    // A slower status poll may have begun before a newer Record/Stop command.
+    // Never let that response rewind room intent or restart a stopped source.
+    if (current && (BigInt(next.sequence) < BigInt(current.sequence) ||
+      next.sequence === current.sequence && next.id !== current.id)) return false;
+    recordingDirectiveRef.current = next;
+    setRecordingDirective(next);
+    return true;
+  }, []);
   const handledStopRequestVersionRef = useRef(0);
   const callTransportGapStartedAtRef = useRef<string | null>(null);
   const callTransportGapWriteRef = useRef<Promise<void>>(Promise.resolve());
@@ -511,12 +523,9 @@ export function BrowserSourceRecorder({
     directiveHandlingRef.current.clear();
     directiveInFlightRef.current.clear();
     setRecordingDirective(null);
+    setDirectiveStatusUnavailable(false);
     recordingDirectiveRef.current = null;
   }, [callRoomId]);
-
-  useEffect(() => {
-    recordingDirectiveRef.current = recordingDirective;
-  }, [recordingDirective]);
 
   const flushRecordingReceipts = useCallback(async () => {
     if (!participantId) return null;
@@ -2444,7 +2453,7 @@ export function BrowserSourceRecorder({
               setCoordinationReceiptError(result.latestError);
               if (result.pendingCount === 0) {
                 const refreshed = await readBrowserRecordingDirective(callRoomId);
-                if (refreshed?.id === recordingDirectiveRef.current?.id) setRecordingDirective(refreshed);
+                if (refreshed && refreshed.id === recordingDirectiveRef.current?.id) acceptRecordingDirective(refreshed);
               }
             }).catch(() => undefined);
           }
@@ -2576,6 +2585,7 @@ export function BrowserSourceRecorder({
       return null;
     }
   }, [
+    acceptRecordingDirective,
     callRoomId,
     cameraId,
     cameraLabel,
@@ -2614,7 +2624,7 @@ export function BrowserSourceRecorder({
       setDirectiveError(null);
       try {
         const next = await issueBrowserRecordingDirective(callRoomId, action);
-        setRecordingDirective(next);
+        acceptRecordingDirective(next);
         setMessage(
           action === "START"
             ? "Starting recording on each ready device…"
@@ -2631,7 +2641,7 @@ export function BrowserSourceRecorder({
         setDirectiveBusy(false);
       }
     },
-    [callRoomId, directiveBusy],
+    [acceptRecordingDirective, callRoomId, directiveBusy],
   );
 
   const joinActiveRecording = useCallback(async () => {
@@ -2696,10 +2706,11 @@ export function BrowserSourceRecorder({
         await flushRecordingReceipts();
         const directive = await readBrowserRecordingDirective(callRoomId);
         if (cancelled) return;
+        setDirectiveStatusUnavailable(false);
+        if (directive && !acceptRecordingDirective(directive)) return;
         if (!directiveBaselineEstablishedRef.current) {
           directiveBaselineEstablishedRef.current = true;
           if (directive?.action === "START" && status !== "recording") {
-            setRecordingDirective(directive);
             if (
               !browserRecordingDirectiveShouldAutoStart({
                 action: directive.action,
@@ -2718,7 +2729,6 @@ export function BrowserSourceRecorder({
           }
         }
         if (!directive) return;
-        setRecordingDirective(directive);
         let terminal = directiveHandlingRef.current.get(directive.id);
         if (terminal === "JOIN_REQUIRED") {
           if (
@@ -2837,6 +2847,7 @@ export function BrowserSourceRecorder({
         }
       } catch {
         // A temporary readback failure never stops or deletes a local source.
+        if (!cancelled) setDirectiveStatusUnavailable(true);
       }
     };
     void coordinate();
@@ -2848,6 +2859,7 @@ export function BrowserSourceRecorder({
       window.clearInterval(interval);
     };
   }, [
+    acceptRecordingDirective,
     callRoomId,
     conversationConnected,
     flushRecordingReceipts,
@@ -2932,6 +2944,16 @@ export function BrowserSourceRecorder({
     else if (action === "JOIN") void joinActiveRecording();
     else void reopenRoom();
   };
+  const openRecordingControl = () => {
+    if (recordingControl.action && !recordingControl.disabled && recordingControl.action !== "REOPEN") {
+      runRecordingAction(recordingControl.action);
+    } else if (!recordingControl.recording && !roomClosed && onOpenDeviceSettings &&
+      ["microphone", "camera"].includes(retainedReadiness.blocker ?? "")) {
+      onOpenDeviceSettings();
+    } else {
+      onOpenRecordingSettings?.();
+    }
+  };
   const recordingButton = recordingControl.action ? <button type="button"
     onClick={() => runRecordingAction(recordingControl.action!)} disabled={recordingControl.disabled}
     className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-rose-800 px-5 text-sm font-semibold text-white disabled:opacity-40">
@@ -2958,9 +2980,8 @@ export function BrowserSourceRecorder({
   const toolbarControl = controlsContainer && conversationConnected && !conversationEnded ? createPortal(
     <div className="flex min-w-0 items-stretch" role="group" aria-label="Session recording control">
       <button type="button" disabled={recordingControl.busy}
-        onClick={() => recordingControl.action && !recordingControl.disabled && recordingControl.action !== "REOPEN"
-          ? runRecordingAction(recordingControl.action) : onOpenRecordingSettings?.()}
-        title={directiveError || (!retainedReadiness.ok && !recordingControl.recording ? retainedReadiness.reason : "") || "Session recording"}
+        onClick={openRecordingControl}
+        title={directiveError || (!retainedReadiness.ok && (recordingControl.disabled || !recordingControl.action) ? retainedReadiness.reason : "") || "Session recording"}
         className={`inline-flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-l-xl px-2 py-2 text-xs font-semibold disabled:opacity-50 sm:flex-row sm:gap-2 sm:px-3 ${recordingControl.recording ? "bg-rose-800 text-white" : "hover:bg-muted"}`}>
         {recordingControl.busy ? <LoaderCircle size={17} className="animate-spin" /> : recordingControl.action === "STOP" || recordingControl.action === "STOP_LOCAL" ? <Square size={15} fill="currentColor" /> : <span className="size-3 rounded-full bg-current" />}
         <span>{recordingControl.busy ? status === "stopping" ? "Saving…" : status === "checking" ? "Preparing…" : recordingControl.action === "STOP" || recordingControl.action === "STOP_LOCAL" ? "Stopping…" : "Starting…"
@@ -3036,6 +3057,11 @@ export function BrowserSourceRecorder({
       </div>
 
       {consentContainer ? createPortal(consentChoice, consentContainer) : consentChoice ? <div className="mt-4">{consentChoice}</div> : null}
+      {consentContainer && conversationConnected && !conversationEnded && recordingDirective &&
+        (recordingDirective.shouldRecord || sourceLocked) ? createPortal(
+          <CallRecordingStatus directive={recordingDirective} unavailable={directiveStatusUnavailable}
+            localRecording={status === "recording"} muted={sourceMicrophoneMuted} onOpen={onOpenRecordingSettings} />,
+          consentContainer) : null}
       {recordingActions}
       {toolbarControl}
       {sourceMicrophoneMuted && (status === "recording" || status === "starting") ? <p role="status" className="mt-3 text-sm text-muted-foreground">Microphone muted in the call and recording. The timeline continues with silence.</p> : null}
@@ -3290,7 +3316,7 @@ export function BrowserSourceRecorder({
                       <span>
                         {receipt.participantLabel} · {receipt.deviceLabel}
                       </span>
-                      <span>{endpointStatus.label}</span>
+                      <span>{receipt.state === "STOPPED" && !receipt.captureId ? "Stopped — no file confirmed" : endpointStatus.label}</span>
                     </li>
                   );
                 })}

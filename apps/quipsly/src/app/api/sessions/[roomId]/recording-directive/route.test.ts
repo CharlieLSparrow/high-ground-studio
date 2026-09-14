@@ -287,9 +287,10 @@ describe("Session recording directive route", () => {
     expect(JSON.stringify(packet)).not.toContain("participant-2");
   });
 
-  function stoppedAttempt(stopStates: Array<[string, string]>, startStates: Array<[string, string]>) {
-    const receipts = (states: Array<[string, string]>) => states.map(([participantId, state]) => ({
+  function stoppedAttempt(stopStates: Array<[string, string, (string | null)?]>, startStates: Array<[string, string, (string | null)?]>) {
+    const receipts = (states: Array<[string, string, (string | null)?]>) => states.map(([participantId, state, captureId = "55555555-5555-4555-8555-555555555555"]) => ({
       participantId, state, clientInstanceId: `device-${participantId}`, clientKind: "web",
+      captureId,
       deviceLabel: "Test browser", occurredAt: directive.issuedAt, receivedAt: directive.issuedAt,
     }));
     prisma.callRecordingDirective.findFirst
@@ -307,6 +308,24 @@ describe("Session recording directive route", () => {
     expect(prisma.callRecordingDirective.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({
       where: {roomId: "room-1", captureGroupId: room.captureGroupId, action: "START", sequence: {lt: 2n}},
     }));
+  });
+
+  it("does not manufacture a saved recording from an idle endpoint's STOP acknowledgement", async () => {
+    stoppedAttempt([["participant-1", "STOPPED", null]], []);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses:[{state:"WAITING",endpointCount:1,noRecordingReported:true}, {state:"WAITING",endpointCount:0,noRecordingReported:true}],
+      recordingHealth:{waitingParticipantCount:0,allParticipantsStoppedSafely:false},
+    });
+  });
+
+  it("flags a source that started but lost its identity before STOP instead of calling it saved or nonexistent", async () => {
+    stoppedAttempt([["participant-1", "STOPPED", null]], [["participant-1", "STARTED"]]);
+    const packet = await (await GET(request("GET"), context)).json();
+    expect(packet.directive).toMatchObject({
+      participantStatuses:[{state:"NEEDS_ATTENTION",noRecordingReported:false}, {state:"WAITING"}],
+      recordingHealth:{attentionParticipantCount:1,waitingParticipantCount:0,allParticipantsStoppedSafely:false},
+    });
   });
 
   it("retains a disconnected recorder until it acknowledges STOP", async () => {
