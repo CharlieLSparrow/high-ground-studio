@@ -1163,10 +1163,7 @@ struct MobileEpisodeChatCard: View {
 
 struct MobileEngagementChatCard: View {
     @ObservedObject var client: MobileEpisodeChatClient
-    let engagement: MobileCaptureCoachingEngagement
-    let previewOnly: Bool
-    var onWorkChanged: @MainActor @Sendable () async -> Void = {}
-    @State private var isPresented = false
+    let onOpen: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1201,7 +1198,7 @@ struct MobileEngagementChatCard: View {
             }
 
             Button {
-                isPresented = true
+                onOpen()
             } label: {
                 Label(client.scope.openLabel, systemImage: "bubble.left.and.bubble.right.fill")
                     .frame(maxWidth: .infinity)
@@ -1220,14 +1217,6 @@ struct MobileEngagementChatCard: View {
         .captureCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureCoachingConversationCard")
-        .sheet(isPresented: $isPresented) {
-            MobileEpisodeChatThread(
-                client: client,
-                target: .engagement(engagement),
-                previewOnly: previewOnly,
-                onWorkChanged: onWorkChanged
-            )
-        }
     }
 
     private var heading: some View {

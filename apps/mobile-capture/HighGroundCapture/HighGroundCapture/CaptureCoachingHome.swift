@@ -3425,9 +3425,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
 
                 MobileEngagementChatCard(
                     client: conversation,
-                    engagement: engagement,
-                    previewOnly: previewOnly,
-                    onWorkChanged: { if !previewOnly { await client.load(force: true) } }
+                    onOpen: { conversationDestination = ConversationDestination(messageID: nil) }
                 )
 
                 sessionContinuity

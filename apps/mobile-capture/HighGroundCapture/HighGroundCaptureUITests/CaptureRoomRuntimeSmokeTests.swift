@@ -1828,7 +1828,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let conversationThread = app.descendants(matching: .any)[
             "CaptureCoachingConversationThread"
         ].firstMatch
-        XCTAssertTrue(conversationThread.waitForExistence(timeout: 15))
+        let didOpenConversation = conversationThread.waitForExistence(timeout: 15)
+        if !didOpenConversation {
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "Fresh coach conversation presentation failure"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+        }
+        XCTAssertTrue(didOpenConversation, app.debugDescription)
         let conversationComposer = app.textFields[
             "CaptureCoachingConversationComposer"
         ].firstMatch
@@ -1849,6 +1856,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let closeConversation = app.buttons["Done"].firstMatch
         XCTAssertTrue(closeConversation.waitForExistence(timeout: 5))
         closeConversation.tap()
+        XCTAssertTrue(conversationThread.waitForNonExistence(timeout: 10))
+        let toolbarConversation = app.buttons["CaptureCoachingConversationToolbarButton"]
+        XCTAssertTrue(toolbarConversation.isHittable)
+        toolbarConversation.tap()
+        XCTAssertTrue(conversationThread.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[conversationBody].firstMatch.waitForExistence(timeout: 10),
+                      "The toolbar and card must reopen the same saved conversation.")
+        app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(conversationThread.waitForNonExistence(timeout: 10))
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureCoachingSessionContinuity"].waitForExistence(timeout: 10),
