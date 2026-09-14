@@ -19,7 +19,9 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenRecordi
   const sharedRecordingAvailable = Boolean(summary?.recordings.uploaded);
   const sharedTranscriptExists = summary && Object.values(summary.transcripts).some(count => count > 0);
   const recordingHref = !pending && recording?.recordingHref ? recording.recordingHref : `${base}?mode=recordings`;
-  const transcriptHref = recording?.transcriptHref || `${base}?mode=transcript${summary?.transcriptSourceId ? `&source=${encodeURIComponent(summary.transcriptSourceId)}` : ""}`;
+  const transcriptHref = summary && summary.recordings.uploaded + summary.recordings.pending + summary.recordings.attention > 1
+    ? `${base}?mode=transcript`
+    : recording?.transcriptHref || `${base}?mode=transcript${summary?.transcriptSourceId ? `&source=${encodeURIComponent(summary.transcriptSourceId)}` : ""}`;
   return <section aria-label="After the call" className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center py-6 sm:py-10">
     <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-muted"><PhoneOff size={26} aria-hidden="true" /></div>
     <h3 className="text-3xl font-semibold">You’ve left the call</h3>

@@ -1,5 +1,6 @@
 import "server-only";
 import type { TranscriptionProgressSource } from "../transcription-progress";
+import { isOriginalSessionRecordingAsset } from "../session-recording-sources";
 import { readSessionRecordingAttempts } from "./session-recording-attempts";
 import { transcriptFailurePresentation } from "./transcript-failure-presentation";
 
@@ -25,6 +26,7 @@ export const SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA =
   "quipsly-session-transcript-correction-desk-v1" as const;
 
 type Candidate = SessionTranscriptSourceCandidate & {
+  status: string;
   checksum: string | null;
   localManifestJson: unknown;
   participant?: {displayName: string | null} | null;
@@ -88,19 +90,17 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     return anchor;
   }
 
-  const rows = (await input.prisma.recordingAsset.findMany({
+  const assets = (await input.prisma.recordingAsset.findMany({
     where: {
       roomId: input.roomId,
-      status: "VERIFIED",
       kind: { in: ["LOCAL_AUDIO", "LOCAL_VIDEO"] },
       participantId: { not: null },
-      checksum: { not: null },
       recordedStartedAt: { not: null },
-      recordedStoppedAt: { not: null },
     },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      status: true,
       participantId: true,
       participant: {select: {displayName: true}},
       kind: true,
@@ -109,13 +109,20 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       recordedStoppedAt: true,
       localManifestJson: true,
       transcriptJobs: {
-        where: { status: "COMPLETED" },
+        where: { status: "COMPLETED", segments: { some: {} } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: { id: true, createdAt: true },
       },
     },
   })) as Candidate[];
+  // Select the current take before deciding which sources are readable. An
+  // unfinished upload must not disappear or expose an earlier take's words.
+  // The canonical desk below still verifies source identity and readable bytes.
+  const rows = assets.filter(isOriginalSessionRecordingAsset).map(source => ({
+    ...source,
+    transcriptJobs: source.status === "VERIFIED" ? source.transcriptJobs : [],
+  }));
   const lanes = selectSessionTranscriptRecordingLanes({
     rows,
     attempts: await readSessionRecordingAttempts(input.prisma, input.roomId, rows),
@@ -129,6 +136,14 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     select: {id: true, assetId: true, status: true, provider: true, errorMessage: true},
   }) : [];
   const pendingSources: TranscriptionProgressSource[] = pendingLanes.map(source => {
+    if (source.status !== "VERIFIED") {
+      const attention = ["HELD", "FAILED", "CORRUPTED", "QUARANTINED"].includes(source.status);
+      return {recordingAssetId: source.id, participantLabel: text(source.participant?.displayName) || "Participant recording",
+        transcriptJobId: null, status: attention ? "UPLOAD_ATTENTION" : "WAITING_FOR_UPLOAD",
+        error: attention ? "Open Recordings to check this upload. Its transcript will appear here when the recording is available."
+          : "Keep Quipsly open on the recording device until its upload finishes. The transcript will update here.",
+        retryable: false};
+    }
     const job = pendingJobs.find((job: any) => job.assetId === source.id);
     const failure = transcriptFailurePresentation(job);
     return {recordingAssetId: source.id, participantLabel: text(source.participant?.displayName) || "Participant recording",

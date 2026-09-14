@@ -35,6 +35,20 @@ it("supports plain paragraphs and rejects unsupported formats", async () => {
   expect(await (await run("?speakers=false&timestamps=false")).text()).toBe("Chapter coaching\n\nCorrected text\n");
   expect((await run("?format=html")).status).toBe(400);
 });
+it.each(["incomplete", "held"])("exports available conversation text without hiding that the session is %s", async status => {
+  jest.mocked(readSessionTranscriptCorrectionDesk).mockResolvedValue({roomTitle: "Coaching", gate: {allowed: true},
+    sessionTranscript: {status, pendingSourceCount: 1}, segments: [{text: "Available words", speakerLabel: "Riley", startSeconds: 0, endSeconds: 2}]} as never);
+  const response = await run();
+  expect(response.status).toBe(200);
+  expect(response.headers.get("X-Quipsly-Transcript-Completeness")).toBe("partial");
+  expect(response.headers.get("content-disposition")).toContain("coaching-partial-transcript.txt");
+  expect(await response.text()).toContain("Partial transcript: some participant recordings are not included yet.");
+  const subtitle = await run("?format=srt");
+  expect(subtitle.status).toBe(200);
+  expect(subtitle.headers.get("content-disposition")).toContain("coaching-partial-transcript.srt");
+  expect(await subtitle.text()).toMatch(/^1\n00:00:00,000 --> 00:00:02,000\nRiley: Available words/);
+});
+
 it("does not bypass an unavailable transcript boundary", async () => {
   jest.mocked(readSessionTranscriptCorrectionDesk).mockResolvedValue({gate: {allowed: false}, segments: []} as never);
   expect((await run()).status).toBe(409);

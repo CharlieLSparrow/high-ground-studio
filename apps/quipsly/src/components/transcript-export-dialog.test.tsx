@@ -24,6 +24,16 @@ it("opens a normal export dialog with a downloadable full transcript and preview
   expect(screen.getByLabelText("Transcript export preview")).toHaveTextContent("00:00:02,000 --> 00:00:05,000");
 });
 
+it("allows a clearly labeled partial export and replaces it automatically when all sources arrive", async () => {
+  const view = render(<TranscriptExportDialog title="Coaching" segments={segments} partial />);
+  openExport();
+  expect(await screen.findByRole("link", {name: "Download TXT"})).toHaveAttribute("download", "coaching-partial-transcript.txt");
+  expect(screen.getByLabelText("Transcript export preview")).toHaveTextContent("Partial transcript: some participant recordings are not included yet.");
+  view.rerender(<TranscriptExportDialog title="Coaching" segments={segments} partial={false} />);
+  expect(await screen.findByRole("link", {name: "Download TXT"})).toHaveAttribute("download", "coaching-transcript.txt");
+  expect(screen.getByLabelText("Transcript export preview")).not.toHaveTextContent("Partial transcript:");
+});
+
 it("updates the file after corrections and revokes the old preview URL", async () => {
   const {rerender, unmount} = render(<TranscriptExportDialog title="Coaching" segments={segments} />);
   openExport();

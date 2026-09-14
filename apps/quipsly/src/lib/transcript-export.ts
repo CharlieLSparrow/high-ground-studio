@@ -13,7 +13,13 @@ export type TranscriptExportOptions = {
   format: TranscriptExportFormat;
   timestamps?: boolean;
   speakers?: boolean;
+  partial?: boolean;
 };
+
+export const PARTIAL_TRANSCRIPT_NOTICE = "Partial transcript: some participant recordings are not included yet. You can export an updated copy when they are ready.";
+export function transcriptExportIsPartial(sessionTranscript?: { status?: string; pendingSourceCount?: number } | null) {
+  return sessionTranscript?.status === "incomplete" || sessionTranscript?.status === "held" || (sessionTranscript?.pendingSourceCount ?? 0) > 0;
+}
 
 function clock(segment: TranscriptExportPassage) {
   const usesProgram = segment.programStartSeconds !== undefined || segment.programEndSeconds !== undefined;
@@ -46,7 +52,7 @@ const cueText = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&
  * Timing stays on the supplied Session/source clock; media edits need their own projection. */
 export function createTranscriptExport(options: TranscriptExportOptions) {
   const {format, segments} = options;
-  const title = options.title.trim() || "Quipsly transcript";
+  const title = `${options.title.trim() || "Quipsly transcript"}${options.partial ? " (partial)" : ""}`;
   const subtitles = format === "srt" || format === "vtt";
   if (subtitles && !transcriptHasSubtitleTiming(segments)) {
     throw new Error("Subtitle timing is unavailable for one or more passages. Download a text transcript instead.");
@@ -62,7 +68,7 @@ export function createTranscriptExport(options: TranscriptExportOptions) {
         const speaker = speakers && segment.speakerLabel?.trim() ? `${segment.speakerLabel.trim()}: ` : "";
         return `${index + 1}\n${timestamp(start!, format === "srt" ? "," : ".")} --> ${timestamp(end!, format === "srt" ? "," : ".")}\n${cueText(speaker + segment.text)}\n`;
       }).join("\n")}`
-    : [format === "md" ? `# ${markdownText(title.replace(/\s*\n\s*/g, " "))}` : title, "", ...segments.flatMap(segment => {
+    : [format === "md" ? `# ${markdownText(title.replace(/\s*\n\s*/g, " "))}` : title, "", ...(options.partial ? [PARTIAL_TRANSCRIPT_NOTICE, ""] : []), ...segments.flatMap(segment => {
       const [start] = clock(segment);
       const time = options.timestamps !== false && typeof start === "number" && Number.isFinite(start) && start >= 0 ? `[${timestamp(start)}]` : "";
       const speaker = speakers ? segment.speakerLabel?.trim() ?? "" : "";

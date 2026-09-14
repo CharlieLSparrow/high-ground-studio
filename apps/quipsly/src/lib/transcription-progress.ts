@@ -9,6 +9,8 @@ export type TranscriptionProgressSource = {
 };
 
 export function transcriptionProgressLabel(status: string | null) {
+  if (status === "WAITING_FOR_UPLOAD") return "Waiting for recording upload";
+  if (status === "UPLOAD_ATTENTION") return "Recording upload needs attention";
   if (status === "QUEUED") return "Waiting to transcribe";
   if (status === "RUNNING" || status === "PROCESSING") return "Transcribing";
   if (status === "FAILED") return "Transcription failed";
@@ -19,5 +21,5 @@ export function transcriptionProgressLabel(status: string | null) {
 }
 
 export function transcriptionIsPending(status: string | null) {
-  return status === null || ["QUEUED", "RUNNING", "PROCESSING"].includes(status);
+  return status === null || ["WAITING_FOR_UPLOAD", "QUEUED", "RUNNING", "PROCESSING"].includes(status);
 }

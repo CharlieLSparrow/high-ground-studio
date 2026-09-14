@@ -2,6 +2,7 @@
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
 import { SessionTranscriptionProgress } from "@/components/session-transcription-progress";
 import { TranscriptExportDialog } from "@/components/transcript-export-dialog";
+import { transcriptExportIsPartial } from "@/lib/transcript-export";
 import { TranscriptSearch, TranscriptSearchHighlight } from "@/components/transcript-search";
 import { transcriptionIsPending, type TranscriptionProgressSource } from "@/lib/transcription-progress";
 
@@ -2301,7 +2302,7 @@ function TranscriptCorrectionDeskContent({
           <div className="flex flex-wrap gap-2">
             {canEditRecording ? recordingEditor ? <button type="button" aria-expanded={showRecordingEditor} aria-controls="inline-recording-editor" onClick={() => { setRecordingEditorFocus(null); setShowRecordingEditor((current) => !current); }} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />{showRecordingEditor ? "Close recording editor" : "Trim or cut recording"}</button> : <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim or cut recording</Link> : null}
             {desk.roomPurpose === "COACHING" ? <button type="button" onClick={() => void shareMentorTranscript()} disabled={busy || mentorReportBusy || !canExportMentorReport} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-orange-300 bg-orange-50 px-4 py-2 text-xs font-black text-orange-950 disabled:opacity-50">{mentorReportBusy ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}Mentor report</button> : null}
-            <TranscriptExportDialog title={sessionTitle} segments={desk.segments} disabled={busy || !desk.gate.allowed} />
+            <TranscriptExportDialog title={sessionTitle} segments={desk.segments} partial={transcriptExportIsPartial(desk.sessionTranscript)} disabled={busy || !desk.gate.allowed} />
             <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh</button>
           </div>
         </div>

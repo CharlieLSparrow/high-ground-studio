@@ -2,13 +2,14 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Download, Share2, X } from "lucide-react";
-import { createTranscriptExport, transcriptHasSubtitleTiming, type TranscriptExportFormat, type TranscriptExportPassage } from "@/lib/transcript-export";
+import { createTranscriptExport, PARTIAL_TRANSCRIPT_NOTICE, transcriptHasSubtitleTiming, type TranscriptExportFormat, type TranscriptExportPassage } from "@/lib/transcript-export";
 
 const EMPTY: readonly TranscriptExportPassage[] = [];
 
-export function TranscriptExportDialog({title, segments = EMPTY, disabled = false, sourceUrl, description, label = "Export transcript"}: {
+export function TranscriptExportDialog({title, segments = EMPTY, disabled = false, sourceUrl, description, label = "Export transcript", partial = false}: {
   title: string; segments?: readonly TranscriptExportPassage[]; disabled?: boolean;
   sourceUrl?: string; description?: string; label?: string;
+  partial?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const headingId = useId();
@@ -40,8 +41,8 @@ export function TranscriptExportDialog({title, segments = EMPTY, disabled = fals
   const subtitle = format === "srt" || format === "vtt";
   const output = useMemo(() => {
     if (!open || disabled || !passages.length || (subtitle && !timed)) return null;
-    return createTranscriptExport({title, segments: passages, format, timestamps, speakers});
-  }, [open, disabled, passages, subtitle, timed, title, format, timestamps, speakers]);
+    return createTranscriptExport({title, segments: passages, format, timestamps, speakers, partial});
+  }, [open, disabled, passages, subtitle, timed, title, format, timestamps, speakers, partial]);
   const fileUrl = prepared?.output === output ? prepared?.url ?? null : null;
   useEffect(() => {
     const element = dialog.current;
@@ -73,6 +74,7 @@ export function TranscriptExportDialog({title, segments = EMPTY, disabled = fals
     <button type="button" disabled={disabled || (!sourceUrl && !segments.length)} onClick={() => {if (sourceUrl) setRemote(null); setOpen(true);}} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"><Download size={16} />{label}</button>
     <dialog ref={dialog} aria-labelledby={headingId} onCancel={() => setOpen(false)} onClose={() => setOpen(false)} className="m-auto max-h-[90dvh] w-[min(36rem,calc(100%-2rem))] overflow-y-auto rounded-2xl border border-border bg-background p-5 text-foreground shadow-xl backdrop:bg-black/50">
       {open && <>
+        {partial && <p className="mb-3 rounded-lg bg-muted p-3 text-sm">{PARTIAL_TRANSCRIPT_NOTICE}</p>}
         <div className="flex items-center justify-between gap-3"><h2 id={headingId} className="text-xl font-semibold">Export transcript</h2><button type="button" onClick={() => setOpen(false)} aria-label="Close transcript export" className="grid size-11 place-items-center rounded-lg hover:bg-muted"><X size={20} /></button></div>
         <p className="mt-2 text-sm text-muted-foreground">{description || "Includes your text corrections. Times refer to the recording timeline shown here, not a trimmed export. Export includes the full available transcript, even when you’re searching."}</p>
         {sourceUrl && !currentRemote ? <p role="status" className="mt-3 text-sm">Loading this recording’s transcript…</p> : null}

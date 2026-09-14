@@ -90,6 +90,36 @@ function desk(input: {
 describe("Session transcript correction desk", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it.each([
+    [true, "UPLOADING", "WAITING_FOR_UPLOAD"],
+    [false, "UPLOADING", "WAITING_FOR_UPLOAD"],
+    [true, "CORRUPTED", "UPLOAD_ATTENTION"],
+  ])("keeps unfinished uploads in the selected take (same take %s, %s)", async (sameTake, status, expectedStatus) => {
+    const ready = desk({participantId: "coach", recordingAssetId: "ready", transcriptJobId: "ready-job",
+      sha: "a".repeat(64), segmentId: "ready-turn", startSeconds: 0, text: "Available words."});
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(ready as any);
+    const rows = [{id: "ready", participantId: "coach", kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "a".repeat(64),
+      recordedStartedAt: new Date("2026-09-09T12:00:00Z"), recordedStoppedAt: new Date("2026-09-09T12:10:00Z"),
+      localManifestJson: {captureGroupId: "first"}, transcriptJobs: [{id: "ready-job", createdAt: new Date()}]},
+    {id: "upload", participantId: "client", participant: {displayName: "Casey"}, kind: "LOCAL_AUDIO", status, checksum: null,
+      recordedStartedAt: new Date(sameTake ? "2026-09-09T12:00:00Z" : "2026-09-09T13:00:00Z"), recordedStoppedAt: null,
+      localManifestJson: {captureGroupId: sameTake ? "first" : "second"},
+      // Even a job marked complete cannot make unverified media readable.
+      transcriptJobs: [{id: "unverified-job", createdAt: new Date()}]}];
+    const prisma = {recordingAsset: {findMany: jest.fn(async () => rows)},
+      transcriptJob: {findMany: jest.fn(async () => [])}};
+    const result = await readSessionTranscriptCorrectionDesk({prisma, roomId: "room-1", actor}) as any;
+    expect(prisma.recordingAsset.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {roomId: "room-1", kind: {in: ["LOCAL_AUDIO", "LOCAL_VIDEO"]},
+        participantId: {not: null}, recordedStartedAt: {not: null}},
+    }));
+    expect(result.sessionTranscript).toMatchObject({status: "incomplete", pendingSourceCount: 1,
+      sourceCount: sameTake ? 1 : 0, pendingSources: [{recordingAssetId: "upload", participantLabel: "Casey",
+        status: expectedStatus, transcriptJobId: null, retryable: false}]});
+    expect(result.segments).toEqual(sameTake ? ready.segments : []);
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledTimes(sameTake ? 2 : 1);
+  });
+
   afterEach(() =>
     jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValue([]),
   );
@@ -98,11 +128,11 @@ describe("Session transcript correction desk", () => {
     const ready = desk({ participantId: "coach", recordingAssetId: "ready", transcriptJobId: "ready-job", sha: "a".repeat(64), segmentId: "ready-turn", startSeconds: 0, text: "Available words." });
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(ready as any);
     const rows = [{
-      id: "ready", participantId: "coach", kind: "LOCAL_AUDIO", checksum: "a".repeat(64),
+      id: "ready", participantId: "coach", kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "a".repeat(64),
       recordedStartedAt: new Date("2026-09-09T12:00:00Z"), recordedStoppedAt: new Date("2026-09-09T12:10:00Z"),
       localManifestJson: { captureGroupId: "first" }, transcriptJobs: [{ id: "ready-job", createdAt: new Date() }],
     }, {
-      id: "pending", participantId: "client", kind: "LOCAL_AUDIO", checksum: "b".repeat(64),
+      id: "pending", participantId: "client", kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "b".repeat(64),
       recordedStartedAt: new Date(sameTake ? "2026-09-09T12:00:00Z" : "2026-09-09T13:00:00Z"), recordedStoppedAt: new Date("2026-09-09T13:10:00Z"),
       localManifestJson: { captureGroupId: sameTake ? "first" : "second" }, transcriptJobs: [],
     }];
@@ -111,6 +141,9 @@ describe("Session transcript correction desk", () => {
     };
     const result = await readSessionTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor }) as any;
     expect(prisma.recordingAsset.findMany.mock.calls[0]![0].where).not.toHaveProperty("transcriptJobs");
+    expect(prisma.recordingAsset.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({transcriptJobs: expect.objectContaining({where: {status: "COMPLETED", segments: {some: {}}}})}),
+    }));
     expect(result.sessionTranscript).toMatchObject({ status: "incomplete", pendingSourceCount: 1, sourceCount: sameTake ? 1 : 0 });
     expect(result.sessionTranscript.pendingSources).toEqual([{recordingAssetId: "pending", participantLabel: "Participant recording", transcriptJobId: "pending-job", status: "FAILED",
       error: "Quipsly could not finish this transcript. The exact recording remains safe and can be tried again.", failureCode: "TRANSCRIPTION_FAILED", retryable: true}]);
@@ -129,7 +162,7 @@ describe("Session transcript correction desk", () => {
     const rows = captureIds.map((captureId, index) => ({
       id: `source-${index}`,
       participantId: "coach",
-      kind: "LOCAL_AUDIO",
+      kind: "LOCAL_AUDIO", status: "VERIFIED",
       checksum: "a".repeat(64),
       recordedStartedAt: new Date(`2026-09-09T0${index + 1}:00:00Z`),
       recordedStoppedAt: new Date(`2026-09-09T0${index + 1}:00:12Z`),
@@ -233,7 +266,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "coach-source",
             participantId: "coach",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "a".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:05.000Z"),
             localManifestJson: {
@@ -250,7 +283,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "client-source",
             participantId: "client",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "b".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:00.000Z"),
             localManifestJson: {
@@ -351,7 +384,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "coach-source",
             participantId: "coach",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "a".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:00.000Z"),
             localManifestJson: { captureGroupId: "take-1" },
@@ -365,7 +398,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "client-source",
             participantId: "client",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "b".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:00.250Z"),
             localManifestJson: { captureGroupId: "take-1" },
@@ -433,7 +466,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "coach-source",
             participantId: "coach",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "a".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:00.000Z"),
             localManifestJson: { captureGroupId: "take-1" },
@@ -498,7 +531,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "coach-source",
             participantId: "coach",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "a".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:00.000Z"),
             localManifestJson: { captureGroupId: "take-1" },
@@ -507,7 +540,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "client-source",
             participantId: "client",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "b".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:00.500Z"),
             localManifestJson: { captureGroupId: "take-1" },
@@ -577,7 +610,7 @@ describe("Session transcript correction desk", () => {
           {
             id: "coach-source",
             participantId: "coach",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "a".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:00.000Z"),
             localManifestJson: { captureGroupId: "take-1" },
@@ -586,13 +619,13 @@ describe("Session transcript correction desk", () => {
           {
             id: "client-source",
             participantId: "client",
-            kind: "LOCAL_AUDIO",
+            kind: "LOCAL_AUDIO", status: "VERIFIED",
             checksum: "b".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:00:09.000Z"),
             localManifestJson: { captureGroupId: "take-1" },
             transcriptJobs: [{ id: "client-job", createdAt: new Date() }],
           },
-          ...(withReconnect ? [{id: "reconnect-source", participantId: "client", kind: "LOCAL_AUDIO", checksum: "c".repeat(64),
+          ...(withReconnect ? [{id: "reconnect-source", participantId: "client", kind: "LOCAL_AUDIO", status: "VERIFIED", checksum: "c".repeat(64),
             recordedStartedAt: new Date("2026-08-24T15:20:00.000Z"), localManifestJson: {captureGroupId: "take-1"},
             transcriptJobs: [{id: "reconnect-job", createdAt: new Date()}]}] : []),
         ]),

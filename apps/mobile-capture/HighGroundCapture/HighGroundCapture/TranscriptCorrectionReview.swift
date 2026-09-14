@@ -1622,11 +1622,14 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("quipsly-transcript-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
-            let filename = "Transcript.\(format.rawValue)"
+            let partial = response.value(forHTTPHeaderField: "X-Quipsly-Transcript-Completeness") == "partial"
+            let filename = "\(partial ? "Partial transcript" : "Transcript").\(format.rawValue)"
             let file = folder.appendingPathComponent(filename)
             try data.write(to: file, options: [.atomic, .completeFileProtection])
             transcriptExportURL = file
-            message = "Transcript ready. Choose Share transcript to save it or send a copy."
+            message = partial
+                ? "Partial transcript ready. Some participant recordings are not included yet. You can share this copy now and export an updated one later."
+                : "Transcript ready. Choose Share transcript to save it or send a copy."
         } catch {
             guard scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             errorMessage = error.localizedDescription

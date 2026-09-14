@@ -150,7 +150,7 @@ async function readAvailableCoachingTranscript(input: {
       recordedStoppedAt: true,
       localManifestJson: true,
       transcriptJobs: {
-        where: { status: "COMPLETED" },
+        where: { status: "COMPLETED", segments: { some: {} } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: { id: true, createdAt: true },

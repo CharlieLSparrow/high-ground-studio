@@ -11,7 +11,7 @@ struct CaptureTranscriptProgressSource: Codable, Equatable, Identifiable {
   let retryable: Bool?
 
   var id: String { recordingAssetId }
-  var isProcessing: Bool { ["QUEUED", "RUNNING", "PROCESSING"].contains(status ?? "") }
+  var isProcessing: Bool { ["WAITING_FOR_UPLOAD", "QUEUED", "RUNNING", "PROCESSING"].contains(status ?? "") }
   var isComplete: Bool { status == "COMPLETED" }
   var actionTitle: String? {
     guard failureCode != "NO_AUDIO_SIGNAL", retryable != false else { return nil }
@@ -22,6 +22,8 @@ struct CaptureTranscriptProgressSource: Codable, Equatable, Identifiable {
   var title: String {
     if failureCode == "NO_AUDIO_SIGNAL" { return "No audio was captured" }
     switch status {
+    case "WAITING_FOR_UPLOAD": return "Waiting for recording upload"
+    case "UPLOAD_ATTENTION": return "Recording upload needs attention"
     case "QUEUED": return "Waiting to transcribe"
     case "RUNNING", "PROCESSING": return "Transcribing"
     case "FAILED": return "Transcription failed"
@@ -33,6 +35,12 @@ struct CaptureTranscriptProgressSource: Codable, Equatable, Identifiable {
     }
   }
   var detail: String {
+    if status == "WAITING_FOR_UPLOAD" {
+      return "Keep Quipsly open on the recording device until its upload finishes. The transcript will update here."
+    }
+    if status == "UPLOAD_ATTENTION" {
+      return "Open Recordings to check this upload. Its transcript will appear here when the recording is available."
+    }
     if failureCode == "NO_AUDIO_SIGNAL" {
       return
         "This recording contains no audio signal. The original is kept. Check the microphone before recording again."

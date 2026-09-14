@@ -52,8 +52,20 @@ describe("call follow-through", () => {
     expect(screen.getByLabelText("Session updates")).toHaveTextContent("1 uploaded recording available");
     expect(screen.getByLabelText("Session updates")).toHaveTextContent("1 more uploading");
     expect(screen.getByRole("link", { name: "Listen and edit recording" })).toHaveAttribute("href", "/sessions/room?mode=recordings");
-    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/room?mode=transcript&source=phone");
+    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/room?mode=transcript");
     expect(screen.getByRole("link", { name: "Continue conversation" })).toHaveAttribute("href", "/sessions/room?mode=conversation");
+  });
+
+  it.each([null, { phase: "ready" as const, recordingHref: "/local", transcriptHref: "/sessions/room?mode=transcript&source=my-mic" }])("opens the combined session transcript when both sides are available (local=%s)", recording => {
+    jest.mocked(useSessionAfterCall).mockReturnValue({ summary: { roomId: "room", recordings: { uploaded: 2, pending: 0, attention: 0 }, transcripts: { available: 2, processing: 0, attention: 0 }, transcriptSourceId: "phone" }, error: null, retry: jest.fn() });
+    render(<CallFollowThrough roomId="room" recording={recording} onOpenRecording={jest.fn()} />);
+    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/room?mode=transcript");
+  });
+
+  it("keeps a single recording bound to its exact transcript", () => {
+    jest.mocked(useSessionAfterCall).mockReturnValue({ summary: { roomId: "room", recordings: { uploaded: 1, pending: 0, attention: 0 }, transcripts: { available: 1, processing: 0, attention: 0 }, transcriptSourceId: "phone" }, error: null, retry: jest.fn() });
+    render(<CallFollowThrough roomId="room" recording={null} onOpenRecording={jest.fn()} />);
+    expect(screen.getByRole("link", {name: "Open transcript"})).toHaveAttribute("href", "/sessions/room?mode=transcript&source=phone");
   });
 
   it("keeps local upload recovery and existing shared recordings reachable together", () => {

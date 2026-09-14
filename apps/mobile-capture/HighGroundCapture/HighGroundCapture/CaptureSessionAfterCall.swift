@@ -24,6 +24,12 @@ struct CaptureSessionAfterCallSummary: Decodable, Equatable {
             && (transcriptSourceId == nil || !(transcriptSourceId?.isEmpty ?? true) && (transcriptSourceId?.count ?? 0) <= 240)
     }
     var isProcessing: Bool { recordings.pending > 0 || transcripts.processing > 0 }
+    /// A multi-source session opens the assembled conversation. A single
+    /// source keeps its exact binding instead of choosing unrelated room text.
+    var focusedTranscriptAssetID: String? {
+        transcripts.available == 1 && recordings.uploaded == 1 && recordings.pending == 0 && recordings.attention == 0
+            ? transcriptSourceId : nil
+    }
 }
 
 private struct CaptureSessionAfterCallResponse: Decodable {

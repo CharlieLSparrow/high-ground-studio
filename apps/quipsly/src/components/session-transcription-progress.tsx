@@ -51,7 +51,7 @@ export function SessionTranscriptionProgress({sources, onUpdated}: {
   if (!sources.length) return null;
   return <section aria-label="Transcription progress" className="mt-4 space-y-2">
     {sources.map(source => {
-      const active = ["QUEUED", "RUNNING", "PROCESSING"].includes(source.status ?? "");
+      const active = ["WAITING_FOR_UPLOAD", "QUEUED", "RUNNING", "PROCESSING"].includes(source.status ?? "");
       return <div key={source.recordingAssetId} className="rounded-xl border border-border bg-muted/30 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -72,7 +72,9 @@ export function SessionTranscriptionProgress({sources, onUpdated}: {
       </div>;
     })}
     {error ? <p role="alert" className="rounded-xl border border-destructive/30 p-3 text-sm text-destructive">{error}</p> : null}
-    <p className="text-xs text-muted-foreground">{sources.some(source => ["QUEUED", "RUNNING", "PROCESSING"].includes(source.status ?? ""))
+    <p className="text-xs text-muted-foreground">{sources.some(source => ["WAITING_FOR_UPLOAD", "UPLOAD_ATTENTION"].includes(source.status ?? ""))
+      ? "Available transcripts stay usable while the remaining recordings arrive."
+      : sources.some(source => ["QUEUED", "RUNNING", "PROCESSING"].includes(source.status ?? ""))
       ? "Your recording is saved. You can keep working while transcription finishes."
       : "Your recording is saved. You can listen to it or keep working in this session."}</p>
   </section>;

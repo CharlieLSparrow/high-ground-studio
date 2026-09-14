@@ -9,6 +9,7 @@ test("native after-call reads shared uploads and rejects revoked, stale and cros
   const directory = mkdtempSync(path.join(tmpdir(), "quipsly-after-call-client-"));
   t.after(() => rmSync(directory, {recursive: true, force: true}));
   const production = readFileSync(new URL("../apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSessionAfterCall.swift", import.meta.url), "utf8");
+  const progress = readFileSync(new URL("../apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureTranscriptProgress.swift", import.meta.url), "utf8");
   const harness = String.raw`
 import Combine
 import Foundation
@@ -42,6 +43,15 @@ func normalizedNestBaseURL(_ value: String) -> String { value }
 }
 @main struct Run {
     @MainActor static func main() async {
+        let upload = CaptureTranscriptProgressSource(recordingAssetId: "upload", participantLabel: "Casey",
+            transcriptJobId: nil, status: "WAITING_FOR_UPLOAD", error: nil, failureCode: nil, retryable: false)
+        assert(upload.isProcessing && upload.actionTitle == nil)
+        assert(upload.title == "Waiting for recording upload")
+        assert(upload.detail.contains("recording device"))
+        let attention = CaptureTranscriptProgressSource(recordingAssetId: "upload", participantLabel: "Casey",
+            transcriptJobId: nil, status: "UPLOAD_ATTENTION", error: nil, failureCode: nil, retryable: false)
+        assert(!attention.isProcessing && attention.actionTitle == nil)
+        assert(attention.title == "Recording upload needs attention")
         let f = Fixture()
         let client = CaptureSessionAfterCallClient(baseURL: URL(string: "https://example.test")!, ownerID: {f.owner}, transport: {try await f.send($0)})
         let initial = await client.refresh(roomID: "room")
@@ -50,6 +60,13 @@ func normalizedNestBaseURL(_ value: String) -> String { value }
         assert(client.currentSummary(for: "room")?.recordings.uploaded == 2)
         assert(client.summary?.transcriptSourceId == "phone-source")
         assert(client.summary?.isProcessing == true)
+        assert(client.summary?.focusedTranscriptAssetID == nil, "Pending endpoints still belong to the session transcript")
+        let single = CaptureSessionAfterCallSummary(roomId: "room", recordings: .init(uploaded: 1, pending: 0, attention: 0),
+            transcripts: .init(available: 1, processing: 0, attention: 0), transcriptSourceId: "phone-source")
+        assert(single.focusedTranscriptAssetID == "phone-source")
+        let combined = CaptureSessionAfterCallSummary(roomId: "room", recordings: .init(uploaded: 2, pending: 0, attention: 0),
+            transcripts: .init(available: 2, processing: 0, attention: 0), transcriptSourceId: "phone-source")
+        assert(combined.focusedTranscriptAssetID == nil, "Both participants should open as one session transcript")
         assert(client.currentSummary(for: "another-room") == nil)
         f.owner = "client"
         assert(client.currentSummary(for: "room") == nil, "Changing account hides results synchronously")
@@ -84,7 +101,7 @@ func normalizedNestBaseURL(_ value: String) -> String { value }
 }
 `;
   const file = path.join(directory, "AfterCall.swift"), binary = path.join(directory, "after-call");
-  writeFileSync(file, production + "\n" + harness);
+  writeFileSync(file, production + "\n" + progress + "\n" + harness);
   const compile = spawnSync("xcrun", ["swiftc", "-parse-as-library", file, "-o", binary], {encoding: "utf8", timeout: 60_000});
   assert.equal(compile.status, 0, compile.stdout + compile.stderr);
   const run = spawnSync(binary, [], {encoding: "utf8", timeout: 15_000});

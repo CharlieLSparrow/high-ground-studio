@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SessionTranscriptionProgress } from "./session-transcription-progress";
 import type { TranscriptionProgressSource } from "@/lib/transcription-progress";
+import { transcriptionIsPending } from "@/lib/transcription-progress";
 
 const source: TranscriptionProgressSource = {
   recordingAssetId: "asset-casey", participantLabel: "Casey", transcriptJobId: "job-casey",
@@ -9,6 +10,16 @@ const source: TranscriptionProgressSource = {
 };
 const originalFetch = global.fetch;
 afterEach(() => { global.fetch = originalFetch; jest.useRealTimers(); });
+
+it.each(["WAITING_FOR_UPLOAD", "UPLOAD_ATTENTION"])("shows %s without offering transcription before upload", status => {
+  render(<SessionTranscriptionProgress sources={[{...source, status, transcriptJobId: null, retryable: false,
+    error: "Check upload progress on the recording device."}]} onUpdated={jest.fn()} />);
+  expect(screen.getByRole("status")).toHaveTextContent(status === "WAITING_FOR_UPLOAD"
+    ? "Waiting for recording upload" : "Recording upload needs attention");
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Your recording is saved/)).not.toBeInTheDocument();
+  expect(transcriptionIsPending(status)).toBe(status === "WAITING_FOR_UPLOAD");
+});
 
 it("retries the existing recording once and refreshes its progress", async () => {
   let resolve!: (value: unknown) => void;

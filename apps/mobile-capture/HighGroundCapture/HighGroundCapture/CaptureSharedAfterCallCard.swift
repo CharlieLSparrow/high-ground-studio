@@ -40,10 +40,10 @@ struct CaptureSharedAfterCallCard: View {
                     Text("Transcription couldn't finish for \(summary.transcripts.attention) recording\(summary.transcripts.attention == 1 ? "" : "s"). Your recordings remain available.")
                         .font(.callout).foregroundStyle(CapturePalette.secondaryText)
                 }
-                if let sourceID = summary.transcriptSourceId, summary.transcripts.available > 0 {
+                if summary.transcripts.available > 0 {
                     NavigationLink {
                         CaptureTranscriptReviewView(roomID: session.callRoomId, sessionTitle: session.displayTitle,
-                            recording: nil, recordingAssetID: sourceID, previewOnly: previewOnly,
+                            recording: nil, recordingAssetID: summary.focusedTranscriptAssetID, previewOnly: previewOnly,
                             canUseProjectTeamNotes: session.canUseProjectTeamNotes == true)
                     } label: {
                         Label("Open transcript", systemImage: "text.word.spacing")
