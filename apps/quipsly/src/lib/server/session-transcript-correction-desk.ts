@@ -152,19 +152,35 @@ export async function readSessionTranscriptCorrectionDesk(input: {
   });
   const selected = lanes.filter(source => source.transcriptJobs[0]?.id);
   if (!selected.length) {
-    if (pendingCount) return {
-      ...anchor,
-      transcriptJobId: null, recording: null, playback: null, spectralContext: null,
-      transcriptStatus: null, processing: null, evidence: null,
-      segments: [], speakerGroups: [],
-      gate: { allowed: false, error: "This recording’s transcript is not ready yet." },
-      sessionTranscript: {
-        schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
-        status: "incomplete" as const,
-        reason: "Transcription progress for this recording is shown below. Earlier recordings remain available in Recordings.",
-        sourceCount: 0, pendingSourceCount: pendingCount, pendingSources, programClock: null, sources: [],
-      },
-    };
+    if (pendingCount) {
+      // Transcription readiness does not determine media availability. Resolve
+      // only this take's verified sources through the same authorized desk;
+      // the anchor may belong to an older take and must never fill this slot.
+      const pendingDesks = await Promise.all(pendingLanes.filter(source => source.status === "VERIFIED").map(async source => {
+        const desk = await readTranscriptCorrectionDesk({...input, recordingAssetId: source.id});
+        if (desk.recording?.id !== source.id || desk.recording?.participantId !== source.participantId
+          || !text(source.checksum) || text(desk.recording.sourceSha256).toLowerCase() !== text(source.checksum).toLowerCase()) return null;
+        return {desk: {...desk, sourceSha256: desk.recording.sourceSha256}, source};
+      }));
+      const currentDesks = pendingDesks.filter((value): value is NonNullable<typeof value> => Boolean(value));
+      const current = currentDesks.find(value => value.desk.gate?.allowed && value.desk.playback) ?? currentDesks.at(0);
+      return {
+        ...(current?.desk ?? {
+          ...anchor,
+          transcriptJobId: null, recording: null, playback: null, spectralContext: null,
+          transcriptStatus: null, processing: null, evidence: null, sourceSha256: null,
+          gate: { allowed: false, error: "This recording is not ready to play yet. Check its upload in Recordings." },
+        }),
+        segments: [], speakerGroups: [],
+        sessionTranscript: {
+          schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
+          status: "incomplete" as const,
+          reason: "Transcription progress for this recording is shown below. Earlier recordings remain available in Recordings.",
+          sourceCount: 0, pendingSourceCount: pendingCount, pendingSources, programClock: null,
+          sources: currentDesks.map(value => sourceSummary(value.desk, value.source)),
+        },
+      };
+    }
     return anchor;
   }
 

@@ -619,12 +619,15 @@ describe("TranscriptCorrectionDesk", () => {
     render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" />);
     const start = await screen.findByRole("button", {name: `${status === "NOT_STARTED" ? "Start" : "Retry"} transcription for session.wav`});
     expect(screen.getByRole("heading", {name: "Your transcript"})).toBeVisible();
+    const player = screen.getByLabelText("Protected session recording");
+    expect(player).toBeVisible();
     fireEvent.click(start);
     await screen.findByText("Welcome, everybody.");
     expect(fetchMock.mock.calls[1]).toEqual(["/api/mobile/capture/transcripts/run", expect.objectContaining({
       body: JSON.stringify({recordingAssetId: "asset-1"}),
     })]);
     expect(screen.getByRole("heading", {name: "Edit the transcript"})).toBeVisible();
+    expect(screen.getByLabelText("Protected session recording")).toBe(player);
   });
 
   it("shows a focused silent recording with no retry and no false ready message", async () => {
@@ -638,6 +641,8 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.queryByText("Ready to review, correct, and share.")).not.toBeInTheDocument();
     expect(screen.queryByText(/No persisted transcript/)).not.toBeInTheDocument();
     expect(screen.getByText(/Check the microphone/)).toBeVisible();
+    expect(screen.getByLabelText("Protected session recording")).toBeVisible();
+    expect(screen.getByRole("link", {name: "Choose another recording"})).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
   });
 
   it("explains a pending recording choice without offering transcription before permission", async () => {

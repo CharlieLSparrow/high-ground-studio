@@ -25,4 +25,21 @@ describe("shared after-call availability", () => {
     const result = sessionAfterCall("room", [asset("a")], [job("a", "RUNNING"), job("a"), job("a"), job("a", "FAILED")]);
     expect(result.transcripts).toEqual({ available: 1, processing: 1, attention: 0 });
   });
+  it("explains exact silent-source failures without exposing raw provider errors", () => {
+    const message = "This recording contains no audio signal. The original recording is kept. Check the microphone before recording again.";
+    const result = sessionAfterCall("room", [asset("silent"), asset("retry")], [
+      {...job("silent", "FAILED", 0), provider: "openai-whisper-local", errorMessage: message},
+      {...job("retry", "FAILED", 0), provider: "cloud", errorMessage: "secret provider path and credentials"},
+      {...job("foreign", "FAILED", 0), provider: "cloud", errorMessage: "another session"},
+    ]);
+    expect(result.transcriptIssues).toEqual([
+      {recordingAssetId: "silent", message, retryable: false, failureCode: "NO_AUDIO_SIGNAL"},
+      {recordingAssetId: "retry", message: expect.stringContaining("could not finish"), retryable: true, failureCode: "TRANSCRIPTION_FAILED"},
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/secret|credentials|foreign|another session/);
+  });
+  it("only exposes the latest failure of a recording, not stale retry errors", () => {
+    const result = sessionAfterCall("room", [asset("a")], [job("a", "RUNNING"), job("a", "FAILED")]);
+    expect(result.transcriptIssues).toBeUndefined();
+  });
 });

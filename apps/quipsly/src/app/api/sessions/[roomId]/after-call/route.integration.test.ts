@@ -57,11 +57,15 @@ integration("shared after-call recording availability against PostgreSQL", () =>
     } });
     const retry = await prisma.transcriptJob.create({ data: { roomId, assetId: phoneId, status: "RUNNING" } });
     for (const status of ["RUNNING", "FAILED"] as const) {
-      await prisma.transcriptJob.update({ where: { id: retry.id }, data: { status } });
+      await prisma.transcriptJob.update({ where: { id: retry.id }, data: { status, provider: "cloud", errorMessage: status === "FAILED" ? "internal-provider-token=must-not-leak" : null } });
       for (const account of [0, 1]) {
         const payload = await (await read(account)).json();
         expect(payload.summary.transcripts).toEqual({ available: 1, processing: status === "RUNNING" ? 1 : 0, attention: status === "FAILED" ? 1 : 0 });
         expect(payload.summary.transcriptSourceId).toBe(phoneId);
+        if (status === "FAILED") expect(payload.summary.transcriptIssues).toEqual([{recordingAssetId: phoneId, retryable: true,
+          failureCode: "TRANSCRIPTION_FAILED", message: expect.stringContaining("could not finish")}]);
+        else expect(payload.summary.transcriptIssues).toBeUndefined();
+        expect(JSON.stringify(payload)).not.toContain("must-not-leak");
         expect(JSON.stringify(payload)).not.toContain("Retained test transcript");
       }
     }

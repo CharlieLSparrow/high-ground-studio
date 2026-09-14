@@ -259,6 +259,7 @@ function recordingForPlaybackPreparation(asset: any, gateAllowed: boolean) {
   return {
     id: asset.id as string,
     participantId: text(asset.participantId) || null,
+    sourceSha256: text(asset.checksum).toLowerCase() || null,
     recordedStartedAt: asset.recordedStartedAt instanceof Date
       ? asset.recordedStartedAt.toISOString()
       : asset.recordedStartedAt ?? null,

@@ -60,6 +60,13 @@ export function useSessionAfterCall(roomId: string, localPhase?: string) {
         if (!response.ok || !payload.ok || !isSummary(payload.summary, roomId)) throw new Error("Unavailable summary");
         failures = 0;
         const summary = { ...payload.summary,
+          transcriptIssues: Array.isArray(payload.summary.transcriptIssues) ? payload.summary.transcriptIssues.filter((issue: unknown) => {
+            if (!issue || typeof issue !== "object") return false;
+            const value = issue as Record<string, unknown>;
+            return typeof value.recordingAssetId === "string" && value.recordingAssetId.length > 0 && value.recordingAssetId.length <= 240
+              && typeof value.message === "string" && value.message.length <= 2000 && typeof value.retryable === "boolean"
+              && (value.failureCode === null || typeof value.failureCode === "string" && value.failureCode.length <= 80);
+          }) : undefined,
           followThrough: isFollowThrough(payload.summary.followThrough) ? payload.summary.followThrough : null };
         polls += 1;
         delay = polls < 6 || summary.recordings.pending || summary.transcripts.processing ? 5_000 : 30_000;

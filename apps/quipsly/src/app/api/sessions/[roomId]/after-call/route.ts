@@ -27,7 +27,7 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
         recordingAssets: { select: { id: true, kind: true, status: true, verifiedAt: true, localManifestJson: true,
           participantId: true, recordedStartedAt: true, recordedStoppedAt: true } },
         transcriptJobs: { orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: { id: true, createdAt: true, assetId: true, status: true, _count: { select: { segments: true } } } },
+          select: { id: true, createdAt: true, assetId: true, status: true, provider: true, errorMessage: true, _count: { select: { segments: true } } } },
       },
     });
     if (!room) return NextResponse.json({ ok: false, error: "This session isn't available to this account." }, { status: 404, headers });

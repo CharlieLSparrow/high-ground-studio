@@ -6,6 +6,26 @@ jest.mock("@/hooks/use-session-after-call", () => ({ useSessionAfterCall: jest.f
 beforeEach(() => jest.mocked(useSessionAfterCall).mockReturnValue({ summary: null, error: null, retry: jest.fn() }));
 
 describe("call follow-through", () => {
+  it("makes a silent recording listenable without offering a pointless transcription retry", () => {
+    const onRejoin = jest.fn();
+    jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 1, pending: 0, attention: 0},
+      transcripts: {available: 0, processing: 0, attention: 1}, transcriptSourceId: null,
+      transcriptIssues: [{recordingAssetId: "silent source", message: "This recording contains no audio signal.", retryable: false, failureCode: "NO_AUDIO_SIGNAL"}]}, error: null, retry: jest.fn()});
+    render(<CallFollowThrough roomId="room" recording={null} onOpenRecording={jest.fn()} onRejoin={onRejoin} />);
+    expect(screen.getByRole("link", {name: "Listen to recording"})).toHaveAttribute("href", "/sessions/room?mode=recordings&source=silent%20source");
+    expect(screen.queryByRole("link", {name: "Open transcription"})).not.toBeInTheDocument();
+    expect(screen.getByText("This recording contains no audio signal.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", {name: "Return to call"}));
+    expect(onRejoin).toHaveBeenCalledTimes(1);
+  });
+  it("links a recoverable transcript failure to the exact source while shared work stays available", () => {
+    jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 2, pending: 0, attention: 0},
+      transcripts: {available: 1, processing: 0, attention: 1}, transcriptSourceId: "ready",
+      transcriptIssues: [{recordingAssetId: "failed", message: "Transcription could not finish.", retryable: true, failureCode: "TRANSCRIPTION_FAILED"}]}, error: null, retry: jest.fn()});
+    render(<CallFollowThrough roomId="room" recording={null} onOpenRecording={jest.fn()} />);
+    expect(screen.getByRole("link", {name: "Open transcription"})).toHaveAttribute("href", "/sessions/room?mode=transcript&source=failed");
+    expect(screen.getByRole("link", {name: "Notes and recap"})).toBeVisible();
+  });
   it("makes the actual recap and next steps usable beside the call while uploads continue", () => {
     const onOpenNotes = jest.fn(), onOpenTasks = jest.fn(), onOpenChat = jest.fn(), onOpenWork = jest.fn();
     jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 1, pending: 1, attention: 0},

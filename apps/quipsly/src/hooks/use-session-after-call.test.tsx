@@ -15,6 +15,16 @@ it("fetches shared availability and refreshes when this device finishes uploadin
   await waitFor(() => expect(view.result.current.summary?.recordings.uploaded).toBe(2));
   expect(fetch).toHaveBeenCalledWith("/api/sessions/room/after-call", expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }));
 });
+it("keeps valid source recovery actions and ignores malformed ones without hiding recordings", async () => {
+  const packet = response();
+  const body = await packet.json();
+  const valid = {recordingAssetId: "source", message: "No audio signal.", retryable: false, failureCode: "NO_AUDIO_SIGNAL"};
+  body.summary.transcriptIssues = [valid, null, {message: "Missing source"}, {...valid, retryable: "yes"}, {...valid, recordingAssetId: "x".repeat(241)}];
+  jest.mocked(fetch).mockResolvedValue({...packet, json: async () => body} as Response);
+  const view = renderHook(() => useSessionAfterCall("room"));
+  await waitFor(() => expect(view.result.current.summary?.recordings.uploaded).toBe(1));
+  expect(view.result.current.summary?.transcriptIssues).toEqual([valid]);
+});
 it("refreshes the recap after an ordinary edit and ignores malformed work without hiding media", async () => {
   const packet = response();
   const body = await packet.json();

@@ -2272,7 +2272,7 @@ function TranscriptCorrectionDeskContent({
     </div>
   ) : (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
-      <p>{preparingPlayback ? "Quipsly is getting the recording ready…" : "The transcript is ready. Audio checking needs the original recording, while direct transcript edits remain available."}</p>
+      <p>{preparingPlayback ? "Quipsly is getting the recording ready…" : desk.segments.length ? "The transcript is ready. Audio checking needs the original recording, while direct transcript edits remain available." : "The recording isn't ready to play here yet. You can check its upload in Recordings or keep working in this session."}</p>
       {desk.recording?.eligibleForProtectedPlaybackPreparation ? (
         <div className="mt-4">
           <button type="button" onClick={() => void prepareProtectedPlayback(false)} disabled={preparingPlayback || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
@@ -2395,21 +2395,21 @@ function TranscriptCorrectionDeskContent({
         </section>
       ) : null}
 
-      {desk.gate.allowed && desk.segments.length ? (
+      {desk.gate.allowed ? (
         <section aria-labelledby="linear-transcript-heading" className="rounded-2xl border border-[#e5d5b7] bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h3 id="linear-transcript-heading" className="text-sm font-black text-[#3d3122]">Transcript</h3>
-            <div role="group" aria-label="Transcript view" className="inline-flex rounded-full border border-[#d9c7a5] bg-[#fffaf1] p-1">
+            <h3 id="linear-transcript-heading" className="text-sm font-black text-[#3d3122]">{desk.segments.length ? "Transcript" : "Recording"}</h3>
+            {desk.segments.length > 0 && <div role="group" aria-label="Transcript view" className="inline-flex rounded-full border border-[#d9c7a5] bg-[#fffaf1] p-1">
               <button type="button" aria-pressed={transcriptView === "transcript"} onClick={() => setTranscriptView("transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Transcript</button>
               <button type="button" aria-pressed={transcriptView === "recording-transcript"} onClick={() => setTranscriptView("recording-transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "recording-transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Recording + transcript</button>
-            </div>
+            </div>}
           </div>
-          <TranscriptSearch segments={desk.segments} onHighlight={setSearchQuery} />
+          {desk.segments.length > 0 && <TranscriptSearch segments={desk.segments} onHighlight={setSearchQuery} />}
           <div className={transcriptView === "recording-transcript" ? "grid min-w-0 gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.45fr)] xl:items-start" : "space-y-5"}>
             <div className={transcriptView === "recording-transcript" ? "xl:sticky xl:top-24" : ""}>
               {protectedPlaybackSurface}
             </div>
-            <ol className="min-w-0 space-y-4">
+            {desk.segments.length > 0 ? <ol className="min-w-0 space-y-4">
               {desk.segments.map((segment) => (
                 (() => {
                   const segmentPlayback = segment.sourcePlayback ?? desk.playback;
@@ -2443,10 +2443,13 @@ function TranscriptCorrectionDeskContent({
                   );
                 })()
               ))}
-            </ol>
+            </ol> : <div className="text-sm leading-6 text-muted-foreground">
+              <p>{currentPlayback ? "Listen or trim now, even while transcription is unavailable. Your original recording stays unchanged." : "You can keep working on notes and tasks while the recording becomes available."}</p>
+              <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=recordings`} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">Choose another recording</Link>
+            </div>}
           </div>
         </section>
-      ) : progressSources.length ? null : desk.gate.allowed ? <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">There are no transcript words in this recording yet.</div> : protectedPlaybackSurface}
+      ) : progressSources.length ? null : protectedPlaybackSurface}
 
       <section id="transcript-audio-review" tabIndex={-1} className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 shadow-sm" aria-labelledby="transcript-quality-heading">
         <button

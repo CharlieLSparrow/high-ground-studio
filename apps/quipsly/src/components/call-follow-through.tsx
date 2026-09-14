@@ -73,7 +73,14 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenNotes, 
       {summary.recordings.attention > 0 ? <Link href={`${base}?mode=recordings`} onClick={onOpenWork} className="mt-2 inline-flex min-h-11 items-center text-sm underline underline-offset-4">Check {summary.recordings.attention} recording{summary.recordings.attention === 1 ? "" : "s"} needing attention</Link> : null}
       {summary.transcripts.available > 0 ? <p className="mt-2 text-sm">{summary.transcripts.available} transcript{summary.transcripts.available === 1 ? "" : "s"} available to open and edit.</p> : null}
       {summary.transcripts.processing > 0 ? <p className="mt-2 text-sm text-muted-foreground">Transcribing {summary.transcripts.processing} recording{summary.transcripts.processing === 1 ? "" : "s"}… You can keep working here.</p> : null}
-      {summary.transcripts.attention > 0 ? <p className="mt-2 text-sm text-muted-foreground">Transcription couldn't finish for {summary.transcripts.attention} recording{summary.transcripts.attention === 1 ? "" : "s"}. Your recordings and other work are still available.</p> : null}
+      {summary.transcriptIssues?.length ? <ul aria-label="Recording next steps" className="mt-3 space-y-3">{summary.transcriptIssues.map(issue => <li key={issue.recordingAssetId} className="rounded-xl border border-border p-3">
+        <p className="text-sm leading-6 text-muted-foreground">{issue.message}</p>
+        <div className="flex flex-wrap gap-x-4">
+          <Link href={`${base}?mode=recordings&source=${encodeURIComponent(issue.recordingAssetId)}`} onClick={onOpenWork} className="inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">Listen to recording</Link>
+          {issue.retryable ? <Link href={`${base}?mode=transcript&source=${encodeURIComponent(issue.recordingAssetId)}`} onClick={onOpenWork} className="inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">Open transcription</Link> : null}
+          {issue.failureCode === "NO_AUDIO_SIGNAL" && onRejoin ? <button type="button" onClick={onRejoin} className="min-h-11 text-sm font-semibold underline underline-offset-4">Return to call</button> : null}
+        </div>
+      </li>)}</ul> : summary.transcripts.attention > 0 ? <p className="mt-2 text-sm text-muted-foreground">Transcription couldn't finish for {summary.transcripts.attention} recording{summary.transcripts.attention === 1 ? "" : "s"}. Your recordings and other work are still available.</p> : null}
     </div> : error ? <div className="mt-5 text-sm text-muted-foreground"><p>{error}</p><button type="button" onClick={retry} className="mt-1 min-h-11 underline underline-offset-4">Refresh session updates</button></div> : null}
     {work?.recap ? <section aria-label="Session recap" className="mt-5 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3"><h4 className="font-semibold">{work.recap.title}</h4>
