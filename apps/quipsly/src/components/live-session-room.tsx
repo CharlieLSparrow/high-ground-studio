@@ -2642,7 +2642,7 @@ export function LiveSessionRoom({
               these controls outside its independently scrolling/hidden panes. */}
           {controlsContainer ? createPortal(callControls, controlsContainer) : callControls}
 
-          {stageLayout && !connected && showRetainedSourceControls ? <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold">Recordings and saved uploads</button> : null}
+          {stageLayout && !connected && showRetainedSourceControls ? <button type="button" onClick={() => setToolPanel("recording")} className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold">Upload status</button> : null}
 
           {/* One stable recorder owns capture/recovery across call transitions.
               Keep it mounted in the lobby so a reload resumes saved uploads

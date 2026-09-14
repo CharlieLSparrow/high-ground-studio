@@ -614,6 +614,11 @@ describe("LiveSessionRoom", () => {
     expect(screen.queryByTestId("call-status-message")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", {name: "Ready to join"})).not.toBeInTheDocument();
     expect(screen.getByRole("link", {name: "Open recordings"})).toHaveAttribute("href", "/sessions/dock-controls-room?mode=recordings");
+    expect(screen.queryByRole("button", {name: "Recordings and saved uploads"})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Upload status"}));
+    expect(within(toolSlot).getByRole("region", {name: "Recording"})).toBeVisible();
+    expect(screen.getByTestId("browser-source-capture-group")).toBe(recorder);
+    fireEvent.click(screen.getByRole("button", {name: "Close recording"}));
     fireEvent.click(screen.getByRole("button", {name: "Simulate upload pending", hidden: true}));
     expect(screen.getByRole("region", {name: "After the call"})).toHaveTextContent("Uploading your recording");
     expect(screen.queryByRole("link", {name: "Open recordings"})).not.toBeInTheDocument();

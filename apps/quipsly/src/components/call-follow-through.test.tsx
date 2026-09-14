@@ -17,6 +17,11 @@ describe("call follow-through", () => {
     expect(screen.getByLabelText("Session recap")).toHaveTextContent("Our edited recap, not a generated snapshot.");
     expect(screen.getByLabelText("Session recap")).toHaveTextContent("Only you");
     expect(screen.getByLabelText("Session next steps")).toHaveTextContent("Draft one paragraph");
+    const actions = screen.getByRole("navigation", {name: "Continue session work"});
+    for (const label of ["Session updates", "Session recap", "Session next steps"]) {
+      expect(actions.compareDocumentPosition(screen.getByLabelText(label)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(screen.getByRole("link", {name: "Open session recordings"})).toHaveAttribute("href", "/sessions/room?mode=recordings");
     fireEvent.click(screen.getByRole("button", {name: "Open recap"}));
     expect(onOpenNotes).toHaveBeenCalledWith("recap");
     fireEvent.click(screen.getByRole("button", {name: "Tasks and goals"}));

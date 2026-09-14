@@ -28,10 +28,12 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenNotes, 
     ? `${base}?mode=transcript`
     : recording?.transcriptHref || `${base}?mode=transcript${summary?.transcriptSourceId ? `&source=${encodeURIComponent(summary.transcriptSourceId)}` : ""}`;
   const actionClass = "flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-muted";
-  return <section aria-label="After the call" className="mx-auto flex w-full max-w-2xl flex-1 flex-col py-6 sm:py-10">
-    <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-muted"><PhoneOff size={26} aria-hidden="true" /></div>
-    <h3 className="text-3xl font-semibold">You’ve left the call</h3>
-    <p className="mt-3 text-sm leading-6 text-muted-foreground">Everything for this session stays together. Pick up where you left off.</p>
+  return <section aria-label="After the call" className="mx-auto flex w-full max-w-2xl flex-1 flex-col py-4 sm:py-6">
+    <header className="flex items-center gap-3">
+      <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted"><PhoneOff size={22} aria-hidden="true" /></div>
+      <div><h3 className="text-xl font-semibold sm:text-2xl">You’ve left the call</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Pick up your work here.</p></div>
+    </header>
     {recording ? <div role="status" className="mt-5 flex items-start gap-3 rounded-2xl border border-border bg-muted/40 p-4">
       {attention ? <CircleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         : pending ? <LoaderCircle className="mt-0.5 size-5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -44,6 +46,17 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenNotes, 
         {pending ? <button type="button" onClick={onOpenRecording} className="mt-2 min-h-11 text-sm font-semibold underline underline-offset-4">{attention ? "Open recording options" : "View upload progress"}</button> : null}
       </div>
     </div> : null}
+    <nav aria-label="Continue session work" className="mt-5 grid grid-cols-2 gap-2 sm:gap-3">
+      {!pending || sharedRecordingAvailable ? <Link onClick={onOpenWork} href={recordingHref} className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground col-span-2"><Play size={18} aria-hidden="true" />{pending ? "Open session recordings" : recording?.recordingHref || sharedRecordingAvailable ? "Listen and edit recording" : "Open recordings"}</Link> : null}
+      {recording?.transcriptHref || sharedTranscriptExists ? <Link onClick={onOpenWork} href={transcriptHref} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold col-span-2"><FileText size={18} aria-hidden="true" />{recording?.transcriptHref || summary?.transcripts.available ? "Open transcript" : "Check transcription"}</Link> : null}
+      {onOpenNotes ? <button type="button" onClick={() => onOpenNotes()} className={actionClass}><FileText size={18} aria-hidden="true" />Notes and recap</button>
+        : <Link onClick={onOpenWork} href={`${base}?mode=notes`} className={actionClass}><FileText size={18} aria-hidden="true" />Notes and recap</Link>}
+      {onOpenTasks ? <button type="button" onClick={onOpenTasks} className={actionClass}><ListTodo size={18} aria-hidden="true" />Tasks and goals</button>
+        : <Link onClick={onOpenWork} href={`${base}?mode=work`} className={actionClass}><ListTodo size={18} aria-hidden="true" />Tasks and goals</Link>}
+      {onOpenChat ? <button type="button" onClick={onOpenChat} className={`${actionClass} col-span-2`}><MessageSquareText size={18} aria-hidden="true" />Continue conversation</button>
+        : <Link onClick={onOpenWork} href={`${base}?mode=conversation`} className={`${actionClass} col-span-2`}><MessageSquareText size={18} aria-hidden="true" />Continue conversation</Link>}
+    </nav>
+    {onRejoin ? <button type="button" onClick={onRejoin} className="mt-2 min-h-11 self-center px-4 text-sm underline underline-offset-4">Rejoin call</button> : null}
     {summary ? <div className="mt-5 rounded-2xl border border-border p-4" aria-label="Session updates" aria-live="polite">
       <h4 className="text-sm font-semibold">{summary.otherRecordingCount ? "Latest recording" : "In this session"}</h4>
       {Boolean(summary.otherRecordingCount) && <Link href={`${base}?mode=recordings`} onClick={onOpenWork}
@@ -77,16 +90,5 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenNotes, 
         <p className="mt-1 text-xs text-muted-foreground">{entry.kind === "GOAL" ? "Goal" : "Task"} · {entry.ownerLabel}{entry.visibility === "AUTHOR_PRIVATE" ? " · Only you" : " · Shared"}</p>
       </li>)}</ul>
     </section> : null}
-    <nav aria-label="Continue session work" className="mt-6 grid gap-3 sm:grid-cols-2">
-      {!pending || sharedRecordingAvailable ? <Link onClick={onOpenWork} href={recordingHref} className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground sm:col-span-2"><Play size={18} aria-hidden="true" />{pending ? "Open session recordings" : recording?.recordingHref || sharedRecordingAvailable ? "Listen and edit recording" : "Open recordings"}</Link> : null}
-      {recording?.transcriptHref || sharedTranscriptExists ? <Link onClick={onOpenWork} href={transcriptHref} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold sm:col-span-2"><FileText size={18} aria-hidden="true" />{recording?.transcriptHref || summary?.transcripts.available ? "Open transcript" : "Check transcription"}</Link> : null}
-      {onOpenNotes ? <button type="button" onClick={() => onOpenNotes()} className={actionClass}><FileText size={18} aria-hidden="true" />Notes and recap</button>
-        : <Link onClick={onOpenWork} href={`${base}?mode=notes`} className={actionClass}><FileText size={18} aria-hidden="true" />Notes and recap</Link>}
-      {onOpenTasks ? <button type="button" onClick={onOpenTasks} className={actionClass}><ListTodo size={18} aria-hidden="true" />Tasks and goals</button>
-        : <Link onClick={onOpenWork} href={`${base}?mode=work`} className={actionClass}><ListTodo size={18} aria-hidden="true" />Tasks and goals</Link>}
-      {onOpenChat ? <button type="button" onClick={onOpenChat} className={`${actionClass} sm:col-span-2`}><MessageSquareText size={18} aria-hidden="true" />Continue conversation</button>
-        : <Link onClick={onOpenWork} href={`${base}?mode=conversation`} className={`${actionClass} sm:col-span-2`}><MessageSquareText size={18} aria-hidden="true" />Continue conversation</Link>}
-    </nav>
-    {onRejoin ? <button type="button" onClick={onRejoin} className="mt-4 min-h-11 self-center px-4 text-sm underline underline-offset-4">Rejoin call</button> : null}
   </section>;
 }
