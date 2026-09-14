@@ -39,7 +39,11 @@ export function CallFollowThrough({ roomId, recording, onOpenWork, onOpenRecordi
       </div>
     </div> : null}
     {summary ? <div className="mt-5 rounded-2xl border border-border p-4" aria-label="Session updates" aria-live="polite">
-      <h4 className="text-sm font-semibold">In this session</h4>
+      <h4 className="text-sm font-semibold">{summary.otherRecordingCount ? "Latest recording" : "In this session"}</h4>
+      {Boolean(summary.otherRecordingCount) && <Link href={`${base}?mode=recordings`} onClick={onOpenWork}
+        className="mt-1 inline-flex min-h-11 items-center text-sm underline underline-offset-4">
+        View all session recordings
+      </Link>}
       <p className="mt-2 text-sm text-muted-foreground">{sharedRecordingAvailable
         ? `${summary.recordings.uploaded} uploaded recording${summary.recordings.uploaded === 1 ? "" : "s"} available`
         : summary.recordings.pending ? "Recordings are arriving from your devices."

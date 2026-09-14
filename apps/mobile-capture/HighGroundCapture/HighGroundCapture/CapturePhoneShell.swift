@@ -21975,6 +21975,11 @@ private struct ProviderRoomControls: View {
                         .accessibilityIdentifier("CaptureJoinAudioPreview")
                     }
 
+                    CaptureCallAudioDestinationPicker(
+                        audioOnAnotherDevice: $callAudioOnAnotherDevice,
+                        disabled: providerControlsLocked || model.isChangingRoom
+                    )
+
                     Group {
                         if dynamicTypeSize.isAccessibilitySize {
                             VStack(spacing: 10) {
@@ -22110,7 +22115,10 @@ private struct ProviderRoomControls: View {
 
     private var prejoinMicrophoneButton: some View {
         Button {
-            guard !callAudioOnAnotherDevice else { return }
+            guard !callAudioOnAnotherDevice else {
+                showsDevices = true
+                return
+            }
             joinMuted.toggle()
         } label: {
             prejoinControlLabel(
@@ -22125,8 +22133,7 @@ private struct ProviderRoomControls: View {
         }
         .buttonStyle(.plain)
         .disabled(
-            callAudioOnAnotherDevice
-                || providerControlsLocked
+            providerControlsLocked
                 || model.isChangingRoom
         )
         .accessibilityLabel(
@@ -22136,7 +22143,7 @@ private struct ProviderRoomControls: View {
         )
         .accessibilityHint(
             callAudioOnAnotherDevice
-                ? "Turn off the another-device option to use this microphone."
+                ? "Opens audio settings. Choose This device to talk and listen here."
                 : joinMuted ? "Turns the microphone on before joining." : "Turns the microphone off before joining."
         )
         .accessibilityIdentifier("CaptureJoinMicrophoneToggle")

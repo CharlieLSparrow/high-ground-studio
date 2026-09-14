@@ -14,7 +14,8 @@ struct CaptureSharedAfterCallCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("In this session", systemImage: "person.2.wave.2")
+            Label((client.currentSummary(for: session.callRoomId)?.otherRecordingCount ?? 0) > 0
+                ? "Latest recording" : "In this session", systemImage: "person.2.wave.2")
                 .font(.headline)
             if let summary = client.currentSummary(for: session.callRoomId) {
                 if summary.recordings.uploaded > 0 {

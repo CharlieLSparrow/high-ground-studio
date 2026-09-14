@@ -6,6 +6,7 @@ export type SessionAfterCall = {
   recordings: { uploaded: number; pending: number; attention: number };
   transcripts: { available: number; processing: number; attention: number };
   transcriptSourceId: string | null;
+  otherRecordingCount?: number;
 };
 
 type Recording = {

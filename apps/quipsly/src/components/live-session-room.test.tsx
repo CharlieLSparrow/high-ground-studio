@@ -290,6 +290,43 @@ describe("LiveSessionRoom", () => {
     expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
   });
 
+  it("makes remembered companion audio reversible directly in the lobby without opening devices or joining", async () => {
+    window.localStorage.setItem("quipsly-live-preferred-devices-v3", JSON.stringify({callAudioMode: "other-device", cameraWanted: false,
+      microphoneId: "remembered-mic", microphoneLabel: "Shure MV7i", outputId: "remembered-output"}));
+    const getUserMedia = jest.fn();
+    Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+      enumerateDevices: jest.fn().mockResolvedValue([]), getUserMedia,
+      addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }});
+    await act(async () => {render(<LiveSessionRoom stageLayout callRoomId="audio-destination"
+      captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Coaching session" kind="coaching" />);});
+    const lobby = screen.getByRole("region", {name: "Ready to join"});
+    const choices = within(lobby).getByRole("group", {name: "Call audio"});
+    expect(within(choices).getByRole("button", {name: "Another device"})).toHaveAttribute("aria-pressed", "true");
+    expect(within(lobby).getByRole("button", {name: "Audio off"})).toBeEnabled();
+    await act(async () => {fireEvent.click(within(choices).getByRole("button", {name: "This device"}));});
+    expect(within(choices).getByRole("button", {name: "This device"})).toHaveAttribute("aria-pressed", "true");
+    expect(within(lobby).getByRole("button", {name: "Mic on"})).toBeEnabled();
+    expect(within(lobby).getByRole("button", {name: "Join call"})).toBeEnabled();
+    expect(JSON.parse(window.localStorage.getItem("quipsly-live-preferred-devices-v3") || "{}")).toMatchObject({
+      callAudioMode: "this-device", microphoneId: "remembered-mic", microphoneLabel: "Shure MV7i", outputId: "remembered-output",
+    });
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(mockLiveKitRoom.connect).not.toHaveBeenCalled();
+  });
+
+  it("keeps call setup usable when browser preference storage is blocked", async () => {
+    const storage = jest.spyOn(Storage.prototype, "setItem").mockImplementation(() => {throw new DOMException("Storage blocked", "SecurityError");});
+    try {
+      await act(async () => {render(<LiveSessionRoom stageLayout callRoomId="private-browser-audio"
+        captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Coaching session" kind="coaching" />);});
+      const lobby = screen.getByRole("region", {name: "Ready to join"});
+      await act(async () => {fireEvent.click(within(lobby).getByRole("button", {name: "Another device"}));});
+      expect(within(lobby).getByRole("button", {name: "Another device"})).toHaveAttribute("aria-pressed", "true");
+      expect(within(lobby).getByRole("button", {name: "Join call"})).toBeEnabled();
+    } finally {storage.mockRestore();}
+  });
+
   it("asks for media only from Join and enters muted when permission stays unavailable", async () => {
     const getUserMedia = jest.fn().mockResolvedValue({
       getTracks: () => [{ stop: jest.fn() }],

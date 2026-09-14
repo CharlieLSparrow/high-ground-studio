@@ -6,6 +6,14 @@ jest.mock("@/hooks/use-session-after-call", () => ({ useSessionAfterCall: jest.f
 beforeEach(() => jest.mocked(useSessionAfterCall).mockReturnValue({ summary: null, error: null, retry: jest.fn() }));
 
 describe("call follow-through", () => {
+  it("labels the current take and keeps earlier recordings reachable without claiming their text is current", () => {
+    jest.mocked(useSessionAfterCall).mockReturnValue({summary: {roomId: "room", recordings: {uploaded: 0, pending: 1, attention: 0},
+      transcripts: {available: 0, processing: 0, attention: 0}, transcriptSourceId: null, otherRecordingCount: 4}, error: null, retry: jest.fn()});
+    render(<CallFollowThrough roomId="room" recording={null} onOpenRecording={jest.fn()} />);
+    expect(screen.getByRole("heading", {name: "Latest recording"})).toBeVisible();
+    expect(screen.getByRole("link", {name: "View all session recordings"})).toHaveAttribute("href", "/sessions/room?mode=recordings");
+    expect(screen.queryByText(/available to open and edit/)).not.toBeInTheDocument();
+  });
   it("offers session work without claiming an unrecorded call was saved", () => {
     render(<CallFollowThrough roomId="room" recording={null} onOpenRecording={jest.fn()} />);
     expect(screen.getByRole("link", {name: "Open recordings"})).toHaveAttribute("href", "/sessions/room?mode=recordings");

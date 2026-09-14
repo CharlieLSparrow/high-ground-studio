@@ -9,7 +9,7 @@ function isSummary(value: unknown, roomId: string): value is SessionAfterCall {
   return summary.roomId === roomId && (summary.transcriptSourceId === null || typeof summary.transcriptSourceId === "string" && summary.transcriptSourceId.length > 0 && summary.transcriptSourceId.length <= 240)
     && [summary.recordings?.uploaded, summary.recordings?.pending,
     summary.recordings?.attention, summary.transcripts?.available, summary.transcripts?.processing,
-    summary.transcripts?.attention].every(count => Number.isSafeInteger(count) && count >= 0);
+    summary.transcripts?.attention, summary.otherRecordingCount ?? 0].every(count => Number.isSafeInteger(count) && count >= 0);
 }
 
 export function useSessionAfterCall(roomId: string, localPhase?: string) {

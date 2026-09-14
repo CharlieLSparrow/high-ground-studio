@@ -38,6 +38,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { CallWorkspacePanel } from "@/components/call-workspace-panel";
+import { CallAudioDestinationPicker } from "@/components/call-audio-destination-picker";
 import { CallPeoplePanel } from "@/components/call-people-panel";
 import { CallFollowThrough } from "@/components/call-follow-through";
 import type { BrowserRecordingHandoff } from "@/lib/browser-source-upload-recovery";
@@ -547,6 +548,7 @@ export function LiveSessionRoom({
   const [outputId, setOutputId] = useState("");
   const [cameraWanted, setCameraWanted] = useState(experience.defaultCamera);
   const [callAudioMode, setCallAudioMode] = useState<CallAudioMode>("this-device");
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [callAudioModeBusy, setCallAudioModeBusy] = useState(false);
   const [joinMuted, setJoinMuted] = useState(false);
   const [microphoneMuted, setMicrophoneMuted] = useState(false);
@@ -736,6 +738,7 @@ export function LiveSessionRoom({
       setCallAudioMode("other-device");
       setMicrophoneMuted(true);
     }
+    setPreferencesLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -2316,26 +2319,35 @@ export function LiveSessionRoom({
   }, [clearRemoteMedia, refreshDevices]);
 
   useEffect(() => {
+    if (!preferencesLoaded) return;
     const microphone = microphones.find((device) => device.deviceId === microphoneId);
     const camera = cameras.find((device) => device.deviceId === cameraId);
     const output = outputs.find((device) => device.deviceId === outputId);
-    if (!microphone && !camera && !output && callAudioMode === "this-device") return;
     if (suppressPreferenceWriteRef.current) {
       suppressPreferenceWriteRef.current = false;
       return;
     }
-    window.localStorage.setItem(PREFERRED_DEVICES_KEY, JSON.stringify({
+    const noVisibleDevices = !microphone && !camera && !output;
+    // Browsers can withhold device IDs until permission is granted. Explicit
+    // audio/mute/camera choices still belong to the person and must survive a
+    // reload, without erasing the last known hardware selections.
+    const hardware = noVisibleDevices ? readPreferredDevices() : {
       microphoneId: microphone?.deviceId,
       microphoneLabel: microphone?.label,
       cameraId: camera?.deviceId,
       cameraLabel: camera?.label,
       outputId: output?.deviceId,
       outputLabel: output?.label,
+    };
+    try { window.localStorage.setItem(PREFERRED_DEVICES_KEY, JSON.stringify({
+      ...hardware,
       cameraWanted,
       joinMuted,
       callAudioMode,
-    } satisfies PreferredDevices));
-  }, [callAudioMode, cameraId, cameraWanted, cameras, joinMuted, microphoneId, microphones, outputId, outputs]);
+    } satisfies PreferredDevices)); } catch {
+      // Storage restrictions must not prevent joining; current choices still apply.
+    }
+  }, [preferencesLoaded, callAudioMode, cameraId, cameraWanted, cameras, joinMuted, microphoneId, microphones, outputId, outputs]);
 
   useEffect(() => {
     if (!connected) return;
@@ -2454,7 +2466,7 @@ export function LiveSessionRoom({
       <div data-testid="call-primary-controls" className="grid min-w-0 grid-cols-2 items-stretch justify-center gap-2 min-[380px]:flex [&>button]:min-w-11 min-[380px]:[&>button]:flex-1 lg:[&>button]:flex-none">
         {callAudioMode === "this-device" ? (
           <button type="button" title={microphoneMuted ? "Unmute" : "Mute"} onClick={() => void toggleMicrophone()} aria-pressed={microphoneMuted} disabled={microphoneMuted && microphoneRecoveryHeld && sourceLocked} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 sm:flex-row sm:gap-2 ${microphoneMuted ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"}`}>{microphoneMuted ? <MicOff size={18} /> : <Mic size={18} />}{microphoneMuted ? "Unmute" : "Mute"}</button>
-        ) : <span title="Audio on another device" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-muted px-3 text-xs font-semibold text-foreground"><Smartphone size={18} /> Audio on other device</span>}
+        ) : <button type="button" title="Change call audio" onClick={() => setToolPanel("devices")} aria-label="Audio on other device, change audio settings" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-muted px-3 text-xs font-semibold text-foreground"><Smartphone size={18} /> Audio on other device</button>}
         <button type="button" title={!cameraWanted || cameraMuted ? "Start camera" : "Stop camera"} onClick={() => void toggleCamera()} aria-pressed={cameraWanted && !cameraMuted} aria-busy={cameraToggleBusy} disabled={sourceLocked || cameraToggleBusy} className={`inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold disabled:opacity-45 sm:flex-row sm:gap-2 ${!cameraWanted || cameraMuted ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"}`}>{cameraToggleBusy ? <LoaderCircle size={18} className="animate-spin" /> : !cameraWanted || cameraMuted ? <CameraOff size={18} /> : <Camera size={18} />}{cameraToggleBusy ? "Updating camera…" : !cameraWanted || cameraMuted ? "Start camera" : "Stop camera"}</button>
         {stageLayout && typeof captureGroupId === "string" && captureGroupId.trim() ? <div ref={setRecordingControlContainer} className="min-w-0 self-center" data-testid="call-recording-control-slot" /> : null}
         <button type="button" title={sourceLocked ? "Stop recording and leave" : "Leave"} onClick={() => void leave()} disabled={leaveAfterSourceStops} className="inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-rose-800 px-3 py-2 text-xs font-semibold text-white disabled:cursor-wait disabled:opacity-60 sm:flex-row sm:gap-2"><PhoneOff size={18} /> {leaveAfterSourceStops ? "Saving recording…" : sourceLocked ? "Stop recording & leave" : "Leave"}</button>
@@ -2534,6 +2546,9 @@ export function LiveSessionRoom({
               </div>
               <div className={stageLayout ? callSurface.lobbyPreview : "mt-4"}>{callVideoStage}</div>
               <div className={stageLayout ? callSurface.lobbySetup : ""}>
+              {stageLayout ? <CallAudioDestinationPicker value={callAudioMode}
+                disabled={callAudioModeBusy || status === "joining"}
+                onChange={mode => { void chooseCallAudioMode(mode); }} /> : null}
               <div className={`flex flex-wrap gap-2 ${stageLayout ? "justify-center" : "mt-4"}`}>
                 {callAudioMode === "this-device" ? <button
                   type="button"
@@ -2550,6 +2565,9 @@ export function LiveSessionRoom({
                   aria-pressed={mutedForNextJoin}
                 >
                   {mutedForNextJoin ? <MicOff size={16} /> : <Mic size={16} />}{mutedForNextJoin ? "Muted" : "Mic on"}
+                </button> : stageLayout ? <button type="button" onClick={() => setToolPanel("devices")}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-muted px-4 text-sm font-medium text-muted-foreground">
+                  <MicOff size={16} /> Audio off
                 </button> : null}
                 <button
                   type="button"

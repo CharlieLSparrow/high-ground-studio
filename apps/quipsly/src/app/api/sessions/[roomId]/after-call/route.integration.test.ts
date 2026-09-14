@@ -67,6 +67,27 @@ integration("shared after-call recording availability against PostgreSQL", () =>
     }
     expect((await read(2)).status).toBe(404);
   });
+  it("keeps both accounts on the latest take while its upload and transcript arrive", async () => {
+    const participant = await prisma.callParticipant.findFirstOrThrow({where: {roomId, userId: users[1].id}});
+    await prisma.recordingAsset.update({where: {id: phoneId}, data: {participantId: participant.id,
+      recordedStartedAt: new Date("2026-09-13T10:00:00Z"), recordedStoppedAt: new Date("2026-09-13T10:01:00Z"),
+      localManifestJson: {exactBytesVerified: true, captureGroupId: "earlier-take"}}});
+    const latest = await prisma.recordingAsset.create({data: {roomId, participantId: participant.id, kind: "LOCAL_AUDIO", status: "UPLOADING",
+      recordedStartedAt: new Date("2026-09-13T11:00:00Z"), recordedStoppedAt: new Date("2026-09-13T11:01:00Z"),
+      localManifestJson: {captureGroupId: "latest-take"}}});
+    for (const account of [0, 1]) expect((await (await read(account)).json()).summary).toMatchObject({
+      recordings: {uploaded: 0, pending: 1, attention: 0}, transcripts: {available: 0, processing: 0, attention: 0},
+      transcriptSourceId: null, otherRecordingCount: 1});
+    await prisma.recordingAsset.update({where: {id: latest.id}, data: {status: "VERIFIED", verifiedAt: new Date(),
+      localManifestJson: {exactBytesVerified: true, captureGroupId: "latest-take"}}});
+    await prisma.transcriptJob.create({data: {roomId, assetId: latest.id, status: "COMPLETED",
+      segments: {create: {startSeconds: 0, endSeconds: 2, text: "Latest take transcript"}}}});
+    for (const account of [0, 1]) expect((await (await read(account)).json()).summary).toMatchObject({
+      recordings: {uploaded: 1, pending: 0, attention: 0}, transcripts: {available: 1, processing: 0, attention: 0},
+      transcriptSourceId: latest.id, otherRecordingCount: 1});
+    expect((await read(2)).status).toBe(404);
+  });
+
   it("removes visibility immediately when the participant's access is revoked", async () => {
     await prisma.callParticipant.updateMany({ where: { roomId, userId: users[1].id }, data: { accessStatus: "REMOVED" } });
     expect((await read(1)).status).toBe(404);

@@ -16,11 +16,12 @@ struct CaptureSessionAfterCallSummary: Decodable, Equatable {
     let recordings: Recordings
     let transcripts: Transcripts
     let transcriptSourceId: String?
+    var otherRecordingCount: Int? = nil
 
     func matches(roomID: String) -> Bool {
         roomId == roomID
             && [recordings.uploaded, recordings.pending, recordings.attention,
-                transcripts.available, transcripts.processing, transcripts.attention].allSatisfy { $0 >= 0 }
+                transcripts.available, transcripts.processing, transcripts.attention, otherRecordingCount ?? 0].allSatisfy { $0 >= 0 }
             && (transcriptSourceId == nil || !(transcriptSourceId?.isEmpty ?? true) && (transcriptSourceId?.count ?? 0) <= 240)
     }
     var isProcessing: Bool { recordings.pending > 0 || transcripts.processing > 0 }

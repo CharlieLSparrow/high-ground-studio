@@ -28,15 +28,15 @@ export function selectSessionTranscriptSources<T extends SessionTranscriptSource
 
 /** Keep pending recordings in the take and coverage calculation. Readiness must
  * never switch an explicitly selected take or erase a reconnect segment. */
-export function selectSessionTranscriptRecordingLanes<T extends SessionTranscriptSourceCandidate>(input: {
+export function selectSessionTranscriptTake<T extends SessionTranscriptSourceCandidate>(input: {
   rows: T[];
   participantIds?: string[];
   anchorRecordingAssetId?: string | null;
   attempts?: SessionRecordingAttempt<T>[];
-}): Array<T | null> {
+}): T[] {
   const rows = input.rows.filter((row) => row.participantId);
   const anchor = rows.find((row) => row.id === input.anchorRecordingAssetId) ?? null;
-  if (input.anchorRecordingAssetId && !anchor) return (input.participantIds ?? []).map(() => null);
+  if (input.anchorRecordingAssetId && !anchor) return [];
   const anchorGroupId = captureGroupId(anchor?.localManifestJson);
   const newestGroupId = captureGroupId([...rows].sort((a, b) =>
     b.recordedStartedAt.getTime() - a.recordedStartedAt.getTime() || a.id.localeCompare(b.id),
@@ -58,6 +58,19 @@ export function selectSessionTranscriptRecordingLanes<T extends SessionTranscrip
           Math.abs(row.recordedStartedAt.getTime() - anchor.recordedStartedAt.getTime()) <= 30_000
         )))
       : newestCoherentRecordingTake(rows);
+  return take;
+}
+
+export function selectSessionTranscriptRecordingLanes<T extends SessionTranscriptSourceCandidate>(input: {
+  rows: T[];
+  participantIds?: string[];
+  anchorRecordingAssetId?: string | null;
+  attempts?: SessionRecordingAttempt<T>[];
+}): Array<T | null> {
+  if (input.anchorRecordingAssetId && !input.rows.some(row => row.participantId && row.id === input.anchorRecordingAssetId)) {
+    return (input.participantIds ?? []).map(() => null);
+  }
+  const take = selectSessionTranscriptTake(input);
   const participantIds = input.participantIds?.length
     ? [...new Set(input.participantIds.filter(Boolean))]
     : [...new Set(take.map((row) => row.participantId).filter((value): value is string => Boolean(value)))];

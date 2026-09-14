@@ -42,6 +42,20 @@ it("reports a retryable failure without claiming that a database outage means no
   expect(response.status).toBe(503);
   expect(await response.text()).not.toContain("credentials");
 });
+
+it("summarizes the latest take without borrowing an earlier take's transcript or hiding its camera", async () => {
+  const asset = (id: string, group: string, hour: number, status = "VERIFIED", kind = "LOCAL_AUDIO") => ({
+    id, kind, status, participantId: "coach", verifiedAt: status === "VERIFIED" ? new Date() : null,
+    recordedStartedAt: new Date(`2026-09-13T${hour}:00:00Z`), recordedStoppedAt: new Date(`2026-09-13T${hour}:01:00Z`),
+    localManifestJson: {captureGroupId: group, exactBytesVerified: status === "VERIFIED"},
+  });
+  findFirst.mockResolvedValue({id: "session", recordingAssets: [asset("old", "old", 10),
+    asset("new", "new", 11, "UPLOADING"), asset("camera", "new", 11, "VERIFIED", "LOCAL_VIDEO")],
+    transcriptJobs: [{id: "old-job", createdAt: new Date(), assetId: "old", status: "COMPLETED", _count: {segments: 10}}]});
+  expect((await (await read()).json()).summary).toEqual({roomId: "session",
+    recordings: {uploaded: 1, pending: 1, attention: 0}, transcripts: {available: 0, processing: 0, attention: 0},
+    transcriptSourceId: null, otherRecordingCount: 1});
+});
 it("rejects invalid identifiers without querying", async () => {
   expect((await read(" ")).status).toBe(400);
   expect(getPrismaClient).not.toHaveBeenCalled();
