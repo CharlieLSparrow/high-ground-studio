@@ -9,7 +9,7 @@ export function useRecordingToolsActive() { return useContext(RecordingToolsActi
 
 // Diagnostics stay reachable through existing source-specific links, including
 // links opened from another screen. Opening details never changes recording data.
-function RecordingDisclosure({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+export function RecordingDisclosure({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
   const parentActive = useRecordingToolsActive();

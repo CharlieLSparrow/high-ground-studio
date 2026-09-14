@@ -4166,6 +4166,8 @@ extension MobileCaptureSession {
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
                 scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60)),
+                captureSources: preparationWorkingDraftPreview ? [] : captureGroupPreviewSources(
+                    captureGroupID: "preview-coaching-sources", promotedSourceCount: 2),
                 transcriptResults: preparationWorkingDraftPreview
                     ? nil
                     : capturePreviewTranscriptResults,

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { SessionRecordingHealthListeningNavigator } from "./session-recording-health-listening-navigator";
 import type { SessionRecordingHealth } from "./session-recording-health";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { OriginalRecordings } from "./session-recordings-workspace";
 
 function signal(observations: Array<{ kind: "possible-dropout"; severity: "attention"; startSeconds: number; endSeconds: number; detail: string; requiresListening: true }> = []) {
   return {
@@ -111,6 +112,27 @@ function evidence(): SessionSourceEvidence {
 }
 
 describe("SessionRecordingHealthListeningNavigator", () => {
+  it("loads an original only while its disclosure is open and retains its selected position", () => {
+    const view = render(<OriginalRecordings><SessionRecordingHealthListeningNavigator roomId="room"
+      health={health()} evidence={evidence()} preferredSourceId="master" initialPlaybackSeconds={8} /></OriginalRecordings>);
+    const details = screen.getByText("Original recordings").closest("details")!;
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const first = view.container.querySelector("audio")!;
+    expect(first).not.toBeNull();
+    expect(first).toHaveAttribute("data-flight-deck-audition-media", "master");
+    details.open = false;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const reopened = view.container.querySelector("audio")!;
+    expect(reopened).not.toBe(first);
+    Object.defineProperty(reopened, "readyState", {value: 1});
+    fireEvent.loadedMetadata(reopened);
+    expect(reopened.currentTime).toBe(8);
+  });
   beforeEach(() => {
     jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);

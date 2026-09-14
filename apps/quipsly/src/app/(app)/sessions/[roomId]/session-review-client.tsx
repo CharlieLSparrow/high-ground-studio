@@ -75,7 +75,7 @@ import { SessionRecordingImportCard } from "./session-recording-import-card";
 import { SessionRecordingHealthCard } from "./session-recording-health-card";
 import { SessionRecordingHealthListeningNavigator } from "./session-recording-health-listening-navigator";
 import { buildSessionRecordingHealth } from "./session-recording-health";
-import { OriginalRecordings, RecordingDetails, RecordingUploadStatus } from "./session-recordings-workspace";
+import { OriginalRecordings, RecordingDetails, RecordingDisclosure, RecordingUploadStatus } from "./session-recordings-workspace";
 import { SessionAudioMasteryCard } from "./session-audio-mastery-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
@@ -4591,10 +4591,7 @@ export function SessionReviewClient({
             </details>
 
             {sourceClockAttention || audibleEventSources.length ? (
-              <details className="rounded-3xl border border-cyan-200 bg-cyan-50/35 p-4 shadow-sm sm:p-5">
-                <summary className="cursor-pointer text-sm font-black text-cyan-950">
-                  Audio details
-                </summary>
+              <RecordingDisclosure id="session-transcript-audio-details" label="Audio details">
                 <p className="mt-2 max-w-4xl text-xs font-semibold leading-5 text-[#765f40]">
                   Optional signal maps and detector details for closer listening.
                   Your transcript, automatic audio result, and ordinary editing
@@ -4649,7 +4646,7 @@ export function SessionReviewClient({
                     </section>
                   ) : null}
                 </div>
-              </details>
+              </RecordingDisclosure>
             ) : null}
           </>
         )

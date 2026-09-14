@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { timestampForSeconds } from "./session-review-model";
 import type { SessionRecordingHealth } from "./session-recording-health";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { useRecordingToolsActive } from "./session-recordings-workspace";
 
 type EvidenceSource = SessionSourceEvidence["sources"][number];
 
@@ -84,6 +85,7 @@ export function SessionRecordingHealthListeningNavigator({
   };
 }) {
   const workspace = presentation === "workspace";
+  const active = useRecordingToolsActive();
   const sources = useMemo<AuditionSource[]>(() => {
     const evidenceByAsset = new Map(evidence.sources.map((source) => [source.recordingAssetId, source]));
     return health.sources.flatMap((source) => {
@@ -133,6 +135,13 @@ export function SessionRecordingHealthListeningNavigator({
   const transcriptHref = selected
     ? `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(selected.recordingAssetId)}&at=${encodeURIComponent(String(Number(selectedSeconds.toFixed(3))))}`
     : null;
+
+  useEffect(() => {
+    if (!active) {
+      stopAtRef.current = null;
+      setPlaybackState("loading");
+    }
+  }, [active]);
 
   useEffect(() => {
     if (!selected && selectedId !== null) setSelectedId(null);
@@ -232,9 +241,9 @@ export function SessionRecordingHealthListeningNavigator({
         onMediaFocusChange?.(selected.recordingAssetId, media.currentTime);
       }}>
         <div className="flex flex-wrap items-start justify-between gap-3"><div><p className={`text-[9px] font-black uppercase tracking-wide ${workspace ? "text-muted-foreground" : "text-cyan-200"}`}>{selected.participantLabel} · {workspace ? ({loading: "Loading audio", ready: "Ready to play", playing: "Playing", paused: "Paused", error: "Playback unavailable"}[playbackState]) : selected.state}</p><p className="mt-1 font-black">{selected.label}</p></div><p className={`inline-flex items-center gap-1 font-mono text-xs font-black ${workspace ? "text-muted-foreground" : "text-cyan-100"}`}><Clock3 size={13} aria-hidden="true" />{timestampForSeconds(selectedSeconds)} / {timestampForSeconds(selected.durationSeconds)}</p></div>
-        {selected.kind === "video"
+        {active ? selected.kind === "video"
           ? <video key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 max-h-80 w-full rounded-lg bg-black" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />
-          : <SessionRecordingAudio contentType={selected.contentType ?? undefined} key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 w-full" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} />}
+          : <SessionRecordingAudio contentType={selected.contentType ?? undefined} key={selected.recordingAssetId} ref={(node) => { mediaRef.current = node; }} src={selected.url} controls preload="metadata" data-flight-deck-audition-media={selected.recordingAssetId} className="mt-4 w-full" aria-label={`Protected source ${selected.label}`} onLoadedMetadata={(event) => { setPlaybackState("ready"); seek(Math.min(selectedSeconds, event.currentTarget.duration || selected.durationSeconds)); }} onPlay={() => setPlaybackState("playing")} onPause={() => setPlaybackState((current) => current === "error" ? current : "paused")} onTimeUpdate={(event) => observe(event.currentTarget)} onError={() => { setPlaybackState("error"); setMessage("Protected source bytes could not be decoded in this browser."); }} /> : null}
 
         {workspace ? <div className="mt-4"><RecordingWaveformTimeline key={selected.recordingAssetId} duration={selected.durationSeconds} position={selectedSeconds}
           points={selected.signal?.waveform || []} disabled={playbackState === "loading" || playbackState === "error"} onSeek={seek}

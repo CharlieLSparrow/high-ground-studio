@@ -67,6 +67,20 @@ describe("Session audio mastery", () => {
     } finally { jest.useRealTimers(); }
   });
 
+  it("unloads comparison media when its tools close", async () => {
+    fetchMock.mockResolvedValue(response({ok: true, status: "completed",
+      derivative: {playbackUrl: "/improved.m4a"}}));
+    const view = render(<RecordingDetails><SessionAudioMasteryCard coordinates={{...coordinates, canManage: false}} /></RecordingDetails>);
+    const details = view.container.querySelector("details")!;
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    await waitFor(() => expect(view.container.querySelectorAll("audio")).toHaveLength(2));
+    details.open = false;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+  });
+
   it("does not start processing or expose editing actions to a read-only viewer", async () => {
     fetchMock.mockResolvedValue(response({ok: true, status: "not-queued"}));
     render(<SessionAudioMasteryCard coordinates={{...coordinates, canManage: false}} />);

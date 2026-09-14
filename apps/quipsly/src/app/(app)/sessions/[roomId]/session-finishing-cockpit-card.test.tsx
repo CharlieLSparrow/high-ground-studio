@@ -133,6 +133,29 @@ const sourceEvidence: SessionSourceEvidence = {
 describe("Session finishing cockpit card", () => {
   afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); refresh.mockClear(); });
 
+  it("does not mount or prepare source media until requested, and unloads it when details close", () => {
+    const view = render(<RecordingDetails><SessionFinishingCockpitCard roomId="episode-9-room"
+      topology={topology} sourceEvidence={sourceEvidence}
+      contentReadiness={{status: "uploaded", captureAssetCount: 1, uploadedRecordingCount: 1}}
+      studioHandoff={{recordings: []}}
+      finishingEvidence={{transcriptJobs: [], outputs: [], analyzedSourceCount: 0}} /></RecordingDetails>);
+    const details = screen.getByText("Recording details & troubleshooting").closest("details")!;
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    fireEvent.click(screen.getByText("Recording details"));
+    fireEvent.click(screen.getByRole("button", {name: "Listen to original recording"}));
+    expect(view.container.querySelectorAll("audio,video")).toHaveLength(1);
+    details.open = false;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    expect(screen.getByRole("button", {name: "Listen to original recording"})).toBeVisible();
+  });
+
   it("refreshes unfinished work only while its diagnostics are open and the tab is visible", () => {
     jest.useFakeTimers();
     let visibility: DocumentVisibilityState = "visible";
@@ -248,8 +271,13 @@ describe("Session finishing cockpit card", () => {
     expect(within(journey).getByText("capture-mv7i")).toBeInTheDocument();
     expect(within(journey).getByText("asset-mv7i")).toBeInTheDocument();
     expect(within(journey).getByRole("list", { name: "Charlie clean microphone master source checkpoints" })).toBeInTheDocument();
+    expect(journey.querySelector("audio,video")).toBeNull();
+    fireEvent.click(within(journey).getByRole("button", {name: "Listen to original recording"}));
     expect(within(journey).getByText("Protected source player")).toBeInTheDocument();
-    expect(within(journey).getByText(/Playing it here is the runtime listening or viewing check/i)).toBeInTheDocument();
+    expect(journey.querySelector("audio,video")).not.toBeNull();
+    expect(within(journey).getByText(/Your original recording stays unchanged/i)).toBeInTheDocument();
+    fireEvent.click(within(journey).getByRole("button", {name: "Close source player"}));
+    expect(journey.querySelector("audio,video")).toBeNull();
     expect(within(journey).getByText(/Human listening remains separate acceptance evidence/i)).toBeInTheDocument();
   });
 

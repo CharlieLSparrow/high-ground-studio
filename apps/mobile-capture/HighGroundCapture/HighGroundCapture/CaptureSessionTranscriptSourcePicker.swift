@@ -12,11 +12,14 @@ struct CaptureSessionRecordingTranscriptDestination: Hashable {
 struct CaptureSessionTranscriptSourcePicker: View {
   let session: MobileCaptureSession
   let previewOnly: Bool
+  var selectedSourceID: String? = nil
+  var onSelectLatest: (() -> Void)? = nil
   let onSelect: (CaptureSessionRecordingTranscriptDestination) -> Void
   @State private var showsRecordings = false
   @State private var searchText = ""
   @State private var onlyWithTranscript = false
   @State private var pendingSource: MobileCaptureSourceSummary?
+  @State private var pendingLatest = false
 
   private var sources: [MobileCaptureSourceSummary] {
     (session.captureSources ?? []).filter {
@@ -38,19 +41,24 @@ struct CaptureSessionTranscriptSourcePicker: View {
       Button {
         showsRecordings = true
       } label: {
-        Label("Choose a recording", systemImage: "waveform")
+        Label(selectedSourceID.flatMap { id in sources.first { $0.id == id } }
+          .map { CaptureTranscriptRecordingLabel.title(fileName: $0.fileName, isVideo: $0.isVideoSource) }
+          ?? "Choose a recording", systemImage: "waveform")
           .frame(minHeight: 44)
       }
       .buttonStyle(.bordered)
       .accessibilityIdentifier("CaptureSessionTranscriptRecordings_\(session.callRoomId)")
       .sheet(isPresented: $showsRecordings, onDismiss: {
-        if let source = pendingSource {
+        if pendingLatest {
+          onSelectLatest?()
+        } else if let source = pendingSource {
           onSelect(.init(roomID: session.callRoomId,
                          title: CaptureTranscriptRecordingLabel.title(fileName: source.fileName, isVideo: source.isVideoSource),
                          recordingAssetID: source.id,
                          canUseProjectTeamNotes: session.canUseProjectTeamNotes == true))
         }
         pendingSource = nil
+        pendingLatest = false
       }) { recordingsSheet }
     }
   }
@@ -61,10 +69,13 @@ struct CaptureSessionTranscriptSourcePicker: View {
       showsRecordings = false
     } label: {
       VStack(alignment: .leading, spacing: 5) {
-        Text(
-          CaptureTranscriptRecordingLabel.title(
-            fileName: source.fileName, isVideo: source.isVideoSource)
-        ).font(.headline)
+        HStack {
+          Text(CaptureTranscriptRecordingLabel.title(
+            fileName: source.fileName, isVideo: source.isVideoSource)).font(.headline)
+          if selectedSourceID == source.id {
+            Image(systemName: "checkmark").accessibilityLabel("Selected recording")
+          }
+        }
         if let timestamp = source.recordedStartedAt,
           let date = CaptureDateCoding.date(from: timestamp)
         {
@@ -91,7 +102,29 @@ struct CaptureSessionTranscriptSourcePicker: View {
 
   private var recordingsSheet: some View {
     NavigationStack {
-      List(visibleSources) { source in sourceRow(source) }
+      List {
+        if onSelectLatest != nil && searchText.isEmpty {
+          Button {
+            pendingLatest = true
+            pendingSource = nil
+            showsRecordings = false
+          } label: {
+            Label("Latest session transcript", systemImage: selectedSourceID == nil ? "checkmark" : "text.alignleft")
+              .frame(minHeight: 44)
+          }
+          .accessibilityIdentifier("CaptureSessionLatestTranscript")
+        }
+        ForEach(visibleSources) { source in sourceRow(source) }
+        if visibleSources.isEmpty {
+          if !searchText.isEmpty {
+            ContentUnavailableView.search(text: searchText).listRowBackground(Color.clear)
+          } else {
+            ContentUnavailableView("No transcripts yet", systemImage: "text.alignleft",
+              description: Text("Choose All to see recordings that are still being transcribed."))
+              .listRowBackground(Color.clear)
+          }
+        }
+      }
         .scrollContentBackground(.hidden)
         .safeAreaInset(edge: .top) {
           Picker("Recordings", selection: $onlyWithTranscript) {

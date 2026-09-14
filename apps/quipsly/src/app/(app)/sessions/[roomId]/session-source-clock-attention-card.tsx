@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { SessionSourceClockAttention, SessionSourceClockReviewMoment } from "./session-source-clock-attention";
 import { SessionAudibleEventDecision } from "./session-audible-event-decision";
+import { useRecordingToolsActive } from "./session-recordings-workspace";
 
 function clock(seconds: number) {
   const tenths = Math.max(0, Math.floor(seconds * 10 + 0.000001));
@@ -36,6 +37,7 @@ export function SessionSourceClockAttentionCard({
   initialItemId?: string | null;
 }) {
   const router = useRouter();
+  const active = useRecordingToolsActive();
   const initial = attention.moments.find((moment) => moment.items.some((item) => item.id === initialItemId)) ?? attention.moments[0] ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(initial?.id ?? null);
   const [playRequest, setPlayRequest] = useState(0);
@@ -44,6 +46,13 @@ export function SessionSourceClockAttentionCard({
   const stopAtRef = useRef<number | null>(null);
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
   const selected = useMemo(() => attention.moments.find((moment) => moment.id === selectedId) ?? attention.moments[0] ?? null, [attention.moments, selectedId]);
+  useEffect(() => {
+    if (!active) {
+      setPlayRequest(0);
+      previousTimeRef.current = null;
+      setListenedSecondBins(new Set());
+    }
+  }, [active]);
 
   useEffect(() => {
     if (!initialItemId) return;
@@ -131,9 +140,9 @@ export function SessionSourceClockAttentionCard({
     {selected ? <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.65fr)]">
       <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white" aria-label="Selected protected source range">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-wide text-cyan-200">Shared listening moment · {selected.items.length} signal{selected.items.length === 1 ? "" : "s"}</p><h3 className="mt-1 text-xl font-black">{selected.title}</h3><p className="mt-1 font-mono text-xs font-black text-cyan-100">{range(selected)} · {selected.source.label}</p></div><span className="rounded-full border border-slate-600 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-slate-300">{reviewBudget(selected.estimatedReviewSeconds)} budget</span></div>
-        {selected.source.sourceKind === "video"
+        {active ? selected.source.sourceKind === "video"
           ? <video ref={(node) => { mediaRef.current = node; }} src={selected.source.sourceUrl} controls preload="metadata" className="mt-4 max-h-80 w-full rounded-xl bg-black" aria-label={`Protected source for ${selected.title}`} onLoadedMetadata={() => seekSelected(playRequest > 0)} onPlay={(event) => { previousTimeRef.current = event.currentTarget.currentTime; }} onPause={() => { previousTimeRef.current = null; }} onSeeking={() => { previousTimeRef.current = null; }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} />
-          : <audio ref={(node) => { mediaRef.current = node; }} src={selected.source.sourceUrl} controls preload="metadata" className="mt-4 w-full" aria-label={`Protected source for ${selected.title}`} onLoadedMetadata={() => seekSelected(playRequest > 0)} onPlay={(event) => { previousTimeRef.current = event.currentTarget.currentTime; }} onPause={() => { previousTimeRef.current = null; }} onSeeking={() => { previousTimeRef.current = null; }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} />}
+          : <audio ref={(node) => { mediaRef.current = node; }} src={selected.source.sourceUrl} controls preload="metadata" className="mt-4 w-full" aria-label={`Protected source for ${selected.title}`} onLoadedMetadata={() => seekSelected(playRequest > 0)} onPlay={(event) => { previousTimeRef.current = event.currentTarget.currentTime; }} onPause={() => { previousTimeRef.current = null; }} onSeeking={() => { previousTimeRef.current = null; }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} /> : null}
         <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => { setPlayRequest((value) => value + 1); }} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-cyan-200 px-4 text-xs font-black text-slate-950"><Play size={14} aria-hidden="true" />Play shared context</button></div>
         {selected.contextTruncated ? <p className="mt-3 rounded-lg border border-amber-700/60 bg-amber-950/50 p-3 text-xs font-bold leading-5 text-amber-100">One exact evidence range extends beyond this bounded preview. Its full range remains visible below; use the authority-specific deep link to complete that review.</p> : null}
         <p className="mt-3 text-[9px] font-bold uppercase tracking-wide text-slate-500">Client-tracked playback is navigation, not proof that a person heard or understood the range.</p>

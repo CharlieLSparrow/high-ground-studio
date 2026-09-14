@@ -1871,13 +1871,29 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Transcript"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["CaptureCallLeave"].exists,
                        "Opening a transcript must not join a call.")
+        let recordingPicker = app.buttons["CaptureSessionTranscriptRecordings_room-preview-coaching-ready"].firstMatch
+        XCTAssertTrue(recordingPicker.waitForExistence(timeout: 5))
+        for source in ["audio", "video", "audio"] {
+            recordingPicker.tap()
+            let choice = app.buttons["CaptureSessionSourceTranscript_preview-coaching-sources-\(source)"].firstMatch
+            XCTAssertTrue(choice.waitForExistence(timeout: 5))
+            choice.tap()
+            XCTAssertTrue(app.navigationBars["Transcript"].waitForExistence(timeout: 5))
+            XCTAssertTrue(recordingPicker.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.navigationBars["Recordings"].exists)
+        }
+        recordingPicker.tap()
+        let latestTranscript = app.buttons["CaptureSessionLatestTranscript"].firstMatch
+        XCTAssertTrue(latestTranscript.waitForExistence(timeout: 5))
+        latestTranscript.tap()
+        XCTAssertTrue(app.navigationBars["Transcript"].waitForExistence(timeout: 5))
         let arrival = XCTAttachment(screenshot: app.screenshot())
         arrival.name = "Client space direct transcript"
         arrival.lifetime = .keepAlways
         add(arrival)
         app.navigationBars["Transcript"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 10),
-                      "Back from a transcript should return to the same client space.")
+                      "After switching recordings, one Back should return to the same client space, not an older transcript selection.")
         let openSession = app.buttons["CaptureCoachingRelationshipPrimaryAction"].firstMatch
         XCTAssertTrue(openSession.waitForExistence(timeout: 5))
         openSession.tap()

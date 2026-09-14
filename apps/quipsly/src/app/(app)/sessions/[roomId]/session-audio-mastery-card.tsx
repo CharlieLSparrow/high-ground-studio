@@ -227,7 +227,7 @@ function SessionAudioMasterySourceCard({ coordinates }: { coordinates: AudioMast
         </div>
       </div>
 
-      {checking ? (
+      {!active ? null : checking ? (
         <p className="mt-3 flex items-center gap-2 text-xs font-black text-fuchsia-900">
           <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> Checking audio…
         </p>

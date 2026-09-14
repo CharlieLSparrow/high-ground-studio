@@ -3545,7 +3545,107 @@ private enum CaptureTranscriptPresentationMode: String, CaseIterable, Identifiab
     }
 }
 
+/// One navigation destination, with a separate content lifetime for each source.
+/// Changing the recording cancels its view-owned work and releases playback;
+/// Back still returns to the workspace, not through a history of recordings.
 struct CaptureTranscriptReviewView: View {
+    let roomID: String
+    let sessionTitle: String
+    let recording: LocalRecording?
+    var recordingAssetID: String? = nil
+    var transcriptJobID: String? = nil
+    let previewOnly: Bool
+    var focusSegmentID: String? = nil
+    var focusSourceSeconds: TimeInterval? = nil
+    var canUseProjectTeamNotes = false
+    var returnLabel: String? = nil
+    var onReturn: (() -> Void)? = nil
+
+    private enum Selection: Equatable {
+        case session
+        case recording(CaptureSessionRecordingTranscriptDestination)
+    }
+    @State private var scopedSelection: (scope: String, value: Selection)?
+    @StateObject private var followUpSessions = CaptureSessionClient()
+
+    init(roomID: String, sessionTitle: String, recording: LocalRecording?,
+         recordingAssetID: String? = nil, transcriptJobID: String? = nil,
+         previewOnly: Bool, focusSegmentID: String? = nil,
+         focusSourceSeconds: TimeInterval? = nil, canUseProjectTeamNotes: Bool = false,
+         returnLabel: String? = nil, onReturn: (() -> Void)? = nil) {
+        self.roomID = roomID
+        self.sessionTitle = sessionTitle
+        self.recording = recording
+        self.recordingAssetID = recordingAssetID
+        self.transcriptJobID = transcriptJobID
+        self.previewOnly = previewOnly
+        self.focusSegmentID = focusSegmentID
+        self.focusSourceSeconds = focusSourceSeconds
+        self.canUseProjectTeamNotes = canUseProjectTeamNotes
+        self.returnLabel = returnLabel
+        self.onReturn = onReturn
+    }
+
+    private var selectedSource: CaptureSessionRecordingTranscriptDestination? {
+        if case .recording(let destination) = selection { return destination }
+        return nil
+    }
+    // A new deep link or session replaces the local choice immediately, before
+    // a child can request an old source using the new room's identity.
+    private var selectionScope: String {
+        [roomID, recordingAssetID ?? "", transcriptJobID ?? "", focusSegmentID ?? "",
+         focusSourceSeconds.map(String.init(describing:)) ?? ""].joined(separator: "\u{1f}")
+    }
+    private var selection: Selection? {
+        scopedSelection?.scope == selectionScope ? scopedSelection?.value : nil
+    }
+    private var activeSourceID: String? {
+        selection == nil ? recordingAssetID : selectedSource?.recordingAssetID
+    }
+    private var activeJobID: String? { selection == nil ? transcriptJobID : nil }
+    private var session: MobileCaptureSession? {
+        if previewOnly {
+            return MobileCaptureSession.capturePreviewFixtures.first { $0.callRoomId == roomID }
+        }
+        return followUpSessions.sessions.first { $0.callRoomId == roomID }
+    }
+
+    var body: some View {
+        CaptureTranscriptReviewContent(
+            roomID: roomID, sessionTitle: selectedSource?.title ?? sessionTitle,
+            recording: selection == nil ? recording : nil,
+            recordingAssetID: activeSourceID, transcriptJobID: activeJobID,
+            previewOnly: previewOnly,
+            focusSegmentID: selection == nil ? focusSegmentID : nil,
+            focusSourceSeconds: selection == nil ? focusSourceSeconds : nil,
+            canUseProjectTeamNotes: canUseProjectTeamNotes,
+            returnLabel: returnLabel, onReturn: onReturn,
+            followUpSessions: followUpSessions
+        )
+        .id([roomID, activeSourceID ?? "", activeJobID ?? ""].joined(separator: "\u{1f}"))
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let session, (session.captureSources?.count ?? 0) > 1 {
+                CaptureSessionTranscriptSourcePicker(
+                    session: session, previewOnly: previewOnly,
+                    selectedSourceID: activeSourceID,
+                    onSelectLatest: { scopedSelection = (selectionScope, .session) }
+                ) { destination in
+                    guard destination.recordingAssetID != activeSourceID else { return }
+                    scopedSelection = (selectionScope, .recording(destination))
+                }
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(CapturePalette.canvas)
+            }
+        }
+        .task(id: roomID) {
+            guard !previewOnly else { return }
+            _ = await followUpSessions.load(authoritativeSessionID: roomID)
+        }
+    }
+}
+
+private struct CaptureTranscriptReviewContent: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
@@ -3566,9 +3666,8 @@ struct CaptureTranscriptReviewView: View {
     @StateObject private var playback = CaptureTranscriptPlaybackController()
     @StateObject private var protectedSessionPlayback = CaptureSessionProtectedPlaybackController()
     @StateObject private var library = LocalRecordingLibrary.shared
-    @StateObject private var followUpSessions = CaptureSessionClient()
+    @ObservedObject private var followUpSessions: CaptureSessionClient
     @State private var workToEdit: TranscriptWorkEditDestination?
-    @State private var selectedTranscriptRecording: CaptureSessionRecordingTranscriptDestination?
     @State private var expandedWorkKinds: Set<String> = []
     @State private var scrollTargetSegmentID: String?
     @State private var requestedEditingSegmentID: String?
@@ -3615,7 +3714,8 @@ struct CaptureTranscriptReviewView: View {
         focusSourceSeconds: TimeInterval? = nil,
         canUseProjectTeamNotes: Bool = false,
         returnLabel: String? = nil,
-        onReturn: (() -> Void)? = nil
+        onReturn: (() -> Void)? = nil,
+        followUpSessions: CaptureSessionClient
     ) {
         self.roomID = roomID
         self.sessionTitle = sessionTitle
@@ -3628,6 +3728,7 @@ struct CaptureTranscriptReviewView: View {
         self.canUseProjectTeamNotes = canUseProjectTeamNotes
         self.returnLabel = returnLabel
         self.onReturn = onReturn
+        self.followUpSessions = followUpSessions
     }
 
     private var focusSegmentID: String? {
@@ -3753,24 +3854,6 @@ struct CaptureTranscriptReviewView: View {
             .background(CapturePalette.canvas)
             .navigationTitle("Transcript")
             .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let session = followUpSessions.sessions.first(where: { $0.callRoomId == roomID }),
-                   (session.captureSources?.count ?? 0) > 1 {
-                    CaptureSessionTranscriptSourcePicker(session: session, previewOnly: previewOnly) { destination in
-                        guard destination.recordingAssetID != recordingAssetID else { return }
-                        playback.pause(resetPosition: true)
-                        selectedTranscriptRecording = destination
-                    }
-                    .padding(.horizontal, 18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(CapturePalette.canvas)
-                }
-            }
-            .navigationDestination(item: $selectedTranscriptRecording) { destination in
-                CaptureTranscriptReviewView(roomID: destination.roomID, sessionTitle: destination.title,
-                    recording: nil, recordingAssetID: destination.recordingAssetID, previewOnly: previewOnly,
-                    canUseProjectTeamNotes: destination.canUseProjectTeamNotes)
-            }
             // Transcript review is a focused destination with its own reading,
             // playback, editing, and quality controls. Keep the global tabs
             // from covering those controls; the standard Back button remains.
@@ -3981,10 +4064,6 @@ struct CaptureTranscriptReviewView: View {
                     kind: destination.kind,
                     previewEntry: destination.previewEntry
                 )
-            }
-            .task(id: roomID) {
-                guard !previewOnly else { return }
-                _ = await followUpSessions.load(authoritativeSessionID: roomID)
             }
             .task(id: client.transcriptWorkRefreshRevision) {
                 guard !previewOnly, client.transcriptWorkRefreshRevision > 0 else { return }

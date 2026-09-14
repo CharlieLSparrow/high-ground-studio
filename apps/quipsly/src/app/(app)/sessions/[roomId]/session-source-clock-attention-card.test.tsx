@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { SessionSourceClockAttentionCard } from "./session-source-clock-attention-card";
 import { buildSessionSourceClockAttention, type SessionSourceClockSource } from "./session-source-clock-attention";
+import { RecordingDetails } from "./session-recordings-workspace";
 
 const mockRefresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
@@ -31,6 +32,27 @@ beforeEach(() => {
 afterAll(() => { jest.restoreAllMocks(); });
 
 describe("SessionSourceClockAttentionCard", () => {
+  it("does not load a source from hidden details or resume playback when reopened", () => {
+    const attention = buildSessionSourceClockAttention({
+      transcript: [{ id: "segment-1", segmentId: "segment-1", source, startSeconds: 8, endSeconds: 10,
+        text: "Provider attempt", speakerLabel: "Charlie", providerConfidence: 0.6, reviewState: "unreviewed" }],
+      audibleEvents: [], dialogueRepairs: [], mastery: [], edits: [],
+    });
+    const view = render(<RecordingDetails><SessionSourceClockAttentionCard attention={attention} /></RecordingDetails>);
+    const details = screen.getByText("Recording details & troubleshooting").closest("details")!;
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelectorAll("audio")).toHaveLength(1);
+    details.open = false;
+    fireEvent(details, new Event("toggle"));
+    expect(view.container.querySelector("audio,video")).toBeNull();
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const media = view.container.querySelector("audio")!;
+    expect(media).not.toHaveAttribute("autoplay");
+    expect(media.paused).toBe(true);
+  });
   it("shows the authority boundary and direct source-return controls", () => {
     const attention = buildSessionSourceClockAttention({
       transcript: [{ id: "segment-1", segmentId: "segment-1", source, startSeconds: 8, endSeconds: 10, text: "Provider attempt", speakerLabel: "Charlie", providerConfidence: 0.6, reviewState: "unreviewed" }],
