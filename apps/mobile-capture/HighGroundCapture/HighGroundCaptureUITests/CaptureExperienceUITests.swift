@@ -3993,12 +3993,15 @@ final class CaptureExperienceUITests: XCTestCase {
         let retainedWords = " Retained through dismissal and a complete app relaunch."
 
         func openPreviewSessionNote() {
-            app.tabBars.buttons["Sessions"].tap()
-            let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
-            reveal(notesCard, searchAboveFirst: false)
-            XCTAssertTrue(notesCard.isHittable)
-            if !app.buttons["CaptureSessionNoteEdit_preview-session-note"].exists {
+            let notesWorkspace = app.descendants(matching: .any)["CaptureSessionNotesSheet"].firstMatch
+            // Closing the editor returns to Notes, not the recorder behind
+            // that workspace. Reopen there; only navigate after a fresh launch.
+            if !notesWorkspace.exists {
+                app.tabBars.buttons["Sessions"].tap()
+                let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
+                XCTAssertTrue(reveal(notesCard, searchAboveFirst: false))
                 notesCard.tap()
+                XCTAssertTrue(notesWorkspace.waitForExistence(timeout: 5))
             }
             let edit = app.buttons["CaptureSessionNoteEdit_preview-session-note"].firstMatch
             reveal(edit, searchAboveFirst: false)
@@ -7260,6 +7263,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let transcriptReview = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
         let coachingFormResponse = app.scrollViews["CaptureCoachingFormResponse"].firstMatch
         let coachingFormsHome = app.scrollViews["CaptureCoachingFormsHome"].firstMatch
+        let recorder = app.scrollViews["CaptureRecorderView"].firstMatch
         let scrollSurface = coachingWorkEditorForm.exists && coachingWorkEditorForm.isHittable
             ? coachingWorkEditorForm
             : sourceFilingForm.exists
@@ -7270,7 +7274,12 @@ final class CaptureExperienceUITests: XCTestCase {
                     ? transcriptReview
                     : coachingFormResponse.exists
                         ? coachingFormResponse
-                        : coachingFormsHome.exists ? coachingFormsHome : app.scrollViews.firstMatch
+                        : coachingFormsHome.exists ? coachingFormsHome
+                            : recorder.exists && recorder.isHittable ? recorder
+                            : app.scrollViews.firstMatch
+        // The recorder contains a horizontal tool strip. Once lazy content
+        // appears, firstMatch can resolve to that 44-point strip instead of
+        // the vertical workspace. Keep gestures on the named recorder.
         // A LazyVStack removes distant rows from the accessibility tree. If a
         // target does not currently exist, search above first, then below,
         // instead of assuming every unseen control is farther down the page.
