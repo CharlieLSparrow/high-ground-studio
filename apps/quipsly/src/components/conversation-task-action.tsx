@@ -14,8 +14,9 @@ type ConversationTaskTarget = { engagementId: string; projectSlug?: never; roomI
   | { engagementId?: never; projectSlug: string; roomId?: never }
   | { engagementId?: never; projectSlug?: never; roomId: string };
 
-export function ConversationTaskAction({ engagementId, projectSlug, roomId, messageId, body, canCreate, tasks = [], onOpenWork }: ConversationTaskTarget & {
+export function ConversationTaskAction({ engagementId, projectSlug, roomId, messageId, body, canCreate, tasks = [], onOpenWork, onOpenTask }: ConversationTaskTarget & {
   messageId: string; body: string; canCreate: boolean; tasks?: ConversationLinkedTask[]; onOpenWork?: () => void;
+  onOpenTask?: (taskId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(body.replace(/\s+/g, " ").trim().slice(0, 160));
@@ -73,11 +74,9 @@ export function ConversationTaskAction({ engagementId, projectSlug, roomId, mess
   }
 
   return <div className="mt-2 space-y-2">
-    {linked.map(task => <Link key={task.id} onClick={onOpenWork} href={roomId
-      ? `/sessions/${encodeURIComponent(roomId)}?mode=work#quick-entry-${encodeURIComponent(task.id)}` : engagementId
-      ? `/coaching/engagements/${encodeURIComponent(engagementId)}?work=${encodeURIComponent(task.id)}#relationship-work`
-      : `/work?task=${encodeURIComponent(task.id)}`}
-      className="flex min-h-11 min-w-0 items-start gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent">
+    {linked.map(task => {
+      const className = "flex w-full min-h-11 min-w-0 items-start gap-2 rounded-xl border border-border bg-card px-3 py-2 text-left text-sm font-semibold text-foreground hover:bg-accent";
+      const content = <>
       <span aria-hidden="true">{task.status === "DONE" ? "✓" : "☐"}</span>
       <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
         <span>{task.title}</span>
@@ -90,7 +89,13 @@ export function ConversationTaskAction({ engagementId, projectSlug, roomId, mess
         </span>}
       </span>
       <span className="sr-only"> — {task.status.toLowerCase()} task</span>
-    </Link>)}
+      </>;
+      return roomId && onOpenTask ? <button key={task.id} type="button" onClick={() => onOpenTask(task.id)} className={className}>{content}</button>
+        : <Link key={task.id} onClick={onOpenWork} href={roomId
+          ? `/sessions/${encodeURIComponent(roomId)}?mode=work#quick-entry-${encodeURIComponent(task.id)}` : engagementId
+          ? `/coaching/engagements/${encodeURIComponent(engagementId)}?work=${encodeURIComponent(task.id)}#relationship-work`
+          : `/work?task=${encodeURIComponent(task.id)}`} className={className}>{content}</Link>;
+    })}
     {canCreate && body.trim() && !open && <button type="button" onClick={() => setOpen(true)} className="min-h-11 text-sm font-semibold text-primary underline underline-offset-4">{linked.length ? "Create another task" : "Create task"}</button>}
     {open && <form onSubmit={create} className="space-y-2 rounded-xl border border-border bg-card p-3">
       <label className="block text-sm font-semibold">Task title<input aria-label="Task title from message" value={title} onChange={event => setTitle(event.target.value)} maxLength={500} required disabled={pending}

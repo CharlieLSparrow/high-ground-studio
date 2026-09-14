@@ -69,6 +69,8 @@ function ScopedCollaborationThread({
   liveHintThreadKey = null,
   fillHeight = false,
   onOpenWork,
+  onOpenTask,
+  messageToOpen,
 }: {
   projectSlug: string;
   threadKey: string;
@@ -83,6 +85,8 @@ function ScopedCollaborationThread({
   liveHintThreadKey?: string | null;
   fillHeight?: boolean;
   onOpenWork?: () => void;
+  onOpenTask?: (taskId: string) => void;
+  messageToOpen?: {id: string; request: number} | null;
 }) {
   const panelActive = useWorkspacePanelActive();
   const [messages, setMessages] = useState<SessionMessage[]>([]);
@@ -124,7 +128,7 @@ function ScopedCollaborationThread({
     if (!quiet) setLoading(true);
     try {
       const params = new URLSearchParams(sessionRoomId ? { limit: "50" } : { projectSlug, threadKey });
-      const requestedMessage = new URL(window.location.href).searchParams.get("message");
+      const requestedMessage = messageToOpen?.id || new URL(window.location.href).searchParams.get("message");
       if (requestedMessage) params.set("message", requestedMessage);
       const response = await fetch(`${endpoint}?${params}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as ThreadResponse;
@@ -148,7 +152,7 @@ function ScopedCollaborationThread({
       refreshingRef.current = false;
       if (activeRef.current) setLoading(false);
     }
-  }, [projectSlug, threadKey, endpoint, sessionRoomId]);
+  }, [projectSlug, threadKey, endpoint, sessionRoomId, messageToOpen]);
 
   useEffect(() => {
     activeRef.current = true;
@@ -197,15 +201,19 @@ function ScopedCollaborationThread({
   }, [liveHintThreadKey, refresh, threadKey, panelActive]);
 
   useEffect(() => {
+    if (!panelActive) return;
     const thread = scrollRef.current;
-    const requestedMessage = new URL(window.location.href).searchParams.get("message");
-    if (requestedMessage && focusedMessageRef.current !== requestedMessage && messages.some(message => message.id === requestedMessage)) {
-      const target = document.getElementById(`conversation-message-${requestedMessage}`);
+    const requestedMessage = messageToOpen?.id || new URL(window.location.href).searchParams.get("message");
+    const focusKey = messageToOpen ? `${messageToOpen.id}:${messageToOpen.request}` : requestedMessage;
+    if (requestedMessage && focusedMessageRef.current !== focusKey && messages.some(message => message.id === requestedMessage)) {
+      const target = thread && Array.from(thread.querySelectorAll<HTMLElement>("article[id]"))
+        .find(article => article.id === `conversation-message-${requestedMessage}`);
       if (target && !target.closest("[hidden]")) {
         target.scrollIntoView({ block: "nearest" });
         target.focus({ preventScroll: true });
         followLatestRef.current = false;
-        focusedMessageRef.current = requestedMessage;
+        setAtLatest(false);
+        focusedMessageRef.current = focusKey;
         return;
       }
     }
@@ -215,7 +223,7 @@ function ScopedCollaborationThread({
     } else if (thread && followLatestRef.current) {
       thread.scrollTop = thread.scrollHeight;
     }
-  }, [messages, panelActive]);
+  }, [messages, panelActive, messageToOpen]);
 
   useEffect(() => {
     const latest = messages.at(-1);
@@ -364,7 +372,7 @@ function ScopedCollaborationThread({
             {message.canEdit && <><button type="button" className="min-h-11" onClick={() => { setEditing(message.id); setEditDraft(message.body); }}>Edit</button><button type="button" className="min-h-11" disabled={mutating} onClick={() => void changeMessage(message, "DELETE")}>Remove</button></>}
           </div>}
           {engagementId && <ConversationTaskAction engagementId={engagementId} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
-          {sessionRoomId && !message.deletedAt && <ConversationTaskAction roomId={sessionRoomId} messageId={message.id} body={message.body} canCreate={writable} tasks={message.linkedTasks} onOpenWork={onOpenWork} />}
+          {sessionRoomId && !message.deletedAt && <ConversationTaskAction roomId={sessionRoomId} messageId={message.id} body={message.body} canCreate={writable} tasks={message.linkedTasks} onOpenWork={onOpenWork} onOpenTask={onOpenTask} />}
           {threadKey === "default" && <ConversationTaskAction projectSlug={projectSlug} messageId={message.id} body={message.body} canCreate={canPost} tasks={message.linkedTasks} />}
         </article>)}
       </div>
@@ -393,6 +401,8 @@ export function SessionThread({
   fillHeight = false,
   heading = "Session thread",
   onOpenWork,
+  onOpenTask,
+  messageToOpen,
 }: {
   projectSlug?: string;
   roomId: string;
@@ -403,6 +413,8 @@ export function SessionThread({
   fillHeight?: boolean;
   heading?: string;
   onOpenWork?: () => void;
+  onOpenTask?: (taskId: string) => void;
+  messageToOpen?: {id: string; request: number} | null;
 }) {
   return <CollaborationThread
     projectSlug={projectSlug}
@@ -411,6 +423,8 @@ export function SessionThread({
     collaborationTitle={sessionTitle}
     heading={heading}
     onOpenWork={onOpenWork}
+    onOpenTask={onOpenTask}
+    messageToOpen={messageToOpen}
     fillHeight={fillHeight}
     clientSurface="session-room-web"
     canPost={canPost}

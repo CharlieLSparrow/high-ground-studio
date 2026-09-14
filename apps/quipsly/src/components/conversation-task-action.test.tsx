@@ -5,6 +5,16 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 const props = { engagementId: "space", messageId: "message", body: "Prepare a first chapter together", canCreate: true };
 
+test("opens the exact linked task in the active call workspace without navigation", async () => {
+  const open = jest.fn(), navigate = jest.fn();
+  render(<ConversationTaskAction roomId="room" messageId="message" body="Read the chapter" canCreate={false}
+    tasks={[{id: "task", title: "Read the chapter", status: "DONE"}]} onOpenTask={open} onOpenWork={navigate} />);
+  fireEvent.click(screen.getByRole("button", {name: /Read the chapter/}));
+  expect(open).toHaveBeenCalledWith("task");
+  expect(navigate).not.toHaveBeenCalled();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
 test("creates a Session task, preserves retry identity and opens its existing work surface", async () => {
   const fetchMock = jest.fn().mockRejectedValueOnce(new Error("Reply lost"))
     .mockResolvedValueOnce({ok: true, json: async () => ({ok: true, entry: {id: "task", title: "Read the chapter", status: "OPEN"}})});

@@ -34,7 +34,7 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   const entries = await loadSessionWork({ prisma, roomId, actor: session.user, entryId });
   const entry = entries.find(row => row.id === entryId);
   if (!entry) return NextResponse.json({ ok: false, error: "This task is no longer available to this account." }, { status: 404 });
-  return NextResponse.json({ ok: true, roomId, entry }, { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ ok: true, roomId, actorUserId: session.user.id, entry }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

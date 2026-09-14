@@ -124,6 +124,8 @@ export function LiveSessionDockProvider({ children, currentUser }: {
   const [notesVisitedRoom, setNotesVisitedRoom] = useState<string | null>(null);
   const [noteToOpen, setNoteToOpen] = useState<{ id: string; request: number } | null>(null);
   const [workVisitedRoom, setWorkVisitedRoom] = useState<string | null>(null);
+  const [entryToOpen, setEntryToOpen] = useState<{id: string; request: number} | null>(null);
+  const [messageToOpen, setMessageToOpen] = useState<{id: string; request: number} | null>(null);
   const [notesNeedAttention, setNotesNeedAttention] = useState(false);
   const [toolPanelContainer, setToolPanelContainer] = useState<HTMLDivElement | null>(null);
   const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null);
@@ -142,6 +144,8 @@ export function LiveSessionDockProvider({ children, currentUser }: {
   useEffect(() => {
     setWorkspacePanel(null);
     setNoteToOpen(null);
+    setEntryToOpen(null);
+    setMessageToOpen(null);
   }, [active?.callRoomId]);
 
   useEffect(() => {
@@ -374,6 +378,12 @@ export function LiveSessionDockProvider({ children, currentUser }: {
                   scopeLabel="This live Session"
                   scopeDescription="Messages stay here after the call."
                   onOpenWork={minimize}
+                  messageToOpen={messageToOpen}
+                  onOpenTask={id => {
+                    setWorkVisitedRoom(active.callRoomId);
+                    setEntryToOpen(current => ({id, request: (current?.request ?? 0) + 1}));
+                    setWorkspacePanel("work");
+                  }}
                   heading="Chat"
                   fillHeight
                 /></WorkspacePanelActivity.Provider>
@@ -384,7 +394,11 @@ export function LiveSessionDockProvider({ children, currentUser }: {
                 <CallNotesPanel key={active.callRoomId} roomId={active.callRoomId} active={notesOpen && isOpen} noteToOpen={noteToOpen} onOpenWorkspace={minimize} onAttentionChange={setNotesNeedAttention} />
               </CallWorkspacePanel> : null}
               {toolPanelContainer && workVisitedRoom === active.callRoomId ? <CallWorkspacePanel title="Tasks" open={workOpen} onClose={() => setWorkspacePanel(null)} container={toolPanelContainer}>
-                <CallWorkPanel key={active.callRoomId} roomId={active.callRoomId} active={workOpen && isOpen} onOpenWorkspace={minimize} />
+                <CallWorkPanel key={active.callRoomId} roomId={active.callRoomId} active={workOpen && isOpen} entryToOpen={entryToOpen} onOpenWorkspace={minimize}
+                  onOpenConversation={id => {
+                    setMessageToOpen(current => ({id, request: (current?.request ?? 0) + 1}));
+                    setWorkspacePanel("chat");
+                  }} />
               </CallWorkspacePanel> : null}
             </div>
             <div ref={setControlsContainer} data-testid="live-call-controls-slot" className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-foreground empty:hidden" />

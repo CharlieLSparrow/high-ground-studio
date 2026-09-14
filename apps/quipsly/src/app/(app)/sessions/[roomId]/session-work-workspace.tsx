@@ -14,9 +14,11 @@ const isFinished = (entry: SessionQuickEntry) => ["DONE", "ACHIEVED", "CANCELED"
 const workEntries = (entries: SessionQuickEntry[]) => entries.filter(entry => entry.kind === "TASK" || entry.kind === "GOAL");
 const inputClass = "mt-1 block min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground";
 
-export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null, canCreate = true, compact = false, onOpenWorkspace, onChanged }: {
+export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null, canCreate = true, compact = false, active = true, entryToOpen, onOpenConversation, onOpenWorkspace, onChanged }: {
   roomId: string; entries: SessionQuickEntry[]; assignmentContext?: SessionWorkAssignmentContext | null; canCreate?: boolean;
   compact?: boolean; onOpenWorkspace?: () => void; onChanged?: () => void;
+  active?: boolean; entryToOpen?: {id: string; request: number} | null;
+  onOpenConversation?: (messageId: string) => void;
 }) {
   const router = useRouter();
   const headingId = useId();
@@ -24,6 +26,10 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
   const [filter, setFilter] = useState<WorkFilter>("ALL");
   const [query, setQuery] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
+  const [focusedEntryId, setFocusedEntryId] = useState<string | null>(null);
+  const [focusPending, setFocusPending] = useState(false);
+  const [expandedCompleted, setExpandedCompleted] = useState(false);
+  const handledOpen = useRef<typeof entryToOpen>(null);
   const [kind, setKind] = useState<WorkKind>("TASK");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -41,6 +47,23 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
   const titleInput = useRef<HTMLInputElement>(null);
   const options = useRef<HTMLDetailsElement>(null);
   useEffect(() => setCurrent(workEntries(entries)), [entries]);
+  useEffect(() => {
+    if (!active || !entryToOpen || handledOpen.current === entryToOpen) return;
+    const entry = current.find(entry => entry.id === entryToOpen.id);
+    if (!entry) return;
+    handledOpen.current = entryToOpen;
+    setQuery(""); setFilter("ALL"); setOnlyMine(false);
+    if (isFinished(entry)) setExpandedCompleted(true);
+    setFocusedEntryId(entry.id); setFocusPending(true);
+  }, [active, current, entryToOpen]);
+  useEffect(() => {
+    if (!active || !focusPending || !focusedEntryId || query || onlyMine || filter !== "ALL") return;
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(`${compact ? "call-work" : "quick-entry"}-${focusedEntryId}`);
+      if (target) { target.scrollIntoView?.({block: "nearest"}); target.focus({preventScroll: true}); setFocusPending(false); }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, focusPending, focusedEntryId, compact, query, onlyMine, filter, expandedCompleted]);
 
   async function createWork(form: FormData) {
     if (inFlight.current) return;
@@ -109,7 +132,7 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
     const due = entry.dueAt ? new Date(entry.dueAt) : null;
     const dateLabel = due && Number.isFinite(due.getTime()) ? due.toLocaleDateString(undefined, {month: "short", day: "numeric", year: "numeric"}) : null;
     return <article id={`${compact ? "call-work" : "quick-entry"}-${entry.id}`} key={entry.id} tabIndex={-1}
-      className="scroll-mt-24 rounded-xl border border-border bg-card p-4 text-card-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+      className={`scroll-mt-24 rounded-xl border border-border bg-card p-4 text-card-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${entry.id === focusedEntryId ? "ring-2 ring-primary/50" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className={`min-w-0 break-words font-semibold ${finished ? "text-muted-foreground" : ""}`}>{entry.title || `Untitled ${entry.kind.toLowerCase()}`}</h3>
         <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{entry.kind === "GOAL" ? "Goal" : "Task"}{finished ? ["DONE", "ACHIEVED"].includes(entry.status) ? " · Completed" : entry.status === "ARCHIVED" ? " · Archived" : " · Canceled" : entry.status === "PAUSED" ? " · Paused" : ""}</span>
@@ -126,7 +149,16 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
         window.dispatchEvent(new CustomEvent("quipsly-coaching-work-changed", {detail: {roomId}}));
       }} />
       <div className="mt-2 flex flex-wrap gap-x-4">
-        {entry.sourceHref && <Link onClick={onOpenWorkspace} href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{entry.fromConversation ? "From conversation" : "From recording"}</Link>}
+        {entry.sourceHref && <Link onClick={event => {
+          if (entry.fromConversation && onOpenConversation && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+            const source = new URL(entry.sourceHref!, window.location.origin);
+            const messageId = source.searchParams.get("message");
+            if (source.origin === window.location.origin && source.pathname === `/sessions/${encodeURIComponent(roomId)}` && messageId) {
+              event.preventDefault(); onOpenConversation(messageId); return;
+            }
+          }
+          onOpenWorkspace?.();
+        }} href={entry.sourceHref} className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">{entry.fromConversation ? "From conversation" : "From recording"}</Link>}
         {mine && <Link onClick={onOpenWorkspace} href={`/work?${entry.kind === "TASK" ? "task" : "goal"}=${encodeURIComponent(entry.id)}`} className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline underline-offset-4">Open in Work</Link>}
       </div>
     </article>;
@@ -197,7 +229,7 @@ export function SessionWorkWorkspace({ roomId, entries, assignmentContext = null
       {unfinished.map(renderEntry)}
       {!unfinished.length && <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{hasFilters ? filtered.length ? "No unfinished work matches these filters." : "No matching tasks or goals. Try another search or filter." : current.length ? "You're caught up here." : canCreate ? "Add a next step, or find the editable tasks and goals Quipsly creates from your transcript here." : "No tasks or goals yet."}</p>}
     </div>
-    {completed.length > 0 && <details open={searchTerms.length > 0 || undefined} className="rounded-xl border border-border p-3">
+    {completed.length > 0 && <details open={searchTerms.length > 0 || expandedCompleted} onToggle={event => setExpandedCompleted(event.currentTarget.open)} className="rounded-xl border border-border p-3">
       <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">{hasArchived ? "Completed and archived" : "Completed"} ({completed.length})</summary>
       <div className="mt-2 space-y-3">{completed.map(renderEntry)}</div>
     </details>}

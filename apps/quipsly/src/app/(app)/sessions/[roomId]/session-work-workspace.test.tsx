@@ -1,5 +1,5 @@
 import React from "react";
-import {render, screen, within, waitFor} from "@testing-library/react";
+import {fireEvent, render, screen, within, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {SessionWorkWorkspace} from "./session-work-workspace";
 import type {SessionQuickEntry} from "./session-review-client";
@@ -15,6 +15,41 @@ const originalFetch = global.fetch;
 describe("Session work workspace", () => {
   beforeEach(() => {jest.clearAllMocks();});
   afterEach(() => {global.fetch = originalFetch;});
+
+  it("opens a conversation source beside the call while keeping other sessions as ordinary links", () => {
+    const onOpenConversation = jest.fn(); const onOpenWorkspace = jest.fn();
+    const entry = {...task, fromConversation: true, sourceHref: "/sessions/room-1?mode=conversation&message=message-1"};
+    const view = render(<SessionWorkWorkspace roomId="room-1" entries={[entry]} compact onOpenConversation={onOpenConversation} onOpenWorkspace={onOpenWorkspace} />);
+    fireEvent.click(screen.getByRole("link", {name: "From conversation"}));
+    expect(onOpenConversation).toHaveBeenCalledWith("message-1");
+    expect(onOpenWorkspace).not.toHaveBeenCalled();
+    view.rerender(<SessionWorkWorkspace roomId="room-1" entries={[{...entry, sourceHref: "/sessions/other?message=message-2"}]} compact onOpenConversation={onOpenConversation} onOpenWorkspace={onOpenWorkspace} />);
+    fireEvent.click(screen.getByRole("link", {name: "From conversation"}));
+    expect(onOpenConversation).toHaveBeenCalledTimes(1);
+    expect(onOpenWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("reveals a chat-linked task through filters while preserving the separate creation draft", async () => {
+    const user = userEvent.setup();
+    const entries = [task, {...task, id: "completed", title: "Read the chapter", status: "DONE"}];
+    const view = render(<SessionWorkWorkspace roomId="room-1" entries={entries} compact />);
+    await user.click(screen.getByRole("button", {name: "Add task or goal"}));
+    await user.type(screen.getByRole("textbox", {name: "Task title"}), "My next idea");
+    await user.click(screen.getByRole("button", {name: "Close draft"}));
+    await user.type(screen.getByRole("searchbox"), "does not match");
+    const request = {id: "completed", request: 1};
+    view.rerender(<SessionWorkWorkspace roomId="room-1" entries={entries} compact entryToOpen={request} />);
+    const heading = await screen.findByRole("heading", {name: "Read the chapter"});
+    await waitFor(() => expect(document.activeElement).toBe(heading.closest("article")));
+    expect(heading).toBeVisible();
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    await user.click(screen.getByRole("button", {name: "Continue draft"}));
+    expect(screen.getByRole("textbox", {name: "Task title"})).toHaveValue("My next idea");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", {name: "Task title"})));
+    await user.type(screen.getByRole("searchbox"), "write");
+    view.rerender(<SessionWorkWorkspace roomId="room-1" entries={[...entries]} compact entryToOpen={request} />);
+    expect(screen.getByRole("searchbox")).toHaveValue("write");
+  });
 
   it("leads with existing work and keeps a dismissed creation draft through refresh", async () => {
     const user = userEvent.setup();

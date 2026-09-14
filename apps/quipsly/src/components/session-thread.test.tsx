@@ -39,6 +39,35 @@ describe("SessionThread", () => {
     height.mockRestore();
   });
 
+  it("returns to an exact conversation source without losing a draft or repeatedly moving focus", async () => {
+    const scroll = jest.fn();
+    const previous = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    const underlyingMessage = document.createElement("article");
+    underlyingMessage.id = `conversation-message-${message.id}`;
+    underlyingMessage.tabIndex = -1;
+    document.body.append(underlyingMessage);
+    try {
+      jest.mocked(fetch).mockResolvedValue(response({ok: true, messages: [message]}));
+      const view = render(<SessionThread roomId="room-1" sessionTitle="Coaching" />);
+      await act(async () => {});
+      const composer = screen.getByRole("textbox", {name: "Message"});
+      fireEvent.change(composer, {target: {value: "Keep my next thought"}});
+      const target = {id: message.id, request: 1};
+      await act(async () => {view.rerender(<SessionThread roomId="room-1" sessionTitle="Coaching" messageToOpen={target} />);});
+      expect(document.activeElement?.id).toBe(`conversation-message-${message.id}`);
+      expect(document.activeElement).not.toBe(underlyingMessage);
+      expect(fetch).toHaveBeenCalledWith("/api/sessions/room-1/conversation?limit=50&message=message-1", {cache: "no-store"});
+      expect(composer).toHaveValue("Keep my next thought");
+      composer.focus();
+      await act(async () => {jest.advanceTimersByTime(3000);});
+      expect(composer).toHaveFocus();
+      await act(async () => {view.rerender(<SessionThread roomId="room-1" sessionTitle="Coaching" messageToOpen={{...target, request: 2}} />);});
+      expect(document.activeElement?.id).toBe(`conversation-message-${message.id}`);
+      expect(scroll).toHaveBeenCalledTimes(2);
+    } finally { HTMLElement.prototype.scrollIntoView = previous; underlyingMessage.remove(); }
+  });
+
   it("does not mark a late fetch read after chat has been closed", async () => {
     let finish!: (result: Response) => void;
     jest.mocked(fetch).mockImplementation(() => new Promise(resolve => {finish = resolve;}));

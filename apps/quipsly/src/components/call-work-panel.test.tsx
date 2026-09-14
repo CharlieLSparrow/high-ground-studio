@@ -15,6 +15,37 @@ describe("Call work panel", () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => {global.fetch = originalFetch;});
 
+  it("finds an older linked task outside the recent list and reveals it even when completed", async () => {
+    global.fetch = jest.fn(async url => String(url).includes("entryId=")
+      ? response({ok: true, roomId: "room-1", actorUserId: "coach-1", entry: {...task, status: "DONE"}})
+      : response(collection()));
+    render(<CallWorkPanel roomId="room-1" active entryToOpen={{id: task.id, request: 1}} onOpenWorkspace={jest.fn()} />);
+    const heading = await screen.findByRole("heading", {name: task.title});
+    await waitFor(() => expect(heading).toBeVisible());
+    await waitFor(() => expect(document.activeElement).toBe(heading.closest("article")));
+    expect(fetch).toHaveBeenCalledWith("/api/sessions/room-1/work?entryId=task-1", {cache: "no-store"});
+  });
+
+  it("does not merge a linked-task response from another identity with visible work", async () => {
+    global.fetch = jest.fn(async url => String(url).includes("entryId=")
+      ? response({ok: true, roomId: "room-1", actorUserId: "other-actor", entry: task})
+      : response(collection()));
+    render(<CallWorkPanel roomId="room-1" active entryToOpen={{id: task.id, request: 1}} onOpenWorkspace={jest.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your account changed");
+    expect(screen.queryByRole("heading", {name: task.title})).not.toBeInTheDocument();
+  });
+
+  it("clears visible work on non-JSON access failures", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(response(collection([task])))
+      .mockResolvedValueOnce({status: 401, ok: false, json: async () => {throw new SyntaxError("HTML sign-in page");}});
+    global.fetch = fetchMock;
+    render(<CallWorkPanel roomId="room-1" active onOpenWorkspace={jest.fn()} />);
+    await screen.findByRole("heading", {name: task.title});
+    act(() => window.dispatchEvent(new Event("focus")));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sign in again");
+    expect(screen.queryByRole("heading", {name: task.title})).not.toBeInTheDocument();
+  });
+
   it("creates canonical work and retains unfinished input while its pane is hidden", async () => {
     let entries: unknown[] = [];
     const fetchMock = jest.fn(async (_url, options) => {
