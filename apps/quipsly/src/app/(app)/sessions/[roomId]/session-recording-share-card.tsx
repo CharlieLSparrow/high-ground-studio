@@ -1,5 +1,6 @@
 "use client";
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
+import { RecordingEditListen } from "@/components/recording-edit-listen";
 import { TranscriptExportDialog } from "@/components/transcript-export-dialog";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type SetStateAction } from "react";
@@ -664,6 +665,13 @@ export function SessionRecordingShareCard({
         sourceOffsets: Object.fromEntries((snapshot.available?.sources || []).map(source => [source.id, source.programOffsetSeconds])),
         removedRanges: excludedTranscriptSegments.map(segment => ({startSeconds: segment.cutStartSeconds ?? segment.startSeconds, endSeconds: segment.cutEndSeconds ?? segment.endSeconds})),
       })}</div> : null}
+
+      {coach && chosen.length > 0 ? <RecordingEditListen
+        sources={chosen.map(source => ({id: source.id, label: source.participantLabel, url: source.playbackUrl,
+          offset: source.programOffsetSeconds, duration: sourceDuration(source), contentType: source.contentType}))}
+        startSeconds={startSeconds} endSeconds={endSeconds}
+        cuts={excludedTranscriptSegments.map(segment => ({startSeconds: segment.cutStartSeconds ?? segment.startSeconds, endSeconds: segment.cutEndSeconds ?? segment.endSeconds}))}
+        disabled={Boolean(busy) || timeline?.precision === "unavailable"} /> : null}
 
       {coach && (!output || editing) ? (
         <fieldset disabled={Boolean(busy)} onChange={() => { draftTouched.current = true; }} onClick={() => { draftTouched.current = true; }}
