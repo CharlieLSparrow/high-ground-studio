@@ -14,6 +14,7 @@ export type TranscriptExportOptions = {
   timestamps?: boolean;
   speakers?: boolean;
   partial?: boolean;
+  notice?: string;
 };
 
 export const PARTIAL_TRANSCRIPT_NOTICE = "Partial transcript: some participant recordings are not included yet. You can export an updated copy when they are ready.";
@@ -58,6 +59,7 @@ export function createTranscriptExport(options: TranscriptExportOptions) {
     throw new Error("Subtitle timing is unavailable for one or more passages. Download a text transcript instead.");
   }
   const speakers = options.speakers ?? true;
+  const notice = options.notice?.trim() || (options.partial ? PARTIAL_TRANSCRIPT_NOTICE : null);
   const content = subtitles
     ? `${format === "vtt" ? "WEBVTT\n\n" : ""}${segments
       .filter(segment => segment.text.trim())
@@ -68,7 +70,7 @@ export function createTranscriptExport(options: TranscriptExportOptions) {
         const speaker = speakers && segment.speakerLabel?.trim() ? `${segment.speakerLabel.trim()}: ` : "";
         return `${index + 1}\n${timestamp(start!, format === "srt" ? "," : ".")} --> ${timestamp(end!, format === "srt" ? "," : ".")}\n${cueText(speaker + segment.text)}\n`;
       }).join("\n")}`
-    : [format === "md" ? `# ${markdownText(title.replace(/\s*\n\s*/g, " "))}` : title, "", ...(options.partial ? [PARTIAL_TRANSCRIPT_NOTICE, ""] : []), ...segments.flatMap(segment => {
+    : [format === "md" ? `# ${markdownText(title.replace(/\s*\n\s*/g, " "))}` : title, "", ...(notice ? [format === "md" ? markdownText(notice) : notice, ""] : []), ...segments.flatMap(segment => {
       const [start] = clock(segment);
       const time = options.timestamps !== false && typeof start === "number" && Number.isFinite(start) && start >= 0 ? `[${timestamp(start)}]` : "";
       const speaker = speakers ? segment.speakerLabel?.trim() ?? "" : "";

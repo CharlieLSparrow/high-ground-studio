@@ -18,10 +18,11 @@ export async function GET(request: Request, context: {params: Promise<{roomId: s
     const projection = await readSessionRecordingShareTranscript(getPrismaClient(), {...await context.params, actor: session.user});
     const notice = [projection.omittedBoundaryPassages ? "Some words cut at a boundary were omitted because their remaining timing is uncertain." : "",
       projection.untranscribedSources ? "Some recording tracks do not have a transcript yet." : ""].filter(Boolean).join(" ");
-    if (format === "json") return NextResponse.json({ok: true, ...projection, notice}, {headers});
+    const partial = projection.omittedBoundaryPassages > 0 || projection.untranscribedSources > 0;
+    if (format === "json") return NextResponse.json({ok: true, ...projection, notice, partial}, {headers});
     if (!projection.segments.length) return fail("No transcribed speech is available in this edited recording yet.", 409);
     const output = createTranscriptExport({title: projection.title, segments: projection.segments, format: format as TranscriptExportFormat,
-      timestamps: query.get("timestamps") !== "false", speakers: query.get("speakers") !== "false"});
+      timestamps: query.get("timestamps") !== "false", speakers: query.get("speakers") !== "false", partial, notice});
     return new Response(output.content, {headers: {...headers, "Content-Type": output.mimeType,
       "Content-Disposition": `attachment; filename="${output.filename}"`,
       "X-Quipsly-Transcript-Passages": String(projection.segments.length),

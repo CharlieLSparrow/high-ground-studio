@@ -26,15 +26,17 @@ it.each(["txt", "md", "srt", "vtt"])("exports %s with private headers and bounda
   const response = await run(`?format=${format}`);
   expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toBe("private, no-store");
-  expect(response.headers.get("content-disposition")).toContain(`edited-session-transcript.${format}`);
+  expect(response.headers.get("content-disposition")).toContain(`edited-session-partial-transcript.${format}`);
   expect(response.headers.get("x-quipsly-omitted-boundary-passages")).toBe("1");
   const text = await response.text();
   expect(text).toContain("Kept corrected text");
+  if (format === "txt" || format === "md") expect(text).toContain("Some words cut at a boundary were omitted");
   if (format === "srt") expect(text).toContain("00:00:03,990 --> 00:00:05,000");
 });
 it("supplies only the edited projection to the dialog and preserves access denials", async () => {
   const payload = await (await run("?format=json")).json();
   expect(payload.notice).toContain("cut at a boundary");
+  expect(payload.partial).toBe(true);
   expect(payload).not.toHaveProperty("sourceManifest");
   jest.mocked(readSessionRecordingShareTranscript).mockRejectedValueOnce(new SessionRecordingShareError(404, "NOT_FOUND", "Not found"));
   const denied = await run("?format=json");

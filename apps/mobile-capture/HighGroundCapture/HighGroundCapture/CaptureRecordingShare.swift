@@ -358,6 +358,52 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         clearPlayback()
     }
 
+    var previewPosition: TimeInterval {
+        if let player { return player.currentTime }
+        let value = previewVideoPlayer?.currentTime().seconds ?? 0
+        return value.isFinite ? max(0, value) : 0
+    }
+
+    var previewPrepared: Bool { player != nil || previewVideoPlayer != nil }
+
+    func seekPreview(to seconds: TimeInterval) {
+        guard seconds.isFinite, let duration = snapshot?.output?.render.durationSeconds else { return }
+        let position = max(0, min(duration, seconds))
+        player?.currentTime = position
+        previewVideoPlayer?.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    func playPreviewPassage(roomID: String, outputID: String, at seconds: TimeInterval) async {
+        guard snapshot?.output?.id == outputID, busyAction == nil else { return }
+        if player == nil && previewVideoPlayer == nil { await togglePreview(roomID: roomID) }
+        guard !Task.isCancelled, snapshot?.output?.id == outputID,
+              protectedPreviewOutputID == outputID else { return }
+        seekPreview(to: seconds)
+        player?.play()
+        previewVideoPlayer?.play()
+        isPlaying = player != nil || previewVideoPlayer != nil
+    }
+
+    func readMatchingTranscript(roomID: String, output: CaptureRecordingShareOutput) async throws -> CaptureEditedTranscript {
+        guard AuthManager.shared.networkActionsAllowed,
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let room = Self.encodedPathComponent(roomID), let outputID = Self.encodedPathComponent(output.id),
+              let url = URL(string: "\(baseURL)/api/sessions/\(room)/recording-share/transcript/\(outputID)?format=json") else {
+            throw CaptureRecordingShareClientError.message("Reconnect to load this recording’s transcript.")
+        }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await AuthManager.shared.authenticatedData(for: request, expectedOwnerAccountID: owner.ownerAccountID)
+        guard !Task.isCancelled, AuthManager.currentStoredOwnerID() == owner.ownerAccountID,
+              snapshot?.output?.id == output.id, snapshot?.output?.render.sha256 == output.render.sha256 else { throw CancellationError() }
+        guard response.statusCode == 200 else { throw responseError(data, fallback: "The transcript couldn’t be loaded. Try again.") }
+        let transcript = try JSONDecoder().decode(CaptureEditedTranscript.self, from: data)
+        guard transcript.matches(outputID: output.id, sha256: output.render.sha256, duration: output.render.durationSeconds) else {
+            throw CaptureRecordingShareClientError.message("This transcript does not match the selected recording. Refresh the recording and try again.")
+        }
+        return transcript
+    }
+
     func preparePreviewExport(roomID: String) async -> URL? {
         player?.pause()
         previewVideoPlayer?.pause()
@@ -1485,6 +1531,13 @@ struct CaptureRecordingShareEditor: View {
                 .accessibilityValue(exportURL?.lastPathComponent ?? "No transcript prepared")
                 .accessibilityHint("Exports corrected text with only the speech kept in this edited recording. Subtitle times follow the edited file.")
 
+                CaptureEditedTranscriptPreview(client: client, roomID: roomID, output: output) {
+                    sourcePlayback.close()
+                    auditionSegmentID = nil
+                    auditionNotice = nil
+                }
+                .id("\(output.id):\(output.render.sha256 ?? "")")
+
                 if let exportNotice {
                     Text(exportNotice)
                         .font(.caption2.weight(.semibold))
@@ -2065,6 +2118,92 @@ struct CaptureRecordingShareEditor: View {
         case "RELEASED": "Visible to \(output.recipient.label) · revision \(output.revision)"
         case "REVOKED": "Client access revoked · revision \(output.revision)"
         default: "Revision \(output.revision)"
+        }
+    }
+}
+
+private struct CaptureEditedTranscriptPreview: View {
+    @ObservedObject var client: CaptureRecordingShareClient
+    let roomID: String
+    let output: CaptureRecordingShareOutput
+    let beforePlayback: () -> Void
+    @State private var expanded = false
+    @State private var transcript: CaptureEditedTranscript?
+    @State private var error: String?
+    @State private var query = ""
+    @State private var attempt = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let duration = output.render.durationSeconds, duration > 0 {
+                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                    VStack(spacing: 4) {
+                        Slider(value: Binding(get: {min(duration, client.previewPosition)}, set: {client.seekPreview(to: $0)}), in: 0...duration)
+                            .disabled(!client.previewPrepared)
+                            .accessibilityLabel("Edited recording position")
+                            .accessibilityIdentifier("CaptureEditedRecordingPosition")
+                        HStack { Text(captureRecordingShareTime(client.previewPosition)); Spacer(); Text(captureRecordingShareTime(duration)) }
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            DisclosureGroup("Read along with this recording", isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Tap a passage to play it. Text and times match this edited recording.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
+                    else if let transcript {
+                        if let notice = transcript.notice, !notice.isEmpty { Text(notice).font(.caption).foregroundStyle(.secondary) }
+                        if transcript.segments.isEmpty {
+                            Text("No transcribed speech is available in this edit yet. You can still listen to or share the recording.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        } else {
+                            TextField("Find in this transcript", text: $query).textFieldStyle(.roundedBorder)
+                            let visible = transcript.segments.enumerated().filter { _, passage in
+                                query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || "\(passage.speakerLabel ?? "") \(passage.text)".localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespacesAndNewlines))
+                            }
+                            if visible.isEmpty { Text("No passages match your search.").font(.caption).foregroundStyle(.secondary) }
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 8) {
+                                    ForEach(visible, id: \.offset) { index, passage in
+                                        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                                            let active = client.previewPosition >= passage.startSeconds && client.previewPosition < passage.endSeconds
+                                            Button {
+                                                beforePlayback()
+                                                Task { await client.playPreviewPassage(roomID: roomID, outputID: output.id, at: passage.startSeconds) }
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 5) {
+                                                    Text("\(captureRecordingShareTime(passage.startSeconds)) · \(passage.speakerLabel ?? "Speaker")")
+                                                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                                    Text(passage.text).font(.body).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                                                }
+                                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(10)
+                                                .background(active ? CapturePalette.plum.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 10))
+                                            }
+                                            .buttonStyle(.plain).disabled(client.busyAction != nil)
+                                            .accessibilityIdentifier("CaptureEditedTranscriptPassage-\(index)")
+                                            .accessibilityAddTraits(active ? [.isSelected] : [])
+                                        }
+                                    }
+                                }
+                            }.frame(maxHeight: 320)
+                        }
+                    } else { ProgressView("Loading transcript…") }
+                    Button("Refresh transcript") { attempt += 1 }.buttonStyle(.bordered)
+                }.padding(.top, 8)
+            }
+            .accessibilityIdentifier("CaptureEditedTranscriptPreview")
+        }
+        .task(id: "\(expanded):\(attempt)") {
+            guard expanded else { transcript = nil; error = nil; return }
+            transcript = nil; error = nil
+            do {
+                let result = try await client.readMatchingTranscript(roomID: roomID, output: output)
+                guard !Task.isCancelled else { return }
+                transcript = result
+            } catch is CancellationError { }
+            catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
 }

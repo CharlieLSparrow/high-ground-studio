@@ -20,7 +20,7 @@ export function TranscriptExportDialog({title, segments = EMPTY, disabled = fals
   const [notice, setNotice] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<{url: string; output: ReturnType<typeof createTranscriptExport>} | null>(null);
   const [sharing, setSharing] = useState(false);
-  const [remote, setRemote] = useState<{sourceUrl: string; segments: TranscriptExportPassage[]; notice?: string; error?: string} | null>(null);
+  const [remote, setRemote] = useState<{sourceUrl: string; segments: TranscriptExportPassage[]; notice?: string; partial?: boolean; error?: string} | null>(null);
   const currentRemote = remote?.sourceUrl === sourceUrl ? remote : null;
   const passages = sourceUrl ? currentRemote?.segments ?? EMPTY : segments;
   const timed = transcriptHasSubtitleTiming(passages);
@@ -32,7 +32,7 @@ export function TranscriptExportDialog({title, segments = EMPTY, disabled = fals
       .then(async response => {
         const payload = await response.json();
         if (!response.ok || !payload.ok || !Array.isArray(payload.segments)) throw new Error(payload.error || "This transcript couldn’t be loaded.");
-        if (!controller.signal.aborted) setRemote({sourceUrl, segments: payload.segments, notice: payload.notice});
+        if (!controller.signal.aborted) setRemote({sourceUrl, segments: payload.segments, notice: payload.notice, partial: payload.partial === true});
       }).catch(error => {
         if (!controller.signal.aborted) setRemote({sourceUrl, segments: [], error: error instanceof Error ? error.message : "This transcript couldn’t be loaded."});
       });
@@ -41,8 +41,8 @@ export function TranscriptExportDialog({title, segments = EMPTY, disabled = fals
   const subtitle = format === "srt" || format === "vtt";
   const output = useMemo(() => {
     if (!open || disabled || !passages.length || (subtitle && !timed)) return null;
-    return createTranscriptExport({title, segments: passages, format, timestamps, speakers, partial});
-  }, [open, disabled, passages, subtitle, timed, title, format, timestamps, speakers, partial]);
+    return createTranscriptExport({title, segments: passages, format, timestamps, speakers, partial: partial || currentRemote?.partial, notice: currentRemote?.notice});
+  }, [open, disabled, passages, subtitle, timed, title, format, timestamps, speakers, partial, currentRemote?.partial, currentRemote?.notice]);
   const fileUrl = prepared?.output === output ? prepared?.url ?? null : null;
   useEffect(() => {
     const element = dialog.current;

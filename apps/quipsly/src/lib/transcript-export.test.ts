@@ -15,6 +15,20 @@ it("can produce just readable paragraphs without timestamps or names", () => {
     .toBe("Coaching session\n\nI will finish the chapter.\n");
 });
 
+it("carries the specific partial-coverage notice into text exports without adding fake subtitle cues", () => {
+  const options = {...base, partial: true, notice: "Some words cut at a boundary were omitted."};
+  for (const format of ["txt", "md"] as const) {
+    const output = createTranscriptExport({...options, format});
+    expect(output.filename).toContain("partial");
+    expect(output.content).toContain(options.notice);
+    expect(output.content).not.toContain("some participant recordings are not included");
+  }
+  const subtitles = createTranscriptExport({...options, format: "srt"});
+  expect(subtitles.filename).toContain("partial");
+  expect(subtitles.content).not.toContain(options.notice);
+  expect(subtitles.content).toContain("00:00:03,660 --> 00:00:05,840");
+});
+
 it("uses Session alignment without changing the original source timestamps", () => {
   const segment = {...passage, programStartSeconds: 11.25, programEndSeconds: 13.43};
   const before = {...segment};

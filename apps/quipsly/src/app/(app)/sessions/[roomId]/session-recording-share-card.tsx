@@ -1,7 +1,7 @@
 "use client";
 import { SessionRecordingAudio } from "@/components/session-recording-audio";
 import { RecordingEditListen } from "@/components/recording-edit-listen";
-import { TranscriptExportDialog } from "@/components/transcript-export-dialog";
+import { RecordingTranscriptPreview } from "@/components/recording-transcript-preview";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type SetStateAction } from "react";
 import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, Redo2, RefreshCw, RotateCcw, Scissors, Send, ShieldCheck, Undo2 } from "lucide-react";
@@ -905,10 +905,10 @@ export function SessionRecordingShareCard({
           aria-label={output.status === "RELEASED" ? "Shared recording" : "Private recording preview"}
           className="w-full" controls preload="metadata" src={output.mediaUrl}
         >Your browser cannot play this private recording.</SessionRecordingAudio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-muted-foreground"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex min-h-11 items-center rounded-xl border border-border bg-muted px-3 py-2 text-sm font-semibold text-foreground"><Download className="mr-1.5" size={14} />Download recording</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-muted-foreground"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
-        {output.render.status === "VERIFIED" && output.mediaUrl ? <TranscriptExportDialog
-          key={output.id} title={output.title} label="Export matching transcript"
+        {output.render.status === "VERIFIED" && output.mediaUrl ? <RecordingTranscriptPreview
+          key={`${output.id}:${output.render.sha256}`} title={output.title} outputSha256={output.render.sha256} mediaRef={previewMediaRef}
           sourceUrl={`/api/sessions/${encodeURIComponent(roomId)}/recording-share/transcript/${encodeURIComponent(output.id)}`}
-          description="Includes current text corrections and only the speech kept in this recording. Transcript and subtitle times follow this edited file, including cuts." /> : null}
+          /> : null}
         <details className="text-xs text-muted-foreground">
           <summary className="min-h-11 cursor-pointer py-3 font-semibold">File details</summary>
           <dl className="space-y-2 rounded-lg border border-border p-3">

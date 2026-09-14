@@ -28,3 +28,7 @@ xcrun swiftc -o "${capture_edit_test_dir}/transcript-source-binding" \
   "${capture_root}/HighGroundCapture/CaptureTranscriptSourceBinding.swift" \
   "${capture_root}/Testing/CaptureTranscriptSourceBindingHarness.swift"
 "${capture_edit_test_dir}/transcript-source-binding"
+xcrun swiftc -o "${capture_edit_test_dir}/edited-transcript" \
+  "${capture_root}/HighGroundCapture/CaptureEditedTranscript.swift" \
+  "${capture_root}/Testing/CaptureEditedTranscriptHarness.swift"
+"${capture_edit_test_dir}/edited-transcript"

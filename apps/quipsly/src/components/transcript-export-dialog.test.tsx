@@ -71,12 +71,14 @@ it("does not claim delivery when the user cancels the system share sheet", async
 });
 
 it("loads only the selected edited recording and refreshes authorization on every open", async () => {
-  global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, segments, notice: "Some words cut at a boundary were omitted."})});
+  global.fetch = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, segments, partial: true, notice: "Some words cut at a boundary were omitted."})});
   render(<TranscriptExportDialog title="Edited coaching" sourceUrl="/api/sessions/one/recording-share/transcript/output-one" description="Times match this edited file." />);
   openExport();
   expect(await screen.findByRole("link", {name: "Download TXT"})).toBeVisible();
   expect(global.fetch).toHaveBeenCalledWith("/api/sessions/one/recording-share/transcript/output-one?format=json", expect.objectContaining({cache: "no-store"}));
   expect(screen.getByRole("status")).toHaveTextContent("Some words cut at a boundary");
+  expect(screen.getByLabelText("Transcript export preview")).toHaveTextContent("Some words cut at a boundary were omitted.");
+  expect(screen.getByRole("link", {name: "Download TXT"})).toHaveAttribute("download", "edited-coaching-partial-transcript.txt");
   fireEvent.click(screen.getByRole("button", {name: "Close transcript export"}));
   jest.mocked(global.fetch).mockResolvedValue({ok: false, json: async () => ({ok: false, error: "This recording is no longer shared."})} as Response);
   openExport();
